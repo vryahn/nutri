@@ -9,6 +9,17 @@ export const MICROS = [
   { key: 'alcohol_g', label: 'Alcohol', unit: 'g' },
 ];
 
+// Mueve la etiqueta en `index` una posición (dir -1|1) y devuelve las filas
+// {id, sort_order} a persistir, reindexando 0..n-1. Reindexar (y no hacer swap)
+// corrige las labels creadas por la RPC log_entry, que quedan todas con sort_order 0.
+export function reorderLabels(labels, index, dir) {
+  const j = index + dir;
+  if (j < 0 || j >= labels.length) return [];
+  const next = [...labels];
+  [next[index], next[j]] = [next[j], next[index]];
+  return next.flatMap((l, i) => (l.sort_order === i ? [] : [{ id: l.id, sort_order: i }]));
+}
+
 export function todayISO() {
   return new Date().toLocaleDateString('sv-SE'); // yyyy-mm-dd en hora local
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, X } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { todayISO, addDaysISO, resolveTarget, classifyKcal, classifyFloor, sodiumIsLow, SODIUM_FLOOR_MG } from '../lib/domain.js';
+import { todayISO, addDaysISO, resolveTarget, classifyKcal, classifyFloor, sodiumIsLow, SODIUM_FLOOR_MG, reorderLabels } from '../lib/domain.js';
 
 export default function Today() {
   const [date, setDate] = useState(todayISO());
@@ -10,7 +10,7 @@ export default function Today() {
   const [recent, setRecent] = useState([]);
   const [targets, setTargets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(null); // { labelId } | null
   const [editing, setEditing] = useState(null); // entry being edited
   const [toast, setToast] = useState('');
 
@@ -62,6 +62,13 @@ export default function Today() {
       if (uniques.length >= 8) break;
     }
     setRecent(uniques);
+  }
+
+  async function moveLabel(index, dir) {
+    const updates = reorderLabels(labels, index, dir);
+    if (updates.length === 0) return;
+    await Promise.all(updates.map((u) => supabase.from('meal_labels').update({ sort_order: u.sort_order }).eq('id', u.id)));
+    loadLabels();
   }
 
   function showToast(msg) {
@@ -160,12 +167,43 @@ export default function Today() {
         </div>
       )}
 
-      {!loading && entries.length === 0 && <p className="text-text-2 text-center py-6">Sin registros este día</p>}
+      {!loading && entries.length === 0 && labels.length === 0 && (
+        <p className="text-text-2 text-center py-6">Sin registros este día</p>
+      )}
 
       {!loading &&
-        groups.map((g) => (
+        groups.map((g, i) => (
           <div key={g.id ?? 'none'} className="flex flex-col gap-2">
-            <h2 className="text-sm text-text-3">{g.name}</h2>
+            <div className="flex items-center justify-between min-h-[44px]">
+              <h2 className="text-sm text-text-3">{g.name}</h2>
+              {g.id != null && (
+                <div className="flex items-center -mr-2.5">
+                  <button
+                    onClick={() => moveLabel(i, -1)}
+                    disabled={i === 0}
+                    className="p-2.5 text-text-3 disabled:opacity-30 active:scale-[0.98] transition-transform duration-150"
+                    aria-label={`Subir ${g.name}`}
+                  >
+                    <ChevronUp size={18} />
+                  </button>
+                  <button
+                    onClick={() => moveLabel(i, 1)}
+                    disabled={i === labels.length - 1}
+                    className="p-2.5 text-text-3 disabled:opacity-30 active:scale-[0.98] transition-transform duration-150"
+                    aria-label={`Bajar ${g.name}`}
+                  >
+                    <ChevronDown size={18} />
+                  </button>
+                  <button
+                    onClick={() => setAdding({ labelId: g.id })}
+                    className="p-2.5 text-accent active:scale-[0.98] transition-transform duration-150"
+                    aria-label={`Añadir a ${g.name}`}
+                  >
+                    <Plus size={20} />
+                  </button>
+                </div>
+              )}
+            </div>
             {g.items.map((e) => (
               <button
                 key={e.id}
@@ -183,7 +221,7 @@ export default function Today() {
         ))}
 
       <button
-        onClick={() => setAdding(true)}
+        onClick={() => setAdding({ labelId: null })}
         className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-text flex items-center justify-center active:scale-[0.98] transition-transform duration-150"
         aria-label="Añadir registro"
       >
@@ -195,9 +233,10 @@ export default function Today() {
           date={date}
           labels={labels}
           recent={recent}
-          onClose={() => setAdding(false)}
+          initialLabelId={adding.labelId}
+          onClose={() => setAdding(null)}
           onAdded={() => {
-            setAdding(false);
+            setAdding(null);
             loadDay();
             loadRecent();
           }}
@@ -229,19 +268,16 @@ export default function Today() {
   );
 }
 
+// Una sección por cada etiqueta (aunque esté vacía), en el orden de `labels`
+// (ya vienen por sort_order); "Sin etiqueta" al final solo si tiene items.
 function groupByLabel(entries, labels) {
-  const order = new Map(labels.map((l) => [l.id, l.sort_order ?? 0]));
-  const byId = new Map();
+  const groups = labels.map((l) => ({ id: l.id, name: l.name, items: [] }));
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  const none = { id: null, name: 'Sin etiqueta', items: [] };
   for (const e of entries) {
-    const key = e.meal_label_id ?? 'none';
-    if (!byId.has(key)) byId.set(key, { id: e.meal_label_id, name: e.meal ?? 'Sin etiqueta', items: [] });
-    byId.get(key).items.push(e);
+    (byId.get(e.meal_label_id) ?? none).items.push(e);
   }
-  return [...byId.values()].sort((a, b) => {
-    if (a.id == null) return 1;
-    if (b.id == null) return -1;
-    return (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0);
-  });
+  return none.items.length > 0 ? [...groups, none] : groups;
 }
 
 function Stat({ label, value, color, target }) {
@@ -254,12 +290,12 @@ function Stat({ label, value, color, target }) {
   );
 }
 
-function AddEntrySheet({ date, labels, recent, onClose, onAdded }) {
+function AddEntrySheet({ date, labels, recent, initialLabelId, onClose, onAdded }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [selected, setSelected] = useState(null); // { id, name, type }
   const [grams, setGrams] = useState('');
-  const [labelId, setLabelId] = useState('');
+  const [labelId, setLabelId] = useState(initialLabelId || '');
 
   useEffect(() => {
     if (!query.trim() || selected) {

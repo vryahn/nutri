@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
+import { reorderLabels } from '../lib/domain.js';
 
 export default function LabelsModal({ onClose }) {
   const [labels, setLabels] = useState([]);
@@ -36,11 +37,9 @@ export default function LabelsModal({ onClose }) {
   }
 
   async function move(index, dir) {
-    const other = labels[index + dir];
-    const current = labels[index];
-    if (!other) return;
-    await supabase.from('meal_labels').update({ sort_order: other.sort_order }).eq('id', current.id);
-    await supabase.from('meal_labels').update({ sort_order: current.sort_order }).eq('id', other.id);
+    const updates = reorderLabels(labels, index, dir);
+    if (updates.length === 0) return;
+    await Promise.all(updates.map((u) => supabase.from('meal_labels').update({ sort_order: u.sort_order }).eq('id', u.id)));
     load();
   }
 
