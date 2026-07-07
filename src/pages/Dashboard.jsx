@@ -170,6 +170,24 @@ export default function Dashboard() {
         </span>
       </div>
 
+      <section className="rounded-2xl bg-surface border border-border p-4">
+        <div className="flex justify-between items-baseline mb-2">
+          <p className="text-sm text-text-3">Agua</p>
+          <p className="font-mono tabular-nums text-sm text-d-carb">
+            {Math.round(microsConsumido.agua_ml || 0)}
+            {microsObjetivo.agua_ml > 0 ? ` / ${Math.round(microsObjetivo.agua_ml)}` : ''} ml
+          </p>
+        </div>
+        {microsObjetivo.agua_ml > 0 && (
+          <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
+            <div
+              className="h-full bg-d-carb rounded-full"
+              style={{ width: `${Math.min(100, ((microsConsumido.agua_ml || 0) / microsObjetivo.agua_ml) * 100)}%` }}
+            />
+          </div>
+        )}
+      </section>
+
       <section className="grid grid-cols-2 gap-3">
         <AdherenceCard label="Kcal" consumed={consumido.kcal} target={objetivo.kcal} kind="kcal" />
         <AdherenceCard label="Proteína" consumed={consumido.protein_g} target={objetivo.protein_g} kind="floor" />
@@ -239,7 +257,8 @@ export default function Dashboard() {
             </tr>
           </thead>
           <tbody>
-            {MICROS.map((m) => {
+            {/* el agua tiene su propia sección arriba, no va en micros */}
+            {MICROS.filter((m) => m.key !== 'agua_ml').map((m) => {
               const c = microsConsumido[m.key] || 0;
               const o = microsObjetivo[m.key] || 0;
               const pct = o > 0 ? Math.round((c / o) * 100) : null;

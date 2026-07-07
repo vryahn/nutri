@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, X, GlassWater, Settings } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { todayISO, addDaysISO, resolveTarget, classifyKcal, classifyFloor, sodiumIsLow, SODIUM_FLOOR_MG, reorderLabels } from '../lib/domain.js';
 
@@ -13,6 +13,9 @@ export default function Today() {
   const [adding, setAdding] = useState(null); // { labelId } | null
   const [editing, setEditing] = useState(null); // entry being edited
   const [toast, setToast] = useState('');
+  const [userId, setUserId] = useState(null);
+  const [prefs, setPrefs] = useState({ water_glass_ml: 1000, water_food_id: null });
+  const [waterSettingsOpen, setWaterSettingsOpen] = useState(false);
 
   useEffect(() => {
     loadDay();
@@ -22,7 +25,54 @@ export default function Today() {
     loadLabels();
     loadRecent();
     loadTargets();
+    loadPrefs();
   }, []);
+
+  async function loadPrefs() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    setUserId(session.user.id);
+    const { data } = await supabase.from('prefs').select('data').maybeSingle();
+    if (data?.data) setPrefs((p) => ({ ...p, ...data.data }));
+  }
+
+  async function savePrefs(patch) {
+    const next = { ...prefs, ...patch };
+    setPrefs(next);
+    await supabase.from('prefs').upsert({ owner: userId, data: next });
+    return next;
+  }
+
+  // El agua se registra como entries de un food "Agua" propio (micros {agua_ml:100},
+  // grams = ml). Find-or-create filtrando por owner: el catálogo es compartido en
+  // lectura y el "Agua" del otro usuario no sería editable por este.
+  async function getWaterFoodId() {
+    if (prefs.water_food_id) return prefs.water_food_id;
+    let { data: food } = await supabase.from('foods').select('id').eq('name', 'Agua').eq('owner', userId).maybeSingle();
+    if (!food) {
+      ({ data: food } = await supabase
+        .from('foods')
+        .insert({ name: 'Agua', kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, micros: { agua_ml: 100 }, source: 'manual' })
+        .select('id')
+        .single());
+    }
+    await savePrefs({ water_food_id: food.id });
+    return food.id;
+  }
+
+  async function addWater(ml) {
+    if (!userId || !(ml > 0)) return;
+    const foodId = await getWaterFoodId();
+    await supabase.from('entries').insert({ day: date, grams: ml, food_id: foodId });
+    loadDay();
+  }
+
+  async function undoWater() {
+    const last = waterEntries[waterEntries.length - 1];
+    if (!last) return;
+    await supabase.from('entries').delete().eq('id', last.id);
+    loadDay();
+  }
 
   async function loadTargets() {
     const { data } = await supabase.from('targets').select('*');
@@ -88,11 +138,13 @@ export default function Today() {
       .from('entries')
       .select('meal_label_id, food_id, recipe_id, grams')
       .eq('day', prevDay);
-    if (!prevEntries || prevEntries.length === 0) {
+    // El agua no se copia: se registra con los vasos del día.
+    const toCopy = prevEntries?.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id)) || [];
+    if (toCopy.length === 0) {
       showToast('El día anterior no tiene registros.');
       return;
     }
-    const rows = prevEntries.map((e) => ({ ...e, day: date }));
+    const rows = toCopy.map((e) => ({ ...e, day: date }));
     const { error } = await supabase.from('entries').insert(rows);
     if (error) {
       showToast('Error al copiar.');
@@ -103,7 +155,11 @@ export default function Today() {
     loadRecent();
   }
 
-  const totals = entries.reduce(
+  const waterEntries = entries.filter((e) => e.food_id && e.food_id === prefs.water_food_id);
+  const foodEntries = entries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id));
+  const waterMl = waterEntries.reduce((s, e) => s + Number(e.grams), 0); // densidad 1: grams = ml
+
+  const totals = foodEntries.reduce(
     (acc, e) => ({
       kcal: acc.kcal + Number(e.kcal),
       protein_g: acc.protein_g + Number(e.protein_g),
@@ -118,9 +174,9 @@ export default function Today() {
   const kcalStatus = classifyKcal(totals.kcal, target?.kcal);
   const proteinStatus = classifyFloor(totals.protein_g, target?.protein_g);
   const statusColor = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' };
-  const sodiumLow = sodiumIsLow(totals.sodio_mg, entries.length > 0);
+  const sodiumLow = sodiumIsLow(totals.sodio_mg, foodEntries.length > 0);
 
-  const groups = groupByLabel(entries, labels);
+  const groups = groupByLabel(foodEntries, labels);
 
   return (
     <div className="px-4 py-4 flex flex-col gap-4">
@@ -138,6 +194,16 @@ export default function Today() {
           <ChevronRight size={22} />
         </button>
       </div>
+
+      <WaterCard
+        waterMl={waterMl}
+        goalMl={Number(target?.micros?.agua_ml) || 0}
+        glassMl={prefs.water_glass_ml}
+        onGlass={() => addWater(prefs.water_glass_ml)}
+        onUndo={undoWater}
+        onCustom={addWater}
+        onSettings={() => setWaterSettingsOpen(true)}
+      />
 
       <div className="rounded-2xl bg-surface border border-border p-4 grid grid-cols-4 gap-2 text-center">
         <Stat label="Kcal" value={totals.kcal} color={statusColor[kcalStatus] || 'text-d-kcal'} target={target?.kcal} />
@@ -228,11 +294,24 @@ export default function Today() {
         <Plus size={24} />
       </button>
 
+      {waterSettingsOpen && (
+        <Sheet title="Ajustes de agua" onClose={() => setWaterSettingsOpen(false)}>
+          <WaterSettingsForm
+            glassMl={prefs.water_glass_ml}
+            onSave={(ml) => {
+              savePrefs({ water_glass_ml: ml });
+              setWaterSettingsOpen(false);
+            }}
+          />
+        </Sheet>
+      )}
+
       {adding && (
         <AddEntrySheet
           date={date}
           labels={labels}
           recent={recent}
+          waterFoodId={prefs.water_food_id}
           initialLabelId={adding.labelId}
           onClose={() => setAdding(null)}
           onAdded={() => {
@@ -280,6 +359,120 @@ function groupByLabel(entries, labels) {
   return none.items.length > 0 ? [...groups, none] : groups;
 }
 
+function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSettings }) {
+  const [customMl, setCustomMl] = useState('');
+  const filled = glassMl > 0 ? Math.floor(waterMl / glassMl) : 0;
+  // ponytail: tope de 16 vasos por si el objetivo/vaso da un número absurdo
+  const count = Math.min(Math.max(goalMl > 0 ? Math.ceil(goalMl / glassMl) : 3, filled + 1), 16);
+  const pct = goalMl > 0 ? Math.min(100, (waterMl / goalMl) * 100) : 0;
+
+  return (
+    <section className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-medium">
+          Agua{' '}
+          <span className="text-sm text-text-3 font-mono tabular-nums">
+            {Math.round(waterMl)}{goalMl > 0 ? ` / ${goalMl}` : ''} ml
+          </span>
+        </h2>
+        <button
+          onClick={onSettings}
+          className="p-2 -mr-2 text-text-3 active:scale-[0.98] transition-transform duration-150"
+          aria-label="Ajustes de agua"
+        >
+          <Settings size={18} />
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {Array.from({ length: count }, (_, i) => {
+          const isFilled = i < filled;
+          return (
+            <button
+              key={i}
+              onClick={() => (isFilled ? onUndo() : onGlass())}
+              className={`relative w-11 h-11 rounded-xl border border-border flex items-center justify-center active:scale-[0.98] transition-transform duration-150 ${
+                isFilled ? 'bg-surface-2 text-d-carb' : 'text-text-3'
+              }`}
+              aria-label={isFilled ? 'Quitar último registro de agua' : `Añadir vaso de ${glassMl} ml`}
+            >
+              <GlassWater size={22} />
+              {i === filled && <Plus size={11} className="absolute top-1 right-1 text-text-2" />}
+            </button>
+          );
+        })}
+      </div>
+
+      {goalMl > 0 && (
+        <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
+          <div className="h-full bg-d-carb rounded-full" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (Number(customMl) > 0) {
+            onCustom(Number(customMl));
+            setCustomMl('');
+          }
+        }}
+        className="flex gap-2"
+      >
+        <input
+          type="number"
+          inputMode="decimal"
+          min="1"
+          step="any"
+          value={customMl}
+          onChange={(e) => setCustomMl(e.target.value)}
+          placeholder="Cantidad personalizada (ml)"
+          className="flex-1 min-w-0 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+        />
+        <button
+          type="submit"
+          className="min-h-[44px] px-4 rounded-xl border border-border text-text-2 active:scale-[0.98] transition-transform duration-150"
+        >
+          Añadir
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function WaterSettingsForm({ glassMl, onSave }) {
+  const [ml, setMl] = useState(String(glassMl));
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (Number(ml) > 0) onSave(Number(ml));
+      }}
+      className="flex flex-col gap-4"
+    >
+      <div className="flex flex-col gap-1">
+        <label className="text-sm text-text-2">Tamaño de vaso (ml)</label>
+        <input
+          type="number"
+          inputMode="decimal"
+          min="1"
+          step="any"
+          required
+          value={ml}
+          onChange={(e) => setMl(e.target.value)}
+          className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+        />
+      </div>
+      <button
+        type="submit"
+        className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium active:scale-[0.98] transition-transform duration-150"
+      >
+        Guardar
+      </button>
+    </form>
+  );
+}
+
 function Stat({ label, value, color, target }) {
   return (
     <div>
@@ -290,7 +483,7 @@ function Stat({ label, value, color, target }) {
   );
 }
 
-function AddEntrySheet({ date, labels, recent, initialLabelId, onClose, onAdded }) {
+function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onClose, onAdded }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [selected, setSelected] = useState(null); // { id, name, type }
@@ -308,7 +501,8 @@ function AddEntrySheet({ date, labels, recent, initialLabelId, onClose, onAdded 
         supabase.from('recipes').select('id,name').ilike('name', `%${query.trim()}%`).limit(8),
       ]);
       setResults([
-        ...(foods || []).map((f) => ({ ...f, type: 'food' })),
+        // el Agua se registra desde su tarjeta, no como comida
+        ...(foods || []).filter((f) => f.id !== waterFoodId).map((f) => ({ ...f, type: 'food' })),
         ...(recipes || []).map((r) => ({ ...r, type: 'recipe' })),
       ]);
     }, 250);
@@ -338,11 +532,11 @@ function AddEntrySheet({ date, labels, recent, initialLabelId, onClose, onAdded 
 
   return (
     <Sheet title="Añadir registro" onClose={onClose}>
-      {!selected && recent.length > 0 && (
+      {!selected && recent.filter((r) => !(r.food_id && r.food_id === waterFoodId)).length > 0 && (
         <div className="flex flex-col gap-2">
           <p className="text-sm text-text-3">Recientes</p>
           <div className="flex flex-wrap gap-2">
-            {recent.map((r) => (
+            {recent.filter((r) => !(r.food_id && r.food_id === waterFoodId)).map((r) => (
               <button
                 key={(r.food_id || r.recipe_id) + r.item}
                 onClick={() => pick({ id: r.food_id || r.recipe_id, name: r.item, type: r.food_id ? 'food' : 'recipe' }, r.grams)}
