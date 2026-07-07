@@ -14,7 +14,8 @@ App personal de registro nutricional (tipo Cronometer, simple) para 2 usuarios. 
 ## Arquitectura
 
 ```
-supabase/migration.sql   # migración inicial (YA aplicada en producción)
+supabase/migration.sql   # migración inicial 000 (YA aplicada en producción)
+supabase/migrations/     # migraciones incrementales (001 = prefs + targets.label, aplicada)
 src/lib/supabase.js      # createClient, schema 'nutri'
 src/lib/domain.js        # MICROS, resolución de targets, adherencia, fórmula de recetas, reorderLabels
 src/pages/               # Login, Today, Foods, Recipes, Targets, Dashboard (una por tab)
@@ -29,7 +30,9 @@ Invariantes de dominio:
 - Los nutrientes de registros se calculan siempre vía las vistas SQL (`entry_nutrients`, `daily_totals`, `recipe_per_100g`) — nunca se copian valores.
 - **`computeRecipePer100g` en `domain.js` replica la vista `recipe_per_100g`. Si cambias una, cambia la otra.** Caso canónico de verificación: 100 g de A + 200 g de B con peso cocido 250 → por 100 g = (A + 2B) / 2.5.
 - Resolución de target para fecha F: fila `day=F` si existe; si no, fila `dow=weekday(F)` con mayor `valid_from ≤ F`. `resolveTarget` en `domain.js` la implementa; Today y Dashboard la usan.
-- RLS: catálogo (foods, recipes) compartido en lectura / escritura solo del dueño; entries, meal_labels y targets 100 % privados por usuario.
+- RLS: catálogo (foods, recipes) compartido en lectura / escritura solo del dueño; entries, meal_labels, targets y prefs 100 % privados por usuario.
+- Agua: entries de un food "Agua" propio (micros `{agua_ml:100}`, grams = ml), id cacheado en `prefs.data.water_food_id`. En UI el agua va como sección propia ANTES de los macros (Hoy y Dashboard) y NUNCA en la tabla/lista de micros. Hoy la excluye de Recientes, búsqueda y "Copiar día anterior".
+- Agentes: import/export/auditoría de foods, fases de targets y evaluación de ingesta van por la API REST — playbooks con curl en README § "Playbooks para agentes". La auditoría es retroactiva gratis porque los nutrientes se calculan en vistas.
 
 ## Comandos
 

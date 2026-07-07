@@ -130,6 +130,91 @@ RLS impide tocar registros de otro usuario (falla en silencio: 0 filas afectadas
 
 Operadores básicos sobre cualquier columna: `eq.` `gte.` `lte.` `ilike.`. Modificadores de query: `order=`, `limit=`, `select=`. Ejemplo: `?name=ilike.*pollo*&order=created_at.desc&limit=10&select=id,name`.
 
+## Playbooks para agentes (IA vía API)
+
+Claude (u otra IA) opera con las credenciales del usuario vía el password grant de arriba — RLS aplica solo, así que un agente solo puede escribir lo que su usuario podría. Las claves válidas del jsonb `micros` son exactamente las de `MICROS` en `src/lib/domain.js`: `grasa_sat_g, grasa_trans_g, azucar_g, azucar_anadido_g, fibra_g, sodio_mg, potasio_mg, magnesio_mg, calcio_mg, hierro_mg, agua_ml, alcohol_g` (valores **por 100 g**, siempre).
+
+### Importar alimentos en lote
+
+`POST /rest/v1/foods` acepta un array:
+
+```bash
+curl -X POST "$SUPABASE_URL/rest/v1/foods" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" \
+  -H "Content-Profile: nutri" -H "Content-Type: application/json" \
+  -H "Prefer: return=representation" \
+  -d '[
+    {"name":"Avena","kcal":389,"protein_g":16.9,"carbs_g":66.3,"fat_g":6.9,
+     "micros":{"fibra_g":10.6,"magnesio_mg":177}},
+    {"name":"Tortilla de maíz","kcal":218,"protein_g":5.7,"carbs_g":44.6,"fat_g":2.9,
+     "micros":{"fibra_g":6.3,"sodio_mg":45,"potasio_mg":186}}
+  ]'
+```
+
+### Exportar alimentos (o cualquier tabla)
+
+```bash
+# JSON completo
+curl "$SUPABASE_URL/rest/v1/foods?select=*&order=name" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" -H "Accept-Profile: nutri"
+
+# CSV
+curl "$SUPABASE_URL/rest/v1/foods?select=*" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" \
+  -H "Accept-Profile: nutri" -H "Accept: text/csv"
+```
+
+### Auditar y corregir alimentos (retroactivo)
+
+Los nutrientes de los registros se calculan **siempre en las vistas SQL** (`entry_nutrients`, `daily_totals`), nunca se copian: corregir un food actualiza retroactivamente todos los registros pasados que lo usan, sin tocar `entries`.
+
+```bash
+curl -X PATCH "$SUPABASE_URL/rest/v1/foods?id=eq.<uuid>" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" \
+  -H "Content-Profile: nutri" -H "Content-Type: application/json" \
+  -d '{"kcal": 218, "micros": {"fibra_g": 6.3, "sodio_mg": 45}}'
+```
+
+Solo los foods del propio usuario son editables (RLS); los del otro usuario se leen pero el PATCH afecta 0 filas.
+
+### Configurar objetivos y fases
+
+Una fila de `targets` es o bien recurrente (`dow` 0=domingo…6, versionada por `valid_from`) o un override puntual (`day`). Una **fase** (p. ej. mini bulk del 1 ago al 15 sep) son dos semanas: la de la fase con `valid_from` = inicio y `label` = nombre, y una de **restauración** con `valid_from` = fin+1 (copia de la semana previa):
+
+```bash
+# semana de la fase (7 filas, una por dow; null = sin objetivo ese campo)
+curl -X POST "$SUPABASE_URL/rest/v1/targets" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" \
+  -H "Content-Profile: nutri" -H "Content-Type: application/json" \
+  -d '[
+    {"dow":0,"valid_from":"2026-08-01","label":"Mini bulk","kcal":3000,"protein_g":180},
+    {"dow":1,"valid_from":"2026-08-01","label":"Mini bulk","kcal":3200,"protein_g":180}
+  ]'
+# … + la semana de restauración con valid_from 2026-09-16 (sin label o con el nombre de la fase que sigue)
+
+# override para una fecha concreta
+curl -X POST "$SUPABASE_URL/rest/v1/targets" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" \
+  -H "Content-Profile: nutri" -H "Content-Type: application/json" \
+  -d '{"day":"2026-08-15","kcal":2200}'
+```
+
+Resolución para una fecha F: `day=F` si existe; si no, la fila `dow=weekday(F)` con mayor `valid_from ≤ F`. El objetivo de agua es el micro `agua_ml` del target. Todo esto es editable también desde la UI (tab Objetivos → Versiones y fases).
+
+### Evaluar la ingesta de un periodo
+
+```bash
+# totales por día (macros + micros sumados)
+curl "$SUPABASE_URL/rest/v1/daily_totals?day=gte.2026-06-01&day=lte.2026-06-30&order=day" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" -H "Accept-Profile: nutri"
+
+# detalle de un día (cada registro con nutrientes calculados y etiqueta de comida)
+curl "$SUPABASE_URL/rest/v1/entry_nutrients?day=eq.2026-06-15&order=created_at" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" -H "Accept-Profile: nutri"
+```
+
+Con eso y los `targets` del periodo, el agente puede calcular adherencia (la app usa: kcal como diana ±5 %/±15 %, proteína como piso) o aplicar sus propias métricas y dar conclusiones. Semántica de "día registrado": `kcal > 0` en `daily_totals`. El agua vive como entries del food "Agua" (`micros.agua_ml`, gramos = ml).
+
 ## Free tier — mantenimiento
 
 Dos GitHub Actions garantizan el free tier de Supabase sin intervención manual:
@@ -143,9 +228,9 @@ Configura en **Settings → Secrets and variables → Actions** del repo:
 - `ANON_KEY` — la anon/publishable key (usado por keepalive).
 - `SUPABASE_DB_URL` — connection string de Postgres **del Session Pooler**, con password (botón **Connect** en el dashboard del proyecto → pestaña *Session pooler* → revela el password). No uses la conexión directa (`db.<ref>.supabase.co`): resuelve solo a IPv6 y los runners de GitHub Actions no tienen salida IPv6, el workflow falla con "Network is unreachable".
 
-### Import de alimentos (F5)
+### Estimar alimentos con IA (F6)
 
-En **Alimentos → Nuevo alimento** hay un buscador de Open Food Facts (por nombre o código de barras) que precarga el formulario; revisa los valores antes de guardar. Si defines `VITE_USDA_KEY` en `.env` (API key gratuita de [FoodData Central](https://fdc.nal.usda.gov/api-key-signup)), aparece un buscador equivalente para USDA; si no la defines, ese buscador no se muestra.
+En **Alimentos → Nuevo alimento** hay un módulo "Estimar con IA": describe el alimento y/o adjunta una foto (etiqueta nutrimental o platillo) y Gemini devuelve los valores por 100 g priorizando productos y platillos de México; revisa siempre antes de guardar. Requiere `VITE_GEMINI_KEY` en `.env` (key gratuita de [Google AI Studio](https://aistudio.google.com/apikey), free tier sin billing) y la misma variable en Vercel → Environment Variables; sin key el módulo no se muestra. La key es visible en el bundle del cliente: usa una key sin facturación asociada.
 
 ## Fuera de alcance
 
