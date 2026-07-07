@@ -18,3 +18,37 @@ export function addDaysISO(iso, delta) {
   d.setDate(d.getDate() + delta);
   return d.toLocaleDateString('sv-SE');
 }
+
+function round(n, decimals) {
+  const f = 10 ** decimals;
+  return Math.round(n * f) / f;
+}
+
+// Replica en cliente la vista SQL nutri.recipe_per_100g (§4.3).
+export function computeRecipePer100g(ingredients, cookedWeightG) {
+  const totalGrams = ingredients.reduce((sum, i) => sum + Number(i.grams || 0), 0);
+  const weight = Number(cookedWeightG) > 0 ? Number(cookedWeightG) : totalGrams;
+  if (weight <= 0) return null;
+
+  const sums = { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
+  const micros = {};
+  for (const { food, grams } of ingredients) {
+    const factor = Number(grams || 0) / 100;
+    sums.kcal += Number(food.kcal) * factor;
+    sums.protein_g += Number(food.protein_g) * factor;
+    sums.carbs_g += Number(food.carbs_g) * factor;
+    sums.fat_g += Number(food.fat_g) * factor;
+    for (const [k, v] of Object.entries(food.micros || {})) {
+      micros[k] = (micros[k] || 0) + Number(v) * factor;
+    }
+  }
+
+  const scale = 100 / weight;
+  return {
+    kcal: round(sums.kcal * scale, 1),
+    protein_g: round(sums.protein_g * scale, 2),
+    carbs_g: round(sums.carbs_g * scale, 2),
+    fat_g: round(sums.fat_g * scale, 2),
+    micros: Object.fromEntries(Object.entries(micros).map(([k, v]) => [k, round(v * scale, 3)])),
+  };
+}
