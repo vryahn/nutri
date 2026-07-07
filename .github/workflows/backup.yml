@@ -9,11 +9,17 @@ jobs:
   dump:
     runs-on: ubuntu-latest
     steps:
-      - name: Instalar cliente de Postgres
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Instalar cliente de Postgres 17
+        # apt trae pg_dump 16 en Ubuntu 24.04; Supabase corre Postgres 17 y pg_dump
+        # rechaza volcar un servidor más nuevo que el cliente. Usamos el repo oficial
+        # de PGDG para instalar la versión que coincide.
+        run: |
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
 
       - name: pg_dump
-        run: pg_dump "${{ secrets.SUPABASE_DB_URL }}" -f backup.sql
+        run: /usr/lib/postgresql/17/bin/pg_dump "${{ secrets.SUPABASE_DB_URL }}" -f backup.sql
 
       - name: Subir backup como artefacto
         uses: actions/upload-artifact@v4

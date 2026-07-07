@@ -141,7 +141,7 @@ Configura en **Settings → Secrets and variables → Actions** del repo:
 
 - `SUPABASE_URL` — el Project URL (usado por keepalive).
 - `ANON_KEY` — la anon/publishable key (usado por keepalive).
-- `SUPABASE_DB_URL` — connection string de Postgres con password (Settings → Database → Connection string → URI; usado por backup, nunca la anon key).
+- `SUPABASE_DB_URL` — connection string de Postgres **del Session Pooler**, con password (botón **Connect** en el dashboard del proyecto → pestaña *Session pooler* → revela el password). No uses la conexión directa (`db.<ref>.supabase.co`): resuelve solo a IPv6 y los runners de GitHub Actions no tienen salida IPv6, el workflow falla con "Network is unreachable".
 
 ### Import de alimentos (F5)
 
