@@ -1,0 +1,23 @@
+name: Backup
+
+on:
+  schedule:
+    - cron: '0 6 1 * *' # el día 1 de cada mes a las 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Instalar cliente de Postgres
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: pg_dump
+        run: pg_dump "${{ secrets.SUPABASE_DB_URL }}" -f backup.sql
+
+      - name: Subir backup como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-${{ github.run_id }}
+          path: backup.sql
+          retention-days: 90

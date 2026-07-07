@@ -132,7 +132,20 @@ Operadores básicos sobre cualquier columna: `eq.` `gte.` `lte.` `ilike.`. Modif
 
 ## Free tier — mantenimiento
 
-Ver `.github/workflows/keepalive.yml` (evita la pausa por inactividad) y `backup.yml` (backup mensual), añadidos en F5. Requieren los secrets de repo `SUPABASE_URL`, `ANON_KEY` (keepalive) y `SUPABASE_DB_URL` (backup).
+Dos GitHub Actions garantizan el free tier de Supabase sin intervención manual:
+
+- `.github/workflows/keepalive.yml` — cron semanal que hace `GET /rest/v1/` (evita la pausa automática por 7 días de inactividad del proyecto).
+- `.github/workflows/backup.yml` — cron mensual que corre `pg_dump` y sube el resultado como artefacto del workflow (retención 90 días; el free tier no incluye backups).
+
+Configura en **Settings → Secrets and variables → Actions** del repo:
+
+- `SUPABASE_URL` — el Project URL (usado por keepalive).
+- `ANON_KEY` — la anon/publishable key (usado por keepalive).
+- `SUPABASE_DB_URL` — connection string de Postgres con password (Settings → Database → Connection string → URI; usado por backup, nunca la anon key).
+
+### Import de alimentos (F5)
+
+En **Alimentos → Nuevo alimento** hay un buscador de Open Food Facts (por nombre o código de barras) que precarga el formulario; revisa los valores antes de guardar. Si defines `VITE_USDA_KEY` en `.env` (API key gratuita de [FoodData Central](https://fdc.nal.usda.gov/api-key-signup)), aparece un buscador equivalente para USDA; si no la defines, ese buscador no se muestra.
 
 ## Fuera de alcance
 

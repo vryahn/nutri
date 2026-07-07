@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Plus, ChevronLeft, Search } from 'lucide-react';
+import { Plus, ChevronLeft, Search, Barcode } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { MICROS } from '../lib/domain.js';
+import { MICROS, mapOffProduct, mapUsdaFood } from '../lib/domain.js';
+
+const USDA_KEY = import.meta.env.VITE_USDA_KEY;
 
 const EMPTY_FOOD = { name: '', brand: '', kcal: '', protein_g: '', carbs_g: '', fat_g: '', micros: {}, source: 'manual' };
 
@@ -149,11 +151,83 @@ export default function Foods() {
   );
 }
 
+async function searchOff(query) {
+  const isBarcode = /^\d{8,14}$/.test(query.trim());
+  if (isBarcode) {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${query.trim()}.json?fields=product_name,brands,nutriments`);
+    const data = await res.json();
+    return data.status === 1 ? [data.product] : [];
+  }
+  const res = await fetch(
+    `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query.trim())}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,brands,nutriments`
+  );
+  const data = await res.json();
+  return (data.products || []).filter((p) => p.product_name);
+}
+
+async function searchUsda(query) {
+  const res = await fetch(
+    `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_KEY}&query=${encodeURIComponent(query.trim())}&pageSize=5`
+  );
+  const data = await res.json();
+  return data.foods || [];
+}
+
 function FoodForm({ food, onCancel, onSave, onDelete }) {
   const [form, setForm] = useState(food);
+  const [offQuery, setOffQuery] = useState('');
+  const [offResults, setOffResults] = useState([]);
+  const [offLoading, setOffLoading] = useState(false);
+  const [offError, setOffError] = useState('');
+  const [usdaQuery, setUsdaQuery] = useState('');
+  const [usdaResults, setUsdaResults] = useState([]);
+  const [usdaLoading, setUsdaLoading] = useState(false);
+  const [usdaError, setUsdaError] = useState('');
 
   function setField(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function handleOffSearch(e) {
+    e.preventDefault();
+    if (!offQuery.trim()) return;
+    setOffLoading(true);
+    setOffError('');
+    try {
+      const results = await searchOff(offQuery);
+      if (results.length === 0) setOffError('Sin resultados.');
+      setOffResults(results);
+    } catch {
+      setOffError('Error al buscar en Open Food Facts.');
+    }
+    setOffLoading(false);
+  }
+
+  function pickOffProduct(product) {
+    setForm((f) => ({ ...f, ...mapOffProduct(product) }));
+    setOffResults([]);
+    setOffQuery('');
+  }
+
+  async function handleUsdaSearch(e) {
+    e.preventDefault();
+    if (!usdaQuery.trim()) return;
+    setUsdaLoading(true);
+    setUsdaError('');
+    try {
+      const results = await searchUsda(usdaQuery);
+      if (results.length === 0) setUsdaError('Sin resultados.');
+      setUsdaResults(results);
+    } catch {
+      setUsdaError('Error al buscar en USDA.');
+    }
+    setUsdaLoading(false);
+  }
+
+  function pickUsdaFood(food) {
+    setForm((f) => ({ ...f, ...mapUsdaFood(food) }));
+    setUsdaResults([]);
+    setUsdaQuery('');
   }
 
   function setMicro(key, value) {
@@ -173,6 +247,79 @@ function FoodForm({ food, onCancel, onSave, onDelete }) {
         </button>
         <h1 className="font-display text-xl">{form.id ? 'Editar alimento' : 'Nuevo alimento'}</h1>
       </div>
+
+      {!form.id && (
+        <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
+          <form onSubmit={handleOffSearch} className="flex gap-2">
+            <input
+              value={offQuery}
+              onChange={(e) => setOffQuery(e.target.value)}
+              placeholder="Buscar en Open Food Facts (nombre o código de barras)"
+              className="flex-1 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <button
+              type="submit"
+              className="min-w-[44px] min-h-[44px] rounded-xl bg-surface-3 border border-border flex items-center justify-center text-text-2 active:scale-[0.98] transition-transform duration-150"
+              aria-label="Buscar en Open Food Facts"
+            >
+              <Barcode size={20} />
+            </button>
+          </form>
+          {offLoading && <p className="text-sm text-text-3">Buscando…</p>}
+          {offError && <p className="text-sm text-danger">{offError}</p>}
+          {offResults.length > 0 && (
+            <div className="rounded-xl bg-surface-3 border border-border overflow-hidden">
+              {offResults.map((p, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => pickOffProduct(p)}
+                  className="w-full text-left px-3 py-2 active:bg-surface-2 border-b border-border last:border-b-0"
+                >
+                  <p>{p.product_name}</p>
+                  {p.brands && <p className="text-xs text-text-3">{p.brands}</p>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!form.id && USDA_KEY && (
+        <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
+          <form onSubmit={handleUsdaSearch} className="flex gap-2">
+            <input
+              value={usdaQuery}
+              onChange={(e) => setUsdaQuery(e.target.value)}
+              placeholder="Buscar en USDA FoodData Central"
+              className="flex-1 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <button
+              type="submit"
+              className="min-h-[44px] px-3 rounded-xl bg-surface-3 border border-border text-text-2 text-sm active:scale-[0.98] transition-transform duration-150"
+            >
+              Buscar
+            </button>
+          </form>
+          {usdaLoading && <p className="text-sm text-text-3">Buscando…</p>}
+          {usdaError && <p className="text-sm text-danger">{usdaError}</p>}
+          {usdaResults.length > 0 && (
+            <div className="rounded-xl bg-surface-3 border border-border overflow-hidden">
+              {usdaResults.map((f, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => pickUsdaFood(f)}
+                  className="w-full text-left px-3 py-2 active:bg-surface-2 border-b border-border last:border-b-0"
+                >
+                  <p>{f.description}</p>
+                  {f.brandName && <p className="text-xs text-text-3">{f.brandName}</p>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <form
         onSubmit={(e) => {

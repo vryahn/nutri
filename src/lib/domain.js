@@ -56,6 +56,54 @@ export function sodiumIsLow(sodiumMg, hasEntries) {
   return hasEntries && sodiumMg < SODIUM_FLOOR_MG;
 }
 
+// Mapea un producto de Open Food Facts a nuestro modelo de alimento (§F5).
+// OJO: sodium_100g viene en GRAMOS (hay que ×1000 a mg); usar energy-kcal_100g, no energy_100g (que es kJ).
+export function mapOffProduct(product) {
+  const n = product.nutriments || {};
+  const gToMg = (v) => (v != null ? Math.round(Number(v) * 1000 * 100) / 100 : undefined);
+  const micros = {};
+  if (n.fiber_100g != null) micros.fibra_g = Number(n.fiber_100g);
+  if (n.sodium_100g != null) micros.sodio_mg = gToMg(n.sodium_100g);
+  if (n.potassium_100g != null) micros.potasio_mg = gToMg(n.potassium_100g);
+  if (n.magnesium_100g != null) micros.magnesio_mg = gToMg(n.magnesium_100g);
+  if (n.calcium_100g != null) micros.calcio_mg = gToMg(n.calcium_100g);
+  if (n.iron_100g != null) micros.hierro_mg = gToMg(n.iron_100g);
+
+  return {
+    name: product.product_name || '',
+    brand: (product.brands || '').split(',')[0].trim() || null,
+    kcal: n['energy-kcal_100g'] != null ? Number(n['energy-kcal_100g']) : '',
+    protein_g: n.proteins_100g != null ? Number(n.proteins_100g) : '',
+    carbs_g: n.carbohydrates_100g != null ? Number(n.carbohydrates_100g) : '',
+    fat_g: n.fat_100g != null ? Number(n.fat_100g) : '',
+    micros,
+    source: 'off',
+  };
+}
+
+// Mapea un resultado de USDA FoodData Central (nutrientes por 100 g, ya en las unidades correctas).
+export function mapUsdaFood(food) {
+  const byNumber = Object.fromEntries((food.foodNutrients || []).map((n) => [n.nutrientNumber, n.value]));
+  const micros = {};
+  if (byNumber['291'] != null) micros.fibra_g = byNumber['291'];
+  if (byNumber['307'] != null) micros.sodio_mg = byNumber['307'];
+  if (byNumber['306'] != null) micros.potasio_mg = byNumber['306'];
+  if (byNumber['304'] != null) micros.magnesio_mg = byNumber['304'];
+  if (byNumber['301'] != null) micros.calcio_mg = byNumber['301'];
+  if (byNumber['303'] != null) micros.hierro_mg = byNumber['303'];
+
+  return {
+    name: food.description || '',
+    brand: food.brandName || null,
+    kcal: byNumber['208'] ?? '',
+    protein_g: byNumber['203'] ?? '',
+    carbs_g: byNumber['205'] ?? '',
+    fat_g: byNumber['204'] ?? '',
+    micros,
+    source: 'usda',
+  };
+}
+
 function round(n, decimals) {
   const f = 10 ** decimals;
   return Math.round(n * f) / f;

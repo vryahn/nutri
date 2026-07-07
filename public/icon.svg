@@ -1,0 +1,5 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="96" fill="#081D26"/>
+  <text x="256" y="320" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="220" fill="#FAFAF9">BR</text>
+  <circle cx="382" cy="360" r="24" fill="#C2410C"/>
+</svg>
