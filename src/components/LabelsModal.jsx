@@ -1,0 +1,103 @@
+import { useEffect, useState } from 'react';
+import { X, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
+import { supabase } from '../lib/supabase.js';
+
+export default function LabelsModal({ onClose }) {
+  const [labels, setLabels] = useState([]);
+  const [name, setName] = useState('');
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function load() {
+    const { data } = await supabase.from('meal_labels').select('*').order('sort_order');
+    if (data) setLabels(data);
+  }
+
+  async function addLabel(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    const maxOrder = labels.reduce((m, l) => Math.max(m, l.sort_order ?? 0), 0);
+    await supabase.from('meal_labels').insert({ name: name.trim(), sort_order: maxOrder + 1 });
+    setName('');
+    load();
+  }
+
+  async function rename(id, newName) {
+    await supabase.from('meal_labels').update({ name: newName }).eq('id', id);
+    load();
+  }
+
+  async function remove(id) {
+    if (!confirm('¿Borrar esta etiqueta?')) return;
+    await supabase.from('meal_labels').delete().eq('id', id);
+    load();
+  }
+
+  async function move(index, dir) {
+    const other = labels[index + dir];
+    const current = labels[index];
+    if (!other) return;
+    await supabase.from('meal_labels').update({ sort_order: other.sort_order }).eq('id', current.id);
+    await supabase.from('meal_labels').update({ sort_order: current.sort_order }).eq('id', other.id);
+    load();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
+      <div className="w-full sm:max-w-sm bg-surface-3 rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-4 max-h-[80dvh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-lg">Etiquetas</h2>
+          <button onClick={onClose} className="p-2 -mr-2 active:scale-[0.98] transition-transform duration-150" aria-label="Cerrar">
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={addLabel} className="flex gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Nueva etiqueta"
+            className="flex-1 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+          <button
+            type="submit"
+            className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium active:scale-[0.98] transition-transform duration-150"
+          >
+            Añadir
+          </button>
+        </form>
+
+        {labels.length === 0 && <p className="text-text-2 text-center py-4">Sin etiquetas aún</p>}
+
+        <div className="flex flex-col gap-2">
+          {labels.map((l, i) => (
+            <div key={l.id} className="flex items-center gap-2 rounded-xl bg-surface-2 border border-border px-3 py-2">
+              <input
+                value={l.name}
+                onChange={(e) => setLabels((ls) => ls.map((x) => (x.id === l.id ? { ...x, name: e.target.value } : x)))}
+                onBlur={(e) => rename(l.id, e.target.value)}
+                className="flex-1 bg-transparent text-text focus:outline-none"
+              />
+              <button onClick={() => move(i, -1)} disabled={i === 0} className="p-1 text-text-2 disabled:opacity-30" aria-label="Subir">
+                <ArrowUp size={16} />
+              </button>
+              <button
+                onClick={() => move(i, 1)}
+                disabled={i === labels.length - 1}
+                className="p-1 text-text-2 disabled:opacity-30"
+                aria-label="Bajar"
+              >
+                <ArrowDown size={16} />
+              </button>
+              <button onClick={() => remove(l.id)} className="p-1 text-danger" aria-label="Borrar">
+                <Trash2 size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
