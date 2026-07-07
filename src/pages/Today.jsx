@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { todayISO, addDaysISO } from '../lib/domain.js';
+import { todayISO, addDaysISO, resolveTarget, classifyKcal, classifyFloor, sodiumIsLow, SODIUM_FLOOR_MG } from '../lib/domain.js';
 
 export default function Today() {
   const [date, setDate] = useState(todayISO());
   const [entries, setEntries] = useState([]);
   const [labels, setLabels] = useState([]);
   const [recent, setRecent] = useState([]);
+  const [targets, setTargets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(null); // entry being edited
@@ -20,7 +21,13 @@ export default function Today() {
   useEffect(() => {
     loadLabels();
     loadRecent();
+    loadTargets();
   }, []);
+
+  async function loadTargets() {
+    const { data } = await supabase.from('targets').select('*');
+    setTargets(data || []);
+  }
 
   async function loadDay() {
     setLoading(true);
@@ -95,9 +102,16 @@ export default function Today() {
       protein_g: acc.protein_g + Number(e.protein_g),
       carbs_g: acc.carbs_g + Number(e.carbs_g),
       fat_g: acc.fat_g + Number(e.fat_g),
+      sodio_mg: acc.sodio_mg + Number(e.micros?.sodio_mg || 0),
     }),
-    { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+    { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, sodio_mg: 0 }
   );
+
+  const target = resolveTarget(targets, date);
+  const kcalStatus = classifyKcal(totals.kcal, target?.kcal);
+  const proteinStatus = classifyFloor(totals.protein_g, target?.protein_g);
+  const statusColor = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' };
+  const sodiumLow = sodiumIsLow(totals.sodio_mg, entries.length > 0);
 
   const groups = groupByLabel(entries, labels);
 
@@ -119,11 +133,17 @@ export default function Today() {
       </div>
 
       <div className="rounded-2xl bg-surface border border-border p-4 grid grid-cols-4 gap-2 text-center">
-        <Stat label="Kcal" value={totals.kcal} color="text-d-kcal" />
-        <Stat label="Prot" value={totals.protein_g} color="text-d-prot" />
-        <Stat label="Carbs" value={totals.carbs_g} color="text-d-carb" />
-        <Stat label="Grasa" value={totals.fat_g} color="text-d-fat" />
+        <Stat label="Kcal" value={totals.kcal} color={statusColor[kcalStatus] || 'text-d-kcal'} target={target?.kcal} />
+        <Stat label="Prot" value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
+        <Stat label="Carbs" value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
+        <Stat label="Grasa" value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
       </div>
+
+      {sodiumLow && (
+        <p className="text-sm text-danger" role="status" aria-live="polite">
+          ⚠ sodio &lt; {SODIUM_FLOOR_MG} mg
+        </p>
+      )}
 
       <button
         onClick={handleCopyPrevDay}
@@ -224,11 +244,12 @@ function groupByLabel(entries, labels) {
   });
 }
 
-function Stat({ label, value, color }) {
+function Stat({ label, value, color, target }) {
   return (
     <div>
       <p className={`font-mono tabular-nums text-lg ${color}`}>{Math.round(value * 10) / 10}</p>
       <p className="text-xs text-text-3">{label}</p>
+      {target > 0 && <p className="text-xs text-text-3 font-mono tabular-nums">/{target}</p>}
     </div>
   );
 }

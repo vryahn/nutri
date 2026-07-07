@@ -19,6 +19,43 @@ export function addDaysISO(iso, delta) {
   return d.toLocaleDateString('sv-SE');
 }
 
+export const DOW_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+export function weekdayOf(iso) {
+  return new Date(`${iso}T00:00:00`).getDay(); // 0=domingo, coincide con dow
+}
+
+// Resolución de objetivo para una fecha (§4.4): override por day si existe;
+// si no, la fila dow=weekday(F) con mayor valid_from <= F.
+export function resolveTarget(targets, dateISO) {
+  const exact = targets.find((t) => t.day === dateISO);
+  if (exact) return exact;
+  const dow = weekdayOf(dateISO);
+  const candidates = targets.filter((t) => t.dow === dow && t.valid_from <= dateISO);
+  if (candidates.length === 0) return null;
+  return candidates.reduce((best, t) => (t.valid_from > best.valid_from ? t : best));
+}
+
+// Semántica de adherencia (§4.5): kcal = diana, proteína = piso.
+export function classifyKcal(consumed, target) {
+  if (!target) return null;
+  const diff = Math.abs(consumed - target) / target;
+  if (diff <= 0.05) return 'ok';
+  if (diff <= 0.15) return 'warn';
+  return 'danger';
+}
+
+export function classifyFloor(consumed, target) {
+  if (!target) return null;
+  return consumed >= target ? 'ok' : 'danger';
+}
+
+export const SODIUM_FLOOR_MG = 1500;
+
+export function sodiumIsLow(sodiumMg, hasEntries) {
+  return hasEntries && sodiumMg < SODIUM_FLOOR_MG;
+}
+
 function round(n, decimals) {
   const f = 10 ** decimals;
   return Math.round(n * f) / f;
