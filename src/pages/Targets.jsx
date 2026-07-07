@@ -11,6 +11,7 @@ export default function Targets() {
   const [editingWeek, setEditingWeek] = useState(false);
   const [weekRows, setWeekRows] = useState(() => DOW_NAMES.map(BLANK_ROW));
   const [validFrom, setValidFrom] = useState(todayISO());
+  const [phaseLabel, setPhaseLabel] = useState('');
   const [addingOverride, setAddingOverride] = useState(false);
 
   useEffect(() => {
@@ -33,6 +34,26 @@ export default function Targets() {
 
   const overrides = targets.filter((t) => t.day != null).sort((a, b) => (a.day < b.day ? -1 : 1));
 
+  // Versiones de semana = filas dow agrupadas por valid_from. Una "fase" es una
+  // versión con label (y su semana de restauración al terminar, fin+1).
+  const versionsMap = new Map();
+  for (const t of targets) {
+    if (t.dow == null) continue;
+    const v = versionsMap.get(t.valid_from) || { valid_from: t.valid_from, label: null };
+    if (t.label) v.label = t.label;
+    versionsMap.set(t.valid_from, v);
+  }
+  const weekVersions = [...versionsMap.values()].sort((a, b) => (a.valid_from < b.valid_from ? 1 : -1));
+  const vigenteFrom = weekVersions.find((v) => v.valid_from <= today)?.valid_from;
+  const currentPhaseLabel = currentWeek.find((t) => t?.label)?.label;
+
+  async function deleteWeekVersion(vf) {
+    if (!confirm(`¿Borrar la semana que aplica desde ${vf}?`)) return;
+    // solo filas dow: los overrides por fecha también tienen valid_from (default)
+    await supabase.from('targets').delete().eq('valid_from', vf).not('dow', 'is', null);
+    load();
+  }
+
   function startWeekEditor(duplicateCurrent) {
     setWeekRows(
       DOW_NAMES.map((_, dow) => {
@@ -49,6 +70,7 @@ export default function Targets() {
       })
     );
     setValidFrom(today);
+    setPhaseLabel('');
     setEditingWeek(true);
   }
 
@@ -72,6 +94,7 @@ export default function Targets() {
     const payload = weekRows.map((r, dow) => ({
       dow,
       valid_from: validFrom,
+      label: phaseLabel.trim() || null,
       kcal: r.kcal === '' ? null : Number(r.kcal),
       protein_g: r.protein_g === '' ? null : Number(r.protein_g),
       carbs_g: r.carbs_g === '' ? null : Number(r.carbs_g),
@@ -101,7 +124,10 @@ export default function Targets() {
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-medium">Semana tipo</h2>
+          <h2 className="font-medium">
+            Semana tipo
+            {currentPhaseLabel && <span className="text-sm text-accent font-normal"> · {currentPhaseLabel}</span>}
+          </h2>
           {!editingWeek && (
             <div className="flex gap-2">
               <button onClick={() => startWeekEditor(true)} className="text-sm text-accent">
@@ -134,6 +160,35 @@ export default function Targets() {
           </div>
         )}
 
+        {!editingWeek && weekVersions.length > 0 && (
+          <details className="rounded-xl bg-surface border border-border px-3 py-2">
+            <summary className="cursor-pointer text-sm text-text-2 py-1">Versiones y fases ({weekVersions.length})</summary>
+            <div className="flex flex-col gap-2 pt-2 pb-1">
+              {weekVersions.map((v) => (
+                <div key={v.valid_from} className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="font-mono tabular-nums text-sm">{v.valid_from}</p>
+                    <p className="text-xs text-text-3">
+                      {v.label || 'Sin nombre'}
+                      {v.valid_from === vigenteFrom && <span className="text-ok"> · vigente</span>}
+                      {v.valid_from > today && <span className="text-warn"> · próxima</span>}
+                    </p>
+                  </div>
+                  {v.valid_from > today && (
+                    <button
+                      onClick={() => deleteWeekVersion(v.valid_from)}
+                      className="p-2 text-danger active:scale-[0.98] transition-transform duration-150"
+                      aria-label={`Borrar semana del ${v.valid_from}`}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+
         {editingWeek && (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1">
@@ -142,6 +197,16 @@ export default function Targets() {
                 type="date"
                 value={validFrom}
                 onChange={(e) => setValidFrom(e.target.value)}
+                className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-sm text-text-2">Nombre de fase (opcional)</label>
+              <input
+                value={phaseLabel}
+                onChange={(e) => setPhaseLabel(e.target.value)}
+                placeholder="p. ej. Mini bulk"
                 className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
