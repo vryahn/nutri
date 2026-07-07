@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, ChevronLeft, Search, Barcode } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { MICROS, mapOffProduct, mapUsdaFood } from '../lib/domain.js';
+import { MICROS, MICROS_DEFAULT, round, mapOffProduct, mapUsdaFood } from '../lib/domain.js';
 
 const USDA_KEY = import.meta.env.VITE_USDA_KEY;
 
@@ -175,6 +175,23 @@ async function searchUsda(query) {
 
 function FoodForm({ food, onCancel, onSave, onDelete }) {
   const [form, setForm] = useState(food);
+  const [basis, setBasis] = useState('100'); // gramos a los que refieren los valores capturados
+
+  // La DB siempre guarda por 100 g: si el usuario capturó por otra base, se escala al guardar.
+  function normalizeTo100(f) {
+    const b = Number(basis);
+    if (!b || b <= 0 || b === 100) return f;
+    const s = 100 / b;
+    const scale = (v, d) => (v === '' || v == null ? v : round(Number(v) * s, d));
+    return {
+      ...f,
+      kcal: scale(f.kcal, 1),
+      protein_g: scale(f.protein_g, 2),
+      carbs_g: scale(f.carbs_g, 2),
+      fat_g: scale(f.fat_g, 2),
+      micros: Object.fromEntries(Object.entries(f.micros).map(([k, v]) => [k, round(Number(v) * s, 3)])),
+    };
+  }
   const [offQuery, setOffQuery] = useState('');
   const [offResults, setOffResults] = useState([]);
   const [offLoading, setOffLoading] = useState(false);
@@ -324,7 +341,7 @@ function FoodForm({ food, onCancel, onSave, onDelete }) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          onSave(form);
+          onSave(normalizeTo100(form));
         }}
         className="flex flex-col gap-4"
       >
@@ -345,18 +362,42 @@ function FoodForm({ food, onCancel, onSave, onDelete }) {
           />
         </Field>
 
-        <p className="text-sm text-text-3">Valores por 100 g</p>
+        <div className="flex items-center gap-2 text-sm text-text-3">
+          <span>Valores por</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            min="1"
+            step="any"
+            value={basis}
+            onChange={(e) => setBasis(e.target.value)}
+            className="w-20 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-center text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+            aria-label="Base en gramos de los valores capturados"
+          />
+          <span>g</span>
+          {Number(basis) !== 100 && Number(basis) > 0 && (
+            <span className="text-xs text-accent">se convertirá a 100 g al guardar</span>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <NumberField label="Kcal" value={form.kcal} onChange={(v) => setField('kcal', v)} />
           <NumberField label="Proteína (g)" value={form.protein_g} onChange={(v) => setField('protein_g', v)} />
           <NumberField label="Carbs (g)" value={form.carbs_g} onChange={(v) => setField('carbs_g', v)} />
           <NumberField label="Grasa (g)" value={form.fat_g} onChange={(v) => setField('fat_g', v)} />
+          {MICROS.slice(0, MICROS_DEFAULT).map((m) => (
+            <NumberField
+              key={m.key}
+              label={`${m.label} (${m.unit})`}
+              value={form.micros[m.key] ?? ''}
+              onChange={(v) => setMicro(m.key, v)}
+            />
+          ))}
         </div>
 
         <details className="rounded-xl bg-surface-2 border border-border px-3 py-2">
-          <summary className="cursor-pointer text-sm text-text-2 py-1">Micros (opcional)</summary>
+          <summary className="cursor-pointer text-sm text-text-2 py-1">Más micros (opcional)</summary>
           <div className="grid grid-cols-2 gap-3 pt-3">
-            {MICROS.map((m) => (
+            {MICROS.slice(MICROS_DEFAULT).map((m) => (
               <NumberField
                 key={m.key}
                 label={`${m.label} (${m.unit})`}

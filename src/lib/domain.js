@@ -1,4 +1,11 @@
+// Claves EXACTAS del jsonb `micros` (claves libres fragmentarían las sumas).
+// El orden es contrato de UI: los primeros MICROS_DEFAULT visibles en FoodForm
+// y orden de la tabla del Dashboard. Las claves jamás se renombran.
 export const MICROS = [
+  { key: 'grasa_sat_g', label: 'Grasa sat.', unit: 'g' },
+  { key: 'grasa_trans_g', label: 'Grasa trans', unit: 'g' },
+  { key: 'azucar_g', label: 'Azúcar', unit: 'g' },
+  { key: 'azucar_anadido_g', label: 'Azúcar añadido', unit: 'g' },
   { key: 'fibra_g', label: 'Fibra', unit: 'g' },
   { key: 'sodio_mg', label: 'Sodio', unit: 'mg' },
   { key: 'potasio_mg', label: 'Potasio', unit: 'mg' },
@@ -8,6 +15,8 @@ export const MICROS = [
   { key: 'agua_ml', label: 'Agua', unit: 'ml' },
   { key: 'alcohol_g', label: 'Alcohol', unit: 'g' },
 ];
+
+export const MICROS_DEFAULT = 8; // grasa sat/trans, azúcares, fibra, sodio, potasio, magnesio
 
 // Mueve la etiqueta en `index` una posición (dir -1|1) y devuelve las filas
 // {id, sort_order} a persistir, reindexando 0..n-1. Reindexar (y no hacer swap)
@@ -115,7 +124,7 @@ export function mapUsdaFood(food) {
   };
 }
 
-function round(n, decimals) {
+export function round(n, decimals) {
   const f = 10 ** decimals;
   return Math.round(n * f) / f;
 }
