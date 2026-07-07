@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Plus, ChevronLeft, Search, Barcode } from 'lucide-react';
+import { Plus, ChevronLeft, Search, Sparkles, ImagePlus, X } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { MICROS, MICROS_DEFAULT, round, mapOffProduct, mapUsdaFood } from '../lib/domain.js';
+import { MICROS, MICROS_DEFAULT, round } from '../lib/domain.js';
 
-const USDA_KEY = import.meta.env.VITE_USDA_KEY;
+const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY;
 
 const EMPTY_FOOD = { name: '', brand: '', kcal: '', protein_g: '', carbs_g: '', fat_g: '', micros: {}, source: 'manual' };
 
@@ -151,26 +151,66 @@ export default function Foods() {
   );
 }
 
-async function searchOff(query) {
-  const isBarcode = /^\d{8,14}$/.test(query.trim());
-  if (isBarcode) {
-    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${query.trim()}.json?fields=product_name,brands,nutriments`);
-    const data = await res.json();
-    return data.status === 1 ? [data.product] : [];
-  }
-  const res = await fetch(
-    `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query.trim())}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,brands,nutriments`
-  );
-  const data = await res.json();
-  return (data.products || []).filter((p) => p.product_name);
+const GEMINI_PROMPT = `Eres un asistente de nutrición. Estima la información nutrimental de un alimento, producto o platillo y devuélvela SIEMPRE por 100 gramos de porción comestible. Prioriza productos y platillos comunes en México (marcas y preparaciones mexicanas). Si no hay etiqueta, basa la estimación en datos tipo USDA FoodData Central. Si la imagen es una etiqueta nutrimental, lee los valores declarados y normalízalos a 100 g usando el tamaño de porción declarado (p. ej. porción de 30 g → multiplica cada valor por 100/30). Si la imagen es un platillo, estima a partir de los ingredientes visibles y su proporción. Unidades: kcal en kcal; protein_g, carbs_g, fat_g, grasa_sat_g, grasa_trans_g, azucar_g, azucar_anadido_g, fibra_g y alcohol_g en gramos; sodio_mg, potasio_mg, magnesio_mg, calcio_mg y hierro_mg en miligramos; agua_ml en mililitros. Omite (null) los micros que no puedas estimar con confianza razonable; no inventes. "name" corto en español; "brand" solo si es identificable.`;
+
+const GEMINI_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    name: { type: 'STRING' },
+    brand: { type: 'STRING', nullable: true },
+    kcal: { type: 'NUMBER' },
+    protein_g: { type: 'NUMBER' },
+    carbs_g: { type: 'NUMBER' },
+    fat_g: { type: 'NUMBER' },
+    micros: {
+      type: 'OBJECT',
+      properties: Object.fromEntries(MICROS.map((m) => [m.key, { type: 'NUMBER', nullable: true }])),
+    },
+  },
+  required: ['name', 'kcal', 'protein_g', 'carbs_g', 'fat_g', 'micros'],
+};
+
+// Comprime la foto antes de mandarla inline (una foto de móvil sin comprimir pesa varios MB).
+async function toJpegBase64(file, maxSide = 1024) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
 }
 
-async function searchUsda(query) {
-  const res = await fetch(
-    `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${USDA_KEY}&query=${encodeURIComponent(query.trim())}&pageSize=5`
-  );
+async function estimateFood(text, imageFile) {
+  const parts = [{ text: text.trim() || 'Analiza la imagen.' }];
+  if (imageFile) {
+    parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(imageFile) } });
+  }
+  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: GEMINI_PROMPT }] },
+      contents: [{ parts }],
+      generationConfig: { response_mime_type: 'application/json', response_schema: GEMINI_SCHEMA },
+    }),
+  });
+  if (!res.ok) throw new Error(`Gemini ${res.status}`);
   const data = await res.json();
-  return data.foods || [];
+  const out = JSON.parse(data.candidates[0].content.parts[0].text);
+  const micros = Object.fromEntries(
+    Object.entries(out.micros || {}).filter(([k, v]) => v != null && MICROS.some((m) => m.key === k))
+  );
+  return {
+    name: out.name || '',
+    brand: out.brand || '',
+    kcal: out.kcal ?? '',
+    protein_g: out.protein_g ?? '',
+    carbs_g: out.carbs_g ?? '',
+    fat_g: out.fat_g ?? '',
+    micros,
+    source: 'gemini',
+  };
 }
 
 function FoodForm({ food, onCancel, onSave, onDelete }) {
@@ -192,59 +232,27 @@ function FoodForm({ food, onCancel, onSave, onDelete }) {
       micros: Object.fromEntries(Object.entries(f.micros).map(([k, v]) => [k, round(Number(v) * s, 3)])),
     };
   }
-  const [offQuery, setOffQuery] = useState('');
-  const [offResults, setOffResults] = useState([]);
-  const [offLoading, setOffLoading] = useState(false);
-  const [offError, setOffError] = useState('');
-  const [usdaQuery, setUsdaQuery] = useState('');
-  const [usdaResults, setUsdaResults] = useState([]);
-  const [usdaLoading, setUsdaLoading] = useState(false);
-  const [usdaError, setUsdaError] = useState('');
+  const [aiText, setAiText] = useState('');
+  const [aiFile, setAiFile] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
 
   function setField(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  async function handleOffSearch(e) {
-    e.preventDefault();
-    if (!offQuery.trim()) return;
-    setOffLoading(true);
-    setOffError('');
+  async function handleEstimate() {
+    if (!aiText.trim() && !aiFile) return;
+    setAiLoading(true);
+    setAiError('');
     try {
-      const results = await searchOff(offQuery);
-      if (results.length === 0) setOffError('Sin resultados.');
-      setOffResults(results);
+      const estimated = await estimateFood(aiText, aiFile);
+      setForm((f) => ({ ...f, ...estimated }));
+      setBasis('100'); // Gemini devuelve por 100 g
     } catch {
-      setOffError('Error al buscar en Open Food Facts.');
+      setAiError('No se pudo estimar. Revisa la conexión o intenta con otra descripción/foto.');
     }
-    setOffLoading(false);
-  }
-
-  function pickOffProduct(product) {
-    setForm((f) => ({ ...f, ...mapOffProduct(product) }));
-    setOffResults([]);
-    setOffQuery('');
-  }
-
-  async function handleUsdaSearch(e) {
-    e.preventDefault();
-    if (!usdaQuery.trim()) return;
-    setUsdaLoading(true);
-    setUsdaError('');
-    try {
-      const results = await searchUsda(usdaQuery);
-      if (results.length === 0) setUsdaError('Sin resultados.');
-      setUsdaResults(results);
-    } catch {
-      setUsdaError('Error al buscar en USDA.');
-    }
-    setUsdaLoading(false);
-  }
-
-  function pickUsdaFood(food) {
-    setForm((f) => ({ ...f, ...mapUsdaFood(food) }));
-    setUsdaResults([]);
-    setUsdaQuery('');
+    setAiLoading(false);
   }
 
   function setMicro(key, value) {
@@ -265,76 +273,50 @@ function FoodForm({ food, onCancel, onSave, onDelete }) {
         <h1 className="font-display text-xl">{form.id ? 'Editar alimento' : 'Nuevo alimento'}</h1>
       </div>
 
-      {!form.id && (
+      {!form.id && GEMINI_KEY && (
         <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
-          <form onSubmit={handleOffSearch} className="flex gap-2">
-            <input
-              value={offQuery}
-              onChange={(e) => setOffQuery(e.target.value)}
-              placeholder="Buscar en Open Food Facts (nombre o código de barras)"
-              className="flex-1 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
-            />
+          <p className="text-sm text-text-2 flex items-center gap-2">
+            <Sparkles size={16} className="text-accent" /> Estimar con IA
+          </p>
+          <textarea
+            value={aiText}
+            onChange={(e) => setAiText(e.target.value)}
+            rows={2}
+            placeholder="Describe el alimento… p. ej. «tortilla de maíz» o «3 tacos al pastor con piña»"
+            className="rounded-xl bg-surface-3 border border-border px-3 py-2 text-text focus:outline-none focus:ring-2 focus:ring-accent resize-none"
+          />
+          <div className="flex gap-2 items-center">
+            <label className="flex-1 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 flex items-center gap-2 text-sm text-text-2 cursor-pointer active:scale-[0.98] transition-transform duration-150">
+              <ImagePlus size={18} />
+              <span className="truncate">{aiFile ? aiFile.name : 'Foto (etiqueta o platillo)'}</span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => setAiFile(e.target.files[0] || null)}
+              />
+            </label>
+            {aiFile && (
+              <button
+                type="button"
+                onClick={() => setAiFile(null)}
+                className="min-w-[44px] min-h-[44px] rounded-xl bg-surface-3 border border-border flex items-center justify-center text-text-2"
+                aria-label="Quitar foto"
+              >
+                <X size={18} />
+              </button>
+            )}
             <button
-              type="submit"
-              className="min-w-[44px] min-h-[44px] rounded-xl bg-surface-3 border border-border flex items-center justify-center text-text-2 active:scale-[0.98] transition-transform duration-150"
-              aria-label="Buscar en Open Food Facts"
+              type="button"
+              onClick={handleEstimate}
+              disabled={aiLoading || (!aiText.trim() && !aiFile)}
+              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium disabled:opacity-40 active:scale-[0.98] transition-transform duration-150"
             >
-              <Barcode size={20} />
+              {aiLoading ? 'Estimando…' : 'Estimar'}
             </button>
-          </form>
-          {offLoading && <p className="text-sm text-text-3">Buscando…</p>}
-          {offError && <p className="text-sm text-danger">{offError}</p>}
-          {offResults.length > 0 && (
-            <div className="rounded-xl bg-surface-3 border border-border overflow-hidden">
-              {offResults.map((p, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => pickOffProduct(p)}
-                  className="w-full text-left px-3 py-2 active:bg-surface-2 border-b border-border last:border-b-0"
-                >
-                  <p>{p.product_name}</p>
-                  {p.brands && <p className="text-xs text-text-3">{p.brands}</p>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {!form.id && USDA_KEY && (
-        <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
-          <form onSubmit={handleUsdaSearch} className="flex gap-2">
-            <input
-              value={usdaQuery}
-              onChange={(e) => setUsdaQuery(e.target.value)}
-              placeholder="Buscar en USDA FoodData Central"
-              className="flex-1 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-            <button
-              type="submit"
-              className="min-h-[44px] px-3 rounded-xl bg-surface-3 border border-border text-text-2 text-sm active:scale-[0.98] transition-transform duration-150"
-            >
-              Buscar
-            </button>
-          </form>
-          {usdaLoading && <p className="text-sm text-text-3">Buscando…</p>}
-          {usdaError && <p className="text-sm text-danger">{usdaError}</p>}
-          {usdaResults.length > 0 && (
-            <div className="rounded-xl bg-surface-3 border border-border overflow-hidden">
-              {usdaResults.map((f, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => pickUsdaFood(f)}
-                  className="w-full text-left px-3 py-2 active:bg-surface-2 border-b border-border last:border-b-0"
-                >
-                  <p>{f.description}</p>
-                  {f.brandName && <p className="text-xs text-text-3">{f.brandName}</p>}
-                </button>
-              ))}
-            </div>
-          )}
+          </div>
+          {aiError && <p className="text-sm text-danger">{aiError}</p>}
+          <p className="text-xs text-text-3">Valores por 100 g, priorizando México. Revisa antes de guardar.</p>
         </div>
       )}
 
@@ -415,6 +397,8 @@ function FoodForm({ food, onCancel, onSave, onDelete }) {
             className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
           >
             <option value="manual">Manual</option>
+            <option value="gemini">IA (Gemini)</option>
+            {/* legado: hay foods existentes con estas fuentes */}
             <option value="off">Open Food Facts</option>
             <option value="usda">USDA</option>
           </select>

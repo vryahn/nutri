@@ -16,7 +16,7 @@ App personal de registro nutricional (tipo Cronometer, simple) para 2 usuarios. 
 ```
 supabase/migration.sql   # migración inicial (YA aplicada en producción)
 src/lib/supabase.js      # createClient, schema 'nutri'
-src/lib/domain.js        # MICROS, resolución de targets, adherencia, fórmula de recetas, mappers OFF/USDA
+src/lib/domain.js        # MICROS, resolución de targets, adherencia, fórmula de recetas, reorderLabels
 src/pages/               # Login, Today, Foods, Recipes, Targets, Dashboard (una por tab)
 src/components/          # LabelsModal
 src/App.jsx              # router, guard de sesión, tab bar
@@ -35,7 +35,7 @@ Invariantes de dominio:
 
 - `npm run dev` — dev server (hay `.claude/launch.json` para el preview integrado).
 - `npm run build` — debe salir limpio antes de cualquier commit (el warning de chunk >500 kB por Recharts es conocido y aceptado).
-- `.env` local (gitignoreado): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, opcional `VITE_USDA_KEY`. Si la carpeta es un clone nuevo, copiar de `.env.example` y rellenar.
+- `.env` local (gitignoreado): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, opcional `VITE_GEMINI_KEY` (habilita "Estimar con IA" en Alimentos; sin key el módulo se oculta). Si la carpeta es un clone nuevo, copiar de `.env.example` y rellenar.
 
 ## Migraciones de base de datos
 
@@ -59,7 +59,7 @@ Recordar: vistas con `security_invoker = true`; nuevas tablas necesitan RLS + po
 - El servidor corre **Postgres 17**; Ubuntu trae pg_dump 16 → backup.yml instala `postgresql-client-17` vía repo PGDG.
 - Ícono PWA: SVG para el manifest, pero `apple-touch-icon.png` raster es obligatorio (iOS no soporta SVG ahí). Excepción deliberada a la regla "nada de logos raster" del spec.
 - API REST del esquema: headers `Accept-Profile: nutri` (lecturas) / `Content-Profile: nutri` (escrituras) obligatorios. Ejemplos curl completos en el README.
-- Open Food Facts: `sodium_100g` viene en **gramos** (convertir a mg) y la energía correcta es `energy-kcal_100g`, no `energy_100g` (kJ). El mapeo vive en `mapOffProduct` en `domain.js`.
+- Gemini ("Estimar con IA" en Alimentos): key client-side `VITE_GEMINI_KEY` (AI Studio free tier SIN billing — queda visible en el bundle; riesgo aceptado = agotar cuota, no facturación). El request usa `response_schema` para JSON estructurado por 100 g y la foto se comprime con canvas a 1024 px antes de mandarla inline. `foods.source` no tiene CHECK: `'gemini'` convive con los legados `'off'`/`'usda'`.
 
 ## Verificación antes de commitear
 
