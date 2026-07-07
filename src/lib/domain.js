@@ -8,3 +8,13 @@ export const MICROS = [
   { key: 'agua_ml', label: 'Agua', unit: 'ml' },
   { key: 'alcohol_g', label: 'Alcohol', unit: 'g' },
 ];
+
+export function todayISO() {
+  return new Date().toLocaleDateString('sv-SE'); // yyyy-mm-dd en hora local
+}
+
+export function addDaysISO(iso, delta) {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + delta);
+  return d.toLocaleDateString('sv-SE');
+}
