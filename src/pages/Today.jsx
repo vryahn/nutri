@@ -573,7 +573,7 @@ function SwipeCard({ entry: e, labelId, onEdit, onDelete }) {
 
   return (
     <div className="relative overflow-hidden rounded-2xl">
-      <div className="absolute inset-0 bg-danger flex items-center justify-end pr-4">
+      <div className="absolute inset-0 rounded-2xl bg-danger flex items-center justify-end pr-4">
         <Trash2 size={20} className="text-text" />
       </div>
       <button
