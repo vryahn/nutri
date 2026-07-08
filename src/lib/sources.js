@@ -89,7 +89,7 @@ function toDomainUnit(amount, apiUnit, domainUnit) {
 // (Branded devolvería variantes de EE. UU., pérdida de precisión para México).
 export async function searchFDC(query) {
   if (!FDC_KEY) return [];
-  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=3&api_key=${FDC_KEY}`;
+  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=6&api_key=${FDC_KEY}`;
   let res;
   try {
     res = await fetch(url);

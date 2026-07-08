@@ -3,11 +3,13 @@ import { Plus, ChevronLeft, Search, Sparkles, ImagePlus, X, Star, AlertTriangle 
 import { supabase } from '../lib/supabase.js';
 import {
   MICROS, MICROS_DEFAULT, microGroups, round, kcalFromMacros, kcalSuspicious, macrosImplausible,
+  componentsInconsistent,
 } from '../lib/domain.js';
 import { fetchOFF, searchFDC, fetchFDC } from '../lib/sources.js';
 
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY;
 const GEMINI_MODEL = 'gemini-3.5-flash';
+const FDC_KEY = import.meta.env.VITE_FDC_KEY;
 
 // Líquidos más consumidos con su densidad (g/ml). El usuario elige de aquí y solo
 // teclea manualmente con "Otro…". Gemini recibe estos valores canónicos y su
@@ -178,11 +180,11 @@ export default function Foods() {
             <div className="flex justify-between items-baseline gap-2">
               <span className="font-medium">
                 {f.name}
-                {kcalSuspicious(f) && (
+                {(kcalSuspicious(f) || macrosImplausible(f) || componentsInconsistent(f)) && (
                   <AlertTriangle
                     size={14}
                     className="inline ml-1.5 -mt-0.5 text-warn"
-                    aria-label="Kcal no cuadran con los macros, requiere revisión"
+                    aria-label="Valores nutricionales requieren revisión"
                   />
                 )}
               </span>
@@ -341,6 +343,27 @@ function fillRequired(winner, filler) {
   return out;
 }
 
+// Campos donde a y b (ambos con dato numérico) difieren >25% relativo al mayor.
+// Solo cuenta si ambos superan DISCREPANCY_MIN (evita marcar 0.2 vs 0.3). Efímero,
+// solo para el aviso UI de etiqueta vs OFF — nada de esto se persiste.
+const DISCREPANCY_MIN = 5;
+
+function findDiscrepancies(a, b) {
+  if (!a || !b) return [];
+  const keys = [...NUMERIC_KEYS, ...MICROS.map((m) => m.key)];
+  const out = [];
+  for (const k of keys) {
+    const av = NUMERIC_KEYS.includes(k) ? a[k] : a.micros?.[k];
+    const bv = NUMERIC_KEYS.includes(k) ? b[k] : b.micros?.[k];
+    if (av === '' || av == null || bv === '' || bv == null) continue;
+    const an = Number(av);
+    const bn = Number(bv);
+    if (an <= DISCREPANCY_MIN || bn <= DISCREPANCY_MIN) continue;
+    if (Math.abs(an - bn) / Math.max(an, bn) > 0.25) out.push(labelFor(k));
+  }
+  return out;
+}
+
 function missingRequired(obj) {
   return REQUIRED_KEYS.filter((k) => {
     const v = NUMERIC_KEYS.includes(k) ? obj[k] : obj.micros?.[k];
@@ -371,6 +394,18 @@ function stripZeros(obj) {
 function extractEan(text) {
   const digits = text.replace(/[\s-]/g, '');
   return /^\d{8,14}$/.test(digits) ? digits : null;
+}
+
+// Dígito verificador GS1 (EAN-8/12/13/14): desde la derecha, peso 1,3,1,3…
+// (el propio dígito de control pesa 1). Suma total debe ser múltiplo de 10.
+// Longitudes fuera de este set (permitidas por extractEan) pasan sin chequeo.
+const EAN_CHECKSUM_LENGTHS = [8, 12, 13, 14];
+
+function eanChecksumValid(digits) {
+  if (!EAN_CHECKSUM_LENGTHS.includes(digits.length)) return true;
+  const arr = digits.split('').map(Number);
+  const sum = arr.reduce((s, d, i) => s + d * ((arr.length - 1 - i) % 2 === 0 ? 1 : 3), 0);
+  return sum % 10 === 0;
 }
 
 function resultBadgeText(r) {
@@ -421,7 +456,11 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const [aiZeros, setAiZeros] = useState(initialZeros); // claves cuyo valor (inicial o de prefill IA) fue 0 → placeholder, no valor
   const [aiResult, setAiResult] = useState(null); // { source, name, confidence } para la línea de resultado
   const [aiMissing, setAiMissing] = useState([]); // labels de requeridos sin dato fiable
-  const [fdcChips, setFdcChips] = useState([]); // hasta 3 coincidencias FDC de usda_query
+  const [fdcChips, setFdcChips] = useState([]); // hasta 6 coincidencias FDC (de usda_query o búsqueda manual)
+  const [usdaQuery, setUsdaQuery] = useState('');
+  const [usdaLoading, setUsdaLoading] = useState(false);
+  const [usdaError, setUsdaError] = useState('');
+  const [labelMismatch, setLabelMismatch] = useState([]); // labels donde etiqueta y OFF difieren >25%, solo UI
 
   function setField(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -456,20 +495,26 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     setFdcChips([]);
     setAiResult(null);
     setAiMissing([]);
+    setLabelMismatch([]);
     try {
       const eanTyped = extractEan(aiText);
       if (eanTyped) {
+        if (!eanChecksumValid(eanTyped)) {
+          throw new Error('Código de barras inválido: dígito verificador no coincide, revísalo');
+        }
         const off = await fetchOFF(eanTyped);
         if (!off) throw new Error('EAN no encontrado en Open Food Facts.');
         applyPrefill(off, 'off', off.name, null);
       } else {
         const gemini = await estimateFood(aiText, aiFile);
+        const eanFromGemini = gemini.ean && eanChecksumValid(gemini.ean) ? gemini.ean : null;
         const [off, fdcMatches] = await Promise.all([
-          gemini.ean ? fetchOFF(gemini.ean) : Promise.resolve(null),
+          eanFromGemini ? fetchOFF(eanFromGemini) : Promise.resolve(null),
           gemini.usda_query ? searchFDC(gemini.usda_query) : Promise.resolve([]),
         ]);
         setFdcChips(fdcMatches);
         if (gemini.mode === 'etiqueta') {
+          setLabelMismatch(findDiscrepancies(gemini, off));
           applyPrefill(fillAll(gemini, off), 'etiqueta', null, gemini.confidence);
         } else if (off) {
           applyPrefill(fillRequired(off, gemini), 'off', off.name, null);
@@ -481,6 +526,16 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
       setAiError(e.message || 'No se pudo obtener datos. Revisa la conexión o intenta con otra descripción/foto.');
     }
     setAiLoading(false);
+  }
+
+  async function handleUsdaSearch() {
+    if (!usdaQuery.trim()) return;
+    setUsdaLoading(true);
+    setUsdaError('');
+    const matches = await searchFDC(usdaQuery.trim());
+    setFdcChips(matches);
+    if (matches.length === 0) setUsdaError('Sin resultados en USDA.');
+    setUsdaLoading(false);
   }
 
   async function handleFdcChip(fdcId, description) {
@@ -513,6 +568,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const hasMacros = form.protein_g !== '' || form.carbs_g !== '' || form.fat_g !== '';
   const suspicious = form.kcal !== '' && hasMacros && kcalSuspicious(form);
   const implausible = macrosImplausible(form);
+  const inconsistent = componentsInconsistent(form);
   const hiddenMicros = MICROS.slice(MICROS_DEFAULT);
 
   return (
@@ -571,24 +627,55 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           {aiMissing.length > 0 && (
             <p className="text-xs text-warn" role="status">Sin dato fiable de: {aiMissing.join(', ')}</p>
           )}
-          {fdcChips.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {fdcChips.map((c) => (
-                <button
-                  key={c.fdcId}
-                  type="button"
-                  onClick={() => handleFdcChip(c.fdcId, c.description)}
-                  className="text-xs min-h-[44px] px-3 rounded-full bg-surface-3 border border-border text-text-2 active:scale-[0.98] transition-transform duration-150"
-                >
-                  USDA: {c.description}
-                </button>
-              ))}
-            </div>
+          {labelMismatch.length > 0 && (
+            <p className="text-xs text-warn" role="status">
+              ⚠ La etiqueta y Open Food Facts difieren en: {labelMismatch.join(', ')}.
+            </p>
           )}
           <p className="text-xs text-text-3">
             Etiqueta legible → se transcribe. EAN → Open Food Facts. Si no, estimación IA con chips USDA para
             genéricos. Siempre por 100 g; revisa antes de guardar.
           </p>
+        </div>
+      )}
+
+      {!form.id && FDC_KEY && (
+        <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
+          <p className="text-sm text-text-2 flex items-center gap-2">
+            <Search size={16} className="text-accent" /> Buscar en USDA
+          </p>
+          <div className="flex gap-2">
+            <input
+              value={usdaQuery}
+              onChange={(e) => setUsdaQuery(e.target.value)}
+              placeholder="p. ej. egg, scrambled"
+              className="flex-1 min-w-0 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <button
+              type="button"
+              onClick={handleUsdaSearch}
+              disabled={usdaLoading || !usdaQuery.trim()}
+              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium disabled:opacity-40 active:scale-[0.98] transition-transform duration-150"
+            >
+              {usdaLoading ? 'Buscando…' : 'Buscar en USDA'}
+            </button>
+          </div>
+          {usdaError && <p className="text-sm text-danger">{usdaError}</p>}
+        </div>
+      )}
+
+      {fdcChips.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {fdcChips.map((c) => (
+            <button
+              key={c.fdcId}
+              type="button"
+              onClick={() => handleFdcChip(c.fdcId, c.description)}
+              className="text-xs min-h-[44px] px-3 rounded-full bg-surface-3 border border-border text-text-2 active:scale-[0.98] transition-transform duration-150"
+            >
+              USDA: {c.description}
+            </button>
+          ))}
         </div>
       )}
 
@@ -693,6 +780,11 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         {implausible && (
           <p className="text-sm text-warn" role="status">
             ⚠ Los valores no son físicamente plausibles para 100 g. Revisa antes de guardar.
+          </p>
+        )}
+        {inconsistent && (
+          <p className="text-sm text-warn" role="status">
+            ⚠ Hay componentes inconsistentes (p. ej. azúcar o fibra mayor que los carbs). Revisa antes de guardar.
           </p>
         )}
 

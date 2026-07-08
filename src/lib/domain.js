@@ -79,9 +79,21 @@ export function kcalSuspicious(f) {
   return Math.abs(Number(f.kcal || 0) - expected) > Math.max(20, expected * 0.25);
 }
 
+// Cotas fisiológicas máximas por micro, por 100 g (~1.5x el alimento más denso
+// conocido): atrapan SOLO errores de unidades ×1000, no valores altos legítimos
+// ni alimentos fortificados. Claves ausentes de la tabla = sin cota.
+export const MICRO_MAX = {
+  sodio_mg: 40000, potasio_mg: 16000, magnesio_mg: 1200, calcio_mg: 3500,
+  hierro_mg: 190, zinc_mg: 120, fosforo_mg: 3000, selenio_mcg: 3000,
+  cobre_mg: 25, manganeso_mg: 90,
+  colesterol_mg: 4700,
+  vit_a_mcg: 15000, vit_c_mg: 3000, vit_d_mcg: 400, vit_e_mg: 250, vit_k_mcg: 2600,
+  vit_b12_mcg: 160, vit_b9_mcg: 6000,
+};
+
 // Chequeo físico grueso por 100 g: proteína+carbs+grasa+alcohol+agua no pueden
 // superar ~105 g (100 g de porción + margen de redondeo/etiqueta); ningún macro
-// por separado puede superar 100 g; sodio no puede superar la sal pura (~39,300 mg).
+// por separado puede superar 100 g; ningún micro puede superar su cota en MICRO_MAX.
 // Se calcula al vuelo (como kcalSuspicious), no se persiste.
 export function macrosImplausible(f) {
   const p = Number(f.protein_g || 0);
@@ -89,10 +101,34 @@ export function macrosImplausible(f) {
   const g = Number(f.fat_g || 0);
   const alcohol = Number(f.micros?.alcohol_g || 0);
   const agua = Number(f.micros?.agua_ml || 0);
-  const sodio = Number(f.micros?.sodio_mg || 0);
   if (p + c + g + alcohol + agua > 105) return true;
   if (p > 100 || c > 100 || g > 100) return true;
-  if (sodio > 40000) return true;
+  const m = f.micros || {};
+  for (const [key, max] of Object.entries(MICRO_MAX)) {
+    if (m[key] != null && Number(m[key]) > max) return true;
+  }
+  return false;
+}
+
+// Desigualdades de composición entre micros y macros (holgura +0.5 g por redondeos).
+// Solo evalúa una desigualdad cuando AMBOS operandos son numéricos — un dato ausente
+// no cuenta como 0, para no marcar falsos positivos. Al vuelo, nunca persistida.
+export function componentsInconsistent(f) {
+  const m = f.micros || {};
+  const num = (v) => (v === '' || v == null ? null : Number(v));
+  const fat = num(f.fat_g);
+  const carbs = num(f.carbs_g);
+  const satTrans = m.grasa_sat_g != null || m.grasa_trans_g != null
+    ? Number(m.grasa_sat_g || 0) + Number(m.grasa_trans_g || 0)
+    : null;
+  const azucar = num(m.azucar_g);
+  const azucarAnadido = num(m.azucar_anadido_g);
+  const fibra = num(m.fibra_g);
+
+  if (satTrans != null && fat != null && satTrans > fat + 0.5) return true;
+  if (azucar != null && carbs != null && azucar > carbs + 0.5) return true;
+  if (azucarAnadido != null && azucar != null && azucarAnadido > azucar + 0.5) return true;
+  if (fibra != null && carbs != null && fibra > carbs + 0.5) return true;
   return false;
 }
 
