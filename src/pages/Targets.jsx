@@ -322,9 +322,6 @@ export default function Targets() {
                   key={vf}
                   radius="rounded-xl"
                   resetOnDelete
-                  revealClassName=""
-                  revealStyle={{ background: tint('--danger', 16) }}
-                  revealIconClassName="text-danger"
                   onDelete={() => setSheet({ type: 'confirmDeletePhase', vf })}
                   onTap={() => setSheet({ type: 'phase', vf })}
                   className="rounded-xl bg-surface border border-border px-3.5 py-3.5"
