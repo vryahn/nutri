@@ -21,6 +21,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { supabase } from '../lib/supabase.js';
+import Hint from '../components/Hint.jsx';
 import {
   MICROS,
   MICROS_DEFAULT,
@@ -45,6 +46,10 @@ import {
   MIN_DIAS_STDDEV,
   MIN_DIAS_TENDENCIA,
   MIN_DIAS_BAYES,
+  STRUCTURAL_ZERO_FRACTION,
+  BAYES_KCAL_TOL,
+  dayCompleteness,
+  targetPhases,
 } from '../lib/domain.js';
 
 // Calculo homologado del selector (Parte A). 'suma'/'promedio' siempre
@@ -83,53 +88,120 @@ const CALC_ADVANCED = [
 const CALC_ALL = [...CALC_BASIC, ...CALC_ADVANCED];
 
 // Motivo (string) por el que una opción de cálculo está deshabilitada, o null si aplica.
-function calcDisabledReason(opt, diasRegistrados, diasConObjetivo) {
+// ctx: { diasRegistrados, diasConObjetivo, diasCompletosFull, diasParcialesFull,
+//        diasCompletosPhase, diasParcialesPhase, crossesPhases }
+function calcDisabledReason(opt, ctx) {
   if (opt.key === 'suma' || opt.key === 'promedio') {
-    return diasRegistrados >= 1 ? null : 'Sin registros en el rango';
+    return ctx.diasRegistrados >= 1 ? null : 'Sin registros en el rango';
   }
-  if (diasRegistrados < opt.minDias) return `Requiere ≥${opt.minDias} días registrados (tienes ${diasRegistrados})`;
-  if (opt.needsObjetivo && diasConObjetivo < 1) return 'Requiere objetivos en Metas';
+  if (opt.key === 'bayes') {
+    if (ctx.diasCompletosFull < opt.minDias) {
+      return `Requiere ≥${opt.minDias} días completos (tienes ${ctx.diasCompletosFull} completos y ${ctx.diasParcialesFull} parciales)`;
+    }
+    if (opt.needsObjetivo && ctx.diasConObjetivo < 1) return 'Requiere objetivos en Metas';
+    return null;
+  }
+  // mediana, stddev, tendencia — inmunes a fases: sobre la fase vigente si el rango cruza >1.
+  if (ctx.diasCompletosPhase < opt.minDias) {
+    return ctx.crossesPhases
+      ? `Requiere ≥${opt.minDias} días completos en la fase actual (tienes ${ctx.diasCompletosPhase})`
+      : `Requiere ≥${opt.minDias} días completos (tienes ${ctx.diasCompletosPhase} completos y ${ctx.diasParcialesPhase} parciales)`;
+  }
   return null;
 }
 
-// Estadísticos de una métrica (macro o micro) sobre los días registrados del rango.
-function computeMetricStats(chartData, key) {
-  const xs = chartData.filter((d) => d.registrado).map((d) => d.values[key]);
-  const n = xs.length;
-  const total = sum(xs);
+// Estadísticos de una métrica (macro o micro). Suma/Promedio sobre todos los
+// días registrados del rango (semántica sin cambios); mediana/σ/tendencia
+// sobre `advancedDays` (días completos, y de la fase vigente si aplica — Fix 5).
+function computeMetricStats(registeredDays, advancedDays, key) {
+  const xsAll = registeredDays.map((d) => d.values[key]);
+  const n = xsAll.length;
+  const total = sum(xsAll);
+
+  const advXs = advancedDays.map((d) => d.values[key]);
+  const advN = advXs.length;
+  const points = advancedDays.map((d) => ({ x: d.dayIndex, y: d.values[key] }));
+
   return {
     sum: total,
     avg: n ? total / n : 0,
-    median: n ? median(xs) : null,
-    p25: n ? quantile(xs, 0.25) : null,
-    p75: n ? quantile(xs, 0.75) : null,
-    sd: stddev(xs),
-    cv: cv(xs),
-    slope: olsSlope(xs),
+    n,
+    median: advN ? median(advXs) : null,
+    p25: advN ? quantile(advXs, 0.25) : null,
+    p75: advN ? quantile(advXs, 0.75) : null,
+    sd: stddev(advXs),
+    cv: cv(advXs),
+    slope: olsSlope(points),
   };
 }
 
-// Adherencia bayesiana solo está definida para kcal/proteína/sodio (regla 6);
-// el resto de métricas no tiene criterio de éxito y siempre muestra "Sin objetivo".
-function bayesForMetric(chartData, key) {
-  const days = chartData.filter((d) => d.registrado);
+// Objetivo diario resuelto para `key` sobre los días del rango que tienen un
+// target con ese valor definido (Fix 1). n=0 ⇒ de verdad no hay objetivo.
+function computeObjectiveStats(chartData, key) {
+  const withKey = chartData.filter((d) => d.targetMicros != null && d.targetMicros[key] != null);
+  const vals = withKey.map((d) => Number(d.targetMicros[key]));
+  const n = vals.length;
+  return { sum: sum(vals), avg: n ? sum(vals) / n : 0, median: n ? median(vals) : null, n };
+}
+
+// Fix 3: ceros estructurales — un 0 exacto casi siempre significa "sin dato
+// de este micro en el alimento", no "consumo cero".
+function structuralZeroInfo(registeredDays, key) {
+  const m = registeredDays.length;
+  if (!m) return { warn: false, n: 0, m: 0 };
+  const n = registeredDays.filter((d) => Number(d.values[key] || 0) === 0).length;
+  return { warn: n / m > STRUCTURAL_ZERO_FRACTION, n, m };
+}
+
+// Adherencia bayesiana (Fix 4): kcal con tolerancia BAYES_KCAL_TOL; cualquier
+// métrica con objetivo diario resuelto se trata como piso (≥); sodio con su
+// piso fijo; carbs/grasa sin criterio direccional. `days` ya viene filtrado a
+// días completos (no llama a `registrado`/completitud aquí).
+function bayesForMetric(days, key) {
   let applicable;
   if (key === 'kcal') {
-    applicable = days.filter((d) => d.targetKcal != null).map((d) => classifyKcal(d.values.kcal, d.targetKcal) === 'ok');
+    const withTarget = days.filter((d) => d.targetKcal != null);
+    if (!withTarget.length) return null;
+    applicable = withTarget.map((d) => Math.abs(d.values.kcal - d.targetKcal) / d.targetKcal <= BAYES_KCAL_TOL);
+  } else if (key === 'carbs_g' || key === 'fat_g') {
+    return null;
   } else if (key === 'protein_g') {
-    applicable = days.filter((d) => d.proteinFloor != null).map((d) => d.values.protein_g >= d.proteinFloor);
+    const withTarget = days.filter((d) => d.proteinFloor != null);
+    if (!withTarget.length) return null;
+    applicable = withTarget.map((d) => d.values.protein_g >= d.proteinFloor);
   } else if (key === 'sodio_mg') {
+    if (!days.length) return null;
     applicable = days.map((d) => d.values.sodio_mg >= SODIUM_FLOOR_MG);
   } else {
-    return null;
+    const withTarget = days.filter((d) => d.targetMicros != null && d.targetMicros[key] != null);
+    if (!withTarget.length) return null;
+    applicable = withTarget.map((d) => Number(d.values[key] || 0) >= Number(d.targetMicros[key]));
   }
-  if (!applicable.length) return null;
   return bayesAdherence(applicable.filter(Boolean).length, applicable.length);
+}
+
+// Motivo por el que bayesForMetric devolvió null, para el Hint de la celda.
+function bayesUnavailableReason(days, key) {
+  if (key === 'carbs_g' || key === 'fat_g') return 'Sin criterio de adherencia definido para esta métrica';
+  if (!days.length) return 'Sin registros en el rango';
+  if (key === 'kcal') return days.some((d) => d.targetKcal != null) ? null : 'Sin objetivo para este nutriente — regístralo en Metas';
+  if (key === 'protein_g') return days.some((d) => d.proteinFloor != null) ? null : 'Sin objetivo para este nutriente — regístralo en Metas';
+  if (key === 'sodio_mg') return null;
+  return days.some((d) => d.targetMicros?.[key] != null) ? null : 'Sin objetivo para este nutriente — regístralo en Metas';
+}
+
+// { text, hint } de la celda de adherencia bayesiana para una métrica.
+function bayesCell(days, key) {
+  const b = bayesForMetric(days, key);
+  if (b) return { text: `${round(b.mean * 100, 0)}% (${round(b.lower * 100, 0)}–${round(b.upper * 100, 0)}%)`, hint: null };
+  const reason = bayesUnavailableReason(days, key);
+  const text = reason.startsWith('Sin criterio') ? 'Sin criterio' : reason.startsWith('Sin objetivo') ? 'Sin objetivo' : '–';
+  return { text, hint: reason };
 }
 
 // Formatea el valor de una métrica según el cálculo elegido. unit incluye el
 // espacio inicial (ej. ' mg') o '' si no aplica.
-function formatMetric(calcMode, ms, bayesResult, unit, decimals) {
+function formatMetric(calcMode, ms, unit, decimals) {
   switch (calcMode) {
     case 'suma':
       return `${round(ms.sum, decimals)}${unit}`;
@@ -141,11 +213,39 @@ function formatMetric(calcMode, ms, bayesResult, unit, decimals) {
       return ms.sd == null ? '–' : `${round(ms.sd, decimals)}${unit} (CV ${ms.cv == null ? '–' : round(ms.cv, 0) + '%'})`;
     case 'tendencia':
       return ms.slope == null ? '–' : `${ms.slope >= 0 ? '+' : ''}${round(ms.slope, decimals)}${unit}/día`;
-    case 'bayes':
-      return bayesResult ? `${round(bayesResult.mean * 100, 0)}% (${round(bayesResult.lower * 100, 0)}–${round(bayesResult.upper * 100, 0)}%)` : 'Sin objetivo';
     default:
       return '';
   }
+}
+
+// Valor mostrado para una métrica: en modo bayes usa la celda de adherencia
+// (con su Hint si está degradada), en el resto delega en formatMetric.
+function metricDisplay(calcMode, ms, bayesInfo, unit, decimals) {
+  if (calcMode === 'bayes') {
+    if (!bayesInfo) return '–';
+    return bayesInfo.hint ? <Hint text={bayesInfo.hint}>{bayesInfo.text}</Hint> : bayesInfo.text;
+  }
+  return formatMetric(calcMode, ms, unit, decimals);
+}
+
+// Objetivo mostrado en la tabla de micros, según el modo (Fix 1).
+function objetivoCell(calcMode, objStats, unit) {
+  if (objStats.n === 0) {
+    return <Hint text="Sin objetivo para este nutriente — regístralo en Metas">Sin objetivo</Hint>;
+  }
+  if (calcMode === 'stddev' || calcMode === 'tendencia') return '–';
+  if (calcMode === 'suma') return `${round(objStats.sum, 1)} ${unit}`;
+  if (calcMode === 'promedio' || calcMode === 'bayes') return `${round(objStats.avg, 1)} ${unit}`;
+  if (calcMode === 'mediana') return objStats.median != null ? `${round(objStats.median, 1)} ${unit}` : '–';
+  return '–';
+}
+
+// % mostrado en la tabla de micros, según el modo (Fix 1). Bayes ya ES un %.
+function pctCell(calcMode, ms, objStats) {
+  if (calcMode === 'suma') return objStats.n && objStats.sum > 0 ? `${Math.round((ms.sum / objStats.sum) * 100)}%` : '–';
+  if (calcMode === 'promedio') return objStats.n && objStats.avg > 0 ? `${Math.round((ms.avg / objStats.avg) * 100)}%` : '–';
+  if (calcMode === 'mediana') return objStats.median > 0 && ms.median != null ? `${Math.round((ms.median / objStats.median) * 100)}%` : '–';
+  return '–';
 }
 
 const CALC_TITLES = {
@@ -211,7 +311,7 @@ function computeStats(dates, dailyTotals, targets) {
   let diasRegistrados = 0;
   let sodioTotal = 0;
 
-  const chartData = dates.map((day) => {
+  const chartData = dates.map((day, dayIndex) => {
     const row = byDay.get(day);
     const target = resolveTarget(targets, day);
     const kcal = Number(row?.kcal || 0);
@@ -244,9 +344,11 @@ function computeStats(dates, dailyTotals, targets) {
 
     return {
       day,
+      dayIndex,
       label: day.slice(5),
       kcal: registrado ? kcal : null,
       targetKcal: target?.kcal ?? null,
+      targetMicros: target?.micros ?? null,
       protein: registrado ? protein_g : null,
       proteinFloor: target?.protein_g ?? null,
       sodio: registrado ? sodio : null,
@@ -351,6 +453,7 @@ export default function Dashboard() {
   const [customEnd, setCustomEnd] = useState(todayISO());
   const [dailyTotals, setDailyTotals] = useState([]);
   const [prevDailyTotals, setPrevDailyTotals] = useState([]);
+  const [historyTotals, setHistoryTotals] = useState([]); // daily_totals(day,kcal) últimos 90 días, para completitud
   const [targets, setTargets] = useState([]);
   const [favs, setFavs] = useState([]); // prefs.data.fav_micros
   const [waterFoodId, setWaterFoodId] = useState(null);
@@ -374,15 +477,18 @@ export default function Dashboard() {
     setLoading(true);
     setCsvNotice('');
     const { prevStart, prevEnd } = prevRangeOf(start, end);
-    const [{ data: dt }, { data: prevDt }, { data: tg }, { data: pf }, { data: items }] = await Promise.all([
+    const historyStart = addDaysISO(todayISO(), -89);
+    const [{ data: dt }, { data: prevDt }, { data: hist }, { data: tg }, { data: pf }, { data: items }] = await Promise.all([
       supabase.from('daily_totals').select('*').gte('day', start).lte('day', end),
       supabase.from('daily_totals').select('*').gte('day', prevStart).lte('day', prevEnd),
+      supabase.from('daily_totals').select('day,kcal').gte('day', historyStart).lte('day', todayISO()),
       supabase.from('targets').select('*'),
       supabase.from('prefs').select('data').maybeSingle(),
-      supabase.from('entry_nutrients').select('food_id,recipe_id,item,kcal,protein_g').gte('day', start).lte('day', end),
+      supabase.from('entry_nutrients').select('day,meal,food_id,recipe_id,item,kcal,protein_g').gte('day', start).lte('day', end),
     ]);
     setDailyTotals(dt || []);
     setPrevDailyTotals(prevDt || []);
+    setHistoryTotals(hist || []);
     setTargets(tg || []);
     setFavs(pf?.data?.fav_micros || []);
     setWaterFoodId(pf?.data?.water_food_id || null);
@@ -433,6 +539,55 @@ export default function Dashboard() {
   const stats = computeStats(dates, dailyTotals, targets);
   const diasConObjetivo = dates.filter((d) => resolveTarget(targets, d)).length;
 
+  // Completitud de día inferida (tri-estado, al vuelo): etiquetas distintas
+  // por día (para el atracón único) y mediana de kcal de los últimos 90 días
+  // (umbral robusto personal).
+  const mealsCountByDay = new Map();
+  for (const r of itemRows) {
+    const s = mealsCountByDay.get(r.day) || new Set();
+    s.add(r.meal || 'Sin etiqueta');
+    mealsCountByDay.set(r.day, s);
+  }
+  const registradosBase = stats.chartData.filter((d) => d.registrado);
+  const mealsCounts = registradosBase.map((d) => mealsCountByDay.get(d.day)?.size || 0);
+  const typicalMeals = mealsCounts.length ? median(mealsCounts) : 0;
+  const historyKcals = historyTotals.map((h) => Number(h.kcal || 0));
+  const chartData = stats.chartData.map((d) => ({
+    ...d,
+    completeness: dayCompleteness({
+      kcal: d.kcal ?? 0,
+      targetKcal: d.targetKcal,
+      historyKcals,
+      mealsCount: mealsCountByDay.get(d.day)?.size || 0,
+      typicalMeals,
+    }),
+  }));
+
+  // Fases de objetivo (Fix 5): si el rango cruza >1 fase, los cálculos
+  // avanzados (mediana/σ/tendencia, NO bayes) se restringen a la fase vigente.
+  const phaseSegments = targetPhases(targets, dates);
+  const realPhases = phaseSegments.filter((p) => p.vf != null);
+  const crossesPhases = realPhases.length > 1;
+  const activePhaseDays = crossesPhases ? new Set(realPhases[realPhases.length - 1].days) : null;
+
+  const registeredDays = chartData.filter((d) => d.registrado);
+  const completeDaysFull = registeredDays.filter((d) => d.completeness !== 'parcial');
+  const advancedDays = completeDaysFull.filter((d) => !activePhaseDays || activePhaseDays.has(d.day));
+  const diasParcialesFull = registeredDays.length - completeDaysFull.length;
+  const diasParcialesPhase = activePhaseDays
+    ? registeredDays.filter((d) => activePhaseDays.has(d.day) && d.completeness === 'parcial').length
+    : diasParcialesFull;
+
+  const calcCtx = {
+    diasRegistrados: stats.diasRegistrados,
+    diasConObjetivo,
+    diasCompletosFull: completeDaysFull.length,
+    diasParcialesFull,
+    diasCompletosPhase: advancedDays.length,
+    diasParcialesPhase,
+    crossesPhases,
+  };
+
   // Si el cálculo activo deja de cumplir su mínimo al cambiar de rango, cae
   // automáticamente a Promedio (o Suma si tampoco cumple). Se ignora mientras
   // carga (dailyTotals aún vacío) para no confundir "sin datos todavía" con
@@ -440,10 +595,10 @@ export default function Dashboard() {
   useEffect(() => {
     if (loading) return;
     const opt = CALC_ALL.find((o) => o.key === calcMode);
-    if (calcDisabledReason(opt, stats.diasRegistrados, diasConObjetivo)) {
-      setCalcMode(calcDisabledReason(CALC_BASIC[1], stats.diasRegistrados, diasConObjetivo) ? 'suma' : 'promedio');
+    if (calcDisabledReason(opt, calcCtx)) {
+      setCalcMode(calcDisabledReason(CALC_BASIC[1], calcCtx) ? 'suma' : 'promedio');
     }
-  }, [loading, calcMode, stats.diasRegistrados, diasConObjetivo]);
+  }, [loading, calcMode, calcCtx.diasRegistrados, calcCtx.diasConObjetivo, calcCtx.diasCompletosFull, calcCtx.diasCompletosPhase]);
 
   if (loading) return <div className="px-4 py-4 text-text-2">Cargando…</div>;
 
@@ -451,25 +606,31 @@ export default function Dashboard() {
   const prevStats = computeStats(datesInRange(prevStart, prevEnd), prevDailyTotals, targets);
   const showDelta = prevStats.diasRegistrados >= 1 && (calcMode === 'suma' || calcMode === 'promedio');
 
-  const kcalChart = withMovingAverage(stats.chartData);
-  const dayInfo = new Map(stats.chartData.map((d) => [d.day, d]));
+  const kcalChart = withMovingAverage(chartData);
+  const dayInfo = new Map(chartData.map((d) => [d.day, d]));
   const weeks = buildWeeks(start, end);
   const proteinWeekly = weeklyProteinData(weeks, start, end, dayInfo);
   const top = topItems(itemRows, waterFoodId, topMetric);
   const maxTop = top.length ? top[0][topMetric] : 0;
 
-  const msKcal = computeMetricStats(stats.chartData, 'kcal');
-  const msProtein = computeMetricStats(stats.chartData, 'protein_g');
-  const msCarbs = computeMetricStats(stats.chartData, 'carbs_g');
-  const msFat = computeMetricStats(stats.chartData, 'fat_g');
-  const msSodio = computeMetricStats(stats.chartData, 'sodio_mg');
-  const bayesKcal = calcMode === 'bayes' ? bayesForMetric(stats.chartData, 'kcal') : null;
-  const bayesProtein = calcMode === 'bayes' ? bayesForMetric(stats.chartData, 'protein_g') : null;
-  const bayesSodio = calcMode === 'bayes' ? bayesForMetric(stats.chartData, 'sodio_mg') : null;
+  const msKcal = computeMetricStats(registeredDays, advancedDays, 'kcal');
+  const msProtein = computeMetricStats(registeredDays, advancedDays, 'protein_g');
+  const msCarbs = computeMetricStats(registeredDays, advancedDays, 'carbs_g');
+  const msFat = computeMetricStats(registeredDays, advancedDays, 'fat_g');
+  const msSodio = computeMetricStats(registeredDays, advancedDays, 'sodio_mg');
+  const bKcal = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'kcal') : null;
+  const bProtein = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'protein_g') : null;
+  const bCarbs = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'carbs_g') : null;
+  const bFat = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'fat_g') : null;
+  const bSodio = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'sodio_mg') : null;
+  const phaseHintText = crossesPhases
+    ? `El rango cruza ${realPhases.length} fases de objetivo; calculado sobre la fase actual (${advancedDays.length} días) para no mezclar regímenes`
+    : null;
+  const isPhaseScopedMode = calcMode === 'mediana' || calcMode === 'stddev' || calcMode === 'tendencia';
 
   // Streamgraph de macros (kcal por macro, por día); fallback de barra 100%
   // apilada cuando el rango tiene <3 días con registro.
-  const macroStreamData = stats.chartData.map((d) => ({
+  const macroStreamData = chartData.map((d) => ({
     label: d.label,
     prot: d.values ? d.values.protein_g * 4 : 0,
     carb: d.values ? d.values.carbs_g * 4 : 0,
@@ -486,12 +647,12 @@ export default function Dashboard() {
       value: Math.min(150, ((stats.microsConsumido[m.key] || 0) / stats.microsObjetivo[m.key]) * 100),
     }));
 
-  const sodioVals = stats.chartData.map((d) => d.sodio).filter((v) => v != null);
+  const sodioVals = chartData.map((d) => d.sodio).filter((v) => v != null);
   const sodioMax = sodioVals.length ? Math.max(...sodioVals, SODIUM_FLOOR_MG) : SODIUM_FLOOR_MG + 1;
   const sodioMin = sodioVals.length ? Math.min(...sodioVals, SODIUM_FLOOR_MG) : 0;
   const sodioOffset = sodioMax > sodioMin ? Math.min(1, Math.max(0, (sodioMax - SODIUM_FLOOR_MG) / (sodioMax - sodioMin))) : 0.5;
 
-  const targetDays = stats.chartData.filter((d) => d.targetKcal != null);
+  const targetDays = chartData.filter((d) => d.targetKcal != null);
   const avgTargetKcal = targetDays.length ? targetDays.reduce((s, d) => s + d.targetKcal, 0) / targetDays.length : null;
 
   return (
@@ -547,7 +708,7 @@ export default function Dashboard() {
 
       <div className="flex gap-2 overflow-x-auto pb-1">
         {CALC_BASIC.map((opt) => {
-          const reason = calcDisabledReason(opt, stats.diasRegistrados, diasConObjetivo);
+          const reason = calcDisabledReason(opt, calcCtx);
           return (
             <button
               key={opt.key}
@@ -579,7 +740,7 @@ export default function Dashboard() {
       {advancedOpen && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {CALC_ADVANCED.map((opt) => {
-            const reason = calcDisabledReason(opt, stats.diasRegistrados, diasConObjetivo);
+            const reason = calcDisabledReason(opt, calcCtx);
             return (
               <button
                 key={opt.key}
@@ -625,58 +786,67 @@ export default function Dashboard() {
         <section className="md:col-span-2 lg:col-span-12 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <KpiCard
             label="Kcal"
-            display={formatMetric(calcMode, msKcal, bayesKcal, '', 1)}
+            display={metricDisplay(calcMode, msKcal, bKcal, '', 1)}
             delta={showDelta ? pctDelta(stats.promedio.kcal, prevStats.promedio.kcal) : null}
             status={classifyKcal(stats.consumido.kcal, stats.objetivo.kcal)}
-            sparkline={stats.chartData.map((d) => d.kcal)}
+            sparkline={chartData.map((d) => d.kcal)}
             sparkColor="var(--d-kcal)"
           />
           <KpiCard
             label="Proteína"
-            display={formatMetric(calcMode, msProtein, bayesProtein, ' g', 1)}
+            display={metricDisplay(calcMode, msProtein, bProtein, ' g', 1)}
             delta={showDelta ? pctDelta(stats.promedio.protein_g, prevStats.promedio.protein_g) : null}
             status={classifyFloor(stats.consumido.protein_g, stats.objetivo.protein_g)}
-            sparkline={stats.chartData.map((d) => d.protein)}
+            sparkline={chartData.map((d) => d.protein)}
             sparkColor="var(--d-prot)"
           />
           <KpiCard
             label="Carbs"
-            display={formatMetric(calcMode, msCarbs, null, ' g', 1)}
+            display={metricDisplay(calcMode, msCarbs, bCarbs, ' g', 1)}
             delta={showDelta ? pctDelta(stats.promedio.carbs_g, prevStats.promedio.carbs_g) : null}
-            sparkline={stats.chartData.map((d) => (d.values ? d.values.carbs_g : null))}
+            sparkline={chartData.map((d) => (d.values ? d.values.carbs_g : null))}
             sparkColor="var(--d-carb)"
           />
           <KpiCard
             label="Grasa"
-            display={formatMetric(calcMode, msFat, null, ' g', 1)}
+            display={metricDisplay(calcMode, msFat, bFat, ' g', 1)}
             delta={showDelta ? pctDelta(stats.promedio.fat_g, prevStats.promedio.fat_g) : null}
-            sparkline={stats.chartData.map((d) => (d.values ? d.values.fat_g : null))}
+            sparkline={chartData.map((d) => (d.values ? d.values.fat_g : null))}
             sparkColor="var(--d-fat)"
           />
           <KpiCard
             label="Sodio"
-            display={formatMetric(calcMode, msSodio, bayesSodio, ' mg', 0)}
+            display={metricDisplay(calcMode, msSodio, bSodio, ' mg', 0)}
             delta={showDelta ? pctDelta(stats.avgSodio, prevStats.avgSodio) : null}
             status={sodiumIsLow(stats.avgSodio, stats.diasRegistrados > 0) ? 'danger' : null}
-            sparkline={stats.chartData.map((d) => d.sodio)}
+            sparkline={chartData.map((d) => d.sodio)}
             sparkColor="var(--d-carb)"
           />
           <KpiCard
             label="Días"
-            value={stats.diasRegistrados}
-            decimals={0}
+            display={
+              <Hint
+                text={`${calcCtx.diasCompletosFull} completos, ${diasParcialesFull} parciales (registro incompleto inferido), ${dates.length} días en el rango`}
+              >
+                {calcCtx.diasCompletosFull}
+                {diasParcialesFull > 0 ? ` +${diasParcialesFull}p` : ''}
+              </Hint>
+            }
             delta={showDelta ? pctDelta(stats.diasRegistrados, prevStats.diasRegistrados) : null}
             suffix={` / ${dates.length}`}
           />
         </section>
 
         <section className="md:col-span-2 lg:col-span-12 rounded-2xl bg-surface border border-border p-4">
-          <p className="text-sm text-text-3 mb-2">{CALC_TITLES[calcMode]}</p>
+          <p className="text-sm text-text-3 mb-2 flex items-center gap-1">
+            {CALC_TITLES[calcMode]}
+            {isPhaseScopedMode && phaseHintText && <Hint text={phaseHintText}>ⓘ</Hint>}
+          </p>
           <div className="grid grid-cols-4 gap-2 text-center">
-            <Stat label="Kcal" display={formatMetric(calcMode, msKcal, bayesKcal, '', 1)} color="text-d-kcal" />
-            <Stat label="Prot" display={formatMetric(calcMode, msProtein, bayesProtein, ' g', 1)} color="text-d-prot" />
-            <Stat label="Carbs" display={formatMetric(calcMode, msCarbs, null, ' g', 1)} color="text-d-carb" />
-            <Stat label="Grasa" display={formatMetric(calcMode, msFat, null, ' g', 1)} color="text-d-fat" />
+            <Stat label="Kcal" display={metricDisplay(calcMode, msKcal, bKcal, '', 1)} color="text-d-kcal" />
+            <Stat label="Prot" display={metricDisplay(calcMode, msProtein, bProtein, ' g', 1)} color="text-d-prot" />
+            <Stat label="Carbs" display={metricDisplay(calcMode, msCarbs, bCarbs, ' g', 1)} color="text-d-carb" />
+            <Stat label="Grasa" display={metricDisplay(calcMode, msFat, bFat, ' g', 1)} color="text-d-fat" />
           </div>
         </section>
 
@@ -797,7 +967,7 @@ export default function Dashboard() {
         <section className="lg:col-span-6 rounded-2xl bg-surface border border-border p-4">
           <p className="text-sm text-text-3 mb-2">Sodio diario vs piso</p>
           <ResponsiveContainer width="100%" height={200}>
-            <ComposedChart data={stats.chartData}>
+            <ComposedChart data={chartData}>
               <defs>
                 <linearGradient id="sodioGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset={0} stopColor="var(--d-carb)" stopOpacity={0.45} />
@@ -880,8 +1050,12 @@ export default function Dashboard() {
             microsObjetivo={stats.microsObjetivo}
             avgSodio={stats.avgSodio}
             diasRegistrados={stats.diasRegistrados}
-            chartData={stats.chartData}
+            chartData={chartData}
+            registeredDays={registeredDays}
+            advancedDays={advancedDays}
+            completeDaysFull={completeDaysFull}
             calcMode={calcMode}
+            phaseHintText={isPhaseScopedMode ? phaseHintText : null}
           />
         </div>
       </div>
@@ -910,11 +1084,13 @@ function AdherenceHeatmap({ weeks, start, end, dayInfo }) {
               const status = classifyKcal(info.kcal, info.targetKcal);
               cls = status ? STATUS_BG[status] : 'bg-surface-3';
             }
+            const parcial = info?.completeness === 'parcial';
+            const parcialSuffix = parcial ? ' (parcial: registro incompleto inferido)' : '';
             return (
               <div
                 key={`${wi}-${di}`}
-                title={`${day}: ${info?.kcal != null ? Math.round(info.kcal) : 0} kcal`}
-                className={`w-3.5 h-3.5 rounded ${cls}`}
+                title={`${day}: ${info?.kcal != null ? Math.round(info.kcal) : 0} kcal${parcialSuffix}`}
+                className={`w-3.5 h-3.5 rounded ${cls} ${parcial ? 'opacity-50' : ''}`}
               />
             );
           })
@@ -927,7 +1103,19 @@ function AdherenceHeatmap({ weeks, start, end, dayInfo }) {
 // Visibles: los MICROS_DEFAULT primeros + favoritos (prefs). El resto solo si
 // tienen dato consumido u objetivo, plegados en "Más micros". El agua nunca
 // va aquí: tiene su propia sección arriba.
-function MicrosTable({ favs, microsConsumido, microsObjetivo, avgSodio, diasRegistrados, chartData, calcMode }) {
+function MicrosTable({
+  favs,
+  microsConsumido,
+  microsObjetivo,
+  avgSodio,
+  diasRegistrados,
+  chartData,
+  registeredDays,
+  advancedDays,
+  completeDaysFull,
+  calcMode,
+  phaseHintText,
+}) {
   const visible = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favs.includes(m.key)) && m.key !== 'agua_ml');
   const hidden = MICROS.filter(
     (m, i) =>
@@ -938,21 +1126,27 @@ function MicrosTable({ favs, microsConsumido, microsObjetivo, avgSodio, diasRegi
   );
 
   const renderRow = (m) => {
-    const c = microsConsumido[m.key] || 0;
-    const o = microsObjetivo[m.key] || 0;
-    const pct = o > 0 ? Math.round((c / o) * 100) : null;
+    const ms = computeMetricStats(registeredDays, advancedDays, m.key);
+    const objStats = computeObjectiveStats(chartData, m.key);
+    const zero = structuralZeroInfo(registeredDays, m.key);
+    const bayesInfo = calcMode === 'bayes' ? bayesCell(completeDaysFull, m.key) : null;
+    const consumidoDisplay = metricDisplay(calcMode, ms, bayesInfo, ` ${m.unit}`, 1);
     const sodiumDanger = m.key === 'sodio_mg' && sodiumIsLow(avgSodio, diasRegistrados > 0);
-    const ms = computeMetricStats(chartData, m.key);
-    const bayes = calcMode === 'bayes' ? bayesForMetric(chartData, m.key) : null;
-    const consumidoDisplay = formatMetric(calcMode, ms, bayes, ` ${m.unit}`, 1);
+    const degraded = bayesInfo?.hint != null;
     return (
       <tr key={m.key} className="border-t border-border">
         <td className="py-2">{m.label}</td>
-        <td className={`py-2 text-right font-mono tabular-nums ${sodiumDanger ? 'text-danger' : ''} ${consumidoDisplay === 'Sin objetivo' ? 'text-text-3' : ''}`}>
+        <td className={`py-2 text-right font-mono tabular-nums ${sodiumDanger ? 'text-danger' : ''} ${degraded ? 'text-text-3' : ''}`}>
           {consumidoDisplay}
+          {zero.warn && (
+            <Hint text={`${zero.n} de ${zero.m} días sin dato de este micro: el 0 puede significar 'sin registro', no 'consumo 0'`}>
+              {' '}
+              ⚠
+            </Hint>
+          )}
         </td>
-        <td className="py-2 text-right font-mono tabular-nums text-text-2">{o ? `${Math.round(o * 10) / 10} ${m.unit}` : '–'}</td>
-        <td className="py-2 text-right font-mono tabular-nums text-text-2">{pct != null ? `${pct}%` : '–'}</td>
+        <td className="py-2 text-right font-mono tabular-nums text-text-2">{objetivoCell(calcMode, objStats, m.unit)}</td>
+        <td className="py-2 text-right font-mono tabular-nums text-text-2">{pctCell(calcMode, ms, objStats)}</td>
       </tr>
     );
   };
@@ -964,7 +1158,12 @@ function MicrosTable({ favs, microsConsumido, microsObjetivo, avgSodio, diasRegi
         <thead>
           <tr className="text-text-3 text-left">
             <th className="font-normal pb-2">Nutriente</th>
-            <th className="font-normal pb-2 text-right">{CALC_HEADERS[calcMode]}</th>
+            <th className="font-normal pb-2 text-right">
+              <span className="inline-flex items-center gap-1 justify-end">
+                {CALC_HEADERS[calcMode]}
+                {phaseHintText && <Hint text={phaseHintText}>ⓘ</Hint>}
+              </span>
+            </th>
             <th className="font-normal pb-2 text-right">Objetivo</th>
             <th className="font-normal pb-2 text-right">%</th>
           </tr>

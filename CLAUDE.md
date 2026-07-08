@@ -38,6 +38,7 @@ Invariantes de dominio:
 - RLS: catálogo (foods, recipes) compartido en lectura / escritura solo del dueño; entries, meal_labels, targets y prefs 100 % privados por usuario.
 - Agua: entries de un food "Agua" propio (micros `{agua_ml:100}`, grams = ml), id cacheado en `prefs.data.water_food_id`. En UI el agua va como sección propia ANTES de los macros (Hoy y Dashboard) y NUNCA en la tabla/lista de micros. Hoy la excluye de Recientes, búsqueda y "Copiar día anterior".
 - Agentes: import/export/auditoría de foods, fases de targets y evaluación de ingesta van por la API REST — playbooks con curl en README § "Playbooks para agentes". La auditoría es retroactiva gratis porque los nutrientes se calculan en vistas.
+- Dashboard: todo dato faltante, deshabilitado o recortado (fases, completitud) muestra su causa vía `Hint` (hover + tap); nunca un guion mudo ni un número inventado.
 
 ## Comandos
 

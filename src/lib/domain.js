@@ -206,6 +206,69 @@ export const MIN_DIAS_STDDEV = 2;
 export const MIN_DIAS_TENDENCIA = 3;
 export const MIN_DIAS_BAYES = 3;
 
+// Un día registrado cuenta como "sin dato" (0 estructural) para un micro si
+// más de esta fracción de los días usados trae exactamente 0 — el 0 casi
+// siempre significa "el alimento no traía ese dato", no "consumo cero".
+export const STRUCTURAL_ZERO_FRACTION = 0.5;
+
+// Tolerancia de éxito de kcal para adherencia bayesiana (más laxa que el
+// semáforo classifyKcal ±5%, que es intencionalmente estricto para la UI).
+export const BAYES_KCAL_TOL = 0.10;
+
+// Completitud de día inferida (§ prompt): umbral robusto personal.
+export const KCAL_HARD_FLOOR = 500; // NHANES: <500 kcal = parcial siempre
+export const COMPLETE_RATIO = 0.6; // fracción de la mediana (o del objetivo)
+export const HIST_MIN_DAYS = 7; // mínimo de historial para usar la mediana
+export const MIN_MEALS_SIGNAL = 3; // señal de comidas solo si lo típico es ≥3
+
+// Tri-estado de completitud de un día: 'completo' | 'parcial' | 'sin_registro'
+// | 'sin_evaluar'. Pura, nada se persiste — recalibra retroactivamente gratis.
+// historyKcals: kcal de daily_totals de los últimos 90 días (puede incluir 0s).
+// mealsCount: etiquetas distintas ese día. typicalMeals: mediana de etiquetas
+// distintas/día entre los días registrados del rango.
+export function dayCompleteness({ kcal, targetKcal, historyKcals, mealsCount, typicalMeals }) {
+  if (kcal <= 0) return 'sin_registro';
+  if (kcal < KCAL_HARD_FLOOR) return 'parcial';
+  const historial = (historyKcals || []).filter((k) => k > 0);
+  if (historial.length >= HIST_MIN_DAYS) {
+    const med = median(historial);
+    const bingeOverride = typicalMeals >= MIN_MEALS_SIGNAL && mealsCount <= 1;
+    if (bingeOverride) return 'parcial';
+    return kcal >= COMPLETE_RATIO * med ? 'completo' : 'parcial';
+  }
+  if (targetKcal != null) {
+    return kcal >= COMPLETE_RATIO * targetKcal ? 'completo' : 'parcial';
+  }
+  return 'sin_evaluar';
+}
+
+// Segmenta `dates` en fases de objetivo por generación de valid_from de las
+// filas dow de `targets` (§Fix 5) — NO por cambio del valor diario del
+// objetivo: un ciclo semanal de carb cycling comparte un único valid_from y
+// por lo tanto es UNA fase aunque el valor diario varíe por día de semana.
+// Las filas day=F puntuales (overrides) se ignoran para esta segmentación.
+// Devuelve [{ vf, days }] en orden cronológico; vf es null para el tramo
+// (si existe) anterior a la primera fila dow aplicable.
+export function targetPhases(targets, dates) {
+  const vfs = [...new Set(targets.filter((t) => t.dow != null).map((t) => t.valid_from))].sort();
+  const activeVF = (day) => {
+    let best = null;
+    for (const vf of vfs) {
+      if (vf <= day) best = vf;
+      else break;
+    }
+    return best;
+  };
+  const segments = [];
+  for (const day of dates) {
+    const vf = activeVF(day);
+    const last = segments[segments.length - 1];
+    if (last && last.vf === vf) last.days.push(day);
+    else segments.push({ vf, days: [day] });
+  }
+  return segments;
+}
+
 export function sum(xs) {
   return xs.reduce((s, x) => s + x, 0);
 }
@@ -240,16 +303,18 @@ export function cv(xs) {
   return (stddev(xs) / mean) * 100;
 }
 
-// Pendiente de regresión lineal simple (mínimos cuadrados), x = índice de día.
-export function olsSlope(xs) {
-  const n = xs.length;
+// Pendiente de regresión lineal simple (mínimos cuadrados) sobre pares
+// {x, y} con x = offset de día calendario (no índice consecutivo de registro):
+// con huecos (lun, mar, sáb) el sábado es x=2, no x=2 tras compactar huecos.
+export function olsSlope(points) {
+  const n = points.length;
   if (n < 2) return null;
-  const xMean = (n - 1) / 2;
-  const yMean = sum(xs) / n;
+  const xMean = sum(points.map((p) => p.x)) / n;
+  const yMean = sum(points.map((p) => p.y)) / n;
   let num = 0, den = 0;
-  for (let i = 0; i < n; i++) {
-    num += (i - xMean) * (xs[i] - yMean);
-    den += (i - xMean) ** 2;
+  for (const p of points) {
+    num += (p.x - xMean) * (p.y - yMean);
+    den += (p.x - xMean) ** 2;
   }
   return den === 0 ? 0 : num / den;
 }
