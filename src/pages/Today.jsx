@@ -301,26 +301,24 @@ export default function Today() {
               )}
             </div>
             {g.items.map((e) => {
-              const macros = [
-                Number(e.protein_g) > 0 && `P ${round(Number(e.protein_g), 1)}`,
-                Number(e.carbs_g) > 0 && `C ${round(Number(e.carbs_g), 1)}`,
-                Number(e.fat_g) > 0 && `G ${round(Number(e.fat_g), 1)}`,
-              ].filter(Boolean);
               const highNa = Number(e.micros?.sodio_mg || 0) >= SODIUM_HIGH_MG;
               const highK = Number(e.micros?.potasio_mg || 0) >= POTASSIUM_HIGH_MG;
               return (
                 <button
                   key={e.id}
                   onClick={() => setEditing(e)}
-                  className="text-left rounded-2xl bg-surface border border-border p-3 flex justify-between items-center active:scale-[0.98] transition-transform duration-150"
+                  className="text-left rounded-2xl bg-surface border border-border p-3 flex justify-between items-center gap-3 active:scale-[0.98] transition-transform duration-150"
                 >
-                  <div>
-                    <p className="font-medium">{e.item}</p>
-                    <p className="text-sm text-text-3 font-mono tabular-nums">
-                      {e.grams} g{macros.length > 0 ? ` · ${macros.join(' ')}` : ''}
-                    </p>
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{e.item}</p>
+                    <div className="text-sm font-mono tabular-nums mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                      <span className="text-text-3">{e.grams} g</span>
+                      {Number(e.protein_g) > 0 && <span className="text-d-prot">P {round(Number(e.protein_g), 1)}</span>}
+                      {Number(e.carbs_g) > 0 && <span className="text-d-carb">C {round(Number(e.carbs_g), 1)}</span>}
+                      {Number(e.fat_g) > 0 && <span className="text-d-fat">G {round(Number(e.fat_g), 1)}</span>}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {highNa && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-danger/20 text-danger">Na</span>}
                     {highK && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-warn/20 text-warn">K</span>}
                     <span className="font-mono tabular-nums text-text-2">{e.kcal} kcal</span>
