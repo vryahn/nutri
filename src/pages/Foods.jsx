@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Plus, ChevronLeft, Search, Sparkles, ImagePlus, X, Star, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { MICROS, MICROS_DEFAULT, microGroups, round, kcalFromMacros, kcalSuspicious } from '../lib/domain.js';
+import {
+  MICROS, MICROS_DEFAULT, microGroups, round, kcalFromMacros, kcalSuspicious, macrosImplausible,
+} from '../lib/domain.js';
+import { fetchOFF, searchFDC, fetchFDC } from '../lib/sources.js';
 
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY;
+const GEMINI_MODEL = 'gemini-3.5-flash';
 
 // Líquidos más consumidos con su densidad (g/ml). El usuario elige de aquí y solo
 // teclea manualmente con "Otro…". Gemini recibe estos valores canónicos y su
@@ -211,29 +215,51 @@ export default function Foods() {
   );
 }
 
-// Los micros visibles (los 8 por defecto + favoritos del usuario) son obligatorios
-// para Gemini: sin dato fiable → 0. Los ocultos solo si hay dato fiable → null si no.
-function geminiPrompt(requiredMicroKeys) {
+// Requeridos SIEMPRE con la mejor estimación disponible (null solo si es imposible
+// dar cifra fundada). El resto de micros: solo con dato fiable, si no null.
+const REQUIRED_MICROS = ['sodio_mg', 'potasio_mg', 'magnesio_mg'];
+const REQUIRED_KEYS = ['kcal', 'protein_g', 'carbs_g', 'fat_g', ...REQUIRED_MICROS];
+const MACRO_LABELS = { kcal: 'Kcal', protein_g: 'Proteína', carbs_g: 'Carbs', fat_g: 'Grasa' };
+
+function labelFor(key) {
+  return MACRO_LABELS[key] || MICROS.find((m) => m.key === key)?.label || key;
+}
+
+// Jerarquía: etiqueta transcrita > EAN legible > estimación tipo USDA priorizando México.
+function geminiPrompt() {
   const units = MICROS.map((m) => `${m.key} (${m.unit})`).join(', ');
-  return `Eres un asistente de nutrición. Estima la información nutrimental de un alimento, producto o platillo y devuélvela SIEMPRE por 100 gramos de porción comestible. Prioriza productos y platillos comunes en México (marcas y preparaciones mexicanas). Si no hay etiqueta, basa la estimación en datos tipo USDA FoodData Central. Si la imagen es una etiqueta nutrimental, lee los valores declarados y normalízalos a 100 g usando el tamaño de porción declarado (p. ej. porción de 30 g → multiplica cada valor por 100/30). Si la imagen es un platillo, estima a partir de los ingredientes visibles y su proporción. Unidades: kcal en kcal; protein_g, carbs_g y fat_g en gramos; micros: ${units}. OBLIGATORIOS (si no encuentras dato fiable, devuelve 0, nunca null): kcal, protein_g, carbs_g, fat_g y los micros ${requiredMicroKeys.join(', ')}. El resto de micros: devuélvelos solo si tienes dato fiable de etiqueta o base tipo USDA; si no, null — no inventes ni extrapoles. Si el alimento es un líquido o bebida, devuelve density_g_ml (densidad en g/ml) usando estos valores canónicos cuando el tipo coincida: ${DENSITY_PRESETS.map((p) => `${p.label.toLowerCase()} ${p.value}`).join(', ')}; para otro líquido da tu mejor estimación; si no es líquido, null. "name" corto en español; "brand" solo si es identificable.`;
+  return `Eres un asistente de nutrición para México. Devuelve SIEMPRE los valores por 100 gramos de porción comestible. Sigue esta jerarquía, en orden:
+1. Si la imagen contiene una etiqueta nutrimental (NOM-051 o similar) legible: TRANSCRIBE los valores declarados, NO estimes. Normaliza a 100 g con el tamaño de porción declarado (p. ej. porción de 30 g → multiplica cada valor por 100/30). mode = "etiqueta".
+2. Si hay un código de barras con dígitos impresos legibles, devuélvelos en "ean" (solo dígitos, 8-14 caracteres). Si no se leen completos y sin ambigüedad, ean = null — nunca adivines dígitos.
+3. Si no hay etiqueta legible: estima con base tipo USDA FoodData Central, priorizando productos y preparaciones comunes en México. mode = "estimacion".
+Unidades: kcal en kcal; protein_g, carbs_g y fat_g en gramos; micros: ${units}.
+OBLIGATORIOS: kcal, protein_g, carbs_g, fat_g, sodio_mg, potasio_mg y magnesio_mg deben traer SIEMPRE la mejor estimación disponible, aunque sea aproximada. Devuelve null SOLO si es imposible dar una cifra mínimamente fundada — nunca rellenes con 0 inventado ni omitas por pereza.
+El resto de los micros (incluida grasa saturada/trans, azúcares y fibra): SOLO con dato fiable de etiqueta o base tipo USDA; si no, null. Un 0 real (p. ej. grasa trans en una manzana) sí es válido cuando el valor real es cero.
+Si el alimento es genérico y SIN marca (nunca para productos empaquetados, que devolverían variantes de EE. UU.), da "usda_query": su nombre en inglés apto para buscar en USDA FoodData Central; si no aplica, null.
+Si es líquido o bebida, da "density_g_ml" usando estos valores canónicos cuando el tipo coincida: ${DENSITY_PRESETS.map((p) => `${p.label.toLowerCase()} ${p.value}`).join(', ')}; para otro líquido, tu mejor estimación; si no es líquido, null.
+"confidence": "alta"|"media"|"baja" según qué tan fundada está tu respuesta. "name" corto en español. "brand" solo si es identificable.`;
 }
 
 const GEMINI_SCHEMA = {
   type: 'OBJECT',
   properties: {
+    mode: { type: 'STRING' },
+    ean: { type: 'STRING', nullable: true },
+    confidence: { type: 'STRING' },
+    usda_query: { type: 'STRING', nullable: true },
     name: { type: 'STRING' },
     brand: { type: 'STRING', nullable: true },
-    kcal: { type: 'NUMBER' },
-    protein_g: { type: 'NUMBER' },
-    carbs_g: { type: 'NUMBER' },
-    fat_g: { type: 'NUMBER' },
+    kcal: { type: 'NUMBER', nullable: true },
+    protein_g: { type: 'NUMBER', nullable: true },
+    carbs_g: { type: 'NUMBER', nullable: true },
+    fat_g: { type: 'NUMBER', nullable: true },
     density_g_ml: { type: 'NUMBER', nullable: true },
     micros: {
       type: 'OBJECT',
       properties: Object.fromEntries(MICROS.map((m) => [m.key, { type: 'NUMBER', nullable: true }])),
     },
   },
-  required: ['name', 'kcal', 'protein_g', 'carbs_g', 'fat_g', 'micros'],
+  required: ['mode', 'name'],
 };
 
 // Comprime la foto antes de mandarla inline (una foto de móvil sin comprimir pesa varios MB).
@@ -247,17 +273,16 @@ async function toJpegBase64(file, maxSide = 1024) {
   return canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
 }
 
-async function estimateFood(text, imageFile, favs) {
-  const requiredKeys = MICROS.filter((m, i) => i < MICROS_DEFAULT || favs.includes(m.key)).map((m) => m.key);
+async function estimateFood(text, imageFile) {
   const parts = [{ text: text.trim() || 'Analiza la imagen.' }];
   if (imageFile) {
     parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(imageFile) } });
   }
-  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: geminiPrompt(requiredKeys) }] },
+      systemInstruction: { parts: [{ text: geminiPrompt() }] },
       contents: [{ parts }],
       generationConfig: { response_mime_type: 'application/json', response_schema: GEMINI_SCHEMA },
     }),
@@ -269,9 +294,12 @@ async function estimateFood(text, imageFile, favs) {
   for (const m of MICROS) {
     const v = out.micros?.[m.key];
     if (v != null) micros[m.key] = v;
-    else if (requiredKeys.includes(m.key)) micros[m.key] = 0;
   }
   return {
+    mode: out.mode,
+    ean: out.ean || null,
+    confidence: out.confidence || null,
+    usda_query: out.usda_query || null,
     name: out.name || '',
     brand: out.brand || '',
     kcal: out.kcal ?? '',
@@ -280,8 +308,77 @@ async function estimateFood(text, imageFile, favs) {
     fat_g: out.fat_g ?? '',
     micros,
     density_g_ml: snapDensity(out.density_g_ml),
-    source: 'gemini',
   };
+}
+
+const NUMERIC_KEYS = ['kcal', 'protein_g', 'carbs_g', 'fat_g'];
+
+// winner gana en todo campo que traiga; filler solo rellena lo que winner no tenga.
+function fillAll(winner, filler) {
+  if (!filler) return winner;
+  const out = { ...winner, micros: { ...filler.micros, ...winner.micros } };
+  for (const k of NUMERIC_KEYS) {
+    if (out[k] === '' || out[k] == null) out[k] = filler[k] ?? '';
+  }
+  if (!out.name) out.name = filler.name || '';
+  if (!out.brand) out.brand = filler.brand || '';
+  return out;
+}
+
+// winner gana en todo lo que traiga; filler solo rellena los REQUERIDOS que falten
+// (no se dejan pasar otros micros especulativos de filler cuando winner es autoritativo).
+function fillRequired(winner, filler) {
+  if (!filler) return winner;
+  const out = { ...winner, micros: { ...winner.micros } };
+  for (const k of NUMERIC_KEYS) {
+    if ((out[k] === '' || out[k] == null) && filler[k] != null && filler[k] !== '') out[k] = filler[k];
+  }
+  for (const mk of REQUIRED_MICROS) {
+    if (out.micros[mk] == null && filler.micros?.[mk] != null) out.micros[mk] = filler.micros[mk];
+  }
+  if (!out.name) out.name = filler.name || '';
+  if (!out.brand) out.brand = filler.brand || '';
+  return out;
+}
+
+function missingRequired(obj) {
+  return REQUIRED_KEYS.filter((k) => {
+    const v = NUMERIC_KEYS.includes(k) ? obj[k] : obj.micros?.[k];
+    return v === '' || v == null;
+  }).map(labelFor);
+}
+
+// Un 0 devuelto por la fuente no llena el input (anti-spam visual): campo vacío +
+// placeholder "0". Semánticamente idéntico a omitirlo (un micro ausente pesa 0).
+function stripZeros(obj) {
+  const zeros = new Set();
+  const cleaned = { ...obj, micros: { ...obj.micros } };
+  for (const k of NUMERIC_KEYS) {
+    if (cleaned[k] === 0) {
+      zeros.add(k);
+      cleaned[k] = '';
+    }
+  }
+  for (const [k, v] of Object.entries(cleaned.micros)) {
+    if (v === 0) {
+      zeros.add(k);
+      delete cleaned.micros[k];
+    }
+  }
+  return { cleaned, zeros };
+}
+
+function extractEan(text) {
+  const digits = text.replace(/[\s-]/g, '');
+  return /^\d{8,14}$/.test(digits) ? digits : null;
+}
+
+function resultBadgeText(r) {
+  if (!r) return '';
+  if (r.source === 'etiqueta') return '📋 Etiqueta transcrita';
+  if (r.source === 'off') return `✔ Open Food Facts: ${r.name || ''}`;
+  if (r.source === 'usda') return `USDA: ${r.name || ''}`;
+  return `≈ Estimación IA (confianza ${r.confidence || '—'})`;
 }
 
 function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
@@ -318,22 +415,80 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const [aiFile, setAiFile] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
+  const [aiZeros, setAiZeros] = useState(new Set()); // claves cuyo prefill fue 0 → placeholder, no valor
+  const [aiResult, setAiResult] = useState(null); // { source, name, confidence } para la línea de resultado
+  const [aiMissing, setAiMissing] = useState([]); // labels de requeridos sin dato fiable
+  const [fdcChips, setFdcChips] = useState([]); // hasta 3 coincidencias FDC de usda_query
 
   function setField(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  async function handleEstimate() {
+  function applyPrefill(merged, source, resultName, confidence) {
+    const missing = missingRequired(merged);
+    const { cleaned, zeros } = stripZeros(merged);
+    setAiZeros(zeros);
+    setAiMissing(missing);
+    setForm((f) => ({
+      ...f,
+      name: cleaned.name || f.name,
+      brand: cleaned.brand || f.brand,
+      kcal: cleaned.kcal,
+      protein_g: cleaned.protein_g,
+      carbs_g: cleaned.carbs_g,
+      fat_g: cleaned.fat_g,
+      micros: cleaned.micros,
+      density_g_ml: cleaned.density_g_ml ?? f.density_g_ml,
+      source,
+    }));
+    setDensityOther(cleaned.density_g_ml > 0 && !DENSITY_PRESETS.some((p) => p.value === cleaned.density_g_ml));
+    setBasis('100');
+    setAiResult({ source, name: resultName, confidence });
+  }
+
+  async function handleFetchData() {
     if (!aiText.trim() && !aiFile) return;
     setAiLoading(true);
     setAiError('');
+    setFdcChips([]);
+    setAiResult(null);
+    setAiMissing([]);
     try {
-      const estimated = await estimateFood(aiText, aiFile, favs);
-      setForm((f) => ({ ...f, ...estimated }));
-      setDensityOther(estimated.density_g_ml > 0 && !DENSITY_PRESETS.some((p) => p.value === estimated.density_g_ml));
-      setBasis('100'); // Gemini devuelve por 100 g
-    } catch {
-      setAiError('No se pudo estimar. Revisa la conexión o intenta con otra descripción/foto.');
+      const eanTyped = extractEan(aiText);
+      if (eanTyped) {
+        const off = await fetchOFF(eanTyped);
+        if (!off) throw new Error('EAN no encontrado en Open Food Facts.');
+        applyPrefill(off, 'off', off.name, null);
+      } else {
+        const gemini = await estimateFood(aiText, aiFile);
+        const [off, fdcMatches] = await Promise.all([
+          gemini.ean ? fetchOFF(gemini.ean) : Promise.resolve(null),
+          gemini.usda_query ? searchFDC(gemini.usda_query) : Promise.resolve([]),
+        ]);
+        setFdcChips(fdcMatches);
+        if (gemini.mode === 'etiqueta') {
+          applyPrefill(fillAll(gemini, off), 'etiqueta', null, gemini.confidence);
+        } else if (off) {
+          applyPrefill(fillRequired(off, gemini), 'off', off.name, null);
+        } else {
+          applyPrefill(gemini, 'gemini', null, gemini.confidence);
+        }
+      }
+    } catch (e) {
+      setAiError(e.message || 'No se pudo obtener datos. Revisa la conexión o intenta con otra descripción/foto.');
+    }
+    setAiLoading(false);
+  }
+
+  async function handleFdcChip(fdcId, description) {
+    setAiLoading(true);
+    setAiError('');
+    try {
+      const detail = await fetchFDC(fdcId);
+      if (!detail) throw new Error('No se pudo obtener el detalle de USDA.');
+      applyPrefill(detail, 'usda', description, null);
+    } catch (e) {
+      setAiError(e.message);
     }
     setAiLoading(false);
   }
@@ -354,6 +509,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const kcalCalc = kcalFromMacros(form);
   const hasMacros = form.protein_g !== '' || form.carbs_g !== '' || form.fat_g !== '';
   const suspicious = form.kcal !== '' && hasMacros && kcalSuspicious(form);
+  const implausible = macrosImplausible(form);
   const hiddenMicros = MICROS.slice(MICROS_DEFAULT);
 
   return (
@@ -368,13 +524,13 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
       {!form.id && GEMINI_KEY && (
         <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
           <p className="text-sm text-text-2 flex items-center gap-2">
-            <Sparkles size={16} className="text-accent" /> Estimar con IA
+            <Sparkles size={16} className="text-accent" /> Datos con IA
           </p>
           <textarea
             value={aiText}
             onChange={(e) => setAiText(e.target.value)}
             rows={2}
-            placeholder="Describe el alimento… p. ej. «tortilla de maíz» o «3 tacos al pastor con piña»"
+            placeholder="Describe el alimento, pega un código de barras (EAN) o adjunta una foto de etiqueta/platillo"
             className="rounded-xl bg-surface-3 border border-border px-3 py-2 text-text focus:outline-none focus:ring-2 focus:ring-accent resize-none"
           />
           <div className="flex gap-2 items-center">
@@ -400,15 +556,36 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
             )}
             <button
               type="button"
-              onClick={handleEstimate}
+              onClick={handleFetchData}
               disabled={aiLoading || (!aiText.trim() && !aiFile)}
               className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium disabled:opacity-40 active:scale-[0.98] transition-transform duration-150"
             >
-              {aiLoading ? 'Estimando…' : 'Estimar'}
+              {aiLoading ? 'Obteniendo…' : 'Obtener datos'}
             </button>
           </div>
           {aiError && <p className="text-sm text-danger">{aiError}</p>}
-          <p className="text-xs text-text-3">Valores por 100 g, priorizando México. Revisa antes de guardar.</p>
+          {aiResult && <p className="text-xs text-text-2">{resultBadgeText(aiResult)}</p>}
+          {aiMissing.length > 0 && (
+            <p className="text-xs text-warn" role="status">Sin dato fiable de: {aiMissing.join(', ')}</p>
+          )}
+          {fdcChips.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {fdcChips.map((c) => (
+                <button
+                  key={c.fdcId}
+                  type="button"
+                  onClick={() => handleFdcChip(c.fdcId, c.description)}
+                  className="text-xs min-h-[44px] px-3 rounded-full bg-surface-3 border border-border text-text-2 active:scale-[0.98] transition-transform duration-150"
+                >
+                  USDA: {c.description}
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-text-3">
+            Etiqueta legible → se transcribe. EAN → Open Food Facts. Si no, estimación IA con chips USDA para
+            genéricos. Siempre por 100 g; revisa antes de guardar.
+          </p>
         </div>
       )}
 
@@ -459,17 +636,33 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
             label="Kcal"
             value={form.kcal}
             onChange={(v) => setField('kcal', v)}
-            placeholder={hasMacros ? `≈ ${kcalCalc}` : ''}
+            placeholder={aiZeros.has('kcal') ? '0' : hasMacros ? `≈ ${kcalCalc}` : ''}
           />
-          <NumberField label="Proteína (g)" value={form.protein_g} onChange={(v) => setField('protein_g', v)} />
-          <NumberField label="Carbs (g)" value={form.carbs_g} onChange={(v) => setField('carbs_g', v)} />
-          <NumberField label="Grasa (g)" value={form.fat_g} onChange={(v) => setField('fat_g', v)} />
+          <NumberField
+            label="Proteína (g)"
+            value={form.protein_g}
+            onChange={(v) => setField('protein_g', v)}
+            placeholder={aiZeros.has('protein_g') ? '0' : ''}
+          />
+          <NumberField
+            label="Carbs (g)"
+            value={form.carbs_g}
+            onChange={(v) => setField('carbs_g', v)}
+            placeholder={aiZeros.has('carbs_g') ? '0' : ''}
+          />
+          <NumberField
+            label="Grasa (g)"
+            value={form.fat_g}
+            onChange={(v) => setField('fat_g', v)}
+            placeholder={aiZeros.has('fat_g') ? '0' : ''}
+          />
           {MICROS.slice(0, MICROS_DEFAULT).map((m) => (
             <NumberField
               key={m.key}
               label={`${m.label} (${m.unit})`}
               value={form.micros[m.key] ?? ''}
               onChange={(v) => setMicro(m.key, v)}
+              placeholder={aiZeros.has(m.key) ? '0' : ''}
             />
           ))}
           {hiddenMicros.filter((m) => favs.includes(m.key)).map((m) => (
@@ -480,6 +673,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
               value={form.micros[m.key] ?? ''}
               onChange={(v) => setMicro(m.key, v)}
               onToggleFav={() => onToggleFav(m.key)}
+              placeholder={aiZeros.has(m.key) ? '0' : ''}
             />
           ))}
         </div>
@@ -491,6 +685,11 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           <p className="text-sm text-warn" role="status">
             ⚠ {form.kcal} kcal no cuadran con los macros (≈ {kcalCalc} kcal por Atwater). El alimento quedará
             marcado para revisión.
+          </p>
+        )}
+        {implausible && (
+          <p className="text-sm text-warn" role="status">
+            ⚠ Los valores no son físicamente plausibles para 100 g. Revisa antes de guardar.
           </p>
         )}
 
@@ -509,6 +708,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
                     value={form.micros[m.key] ?? ''}
                     onChange={(v) => setMicro(m.key, v)}
                     onToggleFav={() => onToggleFav(m.key)}
+                    placeholder={aiZeros.has(m.key) ? '0' : ''}
                   />
                 ))}
               </div>
@@ -598,8 +798,8 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
             className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
           >
             <option value="manual">Manual</option>
+            <option value="etiqueta">Etiqueta</option>
             <option value="gemini">IA (Gemini)</option>
-            {/* legado: hay foods existentes con estas fuentes */}
             <option value="off">Open Food Facts</option>
             <option value="usda">USDA</option>
           </select>
@@ -654,7 +854,7 @@ function NumberField({ label, value, onChange, placeholder }) {
 }
 
 // Micro oculto/favorito: campo numérico con estrella para promoverlo fuera de "Más micros".
-function MicroField({ m, fav, value, onChange, onToggleFav }) {
+function MicroField({ m, fav, value, onChange, onToggleFav, placeholder }) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between">
@@ -674,7 +874,8 @@ function MicroField({ m, fav, value, onChange, onToggleFav }) {
         step="any"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+        placeholder={placeholder}
+        className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-text-3"
       />
     </div>
   );

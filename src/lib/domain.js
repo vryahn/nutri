@@ -79,6 +79,23 @@ export function kcalSuspicious(f) {
   return Math.abs(Number(f.kcal || 0) - expected) > Math.max(20, expected * 0.25);
 }
 
+// Chequeo físico grueso por 100 g: proteína+carbs+grasa+alcohol+agua no pueden
+// superar ~105 g (100 g de porción + margen de redondeo/etiqueta); ningún macro
+// por separado puede superar 100 g; sodio no puede superar la sal pura (~39,300 mg).
+// Se calcula al vuelo (como kcalSuspicious), no se persiste.
+export function macrosImplausible(f) {
+  const p = Number(f.protein_g || 0);
+  const c = Number(f.carbs_g || 0);
+  const g = Number(f.fat_g || 0);
+  const alcohol = Number(f.micros?.alcohol_g || 0);
+  const agua = Number(f.micros?.agua_ml || 0);
+  const sodio = Number(f.micros?.sodio_mg || 0);
+  if (p + c + g + alcohol + agua > 105) return true;
+  if (p > 100 || c > 100 || g > 100) return true;
+  if (sodio > 40000) return true;
+  return false;
+}
+
 // Mueve la etiqueta en `index` una posición (dir -1|1) y devuelve las filas
 // {id, sort_order} a persistir, reindexando 0..n-1. Reindexar (y no hacer swap)
 // corrige las labels creadas por la RPC log_entry, que quedan todas con sort_order 0.
