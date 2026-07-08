@@ -207,7 +207,7 @@ export default function Today() {
   const groups = groupByLabel(foodEntries, labels);
 
   return (
-    <div className="px-4 py-4 flex flex-col gap-4">
+    <div className="px-4 pt-4 pb-20 flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <button onClick={() => setDate(addDaysISO(date, -1))} className="p-2 active:scale-[0.98] transition-transform duration-150" aria-label="Día anterior">
           <ChevronLeft size={22} />
