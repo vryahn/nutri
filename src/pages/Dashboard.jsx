@@ -3,6 +3,7 @@ import { ComposedChart, Bar, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianG
 import { supabase } from '../lib/supabase.js';
 import {
   MICROS,
+  MICROS_DEFAULT,
   todayISO,
   addDaysISO,
   resolveTarget,
@@ -38,6 +39,7 @@ export default function Dashboard() {
   const [customEnd, setCustomEnd] = useState(todayISO());
   const [dailyTotals, setDailyTotals] = useState([]);
   const [targets, setTargets] = useState([]);
+  const [favs, setFavs] = useState([]); // prefs.data.fav_micros
   const [loading, setLoading] = useState(true);
 
   const today = todayISO();
@@ -51,12 +53,14 @@ export default function Dashboard() {
 
   async function load() {
     setLoading(true);
-    const [{ data: dt }, { data: tg }] = await Promise.all([
+    const [{ data: dt }, { data: tg }, { data: pf }] = await Promise.all([
       supabase.from('daily_totals').select('*').gte('day', start).lte('day', end),
       supabase.from('targets').select('*'),
+      supabase.from('prefs').select('data').maybeSingle(),
     ]);
     setDailyTotals(dt || []);
     setTargets(tg || []);
+    setFavs(pf?.data?.fav_micros || []);
     setLoading(false);
   }
 
@@ -245,42 +249,73 @@ export default function Dashboard() {
         </section>
       )}
 
-      <section className="rounded-2xl bg-surface border border-border p-4">
-        <p className="text-sm text-text-3 mb-3">Micros</p>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-text-3 text-left">
-              <th className="font-normal pb-2">Nutriente</th>
-              <th className="font-normal pb-2 text-right">Consumido</th>
-              <th className="font-normal pb-2 text-right">Objetivo</th>
-              <th className="font-normal pb-2 text-right">%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {/* el agua tiene su propia sección arriba, no va en micros */}
-            {MICROS.filter((m) => m.key !== 'agua_ml').map((m) => {
-              const c = microsConsumido[m.key] || 0;
-              const o = microsObjetivo[m.key] || 0;
-              const pct = o > 0 ? Math.round((c / o) * 100) : null;
-              const sodiumDanger = m.key === 'sodio_mg' && sodiumIsLow(avgSodio, diasRegistrados > 0);
-              return (
-                <tr key={m.key} className="border-t border-border">
-                  <td className="py-2">{m.label}</td>
-                  <td className={`py-2 text-right font-mono tabular-nums ${sodiumDanger ? 'text-danger' : ''}`}>
-                    {Math.round(c * 10) / 10} {m.unit}
-                  </td>
-                  <td className="py-2 text-right font-mono tabular-nums text-text-2">{o ? `${Math.round(o * 10) / 10} ${m.unit}` : '–'}</td>
-                  <td className="py-2 text-right font-mono tabular-nums text-text-2">{pct != null ? `${pct}%` : '–'}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {sodiumIsLow(avgSodio, diasRegistrados > 0) && (
-          <p className="mt-3 text-sm text-danger">⚠ sodio promedio &lt; {SODIUM_FLOOR_MG} mg</p>
-        )}
-      </section>
+      <MicrosTable
+        favs={favs}
+        microsConsumido={microsConsumido}
+        microsObjetivo={microsObjetivo}
+        avgSodio={avgSodio}
+        diasRegistrados={diasRegistrados}
+      />
     </div>
+  );
+}
+
+// Visibles: los MICROS_DEFAULT primeros + favoritos (prefs). El resto solo si
+// tienen dato consumido u objetivo, plegados en "Más micros". El agua nunca
+// va aquí: tiene su propia sección arriba.
+function MicrosTable({ favs, microsConsumido, microsObjetivo, avgSodio, diasRegistrados }) {
+  const visible = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favs.includes(m.key)) && m.key !== 'agua_ml');
+  const hidden = MICROS.filter(
+    (m, i) =>
+      i >= MICROS_DEFAULT &&
+      !favs.includes(m.key) &&
+      m.key !== 'agua_ml' &&
+      ((microsConsumido[m.key] || 0) > 0 || (microsObjetivo[m.key] || 0) > 0)
+  );
+
+  const renderRow = (m) => {
+    const c = microsConsumido[m.key] || 0;
+    const o = microsObjetivo[m.key] || 0;
+    const pct = o > 0 ? Math.round((c / o) * 100) : null;
+    const sodiumDanger = m.key === 'sodio_mg' && sodiumIsLow(avgSodio, diasRegistrados > 0);
+    return (
+      <tr key={m.key} className="border-t border-border">
+        <td className="py-2">{m.label}</td>
+        <td className={`py-2 text-right font-mono tabular-nums ${sodiumDanger ? 'text-danger' : ''}`}>
+          {Math.round(c * 10) / 10} {m.unit}
+        </td>
+        <td className="py-2 text-right font-mono tabular-nums text-text-2">{o ? `${Math.round(o * 10) / 10} ${m.unit}` : '–'}</td>
+        <td className="py-2 text-right font-mono tabular-nums text-text-2">{pct != null ? `${pct}%` : '–'}</td>
+      </tr>
+    );
+  };
+
+  return (
+    <section className="rounded-2xl bg-surface border border-border p-4">
+      <p className="text-sm text-text-3 mb-3">Micros</p>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-text-3 text-left">
+            <th className="font-normal pb-2">Nutriente</th>
+            <th className="font-normal pb-2 text-right">Consumido</th>
+            <th className="font-normal pb-2 text-right">Objetivo</th>
+            <th className="font-normal pb-2 text-right">%</th>
+          </tr>
+        </thead>
+        <tbody>{visible.map(renderRow)}</tbody>
+      </table>
+      {hidden.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-sm text-text-2 py-2">Más micros ({hidden.length})</summary>
+          <table className="w-full text-sm">
+            <tbody>{hidden.map(renderRow)}</tbody>
+          </table>
+        </details>
+      )}
+      {sodiumIsLow(avgSodio, diasRegistrados > 0) && (
+        <p className="mt-3 text-sm text-danger">⚠ sodio promedio &lt; {SODIUM_FLOOR_MG} mg</p>
+      )}
+    </section>
   );
 }
 

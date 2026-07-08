@@ -132,7 +132,9 @@ Operadores básicos sobre cualquier columna: `eq.` `gte.` `lte.` `ilike.`. Modif
 
 ## Playbooks para agentes (IA vía API)
 
-Claude (u otra IA) opera con las credenciales del usuario vía el password grant de arriba — RLS aplica solo, así que un agente solo puede escribir lo que su usuario podría. Las claves válidas del jsonb `micros` son exactamente las de `MICROS` en `src/lib/domain.js`: `grasa_sat_g, grasa_trans_g, azucar_g, azucar_anadido_g, fibra_g, sodio_mg, potasio_mg, magnesio_mg, calcio_mg, hierro_mg, agua_ml, alcohol_g` (valores **por 100 g**, siempre).
+Claude (u otra IA) opera con las credenciales del usuario vía el password grant de arriba — RLS aplica solo, así que un agente solo puede escribir lo que su usuario podría. Las claves válidas del jsonb `micros` son exactamente las de `MICROS` en `src/lib/domain.js` (38 claves; valores **por 100 g**, siempre): las básicas `grasa_sat_g, grasa_trans_g, azucar_g, azucar_anadido_g, fibra_g, sodio_mg, potasio_mg, magnesio_mg, calcio_mg, hierro_mg, agua_ml, alcohol_g` más colesterol, vitaminas (`vit_a_mcg … vit_b12_mcg, colina_mg`), minerales (`zinc_mg, fosforo_mg, selenio_mcg, cobre_mg, manganeso_mg, yodo_mcg, cromo_mcg, molibdeno_mcg`) y antioxidantes (`beta_caroteno_mcg, licopeno_mcg, luteina_zeaxantina_mcg`) — consulta el archivo para la lista exacta con unidades.
+
+Campos extra de `foods`: `portions` (jsonb `[{"name":"vaso","grams":247}]`, chips de cantidad al registrar) y `density_g_ml` (numeric, solo líquidos: la UI permite capturar ml y los convierte a gramos). Auditoría de coherencia kcal↔macros: un alimento "requiere revisión" cuando `|kcal − (4·protein_g + 4·carbs_g + 9·fat_g + 7·alcohol_g)| > max(20, 25 %)` — mismo criterio que `kcalSuspicious` en `domain.js`; un agente puede auditar el catálogo con un simple `GET /rest/v1/foods` y esa fórmula.
 
 ### Importar alimentos en lote
 

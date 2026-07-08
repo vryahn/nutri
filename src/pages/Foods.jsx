@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Plus, ChevronLeft, Search, Sparkles, ImagePlus, X } from 'lucide-react';
+import { Plus, ChevronLeft, Search, Sparkles, ImagePlus, X, Star, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { MICROS, MICROS_DEFAULT, round } from '../lib/domain.js';
+import { MICROS, MICROS_DEFAULT, round, kcalFromMacros, kcalSuspicious } from '../lib/domain.js';
 
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY;
 
-const EMPTY_FOOD = { name: '', brand: '', kcal: '', protein_g: '', carbs_g: '', fat_g: '', micros: {}, source: 'manual' };
+const EMPTY_FOOD = {
+  name: '', brand: '', kcal: '', protein_g: '', carbs_g: '', fat_g: '',
+  micros: {}, portions: [], density_g_ml: '', source: 'manual',
+};
 
 export default function Foods() {
   const [foods, setFoods] = useState([]);
@@ -13,10 +16,32 @@ export default function Foods() {
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState(null); // null = list view, object = form view
   const [toast, setToast] = useState('');
+  const [userId, setUserId] = useState(null);
+  const [favs, setFavs] = useState([]); // prefs.data.fav_micros: micros promovidos fuera de "Más micros"
 
   useEffect(() => {
     load();
   }, [query]);
+
+  useEffect(() => {
+    loadPrefs();
+  }, []);
+
+  async function loadPrefs() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    setUserId(session.user.id);
+    const { data } = await supabase.from('prefs').select('data').maybeSingle();
+    if (data?.data?.fav_micros) setFavs(data.data.fav_micros);
+  }
+
+  async function toggleFav(key) {
+    const next = favs.includes(key) ? favs.filter((k) => k !== key) : [...favs, key];
+    setFavs(next);
+    // merge sobre data existente para no pisar water_glass_ml y demás prefs
+    const { data } = await supabase.from('prefs').select('data').maybeSingle();
+    await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), fav_micros: next } });
+  }
 
   async function load() {
     setLoading(true);
@@ -41,6 +66,10 @@ export default function Foods() {
       carbs_g: Number(food.carbs_g) || 0,
       fat_g: Number(food.fat_g) || 0,
       micros: food.micros,
+      portions: (food.portions || [])
+        .filter((p) => p.name.trim() && Number(p.grams) > 0)
+        .map((p) => ({ name: p.name.trim(), grams: Number(p.grams) })),
+      density_g_ml: Number(food.density_g_ml) > 0 ? Number(food.density_g_ml) : null,
       source: food.source,
     };
     const { error } = food.id
@@ -72,6 +101,8 @@ export default function Foods() {
     return (
       <FoodForm
         food={editing}
+        favs={favs}
+        onToggleFav={toggleFav}
         onCancel={() => setEditing(null)}
         onSave={handleSave}
         onDelete={editing.id ? () => handleDelete(editing.id) : null}
@@ -120,9 +151,18 @@ export default function Foods() {
             onClick={() => setEditing(f)}
             className="text-left rounded-2xl bg-surface border border-border p-4 active:scale-[0.98] transition-transform duration-150"
           >
-            <div className="flex justify-between items-baseline">
-              <span className="font-medium">{f.name}</span>
-              <span className="font-mono tabular-nums text-text-2 text-sm">{f.kcal} kcal</span>
+            <div className="flex justify-between items-baseline gap-2">
+              <span className="font-medium">
+                {f.name}
+                {kcalSuspicious(f) && (
+                  <AlertTriangle
+                    size={14}
+                    className="inline ml-1.5 -mt-0.5 text-warn"
+                    aria-label="Kcal no cuadran con los macros, requiere revisión"
+                  />
+                )}
+              </span>
+              <span className="font-mono tabular-nums text-text-2 text-sm shrink-0">{f.kcal} kcal</span>
             </div>
             {f.brand && <span className="text-sm text-text-3">{f.brand}</span>}
           </button>
@@ -151,7 +191,12 @@ export default function Foods() {
   );
 }
 
-const GEMINI_PROMPT = `Eres un asistente de nutrición. Estima la información nutrimental de un alimento, producto o platillo y devuélvela SIEMPRE por 100 gramos de porción comestible. Prioriza productos y platillos comunes en México (marcas y preparaciones mexicanas). Si no hay etiqueta, basa la estimación en datos tipo USDA FoodData Central. Si la imagen es una etiqueta nutrimental, lee los valores declarados y normalízalos a 100 g usando el tamaño de porción declarado (p. ej. porción de 30 g → multiplica cada valor por 100/30). Si la imagen es un platillo, estima a partir de los ingredientes visibles y su proporción. Unidades: kcal en kcal; protein_g, carbs_g, fat_g, grasa_sat_g, grasa_trans_g, azucar_g, azucar_anadido_g, fibra_g y alcohol_g en gramos; sodio_mg, potasio_mg, magnesio_mg, calcio_mg y hierro_mg en miligramos; agua_ml en mililitros. Omite (null) los micros que no puedas estimar con confianza razonable; no inventes. "name" corto en español; "brand" solo si es identificable.`;
+// Los micros visibles (los 8 por defecto + favoritos del usuario) son obligatorios
+// para Gemini: sin dato fiable → 0. Los ocultos solo si hay dato fiable → null si no.
+function geminiPrompt(requiredMicroKeys) {
+  const units = MICROS.map((m) => `${m.key} (${m.unit})`).join(', ');
+  return `Eres un asistente de nutrición. Estima la información nutrimental de un alimento, producto o platillo y devuélvela SIEMPRE por 100 gramos de porción comestible. Prioriza productos y platillos comunes en México (marcas y preparaciones mexicanas). Si no hay etiqueta, basa la estimación en datos tipo USDA FoodData Central. Si la imagen es una etiqueta nutrimental, lee los valores declarados y normalízalos a 100 g usando el tamaño de porción declarado (p. ej. porción de 30 g → multiplica cada valor por 100/30). Si la imagen es un platillo, estima a partir de los ingredientes visibles y su proporción. Unidades: kcal en kcal; protein_g, carbs_g y fat_g en gramos; micros: ${units}. OBLIGATORIOS (si no encuentras dato fiable, devuelve 0, nunca null): kcal, protein_g, carbs_g, fat_g y los micros ${requiredMicroKeys.join(', ')}. El resto de micros: devuélvelos solo si tienes dato fiable de etiqueta o base tipo USDA; si no, null — no inventes ni extrapoles. Si el alimento es un líquido o bebida, estima density_g_ml (densidad en g/ml, p. ej. agua 1.0, leche 1.03, aceite 0.92); si no es líquido, null. "name" corto en español; "brand" solo si es identificable.`;
+}
 
 const GEMINI_SCHEMA = {
   type: 'OBJECT',
@@ -162,6 +207,7 @@ const GEMINI_SCHEMA = {
     protein_g: { type: 'NUMBER' },
     carbs_g: { type: 'NUMBER' },
     fat_g: { type: 'NUMBER' },
+    density_g_ml: { type: 'NUMBER', nullable: true },
     micros: {
       type: 'OBJECT',
       properties: Object.fromEntries(MICROS.map((m) => [m.key, { type: 'NUMBER', nullable: true }])),
@@ -181,7 +227,8 @@ async function toJpegBase64(file, maxSide = 1024) {
   return canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
 }
 
-async function estimateFood(text, imageFile) {
+async function estimateFood(text, imageFile, favs) {
+  const requiredKeys = MICROS.filter((m, i) => i < MICROS_DEFAULT || favs.includes(m.key)).map((m) => m.key);
   const parts = [{ text: text.trim() || 'Analiza la imagen.' }];
   if (imageFile) {
     parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(imageFile) } });
@@ -190,7 +237,7 @@ async function estimateFood(text, imageFile) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: GEMINI_PROMPT }] },
+      systemInstruction: { parts: [{ text: geminiPrompt(requiredKeys) }] },
       contents: [{ parts }],
       generationConfig: { response_mime_type: 'application/json', response_schema: GEMINI_SCHEMA },
     }),
@@ -198,9 +245,12 @@ async function estimateFood(text, imageFile) {
   if (!res.ok) throw new Error(`Gemini ${res.status}`);
   const data = await res.json();
   const out = JSON.parse(data.candidates[0].content.parts[0].text);
-  const micros = Object.fromEntries(
-    Object.entries(out.micros || {}).filter(([k, v]) => v != null && MICROS.some((m) => m.key === k))
-  );
+  const micros = {};
+  for (const m of MICROS) {
+    const v = out.micros?.[m.key];
+    if (v != null) micros[m.key] = v;
+    else if (requiredKeys.includes(m.key)) micros[m.key] = 0;
+  }
   return {
     name: out.name || '',
     brand: out.brand || '',
@@ -209,15 +259,17 @@ async function estimateFood(text, imageFile) {
     carbs_g: out.carbs_g ?? '',
     fat_g: out.fat_g ?? '',
     micros,
+    density_g_ml: Number(out.density_g_ml) > 0 ? out.density_g_ml : '',
     source: 'gemini',
   };
 }
 
-function FoodForm({ food, onCancel, onSave, onDelete }) {
-  const [form, setForm] = useState(food);
+function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
+  const [form, setForm] = useState({ ...EMPTY_FOOD, ...food, density_g_ml: food.density_g_ml ?? '', portions: food.portions || [] });
   const [basis, setBasis] = useState('100'); // gramos a los que refieren los valores capturados
 
   // La DB siempre guarda por 100 g: si el usuario capturó por otra base, se escala al guardar.
+  // Porciones y densidad son absolutas, no se escalan.
   function normalizeTo100(f) {
     const b = Number(basis);
     if (!b || b <= 0 || b === 100) return f;
@@ -246,7 +298,7 @@ function FoodForm({ food, onCancel, onSave, onDelete }) {
     setAiLoading(true);
     setAiError('');
     try {
-      const estimated = await estimateFood(aiText, aiFile);
+      const estimated = await estimateFood(aiText, aiFile, favs);
       setForm((f) => ({ ...f, ...estimated }));
       setBasis('100'); // Gemini devuelve por 100 g
     } catch {
@@ -263,6 +315,15 @@ function FoodForm({ food, onCancel, onSave, onDelete }) {
       return { ...f, micros };
     });
   }
+
+  function setPortion(index, patch) {
+    setForm((f) => ({ ...f, portions: f.portions.map((p, i) => (i === index ? { ...p, ...patch } : p)) }));
+  }
+
+  const kcalCalc = kcalFromMacros(form);
+  const hasMacros = form.protein_g !== '' || form.carbs_g !== '' || form.fat_g !== '';
+  const suspicious = form.kcal !== '' && hasMacros && kcalSuspicious(form);
+  const hiddenMicros = MICROS.slice(MICROS_DEFAULT);
 
   return (
     <div className="px-4 py-4 flex flex-col gap-4">
@@ -323,7 +384,8 @@ function FoodForm({ food, onCancel, onSave, onDelete }) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          onSave(normalizeTo100(form));
+          // kcal vacío → se guarda el cálculo por macros (el placeholder que ve el usuario)
+          onSave(normalizeTo100({ ...form, kcal: form.kcal === '' ? kcalCalc : form.kcal }));
         }}
         className="flex flex-col gap-4"
       >
@@ -362,7 +424,12 @@ function FoodForm({ food, onCancel, onSave, onDelete }) {
           )}
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <NumberField label="Kcal" value={form.kcal} onChange={(v) => setField('kcal', v)} />
+          <NumberField
+            label="Kcal"
+            value={form.kcal}
+            onChange={(v) => setField('kcal', v)}
+            placeholder={hasMacros ? `≈ ${kcalCalc}` : ''}
+          />
           <NumberField label="Proteína (g)" value={form.protein_g} onChange={(v) => setField('protein_g', v)} />
           <NumberField label="Carbs (g)" value={form.carbs_g} onChange={(v) => setField('carbs_g', v)} />
           <NumberField label="Grasa (g)" value={form.fat_g} onChange={(v) => setField('fat_g', v)} />
@@ -374,21 +441,99 @@ function FoodForm({ food, onCancel, onSave, onDelete }) {
               onChange={(v) => setMicro(m.key, v)}
             />
           ))}
+          {hiddenMicros.filter((m) => favs.includes(m.key)).map((m) => (
+            <MicroField
+              key={m.key}
+              m={m}
+              fav
+              value={form.micros[m.key] ?? ''}
+              onChange={(v) => setMicro(m.key, v)}
+              onToggleFav={() => onToggleFav(m.key)}
+            />
+          ))}
         </div>
+
+        {form.kcal === '' && hasMacros && (
+          <p className="text-xs text-text-3">Si dejas Kcal vacío, se guardará el cálculo por macros (≈ {kcalCalc}).</p>
+        )}
+        {suspicious && (
+          <p className="text-sm text-warn" role="status">
+            ⚠ {form.kcal} kcal no cuadran con los macros (≈ {kcalCalc} kcal por Atwater). El alimento quedará
+            marcado para revisión.
+          </p>
+        )}
 
         <details className="rounded-xl bg-surface-2 border border-border px-3 py-2">
           <summary className="cursor-pointer text-sm text-text-2 py-1">Más micros (opcional)</summary>
+          <p className="text-xs text-text-3 pt-2">★ = favorito: aparece arriba junto a los principales.</p>
           <div className="grid grid-cols-2 gap-3 pt-3">
-            {MICROS.slice(MICROS_DEFAULT).map((m) => (
-              <NumberField
+            {hiddenMicros.filter((m) => !favs.includes(m.key)).map((m) => (
+              <MicroField
                 key={m.key}
-                label={`${m.label} (${m.unit})`}
+                m={m}
+                fav={false}
                 value={form.micros[m.key] ?? ''}
                 onChange={(v) => setMicro(m.key, v)}
+                onToggleFav={() => onToggleFav(m.key)}
               />
             ))}
           </div>
         </details>
+
+        <Field label="Densidad (g/ml) — solo líquidos">
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="any"
+            value={form.density_g_ml}
+            onChange={(e) => setField('density_g_ml', e.target.value)}
+            placeholder="p. ej. 1.0 agua · 1.03 leche · 0.92 aceite"
+            className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+          <p className="text-xs text-text-3">Con densidad, al registrar podrás capturar en ml y se convierte a gramos.</p>
+        </Field>
+
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-text-2">Porciones (opcional)</p>
+          {form.portions.map((p, i) => (
+            <div key={i} className="flex gap-2">
+              <input
+                value={p.name}
+                onChange={(e) => setPortion(i, { name: e.target.value })}
+                placeholder="vaso, cucharada, rebanada…"
+                className="flex-1 min-w-0 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                aria-label={`Nombre de la porción ${i + 1}`}
+              />
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="any"
+                value={p.grams}
+                onChange={(e) => setPortion(i, { grams: e.target.value })}
+                placeholder="g"
+                className="w-24 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+                aria-label={`Gramos de la porción ${i + 1}`}
+              />
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, portions: f.portions.filter((_, j) => j !== i) }))}
+                className="min-w-[44px] min-h-[44px] rounded-xl border border-border flex items-center justify-center text-text-2 active:scale-[0.98] transition-transform duration-150"
+                aria-label={`Quitar porción ${i + 1}`}
+              >
+                <X size={18} />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => setForm((f) => ({ ...f, portions: [...f.portions, { name: '', grams: '' }] }))}
+            className="min-h-[44px] rounded-xl border border-border text-text-2 active:scale-[0.98] transition-transform duration-150"
+          >
+            + Añadir porción
+          </button>
+        </div>
 
         <Field label="Fuente">
           <select
@@ -436,7 +581,7 @@ function Field({ label, required, children }) {
   );
 }
 
-function NumberField({ label, value, onChange }) {
+function NumberField({ label, value, onChange, placeholder }) {
   return (
     <Field label={label}>
       <input
@@ -445,8 +590,36 @@ function NumberField({ label, value, onChange }) {
         step="any"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+        placeholder={placeholder}
+        className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-text-3"
       />
     </Field>
+  );
+}
+
+// Micro oculto/favorito: campo numérico con estrella para promoverlo fuera de "Más micros".
+function MicroField({ m, fav, value, onChange, onToggleFav }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <label className="text-sm text-text-2 truncate">{m.label} ({m.unit})</label>
+        <button
+          type="button"
+          onClick={onToggleFav}
+          className="p-3 -my-3 -mr-2 shrink-0 active:scale-[0.98] transition-transform duration-150"
+          aria-label={fav ? `Quitar ${m.label} de favoritos` : `Marcar ${m.label} como favorito`}
+        >
+          <Star size={16} className={fav ? 'text-accent' : 'text-text-3'} fill={fav ? 'currentColor' : 'none'} />
+        </button>
+      </div>
+      <input
+        type="number"
+        inputMode="decimal"
+        step="any"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+      />
+    </div>
   );
 }

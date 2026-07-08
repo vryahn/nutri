@@ -15,7 +15,7 @@ App personal de registro nutricional (tipo Cronometer, simple) para 2 usuarios. 
 
 ```
 supabase/migration.sql   # migración inicial 000 (YA aplicada en producción)
-supabase/migrations/     # migraciones incrementales (001 = prefs + targets.label, aplicada)
+supabase/migrations/     # migraciones incrementales (001 prefs+targets.label, 002 foods.portions+density_g_ml — ambas aplicadas)
 src/lib/supabase.js      # createClient, schema 'nutri'
 src/lib/domain.js        # MICROS, resolución de targets, adherencia, fórmula de recetas, reorderLabels
 src/pages/               # Login, Today, Foods, Recipes, Targets, Dashboard (una por tab)
@@ -26,7 +26,10 @@ src/App.jsx              # router, guard de sesión, tab bar
 
 Invariantes de dominio:
 - Todo valor nutricional se almacena **por 100 g**; cantidades siempre en gramos.
-- Micros = jsonb con claves EXACTAS de la constante `MICROS` (claves libres fragmentarían las sumas).
+- Micros = jsonb con claves EXACTAS de la constante `MICROS` (claves libres fragmentarían las sumas). Son 38: los primeros `MICROS_DEFAULT` (8) siempre visibles; el resto oculto salvo favoritos del usuario (`prefs.data.fav_micros`), que se promueven en FoodForm y Dashboard.
+- Kcal↔macros: `kcalFromMacros` (Atwater 4/4/9 + alcohol 7) es el placeholder del campo Kcal y su valor por defecto si se guarda vacío; `kcalSuspicious` (tolerancia max(20 kcal, 25 %)) pinta ⚠ "requiere revisión" en lista y formulario. Se calcula al vuelo, NO se persiste — la auditoría retroactiva es gratis.
+- `foods.portions` (jsonb `[{name, grams}]`) y `foods.density_g_ml`: porciones custom (chips que SUMAN gramos al registrar) y densidad para líquidos (toggle g/ml en las hojas de Hoy; en la DB siempre entran gramos). Son absolutas: no se escalan con la base "valores por N g" del formulario.
+- Gemini: los micros visibles (8 default + favoritos) son OBLIGATORIOS en la respuesta (sin dato fiable → 0); los ocultos solo con dato fiable (si no, null y se omiten). También estima `density_g_ml` para líquidos.
 - Los nutrientes de registros se calculan siempre vía las vistas SQL (`entry_nutrients`, `daily_totals`, `recipe_per_100g`) — nunca se copian valores.
 - **`computeRecipePer100g` en `domain.js` replica la vista `recipe_per_100g`. Si cambias una, cambia la otra.** Caso canónico de verificación: 100 g de A + 200 g de B con peso cocido 250 → por 100 g = (A + 2B) / 2.5.
 - Resolución de target para fecha F: fila `day=F` si existe; si no, fila `dow=weekday(F)` con mayor `valid_from ≤ F`. `resolveTarget` en `domain.js` la implementa; Today y Dashboard la usan.
@@ -42,10 +45,10 @@ Invariantes de dominio:
 
 ## Migraciones de base de datos
 
-No hay Supabase CLI vinculado. Flujo:
+No hay Supabase CLI vinculado, pero sí conector MCP de Supabase (proyecto prod: `shzoiqbahfmfszjsrkzy`). Flujo:
 1. Crear `supabase/migrations/NNN_descripcion.sql` (numerado incremental; `migration.sql` de la raíz es la 000, no la toques).
-2. El usuario la pega y corre en Supabase → SQL Editor.
-3. Verificar por API REST con curl antes de dar la fase por cerrada.
+2. Aplicarla con `apply_migration` del MCP (o, sin MCP, el usuario la pega en Supabase → SQL Editor).
+3. Verificar con SQL/API REST antes de dar la fase por cerrada.
 Recordar: vistas con `security_invoker = true`; nuevas tablas necesitan RLS + policies + estar cubiertas por los grants existentes del esquema `nutri`.
 
 ## Deploy y CI
@@ -62,6 +65,7 @@ Recordar: vistas con `security_invoker = true`; nuevas tablas necesitan RLS + po
 - El servidor corre **Postgres 17**; Ubuntu trae pg_dump 16 → backup.yml instala `postgresql-client-17` vía repo PGDG.
 - Ícono PWA: SVG para el manifest, pero `apple-touch-icon.png` raster es obligatorio (iOS no soporta SVG ahí). Excepción deliberada a la regla "nada de logos raster" del spec.
 - API REST del esquema: headers `Accept-Profile: nutri` (lecturas) / `Content-Profile: nutri` (escrituras) obligatorios. Ejemplos curl completos en el README.
+- Los `npm warn deprecated` de glob/source-map venían de `workbox-build` (pineados upstream): se resuelven con `overrides` en package.json (glob 13, source-map 0.7.6). `vite build` ejercita workbox al generar el SW, así que un build limpio valida los overrides. Recharts se migró a v3 sin cambios de código.
 - Gemini ("Estimar con IA" en Alimentos): key client-side `VITE_GEMINI_KEY` (AI Studio free tier SIN billing — queda visible en el bundle; riesgo aceptado = agotar cuota, no facturación). El request usa `response_schema` para JSON estructurado por 100 g y la foto se comprime con canvas a 1024 px antes de mandarla inline. `foods.source` no tiene CHECK: `'gemini'` convive con los legados `'off'`/`'usda'`.
 
 ## Verificación antes de commitear

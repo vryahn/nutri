@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, X, GlassWater, Settings } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { todayISO, addDaysISO, resolveTarget, classifyKcal, classifyFloor, sodiumIsLow, SODIUM_FLOOR_MG, reorderLabels } from '../lib/domain.js';
+import { todayISO, addDaysISO, resolveTarget, classifyKcal, classifyFloor, sodiumIsLow, SODIUM_FLOOR_MG, reorderLabels, round } from '../lib/domain.js';
 
 export default function Today() {
   const [date, setDate] = useState(todayISO());
@@ -483,12 +483,110 @@ function Stat({ label, value, color, target }) {
   );
 }
 
+// Porciones custom y densidad del food seleccionado (para chips y toggle g/ml).
+function useFoodMeta(foodId) {
+  const [meta, setMeta] = useState(null);
+  useEffect(() => {
+    if (!foodId) {
+      setMeta(null);
+      return;
+    }
+    supabase
+      .from('foods')
+      .select('portions, density_g_ml')
+      .eq('id', foodId)
+      .maybeSingle()
+      .then(({ data }) => setMeta(data));
+  }, [foodId]);
+  return meta;
+}
+
+// Cantidad de un registro: siempre reporta GRAMOS via onGrams (la DB solo conoce gramos).
+// Si el food tiene densidad, permite capturar en ml (ml × densidad → g).
+// Cada chip de porción SUMA sus gramos (2 taps de «vaso» = 2 vasos).
+function AmountField({ grams, onGrams, meta }) {
+  const [unit, setUnit] = useState('g');
+  const [ml, setMl] = useState('');
+  const density = Number(meta?.density_g_ml) || 0;
+  const portions = meta?.portions || [];
+
+  function typeAmount(v) {
+    if (unit === 'ml') {
+      setMl(v);
+      onGrams(v === '' ? '' : String(round(Number(v) * density, 1)));
+    } else {
+      onGrams(v);
+    }
+  }
+
+  function switchUnit(u) {
+    if (u === unit) return;
+    setUnit(u);
+    if (u === 'ml') setMl(grams === '' ? '' : String(round(Number(grams) / density, 1)));
+  }
+
+  function addPortion(p) {
+    const g = round((Number(grams) || 0) + Number(p.grams), 1);
+    onGrams(String(g));
+    if (unit === 'ml') setMl(String(round(g / density, 1)));
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <label className="text-sm text-text-2">{unit === 'ml' ? 'Mililitros' : 'Gramos'}</label>
+        {density > 0 && (
+          <div className="flex rounded-lg border border-border overflow-hidden text-sm">
+            {['g', 'ml'].map((u) => (
+              <button
+                type="button"
+                key={u}
+                onClick={() => switchUnit(u)}
+                className={`px-4 py-1.5 ${unit === u ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2'}`}
+              >
+                {u}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <input
+        type="number"
+        inputMode="decimal"
+        step="any"
+        required
+        value={unit === 'ml' ? ml : grams}
+        onChange={(e) => typeAmount(e.target.value)}
+        className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+      />
+      {unit === 'ml' && grams !== '' && (
+        <p className="text-xs text-text-3 font-mono tabular-nums">≈ {grams} g (densidad {density} g/ml)</p>
+      )}
+      {portions.length > 0 && (
+        <div className="flex flex-wrap gap-2 pt-1">
+          {portions.map((p) => (
+            <button
+              type="button"
+              key={p.name}
+              onClick={() => addPortion(p)}
+              className="px-3 py-2 rounded-full bg-surface-2 border border-border text-sm active:scale-[0.98] transition-transform duration-150"
+            >
+              + {p.name} ({p.grams} g)
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onClose, onAdded }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [selected, setSelected] = useState(null); // { id, name, type }
   const [grams, setGrams] = useState('');
   const [labelId, setLabelId] = useState(initialLabelId || '');
+  const foodMeta = useFoodMeta(selected?.type === 'food' ? selected.id : null);
 
   useEffect(() => {
     if (!query.trim() || selected) {
@@ -578,18 +676,7 @@ function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onCl
 
       {selected && (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm text-text-2">Gramos</label>
-            <input
-              type="number"
-              inputMode="decimal"
-              step="any"
-              required
-              value={grams}
-              onChange={(e) => setGrams(e.target.value)}
-              className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
+          <AmountField grams={grams} onGrams={setGrams} meta={foodMeta} />
 
           <div className="flex flex-col gap-1">
             <label className="text-sm text-text-2">Etiqueta</label>
@@ -622,6 +709,7 @@ function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onCl
 function EditEntrySheet({ entry, labels, onClose, onDelete, onSaved }) {
   const [grams, setGrams] = useState(String(entry.grams));
   const [labelId, setLabelId] = useState(entry.meal_label_id || '');
+  const foodMeta = useFoodMeta(entry.food_id);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -635,18 +723,7 @@ function EditEntrySheet({ entry, labels, onClose, onDelete, onSaved }) {
   return (
     <Sheet title={entry.item} onClose={onClose}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <label className="text-sm text-text-2">Gramos</label>
-          <input
-            type="number"
-            inputMode="decimal"
-            step="any"
-            required
-            value={grams}
-            onChange={(e) => setGrams(e.target.value)}
-            className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-        </div>
+        <AmountField grams={grams} onGrams={setGrams} meta={foodMeta} />
 
         <div className="flex flex-col gap-1">
           <label className="text-sm text-text-2">Etiqueta</label>
