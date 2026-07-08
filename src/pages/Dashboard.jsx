@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react';
 import {
   ComposedChart,
+  AreaChart,
+  Area,
   Bar,
   Line,
-  PieChart,
-  Pie,
   Cell,
+  RadarChart,
+  Radar,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
   ReferenceLine,
+  ReferenceArea,
   ResponsiveContainer,
 } from 'recharts';
 import { supabase } from '../lib/supabase.js';
@@ -27,7 +33,137 @@ import {
   classifyFloor,
   sodiumIsLow,
   SODIUM_FLOOR_MG,
+  round,
+  sum,
+  median,
+  quantile,
+  stddev,
+  cv,
+  olsSlope,
+  bayesAdherence,
+  MIN_DIAS_MEDIANA,
+  MIN_DIAS_STDDEV,
+  MIN_DIAS_TENDENCIA,
+  MIN_DIAS_BAYES,
 } from '../lib/domain.js';
+
+// Calculo homologado del selector (Parte A). 'suma'/'promedio' siempre
+// disponibles con ≥1 día registrado; los avanzados requieren más días.
+const CALC_BASIC = [
+  { key: 'suma', label: 'Suma' },
+  { key: 'promedio', label: 'Promedio' },
+];
+const CALC_ADVANCED = [
+  {
+    key: 'mediana',
+    label: 'Mediana + IQR',
+    desc: 'Tu día típico: la mediana ignora los días atípicos (fiestas, ayunos) que distorsionan el promedio. IQR = P25–P75.',
+    minDias: MIN_DIAS_MEDIANA,
+  },
+  {
+    key: 'stddev',
+    label: 'Desv. estándar + CV',
+    desc: 'Qué tan consistente eres día a día. El CV (%) permite comparar la variabilidad de kcal contra micros de escalas distintas.',
+    minDias: MIN_DIAS_STDDEV,
+  },
+  {
+    key: 'tendencia',
+    label: 'Tendencia',
+    desc: 'Pendiente de regresión lineal simple en unidades/día: ¿tu ingesta sube o baja a lo largo del rango?',
+    minDias: MIN_DIAS_TENDENCIA,
+  },
+  {
+    key: 'bayes',
+    label: 'Adherencia bayesiana',
+    desc: 'Probabilidad de que un día cualquiera cumplas tu objetivo, con intervalo de credibilidad del 95 %. Con pocos días registrados el intervalo es ancho: honesta por diseño.',
+    minDias: MIN_DIAS_BAYES,
+    needsObjetivo: true,
+  },
+];
+const CALC_ALL = [...CALC_BASIC, ...CALC_ADVANCED];
+
+// Motivo (string) por el que una opción de cálculo está deshabilitada, o null si aplica.
+function calcDisabledReason(opt, diasRegistrados, diasConObjetivo) {
+  if (opt.key === 'suma' || opt.key === 'promedio') {
+    return diasRegistrados >= 1 ? null : 'Sin registros en el rango';
+  }
+  if (diasRegistrados < opt.minDias) return `Requiere ≥${opt.minDias} días registrados (tienes ${diasRegistrados})`;
+  if (opt.needsObjetivo && diasConObjetivo < 1) return 'Requiere objetivos en Metas';
+  return null;
+}
+
+// Estadísticos de una métrica (macro o micro) sobre los días registrados del rango.
+function computeMetricStats(chartData, key) {
+  const xs = chartData.filter((d) => d.registrado).map((d) => d.values[key]);
+  const n = xs.length;
+  const total = sum(xs);
+  return {
+    sum: total,
+    avg: n ? total / n : 0,
+    median: n ? median(xs) : null,
+    p25: n ? quantile(xs, 0.25) : null,
+    p75: n ? quantile(xs, 0.75) : null,
+    sd: stddev(xs),
+    cv: cv(xs),
+    slope: olsSlope(xs),
+  };
+}
+
+// Adherencia bayesiana solo está definida para kcal/proteína/sodio (regla 6);
+// el resto de métricas no tiene criterio de éxito y siempre muestra "Sin objetivo".
+function bayesForMetric(chartData, key) {
+  const days = chartData.filter((d) => d.registrado);
+  let applicable;
+  if (key === 'kcal') {
+    applicable = days.filter((d) => d.targetKcal != null).map((d) => classifyKcal(d.values.kcal, d.targetKcal) === 'ok');
+  } else if (key === 'protein_g') {
+    applicable = days.filter((d) => d.proteinFloor != null).map((d) => d.values.protein_g >= d.proteinFloor);
+  } else if (key === 'sodio_mg') {
+    applicable = days.map((d) => d.values.sodio_mg >= SODIUM_FLOOR_MG);
+  } else {
+    return null;
+  }
+  if (!applicable.length) return null;
+  return bayesAdherence(applicable.filter(Boolean).length, applicable.length);
+}
+
+// Formatea el valor de una métrica según el cálculo elegido. unit incluye el
+// espacio inicial (ej. ' mg') o '' si no aplica.
+function formatMetric(calcMode, ms, bayesResult, unit, decimals) {
+  switch (calcMode) {
+    case 'suma':
+      return `${round(ms.sum, decimals)}${unit}`;
+    case 'promedio':
+      return `${round(ms.avg, decimals)}${unit}`;
+    case 'mediana':
+      return ms.median == null ? '–' : `${round(ms.median, decimals)} (${round(ms.p25, decimals)}–${round(ms.p75, decimals)})${unit}`;
+    case 'stddev':
+      return ms.sd == null ? '–' : `${round(ms.sd, decimals)}${unit} (CV ${ms.cv == null ? '–' : round(ms.cv, 0) + '%'})`;
+    case 'tendencia':
+      return ms.slope == null ? '–' : `${ms.slope >= 0 ? '+' : ''}${round(ms.slope, decimals)}${unit}/día`;
+    case 'bayes':
+      return bayesResult ? `${round(bayesResult.mean * 100, 0)}% (${round(bayesResult.lower * 100, 0)}–${round(bayesResult.upper * 100, 0)}%)` : 'Sin objetivo';
+    default:
+      return '';
+  }
+}
+
+const CALC_TITLES = {
+  suma: 'Suma del rango',
+  promedio: 'Promedio diario (÷ días registrados)',
+  mediana: 'Mediana (P25–P75)',
+  stddev: 'Desviación estándar (CV)',
+  tendencia: 'Tendencia (unidades/día)',
+  bayes: 'Adherencia bayesiana (IC 95%)',
+};
+const CALC_HEADERS = {
+  suma: 'Suma',
+  promedio: 'Promedio',
+  mediana: 'Mediana (IQR)',
+  stddev: 'σ (CV%)',
+  tendencia: 'Tendencia',
+  bayes: 'Adherencia',
+};
 
 const PRESETS = [
   { key: 'hoy', label: 'Hoy', days: 1 },
@@ -59,6 +195,10 @@ function prevRangeOf(start, end) {
   const prevStart = addDaysISO(prevEnd, -(length - 1));
   return { prevStart, prevEnd };
 }
+
+// Claves de micros a 0 por defecto (un micro ausente del jsonb pesa 0);
+// agua_ml se excluye porque tiene su propia sección y no entra al selector.
+const MICROS_ZERO = Object.fromEntries(MICROS.filter((m) => m.key !== 'agua_ml').map((m) => [m.key, 0]));
 
 // Totales/promedios/serie diaria para un rango. Pura: se usa dos veces
 // (rango actual y rango previo para las deltas de las KPI).
@@ -98,15 +238,22 @@ function computeStats(dates, dailyTotals, targets) {
       }
     }
 
+    const protein_g = Number(row?.protein_g || 0);
+    const carbs_g = Number(row?.carbs_g || 0);
+    const fat_g = Number(row?.fat_g || 0);
+
     return {
       day,
       label: day.slice(5),
       kcal: registrado ? kcal : null,
       targetKcal: target?.kcal ?? null,
-      protein: registrado ? Number(row?.protein_g || 0) : null,
+      protein: registrado ? protein_g : null,
       proteinFloor: target?.protein_g ?? null,
       sodio: registrado ? sodio : null,
       registrado,
+      // Serie plana por métrica (macros + micros), para los cálculos avanzados
+      // del selector (Parte A). null si el día no tiene registro.
+      values: registrado ? { kcal, protein_g, carbs_g, fat_g, ...MICROS_ZERO, ...(row?.micros || {}) } : null,
     };
   });
 
@@ -211,6 +358,8 @@ export default function Dashboard() {
   const [topMetric, setTopMetric] = useState('kcal');
   const [csvNotice, setCsvNotice] = useState('');
   const [loading, setLoading] = useState(true);
+  const [calcMode, setCalcMode] = useState('promedio');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const today = todayISO();
   const presetDef = PRESETS.find((p) => p.key === preset);
@@ -280,13 +429,27 @@ export default function Dashboard() {
     URL.revokeObjectURL(url);
   }
 
-  if (loading) return <div className="px-4 py-4 text-text-2">Cargando…</div>;
-
   const dates = datesInRange(start, end);
   const stats = computeStats(dates, dailyTotals, targets);
+  const diasConObjetivo = dates.filter((d) => resolveTarget(targets, d)).length;
+
+  // Si el cálculo activo deja de cumplir su mínimo al cambiar de rango, cae
+  // automáticamente a Promedio (o Suma si tampoco cumple). Se ignora mientras
+  // carga (dailyTotals aún vacío) para no confundir "sin datos todavía" con
+  // "rango sin registros".
+  useEffect(() => {
+    if (loading) return;
+    const opt = CALC_ALL.find((o) => o.key === calcMode);
+    if (calcDisabledReason(opt, stats.diasRegistrados, diasConObjetivo)) {
+      setCalcMode(calcDisabledReason(CALC_BASIC[1], stats.diasRegistrados, diasConObjetivo) ? 'suma' : 'promedio');
+    }
+  }, [loading, calcMode, stats.diasRegistrados, diasConObjetivo]);
+
+  if (loading) return <div className="px-4 py-4 text-text-2">Cargando…</div>;
+
   const { prevStart, prevEnd } = prevRangeOf(start, end);
   const prevStats = computeStats(datesInRange(prevStart, prevEnd), prevDailyTotals, targets);
-  const showDelta = prevStats.diasRegistrados >= 1;
+  const showDelta = prevStats.diasRegistrados >= 1 && (calcMode === 'suma' || calcMode === 'promedio');
 
   const kcalChart = withMovingAverage(stats.chartData);
   const dayInfo = new Map(stats.chartData.map((d) => [d.day, d]));
@@ -295,11 +458,41 @@ export default function Dashboard() {
   const top = topItems(itemRows, waterFoodId, topMetric);
   const maxTop = top.length ? top[0][topMetric] : 0;
 
-  const macroPie = [
-    { name: 'Proteína', value: stats.consumido.protein_g * 4, color: 'var(--d-prot)' },
-    { name: 'Carbs', value: stats.consumido.carbs_g * 4, color: 'var(--d-carb)' },
-    { name: 'Grasa', value: stats.consumido.fat_g * 9, color: 'var(--d-fat)' },
-  ].filter((s) => s.value > 0);
+  const msKcal = computeMetricStats(stats.chartData, 'kcal');
+  const msProtein = computeMetricStats(stats.chartData, 'protein_g');
+  const msCarbs = computeMetricStats(stats.chartData, 'carbs_g');
+  const msFat = computeMetricStats(stats.chartData, 'fat_g');
+  const msSodio = computeMetricStats(stats.chartData, 'sodio_mg');
+  const bayesKcal = calcMode === 'bayes' ? bayesForMetric(stats.chartData, 'kcal') : null;
+  const bayesProtein = calcMode === 'bayes' ? bayesForMetric(stats.chartData, 'protein_g') : null;
+  const bayesSodio = calcMode === 'bayes' ? bayesForMetric(stats.chartData, 'sodio_mg') : null;
+
+  // Streamgraph de macros (kcal por macro, por día); fallback de barra 100%
+  // apilada cuando el rango tiene <3 días con registro.
+  const macroStreamData = stats.chartData.map((d) => ({
+    label: d.label,
+    prot: d.values ? d.values.protein_g * 4 : 0,
+    carb: d.values ? d.values.carbs_g * 4 : 0,
+    fat: d.values ? d.values.fat_g * 9 : 0,
+  }));
+  const macroTotalKcal = stats.consumido.protein_g * 4 + stats.consumido.carbs_g * 4 + stats.consumido.fat_g * 9;
+
+  // Radar "huella nutricional": micros de MICROS_DEFAULT con objetivo > 0,
+  // % del objetivo según Suma-vs-objetivo del rango (fijo, no cambia con el selector).
+  const radarData = MICROS.slice(0, MICROS_DEFAULT)
+    .filter((m) => m.key !== 'agua_ml' && stats.microsObjetivo[m.key] > 0)
+    .map((m) => ({
+      label: m.label,
+      value: Math.min(150, ((stats.microsConsumido[m.key] || 0) / stats.microsObjetivo[m.key]) * 100),
+    }));
+
+  const sodioVals = stats.chartData.map((d) => d.sodio).filter((v) => v != null);
+  const sodioMax = sodioVals.length ? Math.max(...sodioVals, SODIUM_FLOOR_MG) : SODIUM_FLOOR_MG + 1;
+  const sodioMin = sodioVals.length ? Math.min(...sodioVals, SODIUM_FLOOR_MG) : 0;
+  const sodioOffset = sodioMax > sodioMin ? Math.min(1, Math.max(0, (sodioMax - SODIUM_FLOOR_MG) / (sodioMax - sodioMin))) : 0.5;
+
+  const targetDays = stats.chartData.filter((d) => d.targetKcal != null);
+  const avgTargetKcal = targetDays.length ? targetDays.reduce((s, d) => s + d.targetKcal, 0) / targetDays.length : null;
 
   return (
     <div className="px-4 py-4 flex flex-col gap-4">
@@ -352,9 +545,65 @@ export default function Dashboard() {
         </div>
       )}
 
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {CALC_BASIC.map((opt) => {
+          const reason = calcDisabledReason(opt, stats.diasRegistrados, diasConObjetivo);
+          return (
+            <button
+              key={opt.key}
+              disabled={!!reason}
+              onClick={() => setCalcMode(opt.key)}
+              title={reason || ''}
+              className={`px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap active:scale-[0.98] transition-transform duration-150 ${
+                reason
+                  ? 'bg-surface-2 text-text-3 opacity-50 cursor-not-allowed'
+                  : calcMode === opt.key
+                    ? 'bg-accent text-bg font-medium'
+                    : 'bg-surface-2 text-text-2 border border-border'
+              }`}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+        <button
+          onClick={() => setAdvancedOpen((v) => !v)}
+          className={`px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap active:scale-[0.98] transition-transform duration-150 ${
+            CALC_ADVANCED.some((o) => o.key === calcMode) ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
+          }`}
+        >
+          Avanzadas {advancedOpen ? '▴' : '▾'}
+        </button>
+      </div>
+
+      {advancedOpen && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {CALC_ADVANCED.map((opt) => {
+            const reason = calcDisabledReason(opt, stats.diasRegistrados, diasConObjetivo);
+            return (
+              <button
+                key={opt.key}
+                disabled={!!reason}
+                onClick={() => setCalcMode(opt.key)}
+                className={`text-left rounded-2xl border p-3 min-h-[44px] transition-transform duration-150 ${
+                  reason
+                    ? 'bg-surface-2 border-border opacity-50 cursor-not-allowed'
+                    : calcMode === opt.key
+                      ? 'bg-surface-3 border-accent active:scale-[0.98]'
+                      : 'bg-surface border-border active:scale-[0.98]'
+                }`}
+              >
+                <p className="text-sm font-medium">{opt.label}</p>
+                <p className={`text-xs mt-1 ${reason ? 'text-text-3' : 'text-text-2'}`}>{reason || opt.desc}</p>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {csvNotice && <p className="text-sm text-warn">{csvNotice}</p>}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 grid-flow-dense">
         <section className="md:col-span-2 lg:col-span-12 rounded-2xl bg-surface border border-border p-4">
           <div className="flex justify-between items-baseline mb-2">
             <p className="text-sm text-text-3">Agua</p>
@@ -376,33 +625,41 @@ export default function Dashboard() {
         <section className="md:col-span-2 lg:col-span-12 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <KpiCard
             label="Kcal"
-            value={stats.promedio.kcal}
+            display={formatMetric(calcMode, msKcal, bayesKcal, '', 1)}
             delta={showDelta ? pctDelta(stats.promedio.kcal, prevStats.promedio.kcal) : null}
             status={classifyKcal(stats.consumido.kcal, stats.objetivo.kcal)}
+            sparkline={stats.chartData.map((d) => d.kcal)}
+            sparkColor="var(--d-kcal)"
           />
           <KpiCard
             label="Proteína"
-            value={stats.promedio.protein_g}
+            display={formatMetric(calcMode, msProtein, bayesProtein, ' g', 1)}
             delta={showDelta ? pctDelta(stats.promedio.protein_g, prevStats.promedio.protein_g) : null}
             status={classifyFloor(stats.consumido.protein_g, stats.objetivo.protein_g)}
+            sparkline={stats.chartData.map((d) => d.protein)}
+            sparkColor="var(--d-prot)"
           />
           <KpiCard
             label="Carbs"
-            value={stats.promedio.carbs_g}
+            display={formatMetric(calcMode, msCarbs, null, ' g', 1)}
             delta={showDelta ? pctDelta(stats.promedio.carbs_g, prevStats.promedio.carbs_g) : null}
+            sparkline={stats.chartData.map((d) => (d.values ? d.values.carbs_g : null))}
+            sparkColor="var(--d-carb)"
           />
           <KpiCard
             label="Grasa"
-            value={stats.promedio.fat_g}
+            display={formatMetric(calcMode, msFat, null, ' g', 1)}
             delta={showDelta ? pctDelta(stats.promedio.fat_g, prevStats.promedio.fat_g) : null}
+            sparkline={stats.chartData.map((d) => (d.values ? d.values.fat_g : null))}
+            sparkColor="var(--d-fat)"
           />
           <KpiCard
             label="Sodio"
-            value={stats.avgSodio}
-            unit="mg"
-            decimals={0}
+            display={formatMetric(calcMode, msSodio, bayesSodio, ' mg', 0)}
             delta={showDelta ? pctDelta(stats.avgSodio, prevStats.avgSodio) : null}
             status={sodiumIsLow(stats.avgSodio, stats.diasRegistrados > 0) ? 'danger' : null}
+            sparkline={stats.chartData.map((d) => d.sodio)}
+            sparkColor="var(--d-carb)"
           />
           <KpiCard
             label="Días"
@@ -414,12 +671,12 @@ export default function Dashboard() {
         </section>
 
         <section className="md:col-span-2 lg:col-span-12 rounded-2xl bg-surface border border-border p-4">
-          <p className="text-sm text-text-3 mb-2">Promedio diario (÷ días registrados)</p>
+          <p className="text-sm text-text-3 mb-2">{CALC_TITLES[calcMode]}</p>
           <div className="grid grid-cols-4 gap-2 text-center">
-            <Stat label="Kcal" value={stats.promedio.kcal} color="text-d-kcal" />
-            <Stat label="Prot" value={stats.promedio.protein_g} color="text-d-prot" />
-            <Stat label="Carbs" value={stats.promedio.carbs_g} color="text-d-carb" />
-            <Stat label="Grasa" value={stats.promedio.fat_g} color="text-d-fat" />
+            <Stat label="Kcal" display={formatMetric(calcMode, msKcal, bayesKcal, '', 1)} color="text-d-kcal" />
+            <Stat label="Prot" display={formatMetric(calcMode, msProtein, bayesProtein, ' g', 1)} color="text-d-prot" />
+            <Stat label="Carbs" display={formatMetric(calcMode, msCarbs, null, ' g', 1)} color="text-d-carb" />
+            <Stat label="Grasa" display={formatMetric(calcMode, msFat, null, ' g', 1)} color="text-d-fat" />
           </div>
         </section>
 
@@ -427,12 +684,21 @@ export default function Dashboard() {
           <p className="text-sm text-text-3 mb-2">Kcal por día</p>
           <ResponsiveContainer width="100%" height={220}>
             <ComposedChart data={kcalChart}>
+              <defs>
+                <linearGradient id="kcalGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--d-kcal)" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="var(--d-kcal)" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
               <CartesianGrid stroke="var(--border)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
               <YAxis tick={{ fill: 'var(--text-3)', fontSize: 10 }} width={32} />
               <Tooltip contentStyle={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text)' }} />
               <Legend wrapperStyle={{ fontSize: 11, color: 'var(--text-3)' }} />
-              <Bar dataKey="kcal" name="Kcal" fill="var(--d-kcal)" radius={[4, 4, 0, 0]} isAnimationActive={!reducedMotion} />
+              {avgTargetKcal != null && (
+                <ReferenceArea y1={avgTargetKcal * 0.9} y2={avgTargetKcal * 1.1} fill="var(--accent)" fillOpacity={0.08} strokeOpacity={0} />
+              )}
+              <Area type="monotone" dataKey="kcal" name="Kcal" stroke="var(--d-kcal)" strokeWidth={2} fill="url(#kcalGrad)" isAnimationActive={!reducedMotion} />
               {stats.objetivo.kcal > 0 && (
                 <Line dataKey="targetKcal" name="Objetivo" stroke="var(--accent)" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
               )}
@@ -441,29 +707,67 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </section>
 
-        {macroPie.length > 0 && (
-          <section className="lg:col-span-4 rounded-2xl bg-surface border border-border p-4">
-            <p className="text-sm text-text-3 mb-2">Distribución de macros (kcal)</p>
+        <section className="lg:col-span-4 rounded-2xl bg-surface border border-border p-4">
+          <p className="text-sm text-text-3 mb-2">Distribución de macros (kcal)</p>
+          {macroTotalKcal <= 0 ? (
+            <p className="text-sm text-text-2 py-8 text-center">Sin registros en el rango</p>
+          ) : stats.diasRegistrados >= 3 ? (
             <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={macroPie}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={50}
-                  outerRadius={80}
-                  label={(e) => e.name}
-                  isAnimationActive={!reducedMotion}
-                >
-                  {macroPie.map((s) => (
-                    <Cell key={s.name} fill={s.color} />
-                  ))}
-                </Pie>
+              <AreaChart data={macroStreamData} stackOffset="silhouette">
+                <defs>
+                  <linearGradient id="protGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--d-prot)" stopOpacity={0.5} />
+                    <stop offset="95%" stopColor="var(--d-prot)" stopOpacity={0.1} />
+                  </linearGradient>
+                  <linearGradient id="carbGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--d-carb)" stopOpacity={0.5} />
+                    <stop offset="95%" stopColor="var(--d-carb)" stopOpacity={0.1} />
+                  </linearGradient>
+                  <linearGradient id="fatGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--d-fat)" stopOpacity={0.5} />
+                    <stop offset="95%" stopColor="var(--d-fat)" stopOpacity={0.1} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="label" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
+                <YAxis hide />
                 <Tooltip contentStyle={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text)' }} />
-              </PieChart>
+                <Area type="monotone" dataKey="prot" name="Proteína" stackId="1" stroke="var(--d-prot)" fill="url(#protGrad)" isAnimationActive={!reducedMotion} />
+                <Area type="monotone" dataKey="carb" name="Carbs" stackId="1" stroke="var(--d-carb)" fill="url(#carbGrad)" isAnimationActive={!reducedMotion} />
+                <Area type="monotone" dataKey="fat" name="Grasa" stackId="1" stroke="var(--d-fat)" fill="url(#fatGrad)" isAnimationActive={!reducedMotion} />
+              </AreaChart>
             </ResponsiveContainer>
-          </section>
-        )}
+          ) : (
+            <div className="flex flex-col gap-2 py-4">
+              <div className="h-4 rounded-full overflow-hidden flex">
+                <div className="h-full bg-d-prot" style={{ width: `${(stats.consumido.protein_g * 4 * 100) / macroTotalKcal}%` }} />
+                <div className="h-full bg-d-carb" style={{ width: `${(stats.consumido.carbs_g * 4 * 100) / macroTotalKcal}%` }} />
+                <div className="h-full bg-d-fat" style={{ width: `${(stats.consumido.fat_g * 9 * 100) / macroTotalKcal}%` }} />
+              </div>
+              <div className="flex justify-between text-xs text-text-2">
+                <span className="text-d-prot">Prot {Math.round((stats.consumido.protein_g * 4 * 100) / macroTotalKcal)}%</span>
+                <span className="text-d-carb">Carbs {Math.round((stats.consumido.carbs_g * 4 * 100) / macroTotalKcal)}%</span>
+                <span className="text-d-fat">Grasa {Math.round((stats.consumido.fat_g * 9 * 100) / macroTotalKcal)}%</span>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className={`${dates.length > 7 ? 'lg:col-span-6' : 'lg:col-span-12'} rounded-2xl bg-surface border border-border p-4`}>
+          <p className="text-sm text-text-3 mb-3">Huella nutricional (micros vs. objetivo)</p>
+          {radarData.length === 0 ? (
+            <p className="text-sm text-text-2 py-8 text-center">Registra objetivos de micros en Metas</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <RadarChart data={radarData} outerRadius="75%">
+                <PolarGrid stroke="var(--border)" />
+                <PolarAngleAxis dataKey="label" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
+                <PolarRadiusAxis domain={[0, 150]} tick={false} axisLine={false} />
+                <Radar dataKey="value" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.35} isAnimationActive={!reducedMotion} />
+                <Tooltip contentStyle={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+              </RadarChart>
+            </ResponsiveContainer>
+          )}
+        </section>
 
         {dates.length > 7 && (
           <section className="lg:col-span-6 rounded-2xl bg-surface border border-border p-4">
@@ -494,16 +798,26 @@ export default function Dashboard() {
           <p className="text-sm text-text-3 mb-2">Sodio diario vs piso</p>
           <ResponsiveContainer width="100%" height={200}>
             <ComposedChart data={stats.chartData}>
+              <defs>
+                <linearGradient id="sodioGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset={0} stopColor="var(--d-carb)" stopOpacity={0.45} />
+                  <stop offset={sodioOffset} stopColor="var(--d-carb)" stopOpacity={0.45} />
+                  <stop offset={sodioOffset} stopColor="var(--danger)" stopOpacity={0.45} />
+                  <stop offset={1} stopColor="var(--danger)" stopOpacity={0.45} />
+                </linearGradient>
+              </defs>
               <CartesianGrid stroke="var(--border)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
               <YAxis tick={{ fill: 'var(--text-3)', fontSize: 10 }} width={40} />
               <Tooltip contentStyle={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text)' }} />
               <ReferenceLine y={SODIUM_FLOOR_MG} stroke="var(--danger)" strokeDasharray="4 3" />
-              <Line
+              <Area
+                type="monotone"
                 dataKey="sodio"
                 name="Sodio"
                 stroke="var(--d-carb)"
                 strokeWidth={2}
+                fill="url(#sodioGrad)"
                 dot={(props) => {
                   const { cx, cy, payload, index } = props;
                   if (payload.sodio == null) return <g key={`dot-${index}`} />;
@@ -516,7 +830,7 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </section>
 
-        <section className="lg:col-span-6 rounded-2xl bg-surface border border-border p-4">
+        <section className="md:col-span-2 lg:col-span-12 rounded-2xl bg-surface border border-border p-4">
           <div className="flex justify-between items-center mb-3">
             <p className="text-sm text-text-3">Top alimentos</p>
             <div className="flex gap-1">
@@ -566,6 +880,8 @@ export default function Dashboard() {
             microsObjetivo={stats.microsObjetivo}
             avgSodio={stats.avgSodio}
             diasRegistrados={stats.diasRegistrados}
+            chartData={stats.chartData}
+            calcMode={calcMode}
           />
         </div>
       </div>
@@ -578,7 +894,7 @@ function AdherenceHeatmap({ weeks, start, end, dayInfo }) {
     <div className="flex gap-1 overflow-x-auto">
       <div className="grid grid-rows-7 gap-1 text-[10px] text-text-3 pr-1">
         {DOW_SHORT.map((d, i) => (
-          <div key={i} className="h-3 flex items-center">
+          <div key={i} className="h-3.5 flex items-center">
             {d}
           </div>
         ))}
@@ -587,7 +903,7 @@ function AdherenceHeatmap({ weeks, start, end, dayInfo }) {
         {weeks.flatMap((week, wi) =>
           week.map((day, di) => {
             const outOfRange = day < start || day > end;
-            if (outOfRange) return <div key={`${wi}-${di}`} className="w-3 h-3" />;
+            if (outOfRange) return <div key={`${wi}-${di}`} className="w-3.5 h-3.5" />;
             const info = dayInfo.get(day);
             let cls = 'bg-surface-2';
             if (info?.registrado) {
@@ -598,7 +914,7 @@ function AdherenceHeatmap({ weeks, start, end, dayInfo }) {
               <div
                 key={`${wi}-${di}`}
                 title={`${day}: ${info?.kcal != null ? Math.round(info.kcal) : 0} kcal`}
-                className={`w-3 h-3 rounded-sm ${cls}`}
+                className={`w-3.5 h-3.5 rounded ${cls}`}
               />
             );
           })
@@ -611,7 +927,7 @@ function AdherenceHeatmap({ weeks, start, end, dayInfo }) {
 // Visibles: los MICROS_DEFAULT primeros + favoritos (prefs). El resto solo si
 // tienen dato consumido u objetivo, plegados en "Más micros". El agua nunca
 // va aquí: tiene su propia sección arriba.
-function MicrosTable({ favs, microsConsumido, microsObjetivo, avgSodio, diasRegistrados }) {
+function MicrosTable({ favs, microsConsumido, microsObjetivo, avgSodio, diasRegistrados, chartData, calcMode }) {
   const visible = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favs.includes(m.key)) && m.key !== 'agua_ml');
   const hidden = MICROS.filter(
     (m, i) =>
@@ -626,11 +942,14 @@ function MicrosTable({ favs, microsConsumido, microsObjetivo, avgSodio, diasRegi
     const o = microsObjetivo[m.key] || 0;
     const pct = o > 0 ? Math.round((c / o) * 100) : null;
     const sodiumDanger = m.key === 'sodio_mg' && sodiumIsLow(avgSodio, diasRegistrados > 0);
+    const ms = computeMetricStats(chartData, m.key);
+    const bayes = calcMode === 'bayes' ? bayesForMetric(chartData, m.key) : null;
+    const consumidoDisplay = formatMetric(calcMode, ms, bayes, ` ${m.unit}`, 1);
     return (
       <tr key={m.key} className="border-t border-border">
         <td className="py-2">{m.label}</td>
-        <td className={`py-2 text-right font-mono tabular-nums ${sodiumDanger ? 'text-danger' : ''}`}>
-          {Math.round(c * 10) / 10} {m.unit}
+        <td className={`py-2 text-right font-mono tabular-nums ${sodiumDanger ? 'text-danger' : ''} ${consumidoDisplay === 'Sin objetivo' ? 'text-text-3' : ''}`}>
+          {consumidoDisplay}
         </td>
         <td className="py-2 text-right font-mono tabular-nums text-text-2">{o ? `${Math.round(o * 10) / 10} ${m.unit}` : '–'}</td>
         <td className="py-2 text-right font-mono tabular-nums text-text-2">{pct != null ? `${pct}%` : '–'}</td>
@@ -645,7 +964,7 @@ function MicrosTable({ favs, microsConsumido, microsObjetivo, avgSodio, diasRegi
         <thead>
           <tr className="text-text-3 text-left">
             <th className="font-normal pb-2">Nutriente</th>
-            <th className="font-normal pb-2 text-right">Consumido</th>
+            <th className="font-normal pb-2 text-right">{CALC_HEADERS[calcMode]}</th>
             <th className="font-normal pb-2 text-right">Objetivo</th>
             <th className="font-normal pb-2 text-right">%</th>
           </tr>
@@ -676,24 +995,46 @@ function MicrosTable({ favs, microsConsumido, microsObjetivo, avgSodio, diasRegi
   );
 }
 
-function Stat({ label, value, color }) {
+function Stat({ label, value, display, color }) {
   return (
     <div>
-      <p className={`font-mono tabular-nums text-lg ${color}`}>{Math.round(value * 10) / 10}</p>
+      <p className={`font-mono tabular-nums text-sm sm:text-lg whitespace-nowrap ${color}`}>{display ?? Math.round(value * 10) / 10}</p>
       <p className="text-xs text-text-3">{label}</p>
     </div>
   );
 }
 
-function KpiCard({ label, value, delta, status, unit = '', decimals = 1, suffix = '' }) {
+// Mini-sparkline SVG propio (sin Recharts, evita ResponsiveContainers extra).
+// null si hay <2 puntos con dato.
+function Sparkline({ values, color }) {
+  const pts = values.map((v, i) => ({ i, v })).filter((p) => p.v != null);
+  if (pts.length < 2) return null;
+  const w = 100, h = 28;
+  const xs = pts.map((p) => p.i);
+  const ys = pts.map((p) => p.v);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const rangeX = maxX - minX || 1;
+  const rangeY = maxY - minY || 1;
+  const sx = (x) => ((x - minX) / rangeX) * w;
+  const sy = (y) => h - ((y - minY) / rangeY) * h;
+  const line = pts.map((p) => `${sx(p.i)},${sy(p.v)}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-7 mt-1" preserveAspectRatio="none">
+      <polygon points={`0,${h} ${line} ${w},${h}`} fill={color} opacity="0.15" />
+      <polyline points={line} fill="none" stroke={color} strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function KpiCard({ label, value, display, delta, status, unit = '', decimals = 1, suffix = '', sparkline, sparkColor }) {
   const f = 10 ** decimals;
   const color = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' }[status] || 'text-text';
   return (
     <div className="rounded-2xl bg-surface border border-border p-3">
       <p className="text-xs text-text-3">{label}</p>
       <p className={`font-mono tabular-nums text-lg ${color}`}>
-        {Math.round(value * f) / f}
-        {unit ? ` ${unit}` : ''}
+        {display ?? `${Math.round(value * f) / f}${unit ? ` ${unit}` : ''}`}
         {suffix}
       </p>
       {delta != null && (
@@ -702,6 +1043,7 @@ function KpiCard({ label, value, delta, status, unit = '', decimals = 1, suffix 
           {Math.round(delta)}% vs. anterior
         </p>
       )}
+      {sparkline && <Sparkline values={sparkline} color={sparkColor} />}
     </div>
   );
 }

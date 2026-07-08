@@ -199,6 +199,142 @@ export function round(n, decimals) {
   return Math.round(n * f) / f;
 }
 
+// Mínimos de días registrados para habilitar cada cálculo avanzado del
+// Dashboard (constantes nombradas, no números mágicos en el JSX).
+export const MIN_DIAS_MEDIANA = 3;
+export const MIN_DIAS_STDDEV = 2;
+export const MIN_DIAS_TENDENCIA = 3;
+export const MIN_DIAS_BAYES = 3;
+
+export function sum(xs) {
+  return xs.reduce((s, x) => s + x, 0);
+}
+
+export function quantile(xs, p) {
+  if (!xs.length) return null;
+  const sorted = [...xs].sort((a, b) => a - b);
+  const pos = (sorted.length - 1) * p;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  if (lo === hi) return sorted[lo];
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+export function median(xs) {
+  return quantile(xs, 0.5);
+}
+
+// Desviación estándar muestral (n−1). Requiere ≥2 puntos.
+export function stddev(xs) {
+  if (xs.length < 2) return null;
+  const mean = sum(xs) / xs.length;
+  const variance = xs.reduce((s, x) => s + (x - mean) ** 2, 0) / (xs.length - 1);
+  return Math.sqrt(variance);
+}
+
+// Coeficiente de variación (%). null si <2 puntos o media 0.
+export function cv(xs) {
+  if (xs.length < 2) return null;
+  const mean = sum(xs) / xs.length;
+  if (mean === 0) return null;
+  return (stddev(xs) / mean) * 100;
+}
+
+// Pendiente de regresión lineal simple (mínimos cuadrados), x = índice de día.
+export function olsSlope(xs) {
+  const n = xs.length;
+  if (n < 2) return null;
+  const xMean = (n - 1) / 2;
+  const yMean = sum(xs) / n;
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (i - xMean) * (xs[i] - yMean);
+    den += (i - xMean) ** 2;
+  }
+  return den === 0 ? 0 : num / den;
+}
+
+// Aproximación de Lanczos para ln(Gamma(x)) — usada por la beta incompleta.
+function logGamma(x) {
+  const g = 7;
+  const c = [
+    0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+    771.32342877765313, -176.61502916214059, 12.507343278686905,
+    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+  ];
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - logGamma(1 - x);
+  x -= 1;
+  let a = c[0];
+  const t = x + g + 0.5;
+  for (let i = 1; i < g + 2; i++) a += c[i] / (x + i);
+  return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+}
+
+// Fracción continua de la beta incompleta (Numerical Recipes).
+function betacf(x, a, b) {
+  const MAXIT = 200, EPS = 3e-7, FPMIN = 1e-30;
+  const qab = a + b, qap = a + 1, qam = a - 1;
+  let c = 1;
+  let d = 1 - (qab * x) / qap;
+  if (Math.abs(d) < FPMIN) d = FPMIN;
+  d = 1 / d;
+  let h = d;
+  for (let m = 1; m <= MAXIT; m++) {
+    const m2 = 2 * m;
+    let aa = (m * (b - m) * x) / ((qam + m2) * (a + m2));
+    d = 1 + aa * d;
+    if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa / c;
+    if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d;
+    h *= d * c;
+    aa = (-(a + m) * (qab + m) * x) / ((a + m2) * (qap + m2));
+    d = 1 + aa * d;
+    if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa / c;
+    if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d;
+    const del = d * c;
+    h *= del;
+    if (Math.abs(del - 1) < EPS) break;
+  }
+  return h;
+}
+
+// Función beta incompleta regularizada I_x(a,b), determinista, sin dependencias.
+function regularizedIncompleteBeta(x, a, b) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const bt = Math.exp(
+    logGamma(a + b) - logGamma(a) - logGamma(b) + a * Math.log(x) + b * Math.log(1 - x)
+  );
+  if (x < (a + 1) / (a + b + 2)) return (bt * betacf(x, a, b)) / a;
+  return 1 - (bt * betacf(1 - x, b, a)) / b;
+}
+
+// Inversa de I_x(a,b) por bisección: el cuantil p de una Beta(a,b).
+function betaQuantile(p, a, b) {
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 100; i++) {
+    const mid = (lo + hi) / 2;
+    if (regularizedIncompleteBeta(mid, a, b) < p) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+// Adherencia bayesiana: prior Beta(1,1), posterior Beta(1+s, 1+n−s).
+// Media posterior cerrada + intervalo de credibilidad 95% (P2.5–P97.5).
+export function bayesAdherence(successes, n) {
+  const a = 1 + successes;
+  const b = 1 + n - successes;
+  return {
+    mean: a / (a + b),
+    lower: betaQuantile(0.025, a, b),
+    upper: betaQuantile(0.975, a, b),
+  };
+}
+
 // Replica en cliente la vista SQL nutri.recipe_per_100g (§4.3).
 export function computeRecipePer100g(ingredients, cookedWeightG) {
   const totalGrams = ingredients.reduce((sum, i) => sum + Number(i.grams || 0), 0);
