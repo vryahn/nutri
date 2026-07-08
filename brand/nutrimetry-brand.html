@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Nutrimetry · Manual de marca</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --ink:#0A0F0D;--sur:#111815;--sur2:#18211C;--sur3:#223029;
+  --line:rgba(244,247,245,.10);--tx:#F4F7F5;--tx2:#98A8A0;--tx3:#5F6F67;
+  --lime:#A3E635;--lime-d:#3F6212;--ok:#34D399;--warn:#FBBF24;--dng:#F87171;
+  --kcal:#F97316;--prot:#34D399;--carb:#60A5FA;--fat:#FBBF24;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ink);color:var(--tx);font-family:'Inter',system-ui,sans-serif;line-height:1.55;font-size:16px}
+.wrap{max-width:900px;margin:0 auto;padding:0 24px}
+h1,h2,h3,.disp{font-family:'Space Grotesk',sans-serif;letter-spacing:-.02em}
+.mono{font-family:'JetBrains Mono',monospace}
+.kick{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--tx3)}
+section{padding:56px 0;border-bottom:1px solid var(--line)}
+section:last-child{border-bottom:0}
+p{color:var(--tx2);max-width:62ch}
+p strong{color:var(--tx)}
+.hero{padding:80px 0 64px}
+.wm{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(44px,9vw,84px);letter-spacing:-.03em;display:flex;align-items:baseline;gap:2px;margin:18px 0 8px}
+.wm .dot{color:var(--lime)}
+.lead{font-size:19px;color:var(--tx);max-width:56ch}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:680px){.grid2,.grid3{grid-template-columns:1fr}}
+.card{background:var(--sur);border:1px solid var(--line);border-radius:16px;padding:20px}
+.tile{border-radius:24px;display:flex;align-items:center;justify-content:center;aspect-ratio:1;flex-direction:column;gap:0}
+.cap{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx3);margin-top:10px}
+.sw{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.sw .b{height:64px}
+.sw .m{padding:8px 10px}
+.sw .n{font-size:12px;font-weight:600}
+.sw .h{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--tx2)}
+.swrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+.type-row{padding:16px 0;border-bottom:1px dashed var(--line)}
+.type-row:last-child{border-bottom:0}
+.type-row .r{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px}
+.do,.dont{border-radius:12px;padding:14px 16px;font-size:14px}
+.do{background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.3)}
+.dont{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.3)}
+.do b{color:var(--ok)}.dont b{color:var(--dng)}
+.chip{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 11px;border-radius:999px;border:1px solid var(--line);margin:3px 4px 3px 0}
+.btn{background:var(--lime-d);color:var(--tx);border:0;border-radius:12px;padding:11px 20px;font-weight:600;font-family:inherit;font-size:14px}
+.btn2{background:var(--lime);color:var(--ink);border:0;border-radius:12px;padding:11px 20px;font-weight:600;font-family:inherit;font-size:14px}
+.light{background:#F7FAF8;color:#0A0F0D;border:1px solid #dfe7e2}
+.light .h{color:#4A5952}.light .n{color:#0A0F0D}
+.foot{padding:40px 0 64px;color:var(--tx3);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="kick">Manual de marca · v1 · Julio 2026</div>
+    <div class="wm">nutrimetry<span class="dot">.</span></div>
+    <p class="lead">El instrumento de precisión nutricional. Una identidad construida sobre lo que la app ya defiende: exactitud y fiabilidad del dato, por encima de todo.</p>
+  </header>
+
+  <section>
+    <div class="kick">01 · Esencia</div>
+    <h2 style="font-size:28px;margin:.3em 0">Nutrición medida, no estimada</h2>
+    <p>El nombre lleva la estrategia dentro: <strong>nutri</strong> (nutrición) + <strong>-metry</strong> (medición). Nutrimetry no es una app de "comer sano" con estética amable; es un <strong>instrumento</strong>. Cada valor se guarda por 100 g, cada gramo cuenta, y el dato dudoso se marca — nunca se inventa ni se silencia.</p>
+    <div class="grid3" style="margin-top:24px">
+      <div class="card"><div class="disp" style="font-size:17px;margin-bottom:6px">Preciso</div><p style="font-size:14px;margin:0">El dato manda. Números tabulares, unidades explícitas, sin adornos que compitan con la lectura.</p></div>
+      <div class="card"><div class="disp" style="font-size:17px;margin-bottom:6px">Honesto</div><p style="font-size:14px;margin:0">Lo incierto se avisa (⚠). La confianza se gana mostrando los límites del dato, no ocultándolos.</p></div>
+      <div class="card"><div class="disp" style="font-size:17px;margin-bottom:6px">Sobrio</div><p style="font-size:14px;margin:0">Tech-oscuro premium. Un solo golpe de acento sobre casi-negro. El diseño desaparece; el dato queda.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="kick">02 · Logo</div>
+    <h2 style="font-size:28px;margin:.3em 0">El medidor "n."</h2>
+    <p>Una <strong>n</strong> geométrica en minúscula — de "nutri." — cuyo punto es un nodo lima: el <strong>punto de lectura</strong> de un instrumento. En la versión expresiva, un arco graduado (gauge) envuelve la letra y refuerza el "-metry". El punto lima es siempre el único acento de color del logotipo.</p>
+    <div class="grid3" style="margin-top:24px">
+      <div>
+        <div class="tile" style="background:var(--ink);border:1px solid var(--line)">
+          <svg width="60%" viewBox="0 0 512 512" aria-label="logomark expresivo">
+            <g transform="translate(236,256)"><circle r="150" fill="none" stroke="var(--lime)" stroke-width="26" stroke-dasharray="707 235" stroke-linecap="round" transform="rotate(120)"/></g>
+            <g transform="translate(-20,0)">
+              <rect x="150" y="152" width="42" height="200" rx="6" fill="var(--tx)"/>
+              <rect x="298" y="238" width="42" height="114" rx="6" fill="var(--tx)"/>
+              <path d="M150 238 A95 95 0 0 1 340 238 L298 238 A53 53 0 0 0 192 238 Z" fill="var(--tx)"/>
+              <circle cx="360" cy="332" r="22" fill="var(--lime)"/>
+            </g>
+          </svg>
+        </div><div class="cap">Logomark expresivo · splash / marketing</div>
+      </div>
+      <div>
+        <div class="tile" style="background:var(--ink);border:1px solid var(--line)">
+          <svg width="55%" viewBox="0 0 512 512" aria-label="app icon">
+            <g transform="translate(-20,0)">
+              <rect x="150" y="137" width="46" height="215" rx="6" fill="var(--tx)"/>
+              <rect x="294" y="232" width="46" height="120" rx="6" fill="var(--tx)"/>
+              <path d="M150 232 A95 95 0 0 1 340 232 L294 232 A49 49 0 0 0 196 232 Z" fill="var(--tx)"/>
+              <circle cx="360" cy="330" r="24" fill="var(--lime)"/>
+            </g>
+          </svg>
+        </div><div class="cap">App icon / favicon · sobre tinta</div>
+      </div>
+      <div>
+        <div class="tile" style="background:var(--lime)">
+          <svg width="55%" viewBox="0 0 512 512" aria-label="app icon invertido">
+            <g transform="translate(-20,0)">
+              <rect x="150" y="137" width="46" height="215" rx="6" fill="var(--ink)"/>
+              <rect x="294" y="232" width="46" height="120" rx="6" fill="var(--ink)"/>
+              <path d="M150 232 A95 95 0 0 1 340 232 L294 232 A49 49 0 0 0 196 232 Z" fill="var(--ink)"/>
+              <circle cx="360" cy="330" r="24" fill="var(--ink)"/>
+            </g>
+          </svg>
+        </div><div class="cap">Variante invertida · sobre lima</div>
+      </div>
+    </div>
+    <div class="grid2" style="margin-top:20px">
+      <div class="do"><b>Sí</b> — área de resguardo = altura de la "n" a cada lado · tamaño mínimo del ícono 32 px · en producto el wordmark se escribe <span class="mono">nutri.</span> en minúsculas.</div>
+      <div class="dont"><b>No</b> — no rotar, no degradar, no cambiar el color del punto, no rellenar la "n" de lima, no poner el mark sobre fondos de bajo contraste.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="kick">03 · Color</div>
+    <h2 style="font-size:28px;margin:.3em 0">Tinta grafito + un acento lima</h2>
+    <p>La app es <strong>dark-only</strong>: la base es una tinta grafito casi negra y el único acento interactivo es el lima. El modo claro se documenta para usos fuera de la app (redes, docs, impresos).</p>
+
+    <div style="margin-top:22px"><div class="kick">Modo oscuro · app</div>
+      <div class="swrow" style="margin-top:12px">
+        <div class="sw"><div class="b" style="background:#0A0F0D"></div><div class="m"><div class="n">Ink · bg</div><div class="h">#0A0F0D</div></div></div>
+        <div class="sw"><div class="b" style="background:#111815"></div><div class="m"><div class="n">Surface</div><div class="h">#111815</div></div></div>
+        <div class="sw"><div class="b" style="background:#18211C"></div><div class="m"><div class="n">Surface-2</div><div class="h">#18211C</div></div></div>
+        <div class="sw"><div class="b" style="background:#223029"></div><div class="m"><div class="n">Surface-3</div><div class="h">#223029</div></div></div>
+        <div class="sw"><div class="b" style="background:#A3E635"></div><div class="m"><div class="n">Accent · lima</div><div class="h">#A3E635</div></div></div>
+        <div class="sw"><div class="b" style="background:#3F6212"></div><div class="m"><div class="n">Accent-deep</div><div class="h">#3F6212</div></div></div>
+        <div class="sw"><div class="b" style="background:#F4F7F5"></div><div class="m"><div class="n">Text</div><div class="h">#F4F7F5</div></div></div>
+        <div class="sw"><div class="b" style="background:#98A8A0"></div><div class="m"><div class="n">Text-2</div><div class="h">#98A8A0</div></div></div>
+      </div>
+    </div>
+
+    <div style="margin-top:22px"><div class="kick">Semánticos · fijos</div>
+      <div class="swrow" style="margin-top:12px">
+        <div class="sw"><div class="b" style="background:#34D399"></div><div class="m"><div class="n">OK</div><div class="h">#34D399</div></div></div>
+        <div class="sw"><div class="b" style="background:#FBBF24"></div><div class="m"><div class="n">Warn ⚠</div><div class="h">#FBBF24</div></div></div>
+        <div class="sw"><div class="b" style="background:#F87171"></div><div class="m"><div class="n">Danger</div><div class="h">#F87171</div></div></div>
+      </div>
+      <p style="font-size:13.5px;margin-top:12px"><strong>Regla médica inviolable:</strong> el rojo de peligro señala sodio &lt; 1&nbsp;500 mg. Ese badge no se reasigna, no se suaviza y no se hace configurable.</p>
+    </div>
+
+    <div style="margin-top:22px"><div class="kick">Datos · escala categórica de macros</div>
+      <div class="swrow" style="margin-top:12px">
+        <div class="sw"><div class="b" style="background:#F97316"></div><div class="m"><div class="n">kcal</div><div class="h">#F97316</div></div></div>
+        <div class="sw"><div class="b" style="background:#34D399"></div><div class="m"><div class="n">Proteína</div><div class="h">#34D399</div></div></div>
+        <div class="sw"><div class="b" style="background:#60A5FA"></div><div class="m"><div class="n">Carbos</div><div class="h">#60A5FA</div></div></div>
+        <div class="sw"><div class="b" style="background:#FBBF24"></div><div class="m"><div class="n">Grasa</div><div class="h">#FBBF24</div></div></div>
+      </div>
+    </div>
+
+    <div style="margin-top:22px"><div class="kick">Modo claro · fuera de la app</div>
+      <div class="swrow" style="margin-top:12px">
+        <div class="sw light"><div class="b" style="background:#F7FAF8"></div><div class="m"><div class="n">bg</div><div class="h">#F7FAF8</div></div></div>
+        <div class="sw light"><div class="b" style="background:#FFFFFF;border-bottom:1px solid #dfe7e2"></div><div class="m"><div class="n">Surface</div><div class="h">#FFFFFF</div></div></div>
+        <div class="sw light"><div class="b" style="background:#4D7C0F"></div><div class="m"><div class="n">Accent</div><div class="h">#4D7C0F</div></div></div>
+        <div class="sw light"><div class="b" style="background:#0A0F0D"></div><div class="m"><div class="n">Text</div><div class="h">#0A0F0D</div></div></div>
+      </div>
+      <p style="font-size:13px;margin-top:10px">En claro el lima brillante pierde contraste sobre blanco: para texto/relleno interactivo se usa el lima profundo <span class="mono">#4D7C0F</span> (AA). El lima brillante queda solo como resalte sobre tinta.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="kick">04 · Tipografía</div>
+    <h2 style="font-size:28px;margin:.3em 0">Space Grotesk · Inter · JetBrains Mono</h2>
+    <p>Un sistema de tres voces: una <strong>display geométrica</strong> con carácter técnico, una <strong>de cuerpo</strong> neutra y legible, y una <strong>monoespaciada</strong> para todo dato numérico — el rasgo más "instrumento" de la marca.</p>
+    <div class="card" style="margin-top:20px">
+      <div class="type-row"><div class="r">Display · Space Grotesk 700 · títulos, wordmark</div><div class="disp" style="font-size:32px;font-weight:700">Precisión medible</div></div>
+      <div class="type-row"><div class="r">Cuerpo · Inter 400 / 600 · interfaz y texto</div><div style="font-size:16px;color:var(--tx)">Cada valor nutricional se almacena por 100 g; las cantidades siempre en gramos. Lo dudoso se marca.</div></div>
+      <div class="type-row"><div class="r">Datos · JetBrains Mono 500 · cifras, unidades, tablas</div><div class="mono" style="font-size:20px;font-weight:700">1&nbsp;842 kcal · 138 g P · 41 mg Na</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="kick">05 · Voz y tono</div>
+    <h2 style="font-size:28px;margin:.3em 0">Directa, en español, sin ruido</h2>
+    <div class="grid2" style="margin-top:20px">
+      <div class="do"><b>Sí</b> — "Sin objetivo de carbos en el rango — regístralo en Metas." Causa concreta + acción. Cifras con unidad. Frases cortas.</div>
+      <div class="dont"><b>No</b> — "Sin criterio de adherencia definido." Genérico, mudo, sin salida. Nunca un guion en vez de un dato ni un número inventado.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="kick">06 · Aplicación</div>
+    <h2 style="font-size:28px;margin:.3em 0">La marca en producto</h2>
+    <div class="grid2" style="margin-top:20px">
+      <div class="card">
+        <div class="kick" style="margin-bottom:14px">Tarjeta "Hoy"</div>
+        <div style="display:flex;gap:16px;align-items:center">
+          <svg width="76" height="76" viewBox="0 0 100 100" aria-label="anillo 78%">
+            <circle cx="50" cy="50" r="40" fill="none" stroke="var(--sur3)" stroke-width="10"/>
+            <circle cx="50" cy="50" r="40" fill="none" stroke="var(--lime)" stroke-width="10" stroke-linecap="round" stroke-dasharray="251.3" stroke-dashoffset="55.3" transform="rotate(-90 50 50)"/>
+            <text x="50" y="49" text-anchor="middle" class="mono" font-weight="700" font-size="20" fill="var(--tx)">78%</text>
+            <text x="50" y="64" text-anchor="middle" font-size="9" fill="var(--tx2)">meta</text>
+          </svg>
+          <div>
+            <div class="disp" style="font-weight:700;font-size:18px">Hoy</div>
+            <div style="margin-top:8px">
+              <span class="chip" style="border-color:var(--kcal)">kcal 1842</span>
+              <span class="chip" style="border-color:var(--prot)">P 138</span>
+              <span class="chip" style="border-color:var(--carb)">C 190</span>
+              <span class="chip" style="border-color:var(--fat)">G 61</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="kick" style="margin-bottom:14px">Botones</div>
+        <p style="font-size:13.5px;margin-top:0">Primario de alto énfasis: lima sólido + texto tinta. Primario estándar (guardar, FAB): lima profundo + texto claro (AA). Secundario: contorno.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+          <button class="btn2">Registrar</button>
+          <button class="btn">Guardar</button>
+          <button class="btn" style="background:transparent;border:1px solid var(--line)">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot">Nutrimetry · marca propia, independiente de la marca personal de Bryan Rodríguez. Tokens vivos en <span class="mono">src/index.css</span> · fuentes en <span class="mono">tailwind.config.js</span> · logo en <span class="mono">public/icon.svg</span>.</div>
+</div>
+</body>
+</html>

@@ -25,8 +25,11 @@ src/lib/sources.js       # clientes Open Food Facts y USDA FDC, por 100 g, mapea
 src/pages/               # Login, Today, Foods, Recipes, Targets, Dashboard (una por tab)
 src/components/          # LabelsModal
 src/App.jsx              # router, guard de sesión, tab bar
+brand/                   # manual de marca Nutrimetry (nutrimetry-brand.html)
 .github/workflows/       # keepalive.yml (semanal), backup.yml (mensual)
 ```
+
+**Identidad visual:** marca PROPIA de Nutrimetry (no la personal de Bryan). Base tinta grafito `#0A0F0D` + acento lima `#A3E635` (`--accent-deep #3F6212` para botones AA con texto blanco); display **Space Grotesk**, cuerpo Inter, datos JetBrains Mono; logo "medidor n." (n geométrica como path en `public/icon.svg`, punto lima = punto de lectura). Todo el color de la app sale de los tokens de `src/index.css` — recolorear = editar tokens, no JSX. Manual completo en `brand/nutrimetry-brand.html`.
 
 Invariantes de dominio:
 - Todo valor nutricional se almacena **por 100 g**; cantidades siempre en gramos.

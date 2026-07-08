@@ -23,7 +23,7 @@ export default {
         'd-fat': 'var(--d-fat)',
       },
       fontFamily: {
-        display: ['Fraunces', 'serif'],
+        display: ['"Space Grotesk"', 'sans-serif'],
         sans: ['Inter', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'monospace'],
       },

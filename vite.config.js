@@ -10,11 +10,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'nutri.',
+        name: 'Nutrimetry',
         short_name: 'nutri.',
         description: 'Registro nutricional personal',
-        theme_color: '#081D26',
-        background_color: '#081D26',
+        theme_color: '#0A0F0D',
+        background_color: '#0A0F0D',
         display: 'standalone',
         start_url: '/',
         icons: [

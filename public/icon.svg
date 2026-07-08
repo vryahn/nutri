@@ -1,5 +1,9 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" rx="96" fill="#081D26"/>
-  <text x="256" y="320" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="220" fill="#FAFAF9">BR</text>
-  <circle cx="382" cy="360" r="24" fill="#C2410C"/>
+  <rect width="512" height="512" rx="96" fill="#0A0F0D"/>
+  <g transform="translate(-20,0)">
+    <rect x="150" y="137" width="46" height="215" rx="6" fill="#F4F7F5"/>
+    <rect x="294" y="232" width="46" height="120" rx="6" fill="#F4F7F5"/>
+    <path d="M150 232 A95 95 0 0 1 340 232 L294 232 A49 49 0 0 0 196 232 Z" fill="#F4F7F5"/>
+    <circle cx="360" cy="330" r="24" fill="#A3E635"/>
+  </g>
 </svg>

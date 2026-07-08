@@ -3,16 +3,17 @@
 @tailwind utilities;
 
 :root {
-  --bg: #081D26;
-  --surface: #0C2A36;
-  --surface-2: #113240;
-  --surface-3: #1E3A4A;
-  --border: rgba(250, 250, 249, 0.08);
-  --text: #FAFAF9;
-  --text-2: #9DB2BD;
-  --text-3: #64748B;
-  --accent: #F97316;
-  --accent-deep: #C2410C;
+  /* Nutrimetry — base tinta grafito + acento lima (medición precisa) */
+  --bg: #0A0F0D;
+  --surface: #111815;
+  --surface-2: #18211C;
+  --surface-3: #223029;
+  --border: rgba(244, 247, 245, 0.08);
+  --text: #F4F7F5;
+  --text-2: #98A8A0;
+  --text-3: #5F6F67;
+  --accent: #A3E635;
+  --accent-deep: #3F6212; /* lima profundo: AA (>6:1) con --text sobre botones */
   --ok: #34D399;
   --warn: #FBBF24;
   --danger: #F87171;
