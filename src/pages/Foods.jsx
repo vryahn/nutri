@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, ChevronLeft, Search, Sparkles, ImagePlus, X, Star, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { MICROS, MICROS_DEFAULT, round, kcalFromMacros, kcalSuspicious } from '../lib/domain.js';
+import { MICROS, MICROS_DEFAULT, microGroups, round, kcalFromMacros, kcalSuspicious } from '../lib/domain.js';
 
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY;
 
@@ -497,18 +497,23 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         <details className="rounded-xl bg-surface-2 border border-border px-3 py-2">
           <summary className="cursor-pointer text-sm text-text-2 py-1">Más micros (opcional)</summary>
           <p className="text-xs text-text-3 pt-2">★ = favorito: aparece arriba junto a los principales.</p>
-          <div className="grid grid-cols-2 gap-3 pt-3">
-            {hiddenMicros.filter((m) => !favs.includes(m.key)).map((m) => (
-              <MicroField
-                key={m.key}
-                m={m}
-                fav={false}
-                value={form.micros[m.key] ?? ''}
-                onChange={(v) => setMicro(m.key, v)}
-                onToggleFav={() => onToggleFav(m.key)}
-              />
-            ))}
-          </div>
+          {microGroups(hiddenMicros.filter((m) => !favs.includes(m.key))).map(({ cat, items }) => (
+            <div key={cat}>
+              <p className="text-xs uppercase tracking-wide text-text-3 pt-4 pb-1">{cat}</p>
+              <div className="grid grid-cols-2 gap-3">
+                {items.map((m) => (
+                  <MicroField
+                    key={m.key}
+                    m={m}
+                    fav={false}
+                    value={form.micros[m.key] ?? ''}
+                    onChange={(v) => setMicro(m.key, v)}
+                    onToggleFav={() => onToggleFav(m.key)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
         </details>
 
         <Field label="Líquido">

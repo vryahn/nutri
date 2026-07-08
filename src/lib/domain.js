@@ -1,58 +1,73 @@
 // Claves EXACTAS del jsonb `micros` (claves libres fragmentarían las sumas).
 // El orden es contrato de UI: los primeros MICROS_DEFAULT visibles en FoodForm
 // y orden de la tabla del Dashboard. Las claves jamás se renombran.
+// `cat` agrupa los micros ocultos al desplegarlos (FoodForm y Dashboard).
 export const MICROS = [
-  { key: 'grasa_sat_g', label: 'Grasa sat.', unit: 'g' },
-  { key: 'grasa_trans_g', label: 'Grasa trans', unit: 'g' },
-  { key: 'azucar_g', label: 'Azúcar', unit: 'g' },
-  { key: 'azucar_anadido_g', label: 'Azúcar añadido', unit: 'g' },
-  { key: 'fibra_g', label: 'Fibra', unit: 'g' },
-  { key: 'sodio_mg', label: 'Sodio', unit: 'mg' },
-  { key: 'potasio_mg', label: 'Potasio', unit: 'mg' },
-  { key: 'magnesio_mg', label: 'Magnesio', unit: 'mg' },
-  { key: 'calcio_mg', label: 'Calcio', unit: 'mg' },
-  { key: 'hierro_mg', label: 'Hierro', unit: 'mg' },
-  { key: 'agua_ml', label: 'Agua', unit: 'ml' },
-  { key: 'alcohol_g', label: 'Alcohol', unit: 'g' },
+  { key: 'grasa_sat_g', label: 'Grasa sat.', unit: 'g', cat: 'Lípidos' },
+  { key: 'grasa_trans_g', label: 'Grasa trans', unit: 'g', cat: 'Lípidos' },
+  { key: 'azucar_g', label: 'Azúcar', unit: 'g', cat: 'Carbohidratos' },
+  { key: 'azucar_anadido_g', label: 'Azúcar añadido', unit: 'g', cat: 'Carbohidratos' },
+  { key: 'fibra_g', label: 'Fibra', unit: 'g', cat: 'Carbohidratos' },
+  { key: 'sodio_mg', label: 'Sodio', unit: 'mg', cat: 'Minerales' },
+  { key: 'potasio_mg', label: 'Potasio', unit: 'mg', cat: 'Minerales' },
+  { key: 'magnesio_mg', label: 'Magnesio', unit: 'mg', cat: 'Minerales' },
+  { key: 'calcio_mg', label: 'Calcio', unit: 'mg', cat: 'Minerales' },
+  { key: 'hierro_mg', label: 'Hierro', unit: 'mg', cat: 'Minerales' },
+  { key: 'agua_ml', label: 'Agua', unit: 'ml', cat: 'Otros' },
+  { key: 'alcohol_g', label: 'Alcohol', unit: 'g', cat: 'Otros' },
   // — ocultos por defecto; el usuario los promueve con prefs.data.fav_micros —
-  { key: 'colesterol_mg', label: 'Colesterol', unit: 'mg' },
-  { key: 'vit_a_mcg', label: 'Vit. A', unit: 'µg' },
-  { key: 'vit_c_mg', label: 'Vit. C', unit: 'mg' },
-  { key: 'vit_d_mcg', label: 'Vit. D', unit: 'µg' },
-  { key: 'vit_e_mg', label: 'Vit. E', unit: 'mg' },
-  { key: 'vit_k_mcg', label: 'Vit. K', unit: 'µg' },
-  { key: 'vit_b1_mg', label: 'B1 Tiamina', unit: 'mg' },
-  { key: 'vit_b2_mg', label: 'B2 Riboflavina', unit: 'mg' },
-  { key: 'vit_b3_mg', label: 'B3 Niacina', unit: 'mg' },
-  { key: 'vit_b5_mg', label: 'B5 Ác. pantoténico', unit: 'mg' },
-  { key: 'vit_b6_mg', label: 'B6', unit: 'mg' },
-  { key: 'vit_b7_mcg', label: 'B7 Biotina', unit: 'µg' },
-  { key: 'vit_b9_mcg', label: 'B9 Folato', unit: 'µg' },
-  { key: 'vit_b12_mcg', label: 'B12', unit: 'µg' },
-  { key: 'colina_mg', label: 'Colina', unit: 'mg' },
-  { key: 'zinc_mg', label: 'Zinc', unit: 'mg' },
-  { key: 'fosforo_mg', label: 'Fósforo', unit: 'mg' },
-  { key: 'selenio_mcg', label: 'Selenio', unit: 'µg' },
-  { key: 'cobre_mg', label: 'Cobre', unit: 'mg' },
-  { key: 'manganeso_mg', label: 'Manganeso', unit: 'mg' },
-  { key: 'yodo_mcg', label: 'Yodo', unit: 'µg' },
-  { key: 'cromo_mcg', label: 'Cromo', unit: 'µg' },
-  { key: 'molibdeno_mcg', label: 'Molibdeno', unit: 'µg' },
-  { key: 'beta_caroteno_mcg', label: 'β-caroteno', unit: 'µg' },
-  { key: 'licopeno_mcg', label: 'Licopeno', unit: 'µg' },
-  { key: 'luteina_zeaxantina_mcg', label: 'Luteína + Zeaxantina', unit: 'µg' },
+  { key: 'colesterol_mg', label: 'Colesterol', unit: 'mg', cat: 'Lípidos' },
+  { key: 'vit_a_mcg', label: 'Vit. A', unit: 'µg', cat: 'Vitaminas' },
+  { key: 'vit_c_mg', label: 'Vit. C', unit: 'mg', cat: 'Vitaminas' },
+  { key: 'vit_d_mcg', label: 'Vit. D', unit: 'µg', cat: 'Vitaminas' },
+  { key: 'vit_e_mg', label: 'Vit. E', unit: 'mg', cat: 'Vitaminas' },
+  { key: 'vit_k_mcg', label: 'Vit. K', unit: 'µg', cat: 'Vitaminas' },
+  { key: 'vit_b1_mg', label: 'B1 Tiamina', unit: 'mg', cat: 'Vitaminas' },
+  { key: 'vit_b2_mg', label: 'B2 Riboflavina', unit: 'mg', cat: 'Vitaminas' },
+  { key: 'vit_b3_mg', label: 'B3 Niacina', unit: 'mg', cat: 'Vitaminas' },
+  { key: 'vit_b5_mg', label: 'B5 Ác. pantoténico', unit: 'mg', cat: 'Vitaminas' },
+  { key: 'vit_b6_mg', label: 'B6', unit: 'mg', cat: 'Vitaminas' },
+  { key: 'vit_b7_mcg', label: 'B7 Biotina', unit: 'µg', cat: 'Vitaminas' },
+  { key: 'vit_b9_mcg', label: 'B9 Folato', unit: 'µg', cat: 'Vitaminas' },
+  { key: 'vit_b12_mcg', label: 'B12', unit: 'µg', cat: 'Vitaminas' },
+  { key: 'colina_mg', label: 'Colina', unit: 'mg', cat: 'Vitaminas' },
+  { key: 'zinc_mg', label: 'Zinc', unit: 'mg', cat: 'Minerales' },
+  { key: 'fosforo_mg', label: 'Fósforo', unit: 'mg', cat: 'Minerales' },
+  { key: 'selenio_mcg', label: 'Selenio', unit: 'µg', cat: 'Minerales' },
+  { key: 'cobre_mg', label: 'Cobre', unit: 'mg', cat: 'Minerales' },
+  { key: 'manganeso_mg', label: 'Manganeso', unit: 'mg', cat: 'Minerales' },
+  { key: 'yodo_mcg', label: 'Yodo', unit: 'µg', cat: 'Minerales' },
+  { key: 'cromo_mcg', label: 'Cromo', unit: 'µg', cat: 'Minerales' },
+  { key: 'molibdeno_mcg', label: 'Molibdeno', unit: 'µg', cat: 'Minerales' },
+  { key: 'beta_caroteno_mcg', label: 'β-caroteno', unit: 'µg', cat: 'Antioxidantes' },
+  { key: 'licopeno_mcg', label: 'Licopeno', unit: 'µg', cat: 'Antioxidantes' },
+  { key: 'luteina_zeaxantina_mcg', label: 'Luteína + Zeaxantina', unit: 'µg', cat: 'Antioxidantes' },
 ];
 
 export const MICROS_DEFAULT = 8; // grasa sat/trans, azúcares, fibra, sodio, potasio, magnesio
 
-// Kcal teóricas por Atwater (prot 4 + carbs 4 + grasa 9 + alcohol 7).
-// Placeholder y valor por defecto del campo kcal en el formulario de alimento.
+// Orden de despliegue de los grupos de micros ocultos.
+const CAT_ORDER = ['Lípidos', 'Carbohidratos', 'Vitaminas', 'Minerales', 'Antioxidantes', 'Otros'];
+
+// Agrupa una lista de micros por categoría, en CAT_ORDER y sin grupos vacíos.
+// Devuelve [{ cat, items }]. Usada por FoodForm y la tabla del Dashboard.
+export function microGroups(list) {
+  return CAT_ORDER.flatMap((cat) => {
+    const items = list.filter((m) => m.cat === cat);
+    return items.length ? [{ cat, items }] : [];
+  });
+}
+
+// Kcal teóricas: Atwater (prot 4 + carbs 4 + grasa 9 + alcohol 7) con la fibra
+// a 2 kcal/g (NOM-051/UE): carbs_g es TOTAL (incluye fibra), así que se resta
+// 2 kcal por gramo de fibra. Placeholder y default del campo kcal en FoodForm.
 export function kcalFromMacros(f) {
   return Math.round(
     4 * Number(f.protein_g || 0) +
       4 * Number(f.carbs_g || 0) +
       9 * Number(f.fat_g || 0) +
-      7 * Number(f.micros?.alcohol_g || 0)
+      7 * Number(f.micros?.alcohol_g || 0) -
+      2 * Number(f.micros?.fibra_g || 0)
   );
 }
 

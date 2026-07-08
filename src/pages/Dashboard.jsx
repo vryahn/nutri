@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js';
 import {
   MICROS,
   MICROS_DEFAULT,
+  microGroups,
   todayISO,
   addDaysISO,
   resolveTarget,
@@ -308,7 +309,16 @@ function MicrosTable({ favs, microsConsumido, microsObjetivo, avgSodio, diasRegi
         <details className="mt-2">
           <summary className="cursor-pointer text-sm text-text-2 py-2">Más micros ({hidden.length})</summary>
           <table className="w-full text-sm">
-            <tbody>{hidden.map(renderRow)}</tbody>
+            <tbody>
+              {microGroups(hidden).flatMap(({ cat, items }) => [
+                <tr key={cat}>
+                  <td colSpan={4} className="pt-3 pb-1 text-xs uppercase tracking-wide text-text-3">
+                    {cat}
+                  </td>
+                </tr>,
+                ...items.map(renderRow),
+              ])}
+            </tbody>
           </table>
         </details>
       )}
