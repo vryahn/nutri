@@ -382,13 +382,16 @@ function resultBadgeText(r) {
 }
 
 function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
-  // density de la DB (numeric) puede venir como string: se normaliza para que el select matchee
-  const [form, setForm] = useState({
+  // density de la DB (numeric) puede venir como string: se normaliza para que el select matchee.
+  // Al editar, los 0 almacenados (kcal/macros/micros) arrancan vacíos con placeholder "0" (mismo
+  // patrón que el prefill de IA): un 0 no aporta info nueva y así se ve qué falta por revisar.
+  const { cleaned: initialForm, zeros: initialZeros } = stripZeros({
     ...EMPTY_FOOD,
     ...food,
     density_g_ml: food.density_g_ml > 0 ? Number(food.density_g_ml) : '',
     portions: food.portions || [],
   });
+  const [form, setForm] = useState(initialForm);
   const [basis, setBasis] = useState('100'); // gramos a los que refieren los valores capturados
 
   // La DB siempre guarda por 100 g: si el usuario capturó por otra base, se escala al guardar.
@@ -415,7 +418,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const [aiFile, setAiFile] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
-  const [aiZeros, setAiZeros] = useState(new Set()); // claves cuyo prefill fue 0 → placeholder, no valor
+  const [aiZeros, setAiZeros] = useState(initialZeros); // claves cuyo valor (inicial o de prefill IA) fue 0 → placeholder, no valor
   const [aiResult, setAiResult] = useState(null); // { source, name, confidence } para la línea de resultado
   const [aiMissing, setAiMissing] = useState([]); // labels de requeridos sin dato fiable
   const [fdcChips, setFdcChips] = useState([]); // hasta 3 coincidencias FDC de usda_query
