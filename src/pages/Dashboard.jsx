@@ -153,18 +153,20 @@ function structuralZeroInfo(registeredDays, key) {
   return { warn: n / m > STRUCTURAL_ZERO_FRACTION, n, m };
 }
 
-// Adherencia bayesiana (Fix 4): kcal con tolerancia BAYES_KCAL_TOL; cualquier
-// métrica con objetivo diario resuelto se trata como piso (≥); sodio con su
-// piso fijo; carbs/grasa sin criterio direccional. `days` ya viene filtrado a
+// Campo de `chartData` con el objetivo diario de cada métrica de dos colas.
+const BAYES_TARGET_FIELD = { kcal: 'targetKcal', carbs_g: 'targetCarbs', fat_g: 'targetFat' };
+
+// Adherencia bayesiana (Fix 4, Fix 1): kcal/carbs/grasa con tolerancia de dos
+// colas BAYES_KCAL_TOL; proteína y micros con objetivo diario resuelto se
+// tratan como piso (≥); sodio con su piso fijo. `days` ya viene filtrado a
 // días completos (no llama a `registrado`/completitud aquí).
 function bayesForMetric(days, key) {
   let applicable;
-  if (key === 'kcal') {
-    const withTarget = days.filter((d) => d.targetKcal != null);
+  if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') {
+    const field = BAYES_TARGET_FIELD[key];
+    const withTarget = days.filter((d) => d[field] != null);
     if (!withTarget.length) return null;
-    applicable = withTarget.map((d) => Math.abs(d.values.kcal - d.targetKcal) / d.targetKcal <= BAYES_KCAL_TOL);
-  } else if (key === 'carbs_g' || key === 'fat_g') {
-    return null;
+    applicable = withTarget.map((d) => Math.abs(d.values[key] - d[field]) / d[field] <= BAYES_KCAL_TOL);
   } else if (key === 'protein_g') {
     const withTarget = days.filter((d) => d.proteinFloor != null);
     if (!withTarget.length) return null;
@@ -182,50 +184,99 @@ function bayesForMetric(days, key) {
 
 // Motivo por el que bayesForMetric devolvió null, para el Hint de la celda.
 function bayesUnavailableReason(days, key) {
-  if (key === 'carbs_g' || key === 'fat_g') return 'Sin criterio de adherencia definido para esta métrica';
   if (!days.length) return 'Sin registros en el rango';
-  if (key === 'kcal') return days.some((d) => d.targetKcal != null) ? null : 'Sin objetivo para este nutriente — regístralo en Metas';
+  if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') {
+    const field = BAYES_TARGET_FIELD[key];
+    return days.some((d) => d[field] != null) ? null : 'Sin objetivo para este nutriente — regístralo en Metas';
+  }
   if (key === 'protein_g') return days.some((d) => d.proteinFloor != null) ? null : 'Sin objetivo para este nutriente — regístralo en Metas';
   if (key === 'sodio_mg') return null;
   return days.some((d) => d.targetMicros?.[key] != null) ? null : 'Sin objetivo para este nutriente — regístralo en Metas';
 }
 
-// { text, hint } de la celda de adherencia bayesiana para una métrica.
-function bayesCell(days, key) {
-  const b = bayesForMetric(days, key);
-  if (b) return { text: `${round(b.mean * 100, 0)}% (${round(b.lower * 100, 0)}–${round(b.upper * 100, 0)}%)`, hint: null };
-  const reason = bayesUnavailableReason(days, key);
-  const text = reason.startsWith('Sin criterio') ? 'Sin criterio' : reason.startsWith('Sin objetivo') ? 'Sin objetivo' : '–';
-  return { text, hint: reason };
+// Criterio de éxito de un día, declarado para que el % de adherencia sea auditable.
+function bayesCriterionHint(key) {
+  if (key === 'sodio_mg') return `Éxito = día ≥ ${SODIUM_FLOOR_MG.toLocaleString('es-MX')} mg (piso de seguridad)`;
+  if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') return `Éxito = día dentro de ±${round(BAYES_KCAL_TOL * 100, 0)}% del objetivo`;
+  return 'Éxito = día ≥ objetivo (piso)';
 }
 
-// Formatea el valor de una métrica según el cálculo elegido. unit incluye el
-// espacio inicial (ej. ' mg') o '' si no aplica.
+// { primary, secondary, hint, degraded } de la celda de adherencia bayesiana.
+// hint siempre declara el criterio de éxito (disponible) o la causa concreta (no disponible).
+function bayesCell(days, key) {
+  const b = bayesForMetric(days, key);
+  if (b) {
+    return {
+      primary: `${round(b.mean * 100, 0)}%`,
+      secondary: `IC 95: ${round(b.lower * 100, 0)}–${round(b.upper * 100, 0)}%`,
+      hint: bayesCriterionHint(key),
+      degraded: false,
+    };
+  }
+  const reason = bayesUnavailableReason(days, key);
+  return { primary: reason.startsWith('Sin objetivo') ? 'Sin objetivo' : '–', secondary: null, hint: reason, degraded: true };
+}
+
+// { primary, secondary } de una métrica según el cálculo elegido. unit incluye
+// el espacio inicial (ej. ' mg') o '' si no aplica. secondary es null si el
+// modo no tiene un segundo valor (suma/promedio/tendencia) o si no hay dato.
 function formatMetric(calcMode, ms, unit, decimals) {
   switch (calcMode) {
     case 'suma':
-      return `${round(ms.sum, decimals)}${unit}`;
+      return { primary: `${round(ms.sum, decimals)}${unit}`, secondary: null };
     case 'promedio':
-      return `${round(ms.avg, decimals)}${unit}`;
+      return { primary: `${round(ms.avg, decimals)}${unit}`, secondary: null };
     case 'mediana':
-      return ms.median == null ? '–' : `${round(ms.median, decimals)} (${round(ms.p25, decimals)}–${round(ms.p75, decimals)})${unit}`;
+      return ms.median == null
+        ? { primary: '–', secondary: null }
+        : { primary: `${round(ms.median, decimals)}${unit}`, secondary: `P25–P75: ${round(ms.p25, decimals)}–${round(ms.p75, decimals)}` };
     case 'stddev':
-      return ms.sd == null ? '–' : `${round(ms.sd, decimals)}${unit} (CV ${ms.cv == null ? '–' : round(ms.cv, 0) + '%'})`;
+      return ms.sd == null
+        ? { primary: '–', secondary: null }
+        : { primary: `σ ${round(ms.sd, decimals)}${unit}`, secondary: ms.cv == null ? null : `CV ${round(ms.cv, 0)}%` };
     case 'tendencia':
-      return ms.slope == null ? '–' : `${ms.slope >= 0 ? '+' : ''}${round(ms.slope, decimals)}${unit}/día`;
+      return ms.slope == null
+        ? { primary: '–', secondary: null }
+        : { primary: `${ms.slope >= 0 ? '+' : ''}${round(ms.slope, decimals)}${unit}/día`, secondary: null };
     default:
-      return '';
+      return { primary: '', secondary: null };
   }
 }
 
-// Valor mostrado para una métrica: en modo bayes usa la celda de adherencia
-// (con su Hint si está degradada), en el resto delega en formatMetric.
+// { primary, secondary, hint, degraded } mostrado para una métrica: en modo
+// bayes usa la celda de adherencia (hint siempre declara el criterio o la
+// causa), en el resto delega en formatMetric (sin hint).
 function metricDisplay(calcMode, ms, bayesInfo, unit, decimals) {
   if (calcMode === 'bayes') {
-    if (!bayesInfo) return '–';
-    return bayesInfo.hint ? <Hint text={bayesInfo.hint}>{bayesInfo.text}</Hint> : bayesInfo.text;
+    if (!bayesInfo) return { primary: '–', secondary: null, hint: null, degraded: false };
+    return bayesInfo;
   }
-  return formatMetric(calcMode, ms, unit, decimals);
+  return { ...formatMetric(calcMode, ms, unit, decimals), hint: null, degraded: false };
+}
+
+// Texto de una celda { primary, secondary, hint } para la tabla de micros:
+// una sola cadena "primary (secondary)", el paréntesis en un span sin salto
+// para que, si envuelve, parta en el espacio antes de "(" y no a media cifra.
+function MetricCellText({ display }) {
+  const { primary, secondary, hint } = display;
+  const primaryEl = hint ? <Hint text={hint}>{primary}</Hint> : primary;
+  if (!secondary) return primaryEl;
+  return (
+    <>
+      {primaryEl} <span className="whitespace-nowrap">({secondary})</span>
+    </>
+  );
+}
+
+// Primary + secondary en dos líneas, para KPI cards y la card de resumen.
+function MetricLines({ display, className = '' }) {
+  const { primary, secondary, hint } = display;
+  return (
+    <>
+      <p className={className}>{hint ? <Hint text={hint}>{primary}</Hint> : primary}</p>
+      {secondary && <p className="text-xs text-text-3 font-mono">{secondary}</p>}
+    </>
+  );
 }
 
 // Objetivo mostrado en la tabla de micros, según el modo (Fix 1).
@@ -348,6 +399,8 @@ function computeStats(dates, dailyTotals, targets) {
       label: day.slice(5),
       kcal: registrado ? kcal : null,
       targetKcal: target?.kcal ?? null,
+      targetCarbs: target?.carbs_g ?? null,
+      targetFat: target?.fat_g ?? null,
       targetMicros: target?.micros ?? null,
       protein: registrado ? protein_g : null,
       proteinFloor: target?.protein_g ?? null,
@@ -824,14 +877,11 @@ export default function Dashboard() {
           />
           <KpiCard
             label="Días"
-            display={
-              <Hint
-                text={`${calcCtx.diasCompletosFull} completos, ${diasParcialesFull} parciales (registro incompleto inferido), ${dates.length} días en el rango`}
-              >
-                {calcCtx.diasCompletosFull}
-                {diasParcialesFull > 0 ? ` +${diasParcialesFull}p` : ''}
-              </Hint>
-            }
+            display={{
+              primary: `${calcCtx.diasCompletosFull}${diasParcialesFull > 0 ? ` +${diasParcialesFull}p` : ''}`,
+              secondary: null,
+              hint: `${calcCtx.diasCompletosFull} completos, ${diasParcialesFull} parciales (registro incompleto inferido), ${dates.length} días en el rango`,
+            }}
             delta={showDelta ? pctDelta(stats.diasRegistrados, prevStats.diasRegistrados) : null}
             suffix={` / ${dates.length}`}
           />
@@ -842,7 +892,7 @@ export default function Dashboard() {
             {CALC_TITLES[calcMode]}
             {isPhaseScopedMode && phaseHintText && <Hint text={phaseHintText}>ⓘ</Hint>}
           </p>
-          <div className="grid grid-cols-4 gap-2 text-center">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
             <Stat label="Kcal" display={metricDisplay(calcMode, msKcal, bKcal, '', 1)} color="text-d-kcal" />
             <Stat label="Prot" display={metricDisplay(calcMode, msProtein, bProtein, ' g', 1)} color="text-d-prot" />
             <Stat label="Carbs" display={metricDisplay(calcMode, msCarbs, bCarbs, ' g', 1)} color="text-d-carb" />
@@ -1132,12 +1182,12 @@ function MicrosTable({
     const bayesInfo = calcMode === 'bayes' ? bayesCell(completeDaysFull, m.key) : null;
     const consumidoDisplay = metricDisplay(calcMode, ms, bayesInfo, ` ${m.unit}`, 1);
     const sodiumDanger = m.key === 'sodio_mg' && sodiumIsLow(avgSodio, diasRegistrados > 0);
-    const degraded = bayesInfo?.hint != null;
+    const degraded = consumidoDisplay.degraded;
     return (
       <tr key={m.key} className="border-t border-border">
         <td className="py-2">{m.label}</td>
-        <td className={`py-2 text-right font-mono tabular-nums ${sodiumDanger ? 'text-danger' : ''} ${degraded ? 'text-text-3' : ''}`}>
-          {consumidoDisplay}
+        <td className={`py-2 text-right whitespace-normal font-mono tabular-nums ${sodiumDanger ? 'text-danger' : ''} ${degraded ? 'text-text-3' : ''}`}>
+          <MetricCellText display={consumidoDisplay} />
           {zero.warn && (
             <Hint text={`${zero.n} de ${zero.m} días sin dato de este micro: el 0 puede significar 'sin registro', no 'consumo 0'`}>
               {' '}
@@ -1194,10 +1244,10 @@ function MicrosTable({
   );
 }
 
-function Stat({ label, value, display, color }) {
+function Stat({ label, display, color }) {
   return (
-    <div>
-      <p className={`font-mono tabular-nums text-sm sm:text-lg whitespace-nowrap ${color}`}>{display ?? Math.round(value * 10) / 10}</p>
+    <div className="min-w-0">
+      <MetricLines display={display} className={`font-mono tabular-nums text-sm sm:text-lg ${color}`} />
       <p className="text-xs text-text-3">{label}</p>
     </div>
   );
@@ -1226,16 +1276,16 @@ function Sparkline({ values, color }) {
   );
 }
 
-function KpiCard({ label, value, display, delta, status, unit = '', decimals = 1, suffix = '', sparkline, sparkColor }) {
-  const f = 10 ** decimals;
+function KpiCard({ label, display, delta, status, suffix = '', sparkline, sparkColor }) {
   const color = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' }[status] || 'text-text';
   return (
-    <div className="rounded-2xl bg-surface border border-border p-3">
+    <div className="rounded-2xl bg-surface border border-border p-3 min-w-0">
       <p className="text-xs text-text-3">{label}</p>
       <p className={`font-mono tabular-nums text-lg ${color}`}>
-        {display ?? `${Math.round(value * f) / f}${unit ? ` ${unit}` : ''}`}
+        {display.hint ? <Hint text={display.hint}>{display.primary}</Hint> : display.primary}
         {suffix}
       </p>
+      {display.secondary && <p className="text-xs text-text-3 font-mono">{display.secondary}</p>}
       {delta != null && (
         <p className="text-xs text-text-2">
           {delta > 0 ? '+' : ''}

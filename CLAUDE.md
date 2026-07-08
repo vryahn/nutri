@@ -11,6 +11,8 @@ App personal de registro nutricional (tipo Cronometer, simple) para 2 usuarios. 
 - **Regla de seguridad médica:** el badge rojo de sodio < 1,500 mg (constante `SODIUM_FLOOR_MG` en `src/lib/domain.js`) no se quita ni se hace configurable.
 - La `service_role`/secret key de Supabase no se usa en ningún lugar del proyecto.
 - Repo **público**: nunca commitear credenciales, keys ni connection strings.
+- **Planificación de código:** al planificar o diseñar cualquier cambio de código, usar SIEMPRE el skill `ponytail` (solución más simple que funcione, YAGNI, mínimo diff).
+- **Flujo de cambios:** todo cambio o fix propuesto, una vez aprobado por Bryan, se entrega como **prompt autocontenido para que otra IA lo ejecute, indicando el modelo recomendado**. El modelo se elige por costo-beneficio y se indica UNA sola opción específica con su nivel de esfuerzo (p. ej. "Sonnet Medium" para implementación estándar, "Opus Max" o "Fable Medium" para diseño o algoritmos delicados) — nunca recomendaciones ambiguas tipo "Opus o Fable". El prompt debe incluir **todas las pruebas pertinentes** para garantizar el comportamiento esperado (build limpio, casos numéricos a mano, estados degradados, breakpoints 375/768/1280): esas pruebas SON los criterios de aceptación. Si todas pasan, la IA ejecutora **commitea y pushea directamente (push = deploy a producción) sin pedir aprobación adicional** — la aprobación quedó dada al entregarse el prompt, salvo que Bryan indique lo contrario en él. Si alguna prueba falla, algo queda ambiguo o el cambio se desvía del alcance: NO pushear, reportar y esperar instrucciones.
 
 ## Arquitectura
 
@@ -38,7 +40,7 @@ Invariantes de dominio:
 - RLS: catálogo (foods, recipes) compartido en lectura / escritura solo del dueño; entries, meal_labels, targets y prefs 100 % privados por usuario.
 - Agua: entries de un food "Agua" propio (micros `{agua_ml:100}`, grams = ml), id cacheado en `prefs.data.water_food_id`. En UI el agua va como sección propia ANTES de los macros (Hoy y Dashboard) y NUNCA en la tabla/lista de micros. Hoy la excluye de Recientes, búsqueda y "Copiar día anterior".
 - Agentes: import/export/auditoría de foods, fases de targets y evaluación de ingesta van por la API REST — playbooks con curl en README § "Playbooks para agentes". La auditoría es retroactiva gratis porque los nutrientes se calculan en vistas.
-- Dashboard: todo dato faltante, deshabilitado o recortado (fases, completitud) muestra su causa vía `Hint` (hover + tap); nunca un guion mudo ni un número inventado.
+- Dashboard: todo dato faltante, deshabilitado o recortado (fases, completitud) muestra su causa vía `Hint` (hover + tap); nunca un guion mudo ni un número inventado. Redacción de todo Hint: causa concreta + acción, nunca genérico (mal: "Sin criterio de adherencia definido"; bien: "Sin objetivo de carbs en el rango — regístralo en Metas").
 
 ## Comandos
 
