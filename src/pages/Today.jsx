@@ -16,7 +16,7 @@ import {
   MICROS_DEFAULT,
   microGroups,
 } from '../lib/domain.js';
-import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
 export default function Today() {
@@ -33,7 +33,7 @@ export default function Today() {
   const [prefs, setPrefs] = useState({ water_glass_ml: 1000, water_food_id: null });
   const [waterSettingsOpen, setWaterSettingsOpen] = useState(false);
   const [undoData, setUndoData] = useState(null); // { entry, timer } tras un borrado, para "Deshacer"
-  const [draggingCard, setDraggingCard] = useState(false);
+  const [activeEntry, setActiveEntry] = useState(null); // entry en arrastre (para el fantasma de DragOverlay)
   const [dragOverSection, setDragOverSection] = useState(null); // id de etiqueta (o 'none') bajo una card en arrastre
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 250, tolerance: 8 } }));
@@ -154,7 +154,9 @@ export default function Today() {
   }
 
   function handleDragStart({ active }) {
-    if (active.data.current?.type === 'card') setDraggingCard(true);
+    if (active.data.current?.type === 'card') {
+      setActiveEntry(foodEntries.find((e) => e.id === active.data.current.entryId) || null);
+    }
   }
 
   function handleDragOver({ active, over }) {
@@ -168,7 +170,7 @@ export default function Today() {
   }
 
   async function handleDragEnd({ active, over }) {
-    setDraggingCard(false);
+    setActiveEntry(null);
     setDragOverSection(null);
     if (!over) return;
     const data = active.data.current;
@@ -187,7 +189,7 @@ export default function Today() {
   }
 
   function handleDragCancel() {
-    setDraggingCard(false);
+    setActiveEntry(null);
     setDragOverSection(null);
   }
 
@@ -267,7 +269,7 @@ export default function Today() {
   const statusColor = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' };
   const sodiumLow = sodiumIsLow(totals.sodio_mg, foodEntries.length > 0);
 
-  const groups = groupByLabel(foodEntries, labels, draggingCard);
+  const groups = groupByLabel(foodEntries, labels, activeEntry != null);
 
   return (
     <div className="px-4 pt-4 pb-20 flex flex-col gap-4">
@@ -360,6 +362,13 @@ export default function Today() {
               )
             )}
           </SortableContext>
+          <DragOverlay>
+            {activeEntry && (
+              <div className="rounded-2xl bg-surface border border-border p-3 flex justify-between items-center gap-3 shadow-lg scale-[1.02]">
+                <CardBody entry={activeEntry} />
+              </div>
+            )}
+          </DragOverlay>
         </DndContext>
       )}
 
@@ -466,10 +475,10 @@ function SortableSection({ group: g, isOver, onAdd, onEditEntry, onDeleteEntry }
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex flex-col gap-2 rounded-2xl transition-colors duration-150 ${isOver ? 'ring-2 ring-accent' : ''} ${isDragging ? 'opacity-60' : ''}`}
+      className={`flex flex-col gap-2 rounded-2xl ${isDragging ? 'opacity-60' : ''}`}
     >
       <div className="flex items-center justify-between min-h-[44px]">
-        <h2 className="text-sm text-text-3">{g.name}</h2>
+        <h2 className={`text-sm transition-colors duration-150 ${isOver ? 'text-accent' : 'text-text-3'}`}>{g.name}</h2>
         <div className="flex items-center gap-1 -mr-2.5">
           <button
             {...attributes}
@@ -499,9 +508,9 @@ function SortableSection({ group: g, isOver, onAdd, onEditEntry, onDeleteEntry }
 function DropOnlySection({ group: g, isOver, onEditEntry, onDeleteEntry }) {
   const { setNodeRef } = useDroppable({ id: 'section-none', data: { type: 'section', labelId: null } });
   return (
-    <div ref={setNodeRef} className={`flex flex-col gap-2 rounded-2xl transition-colors duration-150 ${isOver ? 'ring-2 ring-accent' : ''}`}>
+    <div ref={setNodeRef} className="flex flex-col gap-2 rounded-2xl">
       <div className="flex items-center min-h-[44px]">
-        <h2 className="text-sm text-text-3">{g.name}</h2>
+        <h2 className={`text-sm transition-colors duration-150 ${isOver ? 'text-accent' : 'text-text-3'}`}>{g.name}</h2>
       </div>
       {g.items.map((e) => (
         <SwipeCard key={e.id} entry={e} labelId={g.id} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
@@ -515,7 +524,7 @@ function DropOnlySection({ group: g, isOver, onEditEntry, onDeleteEntry }) {
 // implementa a mano con pointer events; su umbral de movimiento (8 px) coincide con
 // la tolerance de dnd-kit para que ambos gestos se "auto-cancelen" de forma consistente.
 function SwipeCard({ entry: e, labelId, onEdit, onDelete }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `card-${e.id}`,
     data: { type: 'card', entryId: e.id, labelId },
   });
@@ -563,19 +572,15 @@ function SwipeCard({ entry: e, labelId, onEdit, onDelete }) {
     onEdit();
   }
 
-  const highNa = Number(e.micros?.sodio_mg || 0) >= SODIUM_HIGH_MG;
-  const highK = Number(e.micros?.potasio_mg || 0) >= POTASSIUM_HIGH_MG;
-  const style = isDragging && transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : swipeX !== 0
-    ? { transform: `translateX(${swipeX}px)` }
-    : undefined;
+  const style = swipeX !== 0 ? { transform: `translateX(${swipeX}px)` } : undefined;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl">
-      <div className="absolute inset-0 rounded-2xl bg-danger flex items-center justify-end pr-4">
-        <Trash2 size={20} className="text-text" />
-      </div>
+    <div className={`relative rounded-2xl ${swipeX !== 0 ? 'overflow-hidden' : ''}`}>
+      {swipeX !== 0 && (
+        <div className="absolute inset-0 rounded-2xl bg-danger flex items-center justify-end pr-4">
+          <Trash2 size={20} className="text-text" />
+        </div>
+      )}
       <button
         ref={(node) => {
           setNodeRef(node);
@@ -588,24 +593,35 @@ function SwipeCard({ entry: e, labelId, onEdit, onDelete }) {
         onPointerCancel={onPointerUp}
         onClick={handleClick}
         style={style}
-        className={`relative w-full text-left rounded-2xl bg-surface border border-border p-3 flex justify-between items-center gap-3 touch-pan-y ${isDragging ? 'shadow-lg scale-[1.02]' : ''}`}
+        className={`relative w-full text-left rounded-2xl bg-surface border border-border p-3 flex justify-between items-center gap-3 touch-pan-y ${isDragging ? 'opacity-30' : ''}`}
       >
-        <div className="min-w-0">
-          <p className="font-medium truncate">{e.item}</p>
-          <div className="text-sm font-mono tabular-nums mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-            <span className="text-text-3">{e.grams} g</span>
-            {Number(e.protein_g) > 0 && <span className="text-d-prot">P {round(Number(e.protein_g), 1)}</span>}
-            {Number(e.carbs_g) > 0 && <span className="text-d-carb">C {round(Number(e.carbs_g), 1)}</span>}
-            {Number(e.fat_g) > 0 && <span className="text-d-fat">G {round(Number(e.fat_g), 1)}</span>}
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {highNa && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-danger/20 text-danger">Na</span>}
-          {highK && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-warn/20 text-warn">K</span>}
-          <span className="font-mono tabular-nums text-text-2">{e.kcal} kcal</span>
-        </div>
+        <CardBody entry={e} />
       </button>
     </div>
+  );
+}
+
+// Contenido interno de una card, compartido entre SwipeCard y el fantasma de DragOverlay.
+function CardBody({ entry: e }) {
+  const highNa = Number(e.micros?.sodio_mg || 0) >= SODIUM_HIGH_MG;
+  const highK = Number(e.micros?.potasio_mg || 0) >= POTASSIUM_HIGH_MG;
+  return (
+    <>
+      <div className="min-w-0">
+        <p className="font-medium truncate">{e.item}</p>
+        <div className="text-sm font-mono tabular-nums mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+          <span className="text-text-3">{e.grams} g</span>
+          {Number(e.protein_g) > 0 && <span className="text-d-prot">P {round(Number(e.protein_g), 1)}</span>}
+          {Number(e.carbs_g) > 0 && <span className="text-d-carb">C {round(Number(e.carbs_g), 1)}</span>}
+          {Number(e.fat_g) > 0 && <span className="text-d-fat">G {round(Number(e.fat_g), 1)}</span>}
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        {highNa && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-danger/20 text-danger">Na</span>}
+        {highK && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-warn/20 text-warn">K</span>}
+        <span className="font-mono tabular-nums text-text-2">{e.kcal} kcal</span>
+      </div>
+    </>
   );
 }
 
