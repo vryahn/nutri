@@ -154,6 +154,10 @@ export function sodiumIsLow(sodiumMg, hasEntries) {
   return hasEntries && sodiumMg < SODIUM_FLOOR_MG;
 }
 
+// "Alto en" por registro (criterio FDA: ≥20% del valor diario de referencia).
+export const SODIUM_HIGH_MG = 460;
+export const POTASSIUM_HIGH_MG = 940;
+
 export function round(n, decimals) {
   const f = 10 ** decimals;
   return Math.round(n * f) / f;

@@ -1,7 +1,22 @@
 import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Plus, X, GlassWater, Settings } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { todayISO, addDaysISO, resolveTarget, classifyKcal, classifyFloor, sodiumIsLow, SODIUM_FLOOR_MG, reorderLabels, round } from '../lib/domain.js';
+import {
+  todayISO,
+  addDaysISO,
+  resolveTarget,
+  classifyKcal,
+  classifyFloor,
+  sodiumIsLow,
+  SODIUM_FLOOR_MG,
+  SODIUM_HIGH_MG,
+  POTASSIUM_HIGH_MG,
+  reorderLabels,
+  round,
+  MICROS,
+  MICROS_DEFAULT,
+  microGroups,
+} from '../lib/domain.js';
 
 export default function Today() {
   const [date, setDate] = useState(todayISO());
@@ -178,8 +193,9 @@ export default function Today() {
       carbs_g: acc.carbs_g + Number(e.carbs_g),
       fat_g: acc.fat_g + Number(e.fat_g),
       sodio_mg: acc.sodio_mg + Number(e.micros?.sodio_mg || 0),
+      potasio_mg: acc.potasio_mg + Number(e.micros?.potasio_mg || 0),
     }),
-    { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, sodio_mg: 0 }
+    { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, sodio_mg: 0, potasio_mg: 0 }
   );
 
   const target = resolveTarget(targets, date);
@@ -217,11 +233,13 @@ export default function Today() {
         onSettings={() => setWaterSettingsOpen(true)}
       />
 
-      <div className="rounded-2xl bg-surface border border-border p-4 grid grid-cols-4 gap-2 text-center">
+      <div className="rounded-2xl bg-surface border border-border p-4 grid grid-cols-3 gap-2 text-center">
         <Stat label="Kcal" value={totals.kcal} color={statusColor[kcalStatus] || 'text-d-kcal'} target={target?.kcal} />
         <Stat label="Prot" value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
         <Stat label="Carbs" value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
         <Stat label="Grasa" value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
+        <Stat label="Sodio" value={totals.sodio_mg} color="text-danger" target={target?.micros?.sodio_mg} decimals={0} />
+        <Stat label="Potasio" value={totals.potasio_mg} color="text-warn" target={target?.micros?.potasio_mg} decimals={0} />
       </div>
 
       {sodiumLow && (
@@ -282,19 +300,34 @@ export default function Today() {
                 </div>
               )}
             </div>
-            {g.items.map((e) => (
-              <button
-                key={e.id}
-                onClick={() => setEditing(e)}
-                className="text-left rounded-2xl bg-surface border border-border p-3 flex justify-between items-center active:scale-[0.98] transition-transform duration-150"
-              >
-                <div>
-                  <p className="font-medium">{e.item}</p>
-                  <p className="text-sm text-text-3 font-mono tabular-nums">{e.grams} g</p>
-                </div>
-                <span className="font-mono tabular-nums text-text-2">{e.kcal} kcal</span>
-              </button>
-            ))}
+            {g.items.map((e) => {
+              const macros = [
+                Number(e.protein_g) > 0 && `P ${round(Number(e.protein_g), 1)}`,
+                Number(e.carbs_g) > 0 && `C ${round(Number(e.carbs_g), 1)}`,
+                Number(e.fat_g) > 0 && `G ${round(Number(e.fat_g), 1)}`,
+              ].filter(Boolean);
+              const highNa = Number(e.micros?.sodio_mg || 0) >= SODIUM_HIGH_MG;
+              const highK = Number(e.micros?.potasio_mg || 0) >= POTASSIUM_HIGH_MG;
+              return (
+                <button
+                  key={e.id}
+                  onClick={() => setEditing(e)}
+                  className="text-left rounded-2xl bg-surface border border-border p-3 flex justify-between items-center active:scale-[0.98] transition-transform duration-150"
+                >
+                  <div>
+                    <p className="font-medium">{e.item}</p>
+                    <p className="text-sm text-text-3 font-mono tabular-nums">
+                      {e.grams} g{macros.length > 0 ? ` · ${macros.join(' ')}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {highNa && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-danger/20 text-danger">Na</span>}
+                    {highK && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-warn/20 text-warn">K</span>}
+                    <span className="font-mono tabular-nums text-text-2">{e.kcal} kcal</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         ))}
 
@@ -338,6 +371,7 @@ export default function Today() {
         <EditEntrySheet
           entry={editing}
           labels={labels}
+          favMicros={prefs.fav_micros || []}
           onClose={() => setEditing(null)}
           onDelete={() => {
             handleDelete(editing.id);
@@ -485,31 +519,46 @@ function WaterSettingsForm({ glassMl, onSave }) {
   );
 }
 
-function Stat({ label, value, color, target }) {
+function Stat({ label, value, color, target, decimals = 1 }) {
+  const pct = target > 0 ? Math.round((value / target) * 100) : null;
   return (
     <div>
-      <p className={`font-mono tabular-nums text-lg ${color}`}>{Math.round(value * 10) / 10}</p>
+      <p className={`font-mono tabular-nums text-lg ${color}`}>{round(value, decimals)}</p>
       <p className="text-xs text-text-3">{label}</p>
-      {target > 0 && <p className="text-xs text-text-3 font-mono tabular-nums">/{target}</p>}
+      {target > 0 && (
+        <p className="text-xs text-text-3 font-mono tabular-nums">
+          /{round(target, decimals)} · {pct}%
+        </p>
+      )}
     </div>
   );
 }
 
-// Porciones custom y densidad del food seleccionado (para chips y toggle g/ml).
-function useFoodMeta(foodId) {
+// Valores por 100 g (kcal, macros, micros) + porciones/densidad (solo foods,
+// para chips y toggle g/ml) del food o receta seleccionado.
+function useFoodMeta(foodId, recipeId) {
   const [meta, setMeta] = useState(null);
   useEffect(() => {
-    if (!foodId) {
+    if (!foodId && !recipeId) {
       setMeta(null);
       return;
     }
-    supabase
-      .from('foods')
-      .select('portions, density_g_ml')
-      .eq('id', foodId)
-      .maybeSingle()
-      .then(({ data }) => setMeta(data));
-  }, [foodId]);
+    if (foodId) {
+      supabase
+        .from('foods')
+        .select('kcal, protein_g, carbs_g, fat_g, micros, portions, density_g_ml')
+        .eq('id', foodId)
+        .maybeSingle()
+        .then(({ data }) => setMeta(data));
+    } else {
+      supabase
+        .from('recipe_per_100g')
+        .select('kcal, protein_g, carbs_g, fat_g, micros')
+        .eq('recipe_id', recipeId)
+        .maybeSingle()
+        .then(({ data }) => setMeta(data));
+    }
+  }, [foodId, recipeId]);
   return meta;
 }
 
@@ -718,10 +767,10 @@ function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onCl
   );
 }
 
-function EditEntrySheet({ entry, labels, onClose, onDelete, onSaved }) {
+function EditEntrySheet({ entry, labels, favMicros, onClose, onDelete, onSaved }) {
   const [grams, setGrams] = useState(String(entry.grams));
   const [labelId, setLabelId] = useState(entry.meal_label_id || '');
-  const foodMeta = useFoodMeta(entry.food_id);
+  const foodMeta = useFoodMeta(entry.food_id, entry.recipe_id);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -764,7 +813,69 @@ function EditEntrySheet({ entry, labels, onClose, onDelete, onSaved }) {
           Borrar
         </button>
       </form>
+
+      <AportaPanel grams={grams} meta={foodMeta} favMicros={favMicros} />
     </Sheet>
+  );
+}
+
+// Panel read-only: kcal/macros/micros que aporta la cantidad actual (grams),
+// escalando los valores por 100 g del food/receta. Nunca se persiste.
+function AportaPanel({ grams, meta, favMicros }) {
+  if (!meta) return null;
+  const factor = (Number(grams) || 0) / 100;
+  const scale = (v, decimals) => round(Number(v || 0) * factor, decimals);
+
+  const visible = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favMicros.includes(m.key)) && m.key !== 'agua_ml');
+  const hidden = MICROS.filter((m, i) => i >= MICROS_DEFAULT && !favMicros.includes(m.key) && m.key !== 'agua_ml');
+
+  const microRow = (m) => {
+    const v = scale(meta.micros?.[m.key], 2);
+    return (
+      <div key={m.key} className="flex justify-between py-1.5 border-t border-border text-sm">
+        <span className="text-text-2">{m.label}</span>
+        <span className={`font-mono tabular-nums ${v === 0 ? 'text-text-3' : ''}`}>
+          {v} {m.unit}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <section className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col">
+      <p className="text-sm text-text-3 mb-2">Aporta</p>
+      <div className="grid grid-cols-4 gap-2 text-center pb-3 border-b border-border">
+        <AportaStat label="Kcal" value={scale(meta.kcal, 1)} color="text-d-kcal" />
+        <AportaStat label="Prot" value={scale(meta.protein_g, 1)} color="text-d-prot" unit="g" />
+        <AportaStat label="Carbs" value={scale(meta.carbs_g, 1)} color="text-d-carb" unit="g" />
+        <AportaStat label="Grasa" value={scale(meta.fat_g, 1)} color="text-d-fat" unit="g" />
+      </div>
+      {visible.map(microRow)}
+      {hidden.length > 0 && (
+        <details className="mt-1">
+          <summary className="min-h-[44px] flex items-center cursor-pointer text-sm text-text-2">Más micros ({hidden.length})</summary>
+          {microGroups(hidden).flatMap(({ cat, items }) => [
+            <p key={cat} className="pt-3 pb-1 text-xs uppercase tracking-wide text-text-3">
+              {cat}
+            </p>,
+            ...items.map(microRow),
+          ])}
+        </details>
+      )}
+    </section>
+  );
+}
+
+function AportaStat({ label, value, color, unit }) {
+  const isZero = value === 0;
+  return (
+    <div>
+      <p className={`font-mono tabular-nums text-lg ${isZero ? 'text-text-3' : color}`}>
+        {value}
+        {unit ? ` ${unit}` : ''}
+      </p>
+      <p className="text-xs text-text-3">{label}</p>
+    </div>
   );
 }
 
