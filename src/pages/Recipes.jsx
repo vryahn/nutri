@@ -98,7 +98,7 @@ export default function Recipes() {
           <p className="text-text-2">Sin recetas aún</p>
           <button
             onClick={() => openEditor({})}
-            className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium active:scale-[0.98] transition-transform duration-150"
+            className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
           >
             Crear la primera
           </button>
@@ -110,7 +110,7 @@ export default function Recipes() {
           <button
             key={r.id}
             onClick={() => openEditor(r)}
-            className="text-left rounded-2xl bg-surface border border-border p-4 flex justify-between items-center active:scale-[0.98] transition-transform duration-150"
+            className="text-left rounded-2xl bg-surface border border-border p-4 flex justify-between items-center press"
           >
             <span className="font-medium">{r.name}</span>
             {r.kcal100 != null && <span className="font-mono tabular-nums text-text-2 text-sm">{r.kcal100} kcal/100g</span>}
@@ -120,7 +120,7 @@ export default function Recipes() {
       {!loading && recipes.length > 0 && (
         <button
           onClick={() => openEditor({})}
-          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-text flex items-center justify-center active:scale-[0.98] transition-transform duration-150"
+          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-text flex items-center justify-center press"
           aria-label="Añadir receta"
         >
           <Plus size={24} />
@@ -173,7 +173,7 @@ function RecipeForm({ recipe, onCancel, onSave, onDelete }) {
   return (
     <div className="px-4 py-4 flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <button onClick={onCancel} className="p-2 -ml-2 active:scale-[0.98] transition-transform duration-150" aria-label="Volver">
+        <button onClick={onCancel} className="p-2 -ml-2 press" aria-label="Volver">
           <ChevronLeft size={22} />
         </button>
         <h1 className="font-display text-xl">{form.id ? 'Editar receta' : 'Nueva receta'}</h1>
@@ -184,7 +184,7 @@ function RecipeForm({ recipe, onCancel, onSave, onDelete }) {
         <input
           value={form.name}
           onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-          className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+          className="input"
         />
       </div>
 
@@ -212,7 +212,7 @@ function RecipeForm({ recipe, onCancel, onSave, onDelete }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Añadir ingrediente…"
-          className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+          className="input"
         />
         {results.length > 0 && (
           <div className="rounded-xl bg-surface-2 border border-border overflow-hidden">
@@ -253,7 +253,7 @@ function RecipeForm({ recipe, onCancel, onSave, onDelete }) {
       <button
         onClick={() => onSave(form)}
         disabled={!form.name || form.ingredients.length === 0}
-        className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium active:scale-[0.98] transition-transform duration-150 disabled:opacity-50"
+        className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press disabled:opacity-50"
       >
         Guardar
       </button>
@@ -261,7 +261,7 @@ function RecipeForm({ recipe, onCancel, onSave, onDelete }) {
       {onDelete && (
         <button
           onClick={onDelete}
-          className="min-h-[44px] rounded-xl border border-danger text-danger font-medium active:scale-[0.98] transition-transform duration-150"
+          className="min-h-[44px] rounded-xl border border-danger text-danger font-medium press"
         >
           Borrar
         </button>

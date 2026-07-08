@@ -291,7 +291,7 @@ export default function Targets() {
           <p className="text-text-2 text-sm">Sin fase vigente. Programa una fase para empezar.</p>
           <button
             onClick={() => setSheet({ type: 'newPhase' })}
-            className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium active:scale-[0.98] transition-transform duration-150"
+            className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press"
           >
             Crear fase
           </button>
@@ -304,7 +304,7 @@ export default function Targets() {
           <h2 className="text-sm font-medium">Fases programadas</h2>
           <button
             onClick={() => setSheet({ type: 'newPhase' })}
-            className="text-[13px] text-accent min-h-[44px] px-2 rounded-lg hover:bg-surface-2 active:scale-[0.98] transition-transform duration-150"
+            className="text-[13px] text-accent min-h-[44px] px-2 rounded-lg hover:bg-surface-2 press"
           >
             + Programar
           </button>
@@ -344,7 +344,7 @@ export default function Targets() {
         {previaVfs.length > 0 && (
           <button
             onClick={() => setSheet({ type: 'previas' })}
-            className="flex items-center justify-center gap-2 min-h-[44px] rounded-xl border border-border text-text-2 text-[13px] active:scale-[0.98] transition-transform duration-150"
+            className="flex items-center justify-center gap-2 min-h-[44px] rounded-xl border border-border text-text-2 text-[13px] press"
           >
             <History size={15} /> Fases previas ({previaVfs.length})
           </button>
@@ -357,7 +357,7 @@ export default function Targets() {
           <h2 className="text-sm font-medium">Fechas específicas</h2>
           <button
             onClick={() => setSheet({ type: 'newOverride' })}
-            className="text-[13px] text-accent min-h-[44px] px-2 rounded-lg hover:bg-surface-2 active:scale-[0.98] transition-transform duration-150"
+            className="text-[13px] text-accent min-h-[44px] px-2 rounded-lg hover:bg-surface-2 press"
           >
             + Añadir
           </button>
@@ -571,7 +571,7 @@ function PhaseCard({ variant, validFrom, label = '', description = '', week, nex
           <span className="text-xs font-medium text-text-2">Semana de la fase</span>
           {editing ? (
             variant === 'new' && copyWeek ? (
-              <button onClick={copyVigente} className="text-xs text-accent min-h-[44px] active:scale-[0.98] transition-transform duration-150">
+              <button onClick={copyVigente} className="text-xs text-accent min-h-[44px] press">
                 Copiar semana vigente
               </button>
             ) : null
@@ -602,13 +602,13 @@ function PhaseCard({ variant, validFrom, label = '', description = '', week, nex
         <>
           {saveError && <p className="text-xs text-danger">{saveError}</p>}
           <div className="flex gap-2 pt-1">
-            <button onClick={cancel} className="flex-1 min-h-[44px] rounded-xl border border-border text-text-2 active:scale-[0.98] transition-transform duration-150">
+            <button onClick={cancel} className="flex-1 min-h-[44px] rounded-xl border border-border text-text-2 press">
               Cancelar
             </button>
             <button
               onClick={save}
               disabled={busy}
-              className="flex-1 min-h-[44px] rounded-xl bg-accent-deep text-text font-medium active:scale-[0.98] transition-transform duration-150 disabled:opacity-60"
+              className="flex-1 min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press disabled:opacity-60"
             >
               {busy ? 'Guardando…' : 'Guardar'}
             </button>
@@ -715,13 +715,13 @@ function OverrideCard({ variant, override, faseFor, initialEditing = false, onSa
           <MicrosEditor micros={draft.values.micros} onMicro={setMicro} />
           {saveError && <p className="text-xs text-danger">{saveError}</p>}
           <div className="flex gap-2 pt-1">
-            <button onClick={cancel} className="flex-1 min-h-[44px] rounded-xl border border-border text-text-2 active:scale-[0.98] transition-transform duration-150">
+            <button onClick={cancel} className="flex-1 min-h-[44px] rounded-xl border border-border text-text-2 press">
               Cancelar
             </button>
             <button
               onClick={save}
               disabled={busy}
-              className="flex-1 min-h-[44px] rounded-xl bg-accent-deep text-text font-medium active:scale-[0.98] transition-transform duration-150 disabled:opacity-60"
+              className="flex-1 min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press disabled:opacity-60"
             >
               {busy ? 'Guardando…' : 'Guardar'}
             </button>
@@ -817,7 +817,7 @@ function GroupEditor({ group, onField, onMicro, onSplit }) {
       <MicrosEditor micros={group.values.micros} onMicro={onMicro} />
       {group.dows.length > 1 && (
         <div>
-          <button type="button" onClick={() => setSplitting((s) => !s)} className="text-xs text-accent min-h-[44px] active:scale-[0.98] transition-transform duration-150">
+          <button type="button" onClick={() => setSplitting((s) => !s)} className="text-xs text-accent min-h-[44px] press">
             Separar un día
           </button>
           {splitting && (
@@ -909,7 +909,7 @@ function EditPill({ onClick }) {
     <button
       onClick={onClick}
       style={{ border: `1px solid ${tint('--accent', 55)}` }}
-      className="shrink-0 min-h-[44px] px-4 inline-flex items-center rounded-full text-accent text-xs hover:bg-surface-2 active:scale-[0.98] transition-transform duration-150"
+      className="shrink-0 min-h-[44px] px-4 inline-flex items-center rounded-full text-accent text-xs hover:bg-surface-2 press"
     >
       Editar
     </button>
@@ -940,7 +940,7 @@ function TextField({ label, value, onChange, placeholder }) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-text-3"
+        className="input placeholder:text-text-3"
       />
     </div>
   );
@@ -954,7 +954,7 @@ function DateField({ label, value, onChange }) {
         type="date"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+        className="input"
       />
     </div>
   );
@@ -988,16 +988,16 @@ function DecisionSheet({ validFrom, onCorregir, onNueva, onClose }) {
     <Sheet onClose={onClose}>
       <div className="flex flex-col gap-3">
         <h2 className="font-display text-[19px]">Guardar cambios</h2>
-        <button onClick={() => run(onCorregir)} disabled={busy} className="text-left rounded-xl border border-border p-3.5 active:scale-[0.98] transition-transform duration-150 disabled:opacity-60">
+        <button onClick={() => run(onCorregir)} disabled={busy} className="text-left rounded-xl border border-border p-3.5 press disabled:opacity-60">
           <span className="block font-medium">Corregir la fase</span>
           <span className="block text-xs text-warn mt-1">Reescribe el objetivo desde el {fmtShort(validFrom)}. La adherencia pasada se recalcula.</span>
         </button>
-        <button onClick={() => run(onNueva)} disabled={busy} className="text-left rounded-xl border border-border p-3.5 active:scale-[0.98] transition-transform duration-150 disabled:opacity-60">
+        <button onClick={() => run(onNueva)} disabled={busy} className="text-left rounded-xl border border-border p-3.5 press disabled:opacity-60">
           <span className="block font-medium">Nueva fase desde hoy</span>
           <span className="block text-xs text-text-2 mt-1">Conserva el histórico intacto.</span>
         </button>
         {err && <p className="text-xs text-danger">{err}</p>}
-        <button onClick={onClose} disabled={busy} className="min-h-[44px] rounded-xl text-text-2 active:scale-[0.98] transition-transform duration-150">
+        <button onClick={onClose} disabled={busy} className="min-h-[44px] rounded-xl text-text-2 press">
           Cancelar
         </button>
       </div>
@@ -1020,11 +1020,11 @@ function ConfirmDeleteSheet({ name, onConfirm, onClose }) {
             await onConfirm();
           }}
           disabled={busy}
-          className="min-h-[44px] rounded-xl bg-danger text-bg font-medium active:scale-[0.98] transition-transform duration-150 disabled:opacity-60"
+          className="min-h-[44px] rounded-xl bg-danger text-bg font-medium press disabled:opacity-60"
         >
           Borrar fase
         </button>
-        <button onClick={onClose} disabled={busy} className="min-h-[44px] rounded-xl border border-border text-text-2 active:scale-[0.98] transition-transform duration-150">
+        <button onClick={onClose} disabled={busy} className="min-h-[44px] rounded-xl border border-border text-text-2 press">
           Cancelar
         </button>
       </div>
@@ -1038,7 +1038,7 @@ function PreviasSheet({ previaVfs, labelOf, descOf, weekOf, nextVfOf, onClose })
   if (viewVf) {
     return (
       <Sheet onClose={onClose}>
-        <button onClick={() => setViewVf(null)} className="flex items-center gap-1 text-sm text-accent min-h-[44px] active:scale-[0.98] transition-transform duration-150">
+        <button onClick={() => setViewVf(null)} className="flex items-center gap-1 text-sm text-accent min-h-[44px] press">
           <ChevronLeft size={16} /> Fases previas
         </button>
         <div className="pt-2">
@@ -1085,7 +1085,7 @@ function YearGroup({ year, vfs, inert, labelOf, nextVfOf, onOpen }) {
       {inert ? (
         <div className="flex items-center gap-2">{counter}</div>
       ) : (
-        <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 min-h-[44px] active:scale-[0.98] transition-transform duration-150">
+        <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 min-h-[44px] press">
           <ChevronDown size={16} className={`text-text-3 transition-transform duration-150 ${open ? '' : '-rotate-90'}`} />
           {counter}
         </button>
@@ -1095,7 +1095,7 @@ function YearGroup({ year, vfs, inert, labelOf, nextVfOf, onOpen }) {
           const nvf = nextVfOf(vf);
           const d = daysBetween(vf, nvf);
           return (
-            <button key={vf} onClick={() => onOpen(vf)} className="text-left rounded-xl bg-surface border border-border px-3.5 py-3 active:scale-[0.98] transition-transform duration-150">
+            <button key={vf} onClick={() => onOpen(vf)} className="text-left rounded-xl bg-surface border border-border px-3.5 py-3 press">
               <span className="block font-medium text-sm">{labelOf(vf) || 'Sin nombre'}</span>
               <span className="block font-mono text-[11.5px] text-text-3 mt-1">
                 {fmtShort(vf)} → {fmtShort(addDaysISO(nvf, -1))} · {d} {d === 1 ? 'día' : 'días'}

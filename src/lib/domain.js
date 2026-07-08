@@ -153,8 +153,6 @@ export function addDaysISO(iso, delta) {
   return d.toLocaleDateString('sv-SE');
 }
 
-export const DOW_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-
 export function weekdayOf(iso) {
   return new Date(`${iso}T00:00:00`).getDay(); // 0=domingo, coincide con dow
 }

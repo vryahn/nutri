@@ -38,7 +38,7 @@ export default function Login() {
             autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            className="input"
           />
         </div>
 
@@ -53,7 +53,7 @@ export default function Login() {
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            className="input"
           />
           {error && <p className="text-sm text-danger">{error}</p>}
         </div>
@@ -61,7 +61,7 @@ export default function Login() {
         <button
           type="submit"
           disabled={loading}
-          className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium active:scale-[0.98] transition-transform duration-150 disabled:opacity-60"
+          className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press disabled:opacity-60"
         >
           {loading ? 'Entrando…' : 'Entrar'}
         </button>

@@ -714,7 +714,7 @@ export default function Dashboard() {
         <h1 className="font-display text-xl">Dashboard</h1>
         <button
           onClick={exportCSV}
-          className="px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap bg-surface-2 border border-border text-text-2 active:scale-[0.98] transition-transform duration-150"
+          className="px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap bg-surface-2 border border-border text-text-2 press"
         >
           Exportar CSV
         </button>
@@ -725,7 +725,7 @@ export default function Dashboard() {
           <button
             key={p.key}
             onClick={() => setPreset(p.key)}
-            className={`px-3 py-2 rounded-full text-sm whitespace-nowrap active:scale-[0.98] transition-transform duration-150 ${
+            className={`px-3 py-2 rounded-full text-sm whitespace-nowrap press ${
               preset === p.key ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
             }`}
           >
@@ -734,7 +734,7 @@ export default function Dashboard() {
         ))}
         <button
           onClick={() => setPreset('custom')}
-          className={`px-3 py-2 rounded-full text-sm whitespace-nowrap active:scale-[0.98] transition-transform duration-150 ${
+          className={`px-3 py-2 rounded-full text-sm whitespace-nowrap press ${
             preset === 'custom' ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
           }`}
         >
@@ -748,13 +748,13 @@ export default function Dashboard() {
             type="date"
             value={customStart}
             onChange={(e) => setCustomStart(e.target.value)}
-            className="flex-1 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            className="flex-1 input"
           />
           <input
             type="date"
             value={customEnd}
             onChange={(e) => setCustomEnd(e.target.value)}
-            className="flex-1 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            className="flex-1 input"
           />
         </div>
       )}
@@ -768,7 +768,7 @@ export default function Dashboard() {
               disabled={!!reason}
               onClick={() => setCalcMode(opt.key)}
               title={reason || ''}
-              className={`px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap active:scale-[0.98] transition-transform duration-150 ${
+              className={`px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap press ${
                 reason
                   ? 'bg-surface-2 text-text-3 opacity-50 cursor-not-allowed'
                   : calcMode === opt.key
@@ -782,7 +782,7 @@ export default function Dashboard() {
         })}
         <button
           onClick={() => setAdvancedOpen((v) => !v)}
-          className={`px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap active:scale-[0.98] transition-transform duration-150 ${
+          className={`px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap press ${
             CALC_ADVANCED.some((o) => o.key === calcMode) ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
           }`}
         >

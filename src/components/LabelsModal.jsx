@@ -50,7 +50,7 @@ export default function LabelsModal({ onClose }) {
       <div className="w-full sm:max-w-sm bg-surface-3 rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-4 max-h-[80dvh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg">Etiquetas</h2>
-          <button onClick={onClose} className="p-2 -mr-2 active:scale-[0.98] transition-transform duration-150" aria-label="Cerrar">
+          <button onClick={onClose} className="p-2 -mr-2 press" aria-label="Cerrar">
             <X size={20} />
           </button>
         </div>
@@ -60,11 +60,11 @@ export default function LabelsModal({ onClose }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Nueva etiqueta"
-            className="flex-1 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            className="flex-1 input"
           />
           <button
             type="submit"
-            className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium active:scale-[0.98] transition-transform duration-150"
+            className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
           >
             Añadir
           </button>

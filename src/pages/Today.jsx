@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, X, GlassWater, Settings, GripVertical } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
+import { useToast } from '../lib/useToast.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import {
   todayISO,
@@ -29,7 +30,7 @@ export default function Today() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(null); // { labelId } | null
   const [editing, setEditing] = useState(null); // entry being edited
-  const [toast, setToast] = useState('');
+  const [toast, showToast] = useToast();
   const [userId, setUserId] = useState(null);
   const [prefs, setPrefs] = useState({ water_glass_ml: 1000, water_food_id: null });
   const [waterSettingsOpen, setWaterSettingsOpen] = useState(false);
@@ -194,11 +195,6 @@ export default function Today() {
     setDragOverSection(null);
   }
 
-  function showToast(msg) {
-    setToast(msg);
-    setTimeout(() => setToast(''), 3000);
-  }
-
   // Borrado unificado (swipe en Hoy y botón "Borrar" del editor): UI optimista +
   // toast con "Deshacer" 5 s que reinserta el registro tal cual estaba.
   async function deleteEntry(entry) {
@@ -275,7 +271,7 @@ export default function Today() {
   return (
     <div className="px-4 pt-4 pb-20 flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <button onClick={() => setDate(addDaysISO(date, -1))} className="p-2 active:scale-[0.98] transition-transform duration-150" aria-label="Día anterior">
+        <button onClick={() => setDate(addDaysISO(date, -1))} className="p-2 press" aria-label="Día anterior">
           <ChevronLeft size={22} />
         </button>
         <input
@@ -284,7 +280,7 @@ export default function Today() {
           onChange={(e) => setDate(e.target.value)}
           className="bg-transparent text-center font-display text-lg focus:outline-none"
         />
-        <button onClick={() => setDate(addDaysISO(date, 1))} className="p-2 active:scale-[0.98] transition-transform duration-150" aria-label="Día siguiente">
+        <button onClick={() => setDate(addDaysISO(date, 1))} className="p-2 press" aria-label="Día siguiente">
           <ChevronRight size={22} />
         </button>
       </div>
@@ -316,7 +312,7 @@ export default function Today() {
 
       <button
         onClick={handleCopyPrevDay}
-        className="min-h-[44px] rounded-xl border border-border text-text-2 active:scale-[0.98] transition-transform duration-150"
+        className="min-h-[44px] rounded-xl border border-border text-text-2 press"
       >
         Copiar día anterior
       </button>
@@ -375,7 +371,7 @@ export default function Today() {
 
       <button
         onClick={() => setAdding({ labelId: null })}
-        className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-text flex items-center justify-center active:scale-[0.98] transition-transform duration-150"
+        className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-text flex items-center justify-center press"
         aria-label="Añadir registro"
       >
         <Plus size={24} />
@@ -435,7 +431,7 @@ export default function Today() {
           <span className="text-sm">Registro borrado</span>
           <button
             onClick={handleUndo}
-            className="min-h-[44px] px-3 text-accent font-medium active:scale-[0.98] transition-transform duration-150"
+            className="min-h-[44px] px-3 text-accent font-medium press"
           >
             Deshacer
           </button>
@@ -491,7 +487,7 @@ function SortableSection({ group: g, isOver, onAdd, onEditEntry, onDeleteEntry }
           </button>
           <button
             onClick={onAdd}
-            className="p-2.5 text-accent active:scale-[0.98] transition-transform duration-150"
+            className="p-2.5 text-accent press"
             aria-label={`Añadir a ${g.name}`}
           >
             <Plus size={20} />
@@ -586,7 +582,7 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
         </h2>
         <button
           onClick={onSettings}
-          className="p-2 -mr-2 text-text-3 active:scale-[0.98] transition-transform duration-150"
+          className="p-2 -mr-2 text-text-3 press"
           aria-label="Ajustes de agua"
         >
           <Settings size={18} />
@@ -600,7 +596,7 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
             <button
               key={i}
               onClick={() => (isFilled ? onUndo() : onGlass())}
-              className={`relative w-11 h-11 rounded-xl border border-border flex items-center justify-center active:scale-[0.98] transition-transform duration-150 ${
+              className={`relative w-11 h-11 rounded-xl border border-border flex items-center justify-center press ${
                 isFilled ? 'bg-surface-2 text-d-carb' : 'text-text-3'
               }`}
               aria-label={isFilled ? 'Quitar último registro de agua' : `Añadir vaso de ${glassMl} ml`}
@@ -640,7 +636,7 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
         />
         <button
           type="submit"
-          className="min-h-[44px] px-4 rounded-xl border border-border text-text-2 active:scale-[0.98] transition-transform duration-150"
+          className="min-h-[44px] px-4 rounded-xl border border-border text-text-2 press"
         >
           Añadir
         </button>
@@ -674,7 +670,7 @@ function WaterSettingsForm({ glassMl, onSave }) {
       </div>
       <button
         type="submit"
-        className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium active:scale-[0.98] transition-transform duration-150"
+        className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press"
       >
         Guardar
       </button>
@@ -798,7 +794,7 @@ function AmountField({ grams, onGrams, meta, placeholder, required = true }) {
               type="button"
               key={p.name}
               onClick={() => addPortion(p)}
-              className="px-3 py-2 rounded-full bg-surface-2 border border-border text-sm active:scale-[0.98] transition-transform duration-150"
+              className="px-3 py-2 rounded-full bg-surface-2 border border-border text-sm press"
             >
               + {p.name} ({p.grams} g)
             </button>
@@ -867,7 +863,7 @@ function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onCl
               <button
                 key={(r.food_id || r.recipe_id) + r.item}
                 onClick={() => pick({ id: r.food_id || r.recipe_id, name: r.item, type: r.food_id ? 'food' : 'recipe' }, r.grams)}
-                className="px-3 py-2 rounded-full bg-surface-2 border border-border text-sm active:scale-[0.98] transition-transform duration-150"
+                className="px-3 py-2 rounded-full bg-surface-2 border border-border text-sm press"
               >
                 {r.item}
               </button>
@@ -885,7 +881,7 @@ function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onCl
             setSelected(null);
           }}
           placeholder="Buscar…"
-          className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+          className="input"
         />
         {results.length > 0 && (
           <div className="rounded-xl bg-surface-2 border border-border overflow-hidden">
@@ -912,7 +908,7 @@ function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onCl
             <select
               value={labelId}
               onChange={(e) => setLabelId(e.target.value)}
-              className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+              className="input"
             >
               <option value="">Sin etiqueta</option>
               {labels.map((l) => (
@@ -925,7 +921,7 @@ function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onCl
 
           <button
             type="submit"
-            className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium active:scale-[0.98] transition-transform duration-150"
+            className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press"
           >
             Registrar
           </button>
@@ -960,7 +956,7 @@ function EditEntrySheet({ entry, labels, favMicros, onClose, onDelete, onSaved }
           <select
             value={labelId}
             onChange={(e) => setLabelId(e.target.value)}
-            className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            className="input"
           >
             <option value="">Sin etiqueta</option>
             {labels.map((l) => (
@@ -971,13 +967,13 @@ function EditEntrySheet({ entry, labels, favMicros, onClose, onDelete, onSaved }
           </select>
         </div>
 
-        <button type="submit" className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium active:scale-[0.98] transition-transform duration-150">
+        <button type="submit" className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press">
           Guardar
         </button>
         <button
           type="button"
           onClick={onDelete}
-          className="min-h-[44px] rounded-xl border border-danger text-danger font-medium active:scale-[0.98] transition-transform duration-150"
+          className="min-h-[44px] rounded-xl border border-danger text-danger font-medium press"
         >
           Borrar
         </button>
@@ -1054,7 +1050,7 @@ function Sheet({ title, onClose, children }) {
       <div className="w-full sm:max-w-sm bg-surface-3 rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-4 max-h-[85dvh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg">{title}</h2>
-          <button onClick={onClose} className="p-2 -mr-2 active:scale-[0.98] transition-transform duration-150" aria-label="Cerrar">
+          <button onClick={onClose} className="p-2 -mr-2 press" aria-label="Cerrar">
             <X size={20} />
           </button>
         </div>

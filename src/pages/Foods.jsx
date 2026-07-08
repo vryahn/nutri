@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, ChevronLeft, Search, Sparkles, ImagePlus, X, Star, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
+import { useToast } from '../lib/useToast.js';
 import {
   MICROS, MICROS_DEFAULT, microGroups, round, kcalFromMacros, kcalSuspicious, macrosImplausible,
   componentsInconsistent,
@@ -41,12 +42,13 @@ export default function Foods() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState(null); // null = list view, object = form view
-  const [toast, setToast] = useState('');
+  const [toast, showToast] = useToast();
   const [userId, setUserId] = useState(null);
   const [favs, setFavs] = useState([]); // prefs.data.fav_micros: micros promovidos fuera de "Más micros"
 
   useEffect(() => {
-    load();
+    const t = setTimeout(load, 250);
+    return () => clearTimeout(t);
   }, [query]);
 
   useEffect(() => {
@@ -76,11 +78,6 @@ export default function Foods() {
     const { data, error } = await req;
     if (!error) setFoods(data);
     setLoading(false);
-  }
-
-  function showToast(msg) {
-    setToast(msg);
-    setTimeout(() => setToast(''), 3000);
   }
 
   async function handleSave(food) {
@@ -163,7 +160,7 @@ export default function Foods() {
           <p className="text-text-2">Sin alimentos aún</p>
           <button
             onClick={() => setEditing(EMPTY_FOOD)}
-            className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium active:scale-[0.98] transition-transform duration-150"
+            className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
           >
             Crear el primero
           </button>
@@ -175,7 +172,7 @@ export default function Foods() {
           <button
             key={f.id}
             onClick={() => setEditing(f)}
-            className="text-left rounded-2xl bg-surface border border-border p-4 active:scale-[0.98] transition-transform duration-150"
+            className="text-left rounded-2xl bg-surface border border-border p-4 press"
           >
             <div className="flex justify-between items-baseline gap-2">
               <span className="font-medium">
@@ -197,7 +194,7 @@ export default function Foods() {
       {!loading && foods.length > 0 && (
         <button
           onClick={() => setEditing(EMPTY_FOOD)}
-          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-text flex items-center justify-center active:scale-[0.98] transition-transform duration-150"
+          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-text flex items-center justify-center press"
           aria-label="Añadir alimento"
         >
           <Plus size={24} />
@@ -574,7 +571,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   return (
     <div className="px-4 py-4 flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <button onClick={onCancel} className="p-2 -ml-2 active:scale-[0.98] transition-transform duration-150" aria-label="Volver">
+        <button onClick={onCancel} className="p-2 -ml-2 press" aria-label="Volver">
           <ChevronLeft size={22} />
         </button>
         <h1 className="font-display text-xl">{form.id ? 'Editar alimento' : 'Nuevo alimento'}</h1>
@@ -593,7 +590,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
             className="rounded-xl bg-surface-3 border border-border px-3 py-2 text-text focus:outline-none focus:ring-2 focus:ring-accent resize-none"
           />
           <div className="flex gap-2 items-center">
-            <label className="flex-1 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 flex items-center gap-2 text-sm text-text-2 cursor-pointer active:scale-[0.98] transition-transform duration-150">
+            <label className="flex-1 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 flex items-center gap-2 text-sm text-text-2 cursor-pointer press">
               <ImagePlus size={18} />
               <span className="truncate">{aiFile ? aiFile.name : 'Foto (etiqueta o platillo)'}</span>
               <input
@@ -617,7 +614,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
               type="button"
               onClick={handleFetchData}
               disabled={aiLoading || (!aiText.trim() && !aiFile)}
-              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium disabled:opacity-40 active:scale-[0.98] transition-transform duration-150"
+              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium disabled:opacity-40 press"
             >
               {aiLoading ? 'Obteniendo…' : 'Obtener datos'}
             </button>
@@ -655,7 +652,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
               type="button"
               onClick={handleUsdaSearch}
               disabled={usdaLoading || !usdaQuery.trim()}
-              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium disabled:opacity-40 active:scale-[0.98] transition-transform duration-150"
+              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium disabled:opacity-40 press"
             >
               {usdaLoading ? 'Buscando…' : 'Buscar en USDA'}
             </button>
@@ -671,7 +668,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
               key={c.fdcId}
               type="button"
               onClick={() => handleFdcChip(c.fdcId, c.description)}
-              className="text-xs min-h-[44px] px-3 rounded-full bg-surface-3 border border-border text-text-2 active:scale-[0.98] transition-transform duration-150"
+              className="text-xs min-h-[44px] px-3 rounded-full bg-surface-3 border border-border text-text-2 press"
             >
               USDA: {c.description}
             </button>
@@ -692,7 +689,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
             required
             value={form.name}
             onChange={(e) => setField('name', e.target.value)}
-            className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            className="input"
           />
         </Field>
 
@@ -700,7 +697,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           <input
             value={form.brand || ''}
             onChange={(e) => setField('brand', e.target.value)}
-            className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            className="input"
           />
         </Field>
 
@@ -819,7 +816,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
               setDensityOther(v === 'otro');
               if (v !== 'otro') setField('density_g_ml', v);
             }}
-            className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            className="input"
           >
             <option value="">No es líquido</option>
             {DENSITY_PRESETS.map((p) => (
@@ -853,7 +850,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
                 value={p.name}
                 onChange={(e) => setPortion(i, { name: e.target.value })}
                 placeholder="vaso, cucharada, rebanada…"
-                className="flex-1 min-w-0 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                className="flex-1 min-w-0 input"
                 aria-label={`Nombre de la porción ${i + 1}`}
               />
               <input
@@ -870,7 +867,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
               <button
                 type="button"
                 onClick={() => setForm((f) => ({ ...f, portions: f.portions.filter((_, j) => j !== i) }))}
-                className="min-w-[44px] min-h-[44px] rounded-xl border border-border flex items-center justify-center text-text-2 active:scale-[0.98] transition-transform duration-150"
+                className="min-w-[44px] min-h-[44px] rounded-xl border border-border flex items-center justify-center text-text-2 press"
                 aria-label={`Quitar porción ${i + 1}`}
               >
                 <X size={18} />
@@ -880,7 +877,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           <button
             type="button"
             onClick={() => setForm((f) => ({ ...f, portions: [...f.portions, { name: '', grams: '' }] }))}
-            className="min-h-[44px] rounded-xl border border-border text-text-2 active:scale-[0.98] transition-transform duration-150"
+            className="min-h-[44px] rounded-xl border border-border text-text-2 press"
           >
             + Añadir porción
           </button>
@@ -890,7 +887,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           <select
             value={form.source}
             onChange={(e) => setField('source', e.target.value)}
-            className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            className="input"
           >
             <option value="manual">Manual</option>
             <option value="etiqueta">Etiqueta</option>
@@ -902,7 +899,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
 
         <button
           type="submit"
-          className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium active:scale-[0.98] transition-transform duration-150"
+          className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press"
         >
           Guardar
         </button>
@@ -911,7 +908,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           <button
             type="button"
             onClick={onDelete}
-            className="min-h-[44px] rounded-xl border border-danger text-danger font-medium active:scale-[0.98] transition-transform duration-150"
+            className="min-h-[44px] rounded-xl border border-danger text-danger font-medium press"
           >
             Borrar
           </button>
@@ -957,7 +954,7 @@ function MicroField({ m, fav, value, onChange, onToggleFav, placeholder }) {
         <button
           type="button"
           onClick={onToggleFav}
-          className="p-3 -my-3 -mr-2 shrink-0 active:scale-[0.98] transition-transform duration-150"
+          className="p-3 -my-3 -mr-2 shrink-0 press"
           aria-label={fav ? `Quitar ${m.label} de favoritos` : `Marcar ${m.label} como favorito`}
         >
           <Star size={16} className={fav ? 'text-accent' : 'text-text-3'} fill={fav ? 'currentColor' : 'none'} />

@@ -93,14 +93,14 @@ function Layout({ children }) {
           <div className="flex items-center gap-1">
             <button
               onClick={() => setLabelsOpen(true)}
-              className="p-2 rounded-lg active:scale-[0.98] transition-transform duration-150 text-text-2"
+              className="p-2 rounded-lg press text-text-2"
               aria-label="Etiquetas"
             >
               <Tags size={20} />
             </button>
             <button
               onClick={() => supabase.auth.signOut()}
-              className="p-2 rounded-lg active:scale-[0.98] transition-transform duration-150 text-text-2"
+              className="p-2 rounded-lg press text-text-2"
               aria-label="Cerrar sesión"
             >
               <LogOut size={20} />
@@ -122,7 +122,7 @@ function Layout({ children }) {
               to={to}
               end={end}
               className={({ isActive }) =>
-                `flex-1 flex flex-col items-center gap-0.5 py-2 min-h-[44px] active:scale-[0.98] transition-transform duration-150 ${
+                `flex-1 flex flex-col items-center gap-0.5 py-2 min-h-[44px] press ${
                   isActive ? 'text-accent' : 'text-text-2'
                 }`
               }

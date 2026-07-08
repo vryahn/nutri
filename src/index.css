@@ -36,6 +36,11 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+@layer components {
+  .press { @apply active:scale-[0.98] transition-transform duration-150; }
+  .input { @apply min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
