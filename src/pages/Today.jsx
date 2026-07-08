@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, GlassWater, Settings, GripVertical, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight, Plus, X, GlassWater, Settings, GripVertical } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
+import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import {
   todayISO,
   addDaysISO,
@@ -520,84 +521,26 @@ function DropOnlySection({ group: g, isOver, onEditEntry, onDeleteEntry }) {
 }
 
 // Card de una ingesta: tap → editar, arrastre horizontal inmediato → swipe (borrar),
-// long-press 250 ms sin moverse → drag entre secciones (dnd-kit). El swipe se
-// implementa a mano con pointer events; su umbral de movimiento (8 px) coincide con
+// long-press 250 ms sin moverse → drag entre secciones (dnd-kit). El swipe vive en
+// SwipeToDelete (compartido con Objetivos); su umbral de movimiento (8 px) coincide con
 // la tolerance de dnd-kit para que ambos gestos se "auto-cancelen" de forma consistente.
 function SwipeCard({ entry: e, labelId, onEdit, onDelete }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `card-${e.id}`,
     data: { type: 'card', entryId: e.id, labelId },
   });
-  const cardRef = useRef(null);
-  const gesture = useRef({ startX: 0, startY: 0, swiping: false, tracking: false, justSwiped: false });
-  const [swipeX, setSwipeX] = useState(0);
-
-  function onPointerDown(ev) {
-    listeners.onPointerDown?.(ev);
-    gesture.current = { startX: ev.clientX, startY: ev.clientY, swiping: false, tracking: true, justSwiped: false };
-  }
-
-  function onPointerMove(ev) {
-    if (isDragging || !gesture.current.tracking) return;
-    const dx = ev.clientX - gesture.current.startX;
-    const dy = ev.clientY - gesture.current.startY;
-    if (!gesture.current.swiping) {
-      if (Math.abs(dx) < 8 || Math.abs(dx) <= Math.abs(dy)) return;
-      gesture.current.swiping = true;
-    }
-    ev.preventDefault();
-    setSwipeX(Math.min(0, dx));
-  }
-
-  function onPointerUp() {
-    if (!gesture.current.tracking) return;
-    gesture.current.tracking = false;
-    if (!gesture.current.swiping) return;
-    gesture.current.swiping = false;
-    gesture.current.justSwiped = true;
-    const cardWidth = cardRef.current?.offsetWidth || 300;
-    const threshold = Math.min(96, cardWidth * 0.35);
-    if (Math.abs(swipeX) > threshold) {
-      onDelete();
-    } else {
-      setSwipeX(0);
-    }
-  }
-
-  function handleClick() {
-    if (gesture.current.justSwiped) {
-      gesture.current.justSwiped = false;
-      return;
-    }
-    onEdit();
-  }
-
-  const style = swipeX !== 0 ? { transform: `translateX(${swipeX}px)` } : undefined;
-
   return (
-    <div className={`relative rounded-2xl ${swipeX !== 0 ? 'overflow-hidden' : ''}`}>
-      {swipeX !== 0 && (
-        <div className="absolute inset-0 rounded-2xl bg-danger flex items-center justify-end pr-4">
-          <Trash2 size={20} className="text-text" />
-        </div>
-      )}
-      <button
-        ref={(node) => {
-          setNodeRef(node);
-          cardRef.current = node;
-        }}
-        {...attributes}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onClick={handleClick}
-        style={style}
-        className={`relative w-full text-left rounded-2xl bg-surface border border-border p-3 flex justify-between items-center gap-3 touch-pan-y ${isDragging ? 'opacity-30' : ''}`}
-      >
-        <CardBody entry={e} />
-      </button>
-    </div>
+    <SwipeToDelete
+      onDelete={onDelete}
+      onTap={onEdit}
+      dragDisabled={isDragging}
+      onPointerDownExtra={listeners.onPointerDown}
+      nodeRef={setNodeRef}
+      dragAttributes={attributes}
+      className={`rounded-2xl bg-surface border border-border p-3 flex justify-between items-center gap-3 ${isDragging ? 'opacity-30' : ''}`}
+    >
+      <CardBody entry={e} />
+    </SwipeToDelete>
   );
 }
 
