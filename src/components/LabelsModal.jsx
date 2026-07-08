@@ -14,6 +14,8 @@ export default function LabelsModal({ onClose }) {
   async function load() {
     const { data } = await supabase.from('meal_labels').select('*').order('sort_order');
     if (data) setLabels(data);
+    // Hoy renderiza secciones por etiqueta sin remontarse cuando este modal cambia algo.
+    window.dispatchEvent(new Event('labels-changed'));
   }
 
   async function addLabel(e) {

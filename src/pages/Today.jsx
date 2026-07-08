@@ -26,6 +26,9 @@ export default function Today() {
     loadRecent();
     loadTargets();
     loadPrefs();
+    // LabelsModal vive en App.jsx encima de esta página: sin remount, avisa por evento.
+    window.addEventListener('labels-changed', loadLabels);
+    return () => window.removeEventListener('labels-changed', loadLabels);
   }, []);
 
   async function loadPrefs() {
@@ -47,7 +50,12 @@ export default function Today() {
   // grams = ml). Find-or-create filtrando por owner: el catálogo es compartido en
   // lectura y el "Agua" del otro usuario no sería editable por este.
   async function getWaterFoodId() {
-    if (prefs.water_food_id) return prefs.water_food_id;
+    // Validar el cache: un import/limpieza del catálogo pudo borrar el food y
+    // dejar el id muerto (los inserts fallarían por FK en silencio).
+    if (prefs.water_food_id) {
+      const { data } = await supabase.from('foods').select('id').eq('id', prefs.water_food_id).maybeSingle();
+      if (data) return data.id;
+    }
     let { data: food } = await supabase.from('foods').select('id').eq('name', 'Agua').eq('owner', userId).maybeSingle();
     if (!food) {
       ({ data: food } = await supabase
@@ -63,7 +71,11 @@ export default function Today() {
   async function addWater(ml) {
     if (!userId || !(ml > 0)) return;
     const foodId = await getWaterFoodId();
-    await supabase.from('entries').insert({ day: date, grams: ml, food_id: foodId });
+    const { error } = await supabase.from('entries').insert({ day: date, grams: ml, food_id: foodId });
+    if (error) {
+      showToast('Error al registrar agua.');
+      return;
+    }
     loadDay();
   }
 
