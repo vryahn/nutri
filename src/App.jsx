@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, Navigate, NavLink } from 'react-router-dom';
+import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
 import { CalendarDays, Apple, ChefHat, Target, BarChart3, LogOut, Tags } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import Login from './pages/Login.jsx';
@@ -30,60 +30,114 @@ function useSession() {
   return session;
 }
 
-function Layout({ children }) {
-  const [labelsOpen, setLabelsOpen] = useState(false);
-
+// Sidebar fija en md+ (reemplaza header + tab bar inferior de móvil).
+function Sidebar({ onLabels }) {
   return (
-    <div className="min-h-dvh flex flex-col">
-      <header className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <span className="font-display text-lg">
-          nutri<span className="text-accent">.</span>
-        </span>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setLabelsOpen(true)}
-            className="p-2 rounded-lg active:scale-[0.98] transition-transform duration-150 text-text-2"
-            aria-label="Etiquetas"
-          >
-            <Tags size={20} />
-          </button>
-          <button
-            onClick={() => supabase.auth.signOut()}
-            className="p-2 rounded-lg active:scale-[0.98] transition-transform duration-150 text-text-2"
-            aria-label="Cerrar sesión"
-          >
-            <LogOut size={20} />
-          </button>
-        </div>
-      </header>
+    <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:left-0 md:w-52 md:border-r md:border-border md:bg-surface md:py-4 md:px-3">
+      <span className="font-display text-lg px-2 pb-4">
+        nutri<span className="text-accent">.</span>
+      </span>
 
-      <main className="flex-1 overflow-x-hidden pb-24">{children}</main>
-
-      <nav
-        className="fixed bottom-0 inset-x-0 bg-surface border-t border-border flex"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-      >
+      <nav className="flex flex-col gap-1 flex-1">
         {TABS.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
             className={({ isActive }) =>
-              `flex-1 flex flex-col items-center gap-0.5 py-2 min-h-[44px] active:scale-[0.98] transition-transform duration-150 ${
-                isActive ? 'text-accent' : 'text-text-2'
+              `flex items-center gap-3 min-h-[44px] px-3 rounded-lg transition-colors duration-150 ${
+                isActive ? 'bg-surface-2 text-accent' : 'text-text-2'
               }`
             }
           >
-            {({ isActive }) => (
-              <>
-                <Icon size={22} />
-                <span className="text-xs">{label}</span>
-                {isActive && <span className="h-0.5 w-6 rounded-full bg-accent" />}
-              </>
-            )}
+            <Icon size={20} />
+            <span className="text-sm">{label}</span>
           </NavLink>
         ))}
       </nav>
+
+      <div className="flex flex-col gap-1 pt-2 border-t border-border">
+        <button
+          onClick={onLabels}
+          className="flex items-center gap-3 min-h-[44px] px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
+        >
+          <Tags size={20} />
+          <span className="text-sm">Etiquetas</span>
+        </button>
+        <button
+          onClick={() => supabase.auth.signOut()}
+          className="flex items-center gap-3 min-h-[44px] px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
+        >
+          <LogOut size={20} />
+          <span className="text-sm">Cerrar sesión</span>
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function Layout({ children }) {
+  const [labelsOpen, setLabelsOpen] = useState(false);
+  const location = useLocation();
+  const isDashboard = location.pathname === '/dashboard';
+
+  return (
+    <div className="min-h-dvh flex flex-col md:flex-row">
+      <Sidebar onLabels={() => setLabelsOpen(true)} />
+
+      <div className="flex-1 flex flex-col min-w-0 md:ml-52">
+        <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border">
+          <span className="font-display text-lg">
+            nutri<span className="text-accent">.</span>
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setLabelsOpen(true)}
+              className="p-2 rounded-lg active:scale-[0.98] transition-transform duration-150 text-text-2"
+              aria-label="Etiquetas"
+            >
+              <Tags size={20} />
+            </button>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="p-2 rounded-lg active:scale-[0.98] transition-transform duration-150 text-text-2"
+              aria-label="Cerrar sesión"
+            >
+              <LogOut size={20} />
+            </button>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-x-hidden pb-24 md:pb-8 md:pt-6">
+          <div className={`mx-auto ${isDashboard ? 'max-w-3xl md:max-w-[1600px]' : 'max-w-3xl'}`}>{children}</div>
+        </main>
+
+        <nav
+          className="md:hidden fixed bottom-0 inset-x-0 bg-surface border-t border-border flex"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          {TABS.map(({ to, label, icon: Icon, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              className={({ isActive }) =>
+                `flex-1 flex flex-col items-center gap-0.5 py-2 min-h-[44px] active:scale-[0.98] transition-transform duration-150 ${
+                  isActive ? 'text-accent' : 'text-text-2'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <Icon size={22} />
+                  <span className="text-xs">{label}</span>
+                  {isActive && <span className="h-0.5 w-6 rounded-full bg-accent" />}
+                </>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+      </div>
 
       {labelsOpen && <LabelsModal onClose={() => setLabelsOpen(false)} />}
     </div>
