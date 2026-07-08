@@ -5,6 +5,26 @@ import { MICROS, MICROS_DEFAULT, round, kcalFromMacros, kcalSuspicious } from '.
 
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY;
 
+// Líquidos más consumidos con su densidad (g/ml). El usuario elige de aquí y solo
+// teclea manualmente con "Otro…". Gemini recibe estos valores canónicos y su
+// estimación se ajusta al preset más cercano (±0.015) para caer en la opción correcta.
+const DENSITY_PRESETS = [
+  { label: 'Agua, café, té o caldo', value: 1 },
+  { label: 'Leche', value: 1.03 },
+  { label: 'Jugo o refresco', value: 1.04 },
+  { label: 'Yogur bebible o licuado', value: 1.05 },
+  { label: 'Bebida alcohólica', value: 0.99 },
+  { label: 'Aceite', value: 0.92 },
+  { label: 'Miel o jarabe', value: 1.4 },
+];
+
+function snapDensity(v) {
+  const n = Number(v);
+  if (!(n > 0)) return '';
+  const near = DENSITY_PRESETS.find((p) => Math.abs(p.value - n) <= 0.015);
+  return near ? near.value : n;
+}
+
 const EMPTY_FOOD = {
   name: '', brand: '', kcal: '', protein_g: '', carbs_g: '', fat_g: '',
   micros: {}, portions: [], density_g_ml: '', source: 'manual',
@@ -195,7 +215,7 @@ export default function Foods() {
 // para Gemini: sin dato fiable → 0. Los ocultos solo si hay dato fiable → null si no.
 function geminiPrompt(requiredMicroKeys) {
   const units = MICROS.map((m) => `${m.key} (${m.unit})`).join(', ');
-  return `Eres un asistente de nutrición. Estima la información nutrimental de un alimento, producto o platillo y devuélvela SIEMPRE por 100 gramos de porción comestible. Prioriza productos y platillos comunes en México (marcas y preparaciones mexicanas). Si no hay etiqueta, basa la estimación en datos tipo USDA FoodData Central. Si la imagen es una etiqueta nutrimental, lee los valores declarados y normalízalos a 100 g usando el tamaño de porción declarado (p. ej. porción de 30 g → multiplica cada valor por 100/30). Si la imagen es un platillo, estima a partir de los ingredientes visibles y su proporción. Unidades: kcal en kcal; protein_g, carbs_g y fat_g en gramos; micros: ${units}. OBLIGATORIOS (si no encuentras dato fiable, devuelve 0, nunca null): kcal, protein_g, carbs_g, fat_g y los micros ${requiredMicroKeys.join(', ')}. El resto de micros: devuélvelos solo si tienes dato fiable de etiqueta o base tipo USDA; si no, null — no inventes ni extrapoles. Si el alimento es un líquido o bebida, estima density_g_ml (densidad en g/ml, p. ej. agua 1.0, leche 1.03, aceite 0.92); si no es líquido, null. "name" corto en español; "brand" solo si es identificable.`;
+  return `Eres un asistente de nutrición. Estima la información nutrimental de un alimento, producto o platillo y devuélvela SIEMPRE por 100 gramos de porción comestible. Prioriza productos y platillos comunes en México (marcas y preparaciones mexicanas). Si no hay etiqueta, basa la estimación en datos tipo USDA FoodData Central. Si la imagen es una etiqueta nutrimental, lee los valores declarados y normalízalos a 100 g usando el tamaño de porción declarado (p. ej. porción de 30 g → multiplica cada valor por 100/30). Si la imagen es un platillo, estima a partir de los ingredientes visibles y su proporción. Unidades: kcal en kcal; protein_g, carbs_g y fat_g en gramos; micros: ${units}. OBLIGATORIOS (si no encuentras dato fiable, devuelve 0, nunca null): kcal, protein_g, carbs_g, fat_g y los micros ${requiredMicroKeys.join(', ')}. El resto de micros: devuélvelos solo si tienes dato fiable de etiqueta o base tipo USDA; si no, null — no inventes ni extrapoles. Si el alimento es un líquido o bebida, devuelve density_g_ml (densidad en g/ml) usando estos valores canónicos cuando el tipo coincida: ${DENSITY_PRESETS.map((p) => `${p.label.toLowerCase()} ${p.value}`).join(', ')}; para otro líquido da tu mejor estimación; si no es líquido, null. "name" corto en español; "brand" solo si es identificable.`;
 }
 
 const GEMINI_SCHEMA = {
@@ -259,13 +279,19 @@ async function estimateFood(text, imageFile, favs) {
     carbs_g: out.carbs_g ?? '',
     fat_g: out.fat_g ?? '',
     micros,
-    density_g_ml: Number(out.density_g_ml) > 0 ? out.density_g_ml : '',
+    density_g_ml: snapDensity(out.density_g_ml),
     source: 'gemini',
   };
 }
 
 function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
-  const [form, setForm] = useState({ ...EMPTY_FOOD, ...food, density_g_ml: food.density_g_ml ?? '', portions: food.portions || [] });
+  // density de la DB (numeric) puede venir como string: se normaliza para que el select matchee
+  const [form, setForm] = useState({
+    ...EMPTY_FOOD,
+    ...food,
+    density_g_ml: food.density_g_ml > 0 ? Number(food.density_g_ml) : '',
+    portions: food.portions || [],
+  });
   const [basis, setBasis] = useState('100'); // gramos a los que refieren los valores capturados
 
   // La DB siempre guarda por 100 g: si el usuario capturó por otra base, se escala al guardar.
@@ -284,6 +310,10 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
       micros: Object.fromEntries(Object.entries(f.micros).map(([k, v]) => [k, round(Number(v) * s, 3)])),
     };
   }
+  // true = el usuario eligió "Otro…" en líquido (densidad manual aunque esté vacía)
+  const [densityOther, setDensityOther] = useState(
+    food.density_g_ml > 0 && !DENSITY_PRESETS.some((p) => p.value === Number(food.density_g_ml))
+  );
   const [aiText, setAiText] = useState('');
   const [aiFile, setAiFile] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -300,6 +330,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     try {
       const estimated = await estimateFood(aiText, aiFile, favs);
       setForm((f) => ({ ...f, ...estimated }));
+      setDensityOther(estimated.density_g_ml > 0 && !DENSITY_PRESETS.some((p) => p.value === estimated.density_g_ml));
       setBasis('100'); // Gemini devuelve por 100 g
     } catch {
       setAiError('No se pudo estimar. Revisa la conexión o intenta con otra descripción/foto.');
@@ -480,18 +511,38 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           </div>
         </details>
 
-        <Field label="Densidad (g/ml) — solo líquidos">
-          <input
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="any"
-            value={form.density_g_ml}
-            onChange={(e) => setField('density_g_ml', e.target.value)}
-            placeholder="p. ej. 1.0 agua · 1.03 leche · 0.92 aceite"
-            className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-          <p className="text-xs text-text-3">Con densidad, al registrar podrás capturar en ml y se convierte a gramos.</p>
+        <Field label="Líquido">
+          <select
+            value={densityOther ? 'otro' : String(form.density_g_ml ?? '')}
+            onChange={(e) => {
+              const v = e.target.value;
+              setDensityOther(v === 'otro');
+              if (v !== 'otro') setField('density_g_ml', v);
+            }}
+            className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="">No es líquido</option>
+            {DENSITY_PRESETS.map((p) => (
+              <option key={p.value} value={String(p.value)}>
+                {p.label} ({p.value} g/ml)
+              </option>
+            ))}
+            <option value="otro">Otro…</option>
+          </select>
+          {densityOther && (
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="any"
+              value={form.density_g_ml}
+              onChange={(e) => setField('density_g_ml', e.target.value)}
+              placeholder="densidad en g/ml"
+              className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-text-3"
+              aria-label="Densidad en g/ml"
+            />
+          )}
+          <p className="text-xs text-text-3">Si es líquido, al registrar podrás capturar en ml y se convierte a gramos.</p>
         </Field>
 
         <div className="flex flex-col gap-2">
