@@ -282,7 +282,7 @@ function MetricLines({ display, className = '' }) {
 // Objetivo mostrado en la tabla de micros, según el modo (Fix 1).
 function objetivoCell(calcMode, objStats, unit) {
   if (objStats.n === 0) {
-    return <Hint text="Sin objetivo para este nutriente — regístralo en Metas">Sin objetivo</Hint>;
+    return <Hint text="Sin objetivo para este nutriente — regístralo en Metas">–</Hint>;
   }
   if (calcMode === 'stddev' || calcMode === 'tendencia') return '–';
   if (calcMode === 'suma') return `${round(objStats.sum, 1)} ${unit}`;
