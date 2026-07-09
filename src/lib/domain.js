@@ -192,6 +192,13 @@ export function sodiumIsLow(sodiumMg, hasEntries) {
 export const SODIUM_HIGH_MG = 460;
 export const POTASSIUM_HIGH_MG = 940;
 
+// Alimento-centinela de agua (ver Today.jsx): kcal 0 y micros = solo {agua_ml}. Se
+// oculta del CRUD de Alimentos, se gestiona solo desde la tarjeta de agua en Hoy.
+export function isWaterSentinel(f) {
+  const keys = Object.keys(f.micros || {});
+  return f.kcal === 0 && keys.length === 1 && keys[0] === 'agua_ml';
+}
+
 export function round(n, decimals) {
   const f = 10 ** decimals;
   return Math.round(n * f) / f;
