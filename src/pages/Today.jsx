@@ -1579,15 +1579,13 @@ function AportaStat({ label, value, color, unit }) {
 }
 
 function Sheet({ title, onClose, children }) {
+  // Backdrop cierra al tocar fuera (patrón del Sheet de Objetivos); la ✕ sería
+  // redundante aquí, así que se omite — la del editor inline (riel lg+, sin
+  // backdrop) sí se conserva porque ahí no hay tap-fuera.
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
-      <div className="w-full sm:max-w-sm bg-surface-3 rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-4 max-h-[85dvh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-lg">{title}</h2>
-          <button onClick={onClose} className="p-2 -mr-2 press" aria-label="Cerrar">
-            <X size={20} />
-          </button>
-        </div>
+    <div onClick={onClose} className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
+      <div onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-sm bg-surface-3 rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-4 max-h-[85dvh] overflow-y-auto">
+        <h2 className="font-display text-lg">{title}</h2>
         {children}
       </div>
     </div>

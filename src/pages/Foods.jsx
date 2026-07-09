@@ -721,8 +721,11 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
       {!form.id && FDC_KEY && (
         <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
           <p className="text-sm text-text-2 flex items-center gap-2">
-            <Search size={16} className="text-accent" /> Buscar en USDA
+            <Search size={16} className="text-accent" /> Buscar en USDA <span className="text-text-3">· en inglés</span>
           </p>
+          {GEMINI_KEY && (
+            <p className="text-xs text-text-3">¿Prefieres español? Usa “Datos con IA” arriba.</p>
+          )}
           <div className="flex gap-2">
             <input
               value={usdaQuery}

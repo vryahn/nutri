@@ -104,9 +104,10 @@ export default function SwipeToDelete({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onClick={handleClick}
+        onContextMenu={(e) => e.preventDefault()}
         onTransitionEnd={() => setRestoring(false)}
         style={style}
-        className={`relative w-full text-left touch-pan-y ${className}`}
+        className={`relative w-full text-left touch-pan-y select-none [-webkit-touch-callout:none] ${className}`}
       >
         {children}
       </button>
