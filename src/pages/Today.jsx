@@ -813,12 +813,15 @@ function DropOnlySection({ group: g, isOver, editingId, onEditEntry, onDeleteEnt
 // En lg+ con puntero (hover/focus-within), iconos ✎/✕ aparecen a la derecha — capa
 // aparte (no dentro del <button> del swipe: anidar <button> rompe el HTML).
 function SwipeCard({ entry: e, labelId, editing, onEdit, onDelete }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `card-${e.id}`,
     data: { type: 'card', entryId: e.id, labelId },
   });
+  // Transform de sortable → las cards vecinas "hacen hueco". La card activa la
+  // pinta el DragOverlay, así que no la movemos aquí (!isDragging).
+  const style = transform && !isDragging ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, transition } : undefined;
   return (
-    <div className="relative group rounded-2xl">
+    <div style={style} className="relative group rounded-2xl">
       {editing && <span aria-hidden className="absolute left-0 top-2 bottom-2 w-1 rounded-full bg-accent" />}
       <SwipeToDelete
         onDelete={onDelete}
