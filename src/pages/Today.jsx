@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, GlassWater, Settings, GripVertical, Pencil, Trash2, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, GlassWater, Settings, GripVertical, Pencil, Trash2, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { useToast } from '../lib/useToast.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
@@ -55,6 +55,20 @@ export default function Today() {
   const [quickAddInitialLabel, setQuickAddInitialLabel] = useState(null);
   const quickAddInputRef = useRef(null);
   const isLg = useIsLgUp();
+  // Secciones contraídas: Set de claves (String(labelId) o 'none'), persistido en
+  // localStorage — sobrevive reload sin escritura remota (ponytail: no DB).
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('nutri.today.collapsed') || '[]')); }
+    catch { return new Set(); }
+  });
+  function toggleCollapsed(key) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      localStorage.setItem('nutri.today.collapsed', JSON.stringify([...next]));
+      return next;
+    });
+  }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 250, tolerance: 8 } }));
 
@@ -584,6 +598,8 @@ export default function Today() {
                     group={g}
                     isOver={dragOverSection === g.id}
                     editingId={editing?.id}
+                    collapsed={collapsed.has(String(g.id))}
+                    onToggle={() => toggleCollapsed(String(g.id))}
                     onAdd={() => handleSectionAdd(g.id)}
                     onEditEntry={setEditing}
                     onDeleteEntry={deleteEntry}
@@ -594,6 +610,8 @@ export default function Today() {
                     group={g}
                     isOver={dragOverSection === 'none'}
                     editingId={editing?.id}
+                    collapsed={collapsed.has('none')}
+                    onToggle={() => toggleCollapsed('none')}
                     onEditEntry={setEditing}
                     onDeleteEntry={deleteEntry}
                   />
@@ -722,26 +740,77 @@ function sectionTotals(items) {
     carbs_g: a.carbs_g + Number(e.carbs_g),
     fat_g: a.fat_g + Number(e.fat_g),
     sodio_mg: a.sodio_mg + Number(e.micros?.sodio_mg || 0),
-  }), { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, sodio_mg: 0 });
+    potasio_mg: a.potasio_mg + Number(e.micros?.potasio_mg || 0),
+    magnesio_mg: a.magnesio_mg + Number(e.micros?.magnesio_mg || 0),
+  }), { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, sodio_mg: 0, potasio_mg: 0, magnesio_mg: 0 });
 }
 
-// Línea mono discreta bajo el nombre de sección con la suma de sus registros.
-function SectionSummary({ items }) {
-  if (items.length === 0) return null;
+// Barra resumen = nivel 1 (total de la sección): tinte lima, nombre en eyebrow,
+// macros con color + micros (Na/K/Mg, solo lg) y kcal grande a la derecha. Click en
+// la zona izquierda contrae/expande. `handle` = botón de drag de sección (opcional).
+function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, handle }) {
   const t = sectionTotals(items);
+  const has = items.length > 0;
+  const label = (
+    <>
+      <span className="flex items-center gap-1 text-[11px] uppercase tracking-wider font-semibold text-accent">
+        {has && <ChevronDown size={13} className={`transition-transform motion-reduce:transition-none ${collapsed ? '-rotate-90' : ''}`} />}
+        {name}
+      </span>
+      {has && (
+        <span className="mt-0.5 text-[13px] font-mono tabular-nums font-medium flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+          {t.protein_g > 0 && <span className="text-d-prot">P {round(t.protein_g, 1)}</span>}
+          {t.carbs_g > 0 && <span className="text-d-carb">C {round(t.carbs_g, 1)}</span>}
+          {t.fat_g > 0 && <span className="text-d-fat">G {round(t.fat_g, 1)}</span>}
+          {t.sodio_mg > 0 && <span className="hidden lg:inline text-text-3">Na {round(t.sodio_mg, 0)}</span>}
+          {t.potasio_mg > 0 && <span className="hidden lg:inline text-text-3">K {round(t.potasio_mg, 0)}</span>}
+          {t.magnesio_mg > 0 && <span className="hidden lg:inline text-text-3">Mg {round(t.magnesio_mg, 0)}</span>}
+        </span>
+      )}
+    </>
+  );
   return (
-    <div className="text-xs font-mono tabular-nums flex flex-wrap items-center gap-x-2 gap-y-0.5">
-      <span className="text-text-2">{round(t.kcal, 0)} kcal</span>
-      {t.protein_g > 0 && <span className="text-d-prot">P {round(t.protein_g, 1)}</span>}
-      {t.carbs_g > 0 && <span className="text-d-carb">C {round(t.carbs_g, 1)}</span>}
-      {t.fat_g > 0 && <span className="text-d-fat">G {round(t.fat_g, 1)}</span>}
-      {t.sodio_mg > 0 && <span className="text-text-3">Na {round(t.sodio_mg, 0)}</span>}
+    <div
+      className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 min-h-[44px] transition-colors"
+      style={{
+        background: 'color-mix(in srgb, var(--accent) 6%, transparent)',
+        borderColor: isOver
+          ? 'color-mix(in srgb, var(--accent) 45%, transparent)'
+          : 'color-mix(in srgb, var(--accent) 16%, transparent)',
+      }}
+    >
+      {has ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          aria-label={`${collapsed ? 'Expandir' : 'Contraer'} ${name}`}
+          className="min-w-0 flex-1 flex flex-col text-left"
+        >
+          {label}
+        </button>
+      ) : (
+        <div className="min-w-0 flex-1 flex flex-col">{label}</div>
+      )}
+      <div className="flex items-center gap-1 flex-none -mr-1">
+        {has && (
+          <span className="font-mono tabular-nums text-xl font-semibold text-text leading-none">
+            {round(t.kcal, 0)}<span className="text-xs font-normal text-text-2 ml-0.5">kcal</span>
+          </span>
+        )}
+        {onAdd && (
+          <button onClick={onAdd} className="p-2.5 text-accent press" aria-label={`Añadir a ${name}`}>
+            <Plus size={20} />
+          </button>
+        )}
+        {handle}
+      </div>
     </div>
   );
 }
 
 // Sección de una etiqueta real: reordenable (handle) y droppable (cards de otras secciones).
-function SortableSection({ group: g, isOver, editingId, onAdd, onEditEntry, onDeleteEntry }) {
+function SortableSection({ group: g, isOver, editingId, collapsed, onToggle, onAdd, onEditEntry, onDeleteEntry }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `section-${g.id}`,
     data: { type: 'section', labelId: g.id },
@@ -754,12 +823,14 @@ function SortableSection({ group: g, isOver, editingId, onAdd, onEditEntry, onDe
       style={style}
       className={`flex flex-col gap-2 rounded-2xl ${isDragging ? 'opacity-60' : ''}`}
     >
-      <div className="flex items-center justify-between min-h-[44px]">
-        <div className="min-w-0 flex flex-col">
-          <h2 className={`text-sm transition-colors duration-150 ${isOver ? 'text-accent' : 'text-text-3'}`}>{g.name}</h2>
-          <SectionSummary items={g.items} />
-        </div>
-        <div className="flex items-center gap-1 -mr-2.5">
+      <SectionBar
+        name={g.name}
+        items={g.items}
+        isOver={isOver}
+        collapsed={collapsed}
+        onToggle={onToggle}
+        onAdd={onAdd}
+        handle={
           <button
             {...attributes}
             onPointerDown={listeners.onPointerDown}
@@ -768,40 +839,32 @@ function SortableSection({ group: g, isOver, editingId, onAdd, onEditEntry, onDe
           >
             <GripVertical size={18} />
           </button>
-          <button
-            onClick={onAdd}
-            className="p-2.5 text-accent press"
-            aria-label={`Añadir a ${g.name}`}
-          >
-            <Plus size={20} />
-          </button>
-        </div>
-      </div>
-      <SortableContext items={g.items.map((e) => `card-${e.id}`)} strategy={verticalListSortingStrategy}>
-        {g.items.map((e) => (
-          <SwipeCard key={e.id} entry={e} labelId={g.id} editing={e.id === editingId} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
-        ))}
-      </SortableContext>
+        }
+      />
+      {!collapsed && (
+        <SortableContext items={g.items.map((e) => `card-${e.id}`)} strategy={verticalListSortingStrategy}>
+          {g.items.map((e) => (
+            <SwipeCard key={e.id} entry={e} labelId={g.id} editing={e.id === editingId} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
+          ))}
+        </SortableContext>
+      )}
     </div>
   );
 }
 
 // "Sin etiqueta": no reordenable la sección, pero sus cards sí; droppable para cross-sección.
-function DropOnlySection({ group: g, isOver, editingId, onEditEntry, onDeleteEntry }) {
+function DropOnlySection({ group: g, isOver, editingId, collapsed, onToggle, onEditEntry, onDeleteEntry }) {
   const { setNodeRef } = useDroppable({ id: 'section-none', data: { type: 'section', labelId: null } });
   return (
     <div ref={setNodeRef} className="flex flex-col gap-2 rounded-2xl">
-      <div className="flex items-center min-h-[44px]">
-        <div className="min-w-0 flex flex-col">
-          <h2 className={`text-sm transition-colors duration-150 ${isOver ? 'text-accent' : 'text-text-3'}`}>{g.name}</h2>
-          <SectionSummary items={g.items} />
-        </div>
-      </div>
-      <SortableContext items={g.items.map((e) => `card-${e.id}`)} strategy={verticalListSortingStrategy}>
-        {g.items.map((e) => (
-          <SwipeCard key={e.id} entry={e} labelId={g.id} editing={e.id === editingId} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
-        ))}
-      </SortableContext>
+      <SectionBar name={g.name} items={g.items} isOver={isOver} collapsed={collapsed} onToggle={onToggle} />
+      {!collapsed && (
+        <SortableContext items={g.items.map((e) => `card-${e.id}`)} strategy={verticalListSortingStrategy}>
+          {g.items.map((e) => (
+            <SwipeCard key={e.id} entry={e} labelId={g.id} editing={e.id === editingId} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
+          ))}
+        </SortableContext>
+      )}
     </div>
   );
 }
@@ -870,11 +933,14 @@ function CardBody({ entry: e }) {
     <>
       <div className="min-w-0">
         <p className="font-medium truncate">{e.item}</p>
-        <div className="text-sm font-mono tabular-nums mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-          <span className="text-text-3">{e.grams} g</span>
-          {Number(e.protein_g) > 0 && <span className="text-d-prot">P {round(Number(e.protein_g), 1)}</span>}
-          {Number(e.carbs_g) > 0 && <span className="text-d-carb">C {round(Number(e.carbs_g), 1)}</span>}
-          {Number(e.fat_g) > 0 && <span className="text-d-fat">G {round(Number(e.fat_g), 1)}</span>}
+        <div className="text-sm font-mono tabular-nums mt-0.5 text-text-2 flex flex-wrap items-center gap-y-0.5 [&>.sep]:text-text-3 [&>.sep]:mx-1.5">
+          <span>{e.grams}g</span>
+          {Number(e.protein_g) > 0 && <><span className="sep">|</span><span>P {round(Number(e.protein_g), 1)}</span></>}
+          {Number(e.carbs_g) > 0 && <><span className="sep">|</span><span>C {round(Number(e.carbs_g), 1)}</span></>}
+          {Number(e.fat_g) > 0 && <><span className="sep">|</span><span>G {round(Number(e.fat_g), 1)}</span></>}
+          {Number(e.micros?.sodio_mg) > 0 && <><span className="sep hidden lg:inline">|</span><span className="hidden lg:inline">Na {round(Number(e.micros.sodio_mg), 0)}</span></>}
+          {Number(e.micros?.potasio_mg) > 0 && <><span className="sep hidden lg:inline">|</span><span className="hidden lg:inline">K {round(Number(e.micros.potasio_mg), 0)}</span></>}
+          {Number(e.micros?.magnesio_mg) > 0 && <><span className="sep hidden lg:inline">|</span><span className="hidden lg:inline">Mg {round(Number(e.micros.magnesio_mg), 0)}</span></>}
         </div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
