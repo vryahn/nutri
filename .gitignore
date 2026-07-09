@@ -3,3 +3,6 @@ dist/
 .env
 .DS_Store
 vite.config.js.timestamp-*.mjs
+docs/
+foods.csv
+servings-6.csv
