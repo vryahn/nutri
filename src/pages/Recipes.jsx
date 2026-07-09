@@ -7,6 +7,7 @@ import { GEMINI_KEY, estimateRecipe, parseAmount, snapDensity } from '../lib/ai.
 import { searchFDC, fetchFDC, translateEnEs } from '../lib/sources.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import UndoToast from '../components/UndoToast.jsx';
+import AmountField from '../components/AmountField.jsx';
 import SortTh from '../components/SortTh.jsx';
 import AiDataCard from '../components/AiDataCard.jsx';
 
@@ -91,7 +92,7 @@ export default function Recipes() {
     }
     const { data: items } = await supabase
       .from('recipe_items')
-      .select('grams, food_id, foods(id, name, kcal, protein_g, carbs_g, fat_g, micros)')
+      .select('grams, food_id, foods(id, name, kcal, protein_g, carbs_g, fat_g, micros, density_g_ml, portions)')
       .eq('recipe_id', recipe.id);
     setEditing({
       ...recipe,
@@ -429,7 +430,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     const t = setTimeout(async () => {
       const { data } = await supabase
         .from('foods')
-        .select('id, name, kcal, protein_g, carbs_g, fat_g, micros')
+        .select('id, name, kcal, protein_g, carbs_g, fat_g, micros, density_g_ml, portions')
         .ilike('name', `%${query.trim()}%`)
         .limit(8);
       setResults(data || []);
@@ -477,7 +478,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     setAiError('');
     try {
       const [{ data: foods }, { data: prefsRow }] = await Promise.all([
-        supabase.from('foods').select('id, name, kcal, protein_g, carbs_g, fat_g, micros'),
+        supabase.from('foods').select('id, name, kcal, protein_g, carbs_g, fat_g, micros, density_g_ml, portions'),
         supabase.from('prefs').select('data').maybeSingle(),
       ]);
       const catalogFoods = (foods || []).filter((f) => !isWaterSentinel(f));
@@ -776,23 +777,35 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
                   onSwapUsda={(detail) => swapIngredientToUsda(i, detail)}
                 />
               ) : (
-                <div key={ing.food.id} className="flex items-center gap-2 rounded-xl bg-surface-2 border border-border px-3 py-2">
-                  <div className="flex-1 flex flex-col min-w-0">
-                    <span className="truncate">{ing.food.name}</span>
-                    {ing.procedencia && <span className="text-xs text-text-3">{ing.procedencia}</span>}
+                <div key={ing.food.id} className="flex flex-col gap-2 rounded-xl bg-surface-2 border border-border px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 flex flex-col min-w-0">
+                      <span className="truncate">{ing.food.name}</span>
+                      {ing.procedencia && <span className="text-xs text-text-3">{ing.procedencia}</span>}
+                    </div>
+                    {!(Number(ing.food.density_g_ml) > 0) && (
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="any"
+                        value={ing.grams}
+                        onChange={(e) => setIngredientGrams(i, e.target.value)}
+                        placeholder="g"
+                        className="w-20 min-h-[44px] rounded-lg bg-surface-3 border border-border px-2 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+                      />
+                    )}
+                    <button onClick={() => removeIngredient(i)} className="p-1 text-danger" aria-label="Quitar ingrediente">
+                      <Trash2 size={16} />
+                    </button>
                   </div>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    step="any"
-                    value={ing.grams}
-                    onChange={(e) => setIngredientGrams(i, e.target.value)}
-                    placeholder="g"
-                    className="w-20 min-h-[44px] rounded-lg bg-surface-3 border border-border px-2 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
-                  />
-                  <button onClick={() => removeIngredient(i)} className="p-1 text-danger" aria-label="Quitar ingrediente">
-                    <Trash2 size={16} />
-                  </button>
+                  {Number(ing.food.density_g_ml) > 0 && (
+                    <AmountField
+                      grams={ing.grams === '' || ing.grams == null ? '' : String(ing.grams)}
+                      onGrams={(v) => setIngredientGrams(i, v)}
+                      meta={ing.food}
+                      required={false}
+                    />
+                  )}
                 </div>
               )
             )}
@@ -969,7 +982,7 @@ function StagedIngredientCard({ ing, onFood, onGrams, onSave, onRemove, onSwapCa
     const t = setTimeout(async () => {
       const { data } = await supabase
         .from('foods')
-        .select('id, name, kcal, protein_g, carbs_g, fat_g, micros')
+        .select('id, name, kcal, protein_g, carbs_g, fat_g, micros, density_g_ml, portions')
         .ilike('name', `%${query.trim()}%`)
         .limit(8);
       setResults(data || []);

@@ -38,10 +38,10 @@ export async function toJpegBase64(file, maxSide = 1024) {
 // Jerarquía: etiqueta transcrita > EAN legible > estimación tipo USDA priorizando México.
 function geminiPrompt() {
   const units = MICROS.map((m) => `${m.key} (${m.unit})`).join(', ');
-  return `Eres un asistente de nutrición para México. Devuelve SIEMPRE los valores por 100 gramos de porción comestible. Sigue esta jerarquía, en orden:
-1. Si la imagen contiene una etiqueta nutrimental (NOM-051 o similar) legible: TRANSCRIBE los valores declarados, NO estimes. Normaliza a 100 g con el tamaño de porción declarado (p. ej. porción de 30 g → multiplica cada valor por 100/30). mode = "etiqueta".
+  return `Eres un asistente de nutrición para México. Devuelve SIEMPRE los valores por 100 unidades de porción comestible (100 g, o 100 ml si el alimento es líquido y la etiqueta declara por ml). Sigue esta jerarquía, en orden:
+1. Si la imagen contiene una etiqueta nutrimental (NOM-051 o similar) legible: TRANSCRIBE los valores declarados, NO estimes. Si la etiqueta declara por gramos, normaliza a 100 g con el tamaño de porción declarado (p. ej. porción de 30 g → multiplica cada valor por 100/30) y basis = "100g". Si la etiqueta declara por mililitros (p. ej. "por 100 ml" o "por porción de 240 ml"), normaliza a 100 ml de la MISMA forma pero sin convertir a gramos — nunca inventes una densidad — y basis = "100ml". mode = "etiqueta".
 2. Si hay un código de barras con dígitos impresos legibles, devuélvelos en "ean" (solo dígitos, 8-14 caracteres). Si no se leen completos y sin ambigüedad, ean = null — nunca adivines dígitos.
-3. Si no hay etiqueta legible: estima con base tipo USDA FoodData Central, priorizando productos y preparaciones comunes en México. mode = "estimacion".
+3. Si no hay etiqueta legible: estima con base tipo USDA FoodData Central, priorizando productos y preparaciones comunes en México, siempre por 100 g (basis = "100g"). mode = "estimacion".
 Unidades: kcal en kcal; protein_g, carbs_g y fat_g en gramos; micros: ${units}.
 OBLIGATORIOS: kcal, protein_g, carbs_g, fat_g, sodio_mg, potasio_mg y magnesio_mg deben traer SIEMPRE la mejor estimación disponible, aunque sea aproximada. Devuelve null SOLO si es imposible dar una cifra mínimamente fundada — nunca rellenes con 0 inventado ni omitas por pereza.
 El resto de los micros (incluida grasa saturada/trans, azúcares y fibra): SOLO con dato fiable de etiqueta o base tipo USDA; si no, null. Un 0 real (p. ej. grasa trans en una manzana) sí es válido cuando el valor real es cero.
@@ -54,6 +54,7 @@ const GEMINI_SCHEMA = {
   type: 'OBJECT',
   properties: {
     mode: { type: 'STRING' },
+    basis: { type: 'STRING' },
     ean: { type: 'STRING', nullable: true },
     confidence: { type: 'STRING' },
     usda_query: { type: 'STRING', nullable: true },
@@ -206,6 +207,7 @@ export async function estimateFood(text, imageFile) {
   }
   return {
     mode: out.mode,
+    basis: out.basis === '100ml' ? '100ml' : '100g',
     ean: out.ean || null,
     confidence: out.confidence || null,
     usda_query: out.usda_query || null,

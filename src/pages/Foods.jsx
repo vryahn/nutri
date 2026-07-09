@@ -541,14 +541,23 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     portions: food.portions || [],
   });
   const [form, setForm] = useState(initialForm);
-  const [basis, setBasis] = useState('100'); // gramos a los que refieren los valores capturados
+  const [basis, setBasis] = useState('100'); // cantidad (en basisUnit) a la que refieren los valores capturados
+  const [basisUnit, setBasisUnit] = useState('g'); // 'g'|'ml' — base del formulario, NUNCA se asume 1 g/ml
 
   // La DB siempre guarda por 100 g: si el usuario capturó por otra base, se escala al guardar.
-  // Porciones y densidad son absolutas, no se escalan.
+  // Si la base es ml, primero se convierte a gramos con la densidad elegida (nunca supuesta).
+  // Porciones y densidad son absolutas, no se escalan. null = bloqueado, falta densidad.
   function normalizeTo100(f) {
     const b = Number(basis);
-    if (!b || b <= 0 || b === 100) return f;
-    const s = 100 / b;
+    if (!b || b <= 0) return f;
+    let baseGrams = b;
+    if (basisUnit === 'ml') {
+      const density = Number(f.density_g_ml) || 0;
+      if (!(density > 0)) return null;
+      baseGrams = b * density;
+    }
+    if (baseGrams === 100) return f;
+    const s = 100 / baseGrams;
     const scale = (v, d) => (v === '' || v == null ? v : round(Number(v) * s, d));
     return {
       ...f,
@@ -580,7 +589,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  function applyPrefill(merged, source, resultName, confidence) {
+  function applyPrefill(merged, source, resultName, confidence, prefillBasisUnit = 'g') {
     const missing = missingRequired(merged);
     const { cleaned, zeros } = stripZeros(merged);
     setAiZeros(zeros);
@@ -599,7 +608,38 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     }));
     setDensityOther(cleaned.density_g_ml > 0 && !DENSITY_PRESETS.some((p) => p.value === cleaned.density_g_ml));
     setBasis('100');
+    setBasisUnit(prefillBasisUnit);
     setAiResult({ source, name: resultName, confidence });
+  }
+
+  // Valores declarados por 100 ml (etiqueta o OFF) → por 100 g, dividiendo entre la
+  // densidad ya conocida en ese momento. Nunca se llama sin densidad > 0.
+  function convertPer100MlToPer100g(obj, density) {
+    const conv = (v, d) => (v === '' || v == null ? v : round(Number(v) / density, d));
+    return {
+      ...obj,
+      kcal: conv(obj.kcal, 1),
+      protein_g: conv(obj.protein_g, 2),
+      carbs_g: conv(obj.carbs_g, 2),
+      fat_g: conv(obj.fat_g, 2),
+      micros: Object.fromEntries(Object.entries(obj.micros || {}).map(([k, v]) => [k, conv(v, 3)])),
+    };
+  }
+
+  // Si la base es 100 ml: con densidad ya conocida (de Gemini) convierte a 100 g y
+  // prefija el select de líquido; sin densidad, deja el form en base ml y bloquea
+  // el guardado hasta que el usuario elija densidad (ver normalizeTo100).
+  function applyPrefillWithBasis(merged, source, resultName, confidence, basisStr, densityHint) {
+    if (basisStr === '100ml') {
+      const density = Number(densityHint) > 0 ? Number(densityHint) : 0;
+      if (density > 0) {
+        applyPrefill({ ...convertPer100MlToPer100g(merged, density), density_g_ml: density }, source, resultName, confidence);
+      } else {
+        applyPrefill(merged, source, resultName, confidence, 'ml');
+      }
+    } else {
+      applyPrefill(merged, source, resultName, confidence);
+    }
   }
 
   async function handleFetchData() {
@@ -618,7 +658,10 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         }
         const off = await fetchOFF(eanTyped);
         if (!off) throw new Error('EAN no encontrado en Open Food Facts.');
-        applyPrefill(off, 'off', off.name, null);
+        // EAN tecleado directo: sin Gemini no hay densidad conocida, así que un OFF
+        // por 100 ml solo puede dejar el form en base ml a la espera de que el
+        // usuario elija densidad (ver normalizeTo100).
+        applyPrefillWithBasis(off, 'off', off.name, null, off.per, null);
       } else {
         const gemini = await estimateFood(aiText, aiFile);
         const eanFromGemini = gemini.ean && eanChecksumValid(gemini.ean) ? gemini.ean : null;
@@ -628,12 +671,14 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         ]);
         setFdcChips(fdcMatches);
         if (gemini.mode === 'etiqueta') {
-          setLabelMismatch(findDiscrepancies(gemini, off));
-          applyPrefill(fillAll(gemini, off), 'etiqueta', null, gemini.confidence);
+          // Comparar etiqueta vs OFF solo si ambas están en la misma base; si no, se omite
+          // (nunca se compara cruzado g vs ml).
+          setLabelMismatch(off && gemini.basis === off.per ? findDiscrepancies(gemini, off) : []);
+          applyPrefillWithBasis(fillAll(gemini, off), 'etiqueta', null, gemini.confidence, gemini.basis, gemini.density_g_ml);
         } else if (off) {
-          applyPrefill(fillRequired(off, gemini), 'off', off.name, null);
+          applyPrefillWithBasis(fillRequired(off, gemini), 'off', off.name, null, off.per, gemini.density_g_ml);
         } else {
-          applyPrefill(gemini, 'gemini', null, gemini.confidence);
+          applyPrefillWithBasis(gemini, 'gemini', null, gemini.confidence, gemini.basis, gemini.density_g_ml);
         }
       }
     } catch (e) {
@@ -684,6 +729,8 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const implausible = macrosImplausible(form);
   const inconsistent = componentsInconsistent(form);
   const hiddenMicros = MICROS.slice(MICROS_DEFAULT);
+  const basisDensity = Number(form.density_g_ml) || 0;
+  const basisBlocked = basisUnit === 'ml' && !(basisDensity > 0);
 
   return (
     <div className="flex flex-col gap-4">
@@ -764,6 +811,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          if (basisBlocked) return; // botón ya deshabilitado; guarda por si el submit llega por Enter
           // kcal vacío → se guarda el cálculo por macros (el placeholder que ve el usuario)
           onSave(normalizeTo100({ ...form, kcal: form.kcal === '' ? kcalCalc : form.kcal }));
         }}
@@ -786,21 +834,44 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           />
         </Field>
 
-        <div className="flex items-center gap-2 text-sm text-text-3">
-          <span>Valores por</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            min="1"
-            step="any"
-            value={basis}
-            onChange={(e) => setBasis(e.target.value)}
-            className="w-20 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-center text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
-            aria-label="Base en gramos de los valores capturados"
-          />
-          <span>g</span>
-          {Number(basis) !== 100 && Number(basis) > 0 && (
+        <div className="flex flex-col gap-1 text-sm text-text-3">
+          <div className="flex items-center gap-2">
+            <span>Valores por</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min="1"
+              step="any"
+              value={basis}
+              onChange={(e) => setBasis(e.target.value)}
+              className="w-20 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-center text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+              aria-label="Base de los valores capturados"
+            />
+            <div className="flex rounded-lg border border-border overflow-hidden text-sm">
+              {['g', 'ml'].map((u) => (
+                <button
+                  type="button"
+                  key={u}
+                  onClick={() => setBasisUnit(u)}
+                  className={`px-3 py-1.5 ${basisUnit === u ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2'}`}
+                >
+                  {u}
+                </button>
+              ))}
+            </div>
+          </div>
+          {basisUnit === 'g' && Number(basis) !== 100 && Number(basis) > 0 && (
             <span className="text-xs text-accent">se convertirá a 100 g al guardar</span>
+          )}
+          {basisUnit === 'ml' && basisDensity > 0 && Number(basis) > 0 && (
+            <span className="text-xs text-accent">
+              {basis} ml × {basisDensity} = {round(Number(basis) * basisDensity, 1)} g → se convertirá a 100 g al guardar
+            </span>
+          )}
+          {basisBlocked && (
+            <span className="text-xs text-warn" role="status">
+              Elige el tipo de líquido para convertir ml a gramos
+            </span>
           )}
         </div>
         <div className="grid grid-cols-2 gap-3 lg:hidden">
@@ -1044,7 +1115,8 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
 
         <button
           type="submit"
-          className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press"
+          disabled={basisBlocked}
+          className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press disabled:opacity-40"
         >
           Guardar
         </button>

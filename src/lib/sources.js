@@ -10,7 +10,7 @@ export async function fetchOFF(ean) {
   let res;
   try {
     res = await fetch(
-      `https://world.openfoodfacts.org/api/v2/product/${ean}.json?fields=product_name,brands,nutriments,quantity`
+      `https://world.openfoodfacts.org/api/v2/product/${ean}.json?fields=product_name,brands,nutriments,quantity,nutrition_data_per`
     );
   } catch {
     return null;
@@ -27,6 +27,9 @@ function mapOFF(p) {
     name: p.product_name || '',
     brand: (p.brands || '').split(',')[0].trim(),
     kcal: '', protein_g: '', carbs_g: '', fat_g: '', micros: {},
+    // nutrition_data_per: base declarada por el producto ('100g' o '100ml'); OFF no
+    // convierte, solo etiqueta — verificado en vivo con jugos franceses (100ml real).
+    per: p.nutrition_data_per === '100ml' ? '100ml' : '100g',
   };
 
   if (n['energy-kcal_100g'] != null) out.kcal = round(n['energy-kcal_100g'], 1);
