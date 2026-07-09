@@ -46,6 +46,7 @@ function hasWarning(f) {
 }
 
 const SOURCE_OPTIONS = ['manual', 'etiqueta', 'gemini', 'off', 'usda', 'cronometer'];
+const SOURCE_LABELS = { manual: 'Manual', etiqueta: 'Etiqueta', gemini: 'IA', off: 'OFF', usda: 'USDA', cronometer: 'Cronometer' };
 
 function snapDensity(v) {
   const n = Number(v);
@@ -259,9 +260,9 @@ export default function Foods() {
               onChange={(e) => setFilterSource(e.target.value)}
               className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
             >
-              <option value="">Todo origen</option>
+              <option value="">Todos</option>
               {sourceOptions.map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s} value={s}>{SOURCE_LABELS[s] || s}</option>
               ))}
             </select>
             <button
@@ -339,7 +340,7 @@ export default function Foods() {
                   <SortTh label="G" sortKey="fat_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
                   {/* Origen fuera de la tabla: la columna maestra (5/12, tope max-w-6xl ≈ 455px)
                       nunca da ancho para 7 columnas. El origen se ve en la ficha del panel. */}
-                  <th className="px-3 py-2 text-center">⚠</th>
+                  <th className="px-3 py-2 text-center w-16">⚠</th>
                 </tr>
               </thead>
               <tbody>
@@ -359,20 +360,24 @@ export default function Foods() {
                     <td className="px-3 py-2 text-right font-mono tabular-nums">{f.protein_g}</td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">{f.carbs_g}</td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">{f.fat_g}</td>
-                    <td className="px-3 py-2 text-center">
-                      {hasWarning(f) && (
-                        <AlertTriangle size={14} className="inline text-warn" aria-label="Valores nutricionales requieren revisión" />
-                      )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(f.id);
-                        }}
-                        className="hidden group-hover:inline-flex group-focus-within:inline-flex p-1.5 ml-2 text-text-2 hover:text-danger align-middle"
-                        aria-label={`Borrar ${f.name}`}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-center gap-1">
+                        <span className="w-4 flex justify-center">
+                          {hasWarning(f) && (
+                            <AlertTriangle size={14} className="text-warn" aria-label="Valores nutricionales requieren revisión" />
+                          )}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(f.id);
+                          }}
+                          className="p-1.5 text-text-2 hover:text-danger opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                          aria-label={`Borrar ${f.name}`}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1008,6 +1013,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
 
         {/* lg+: básicos+obligatorios a la izquierda, resto de micros por categoría a la derecha, sin acordeón. */}
         <div className="hidden lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
+          <p className="col-span-2 text-xs text-text-3">★ = favorito, se promueve arriba en móvil.</p>
           <div className="grid grid-cols-2 gap-3 content-start">
             <NumberField
               label="Kcal"
@@ -1044,7 +1050,6 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
             ))}
           </div>
           <div className="flex flex-col gap-3">
-            <p className="text-xs text-text-3">★ = favorito, se promueve arriba en móvil.</p>
             {microGroups(MICROS.filter((m) => !REQUIRED_MICROS.includes(m.key))).map(({ cat, items }) => (
               <div key={cat}>
                 <p className="text-xs uppercase tracking-wide text-text-3 pb-1">{cat}</p>
@@ -1222,7 +1227,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
 function Field({ label, required, children }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-sm text-text-2">
+      <label className="text-sm text-text-2 min-h-[24px] flex items-center">
         {label} {required && <span className="text-danger">*</span>}
       </label>
       {children}
@@ -1250,7 +1255,7 @@ function NumberField({ label, value, onChange, placeholder }) {
 function MicroField({ m, fav, value, onChange, onToggleFav, placeholder }) {
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between min-h-[24px]">
         <label className="text-sm text-text-2 truncate">{m.label} ({m.unit})</label>
         <button
           type="button"
