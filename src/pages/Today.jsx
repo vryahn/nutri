@@ -442,8 +442,7 @@ export default function Today() {
         {copiedDay && (
           <button
             onClick={() => copyEntriesFrom(copiedDay)}
-            className="inline-flex items-center justify-center gap-1.5 h-10 w-10 lg:w-auto lg:px-3 rounded-xl border border-accent-deep text-accent press text-sm"
-            style={{ backgroundColor: 'color-mix(in srgb, var(--accent) 12%, transparent)' }}
+            className="inline-flex items-center justify-center gap-1.5 h-10 w-10 lg:w-auto lg:px-3 rounded-xl border border-border text-text-2 press text-sm"
             aria-label={`Pegar registros del día copiado`}
           >
             <ClipboardPaste size={18} />
