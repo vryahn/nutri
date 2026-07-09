@@ -298,12 +298,12 @@ export default function Today() {
   }
 
   // Sección "+": en lg+ no abre el sheet (reemplazado por el quick-add inline),
-  // solo prellena su etiqueta y enfoca la barra; en <lg conserva el sheet actual.
+  // solo prellena su etiqueta y remonta el form (foco vía autoFocus); en <lg
+  // conserva el sheet actual.
   function handleSectionAdd(labelId) {
     if (isLg) {
       setQuickAddInitialLabel(labelId);
       setQuickAddKey((k) => k + 1);
-      quickAddInputRef.current?.focus();
     } else {
       setAdding({ labelId });
     }
@@ -367,6 +367,7 @@ export default function Today() {
             waterFoodId={prefs.water_food_id}
             initialLabelId={quickAddInitialLabel}
             inputRef={quickAddInputRef}
+            autoFocus={quickAddKey > 0}
             onAdded={() => {
               setQuickAddKey((k) => k + 1);
               setQuickAddInitialLabel(null);
@@ -611,6 +612,31 @@ function groupByLabel(entries, labels, showEmptyNone) {
   return none.items.length > 0 || showEmptyNone ? [...groups, none] : groups;
 }
 
+function sectionTotals(items) {
+  return items.reduce((a, e) => ({
+    kcal: a.kcal + Number(e.kcal),
+    protein_g: a.protein_g + Number(e.protein_g),
+    carbs_g: a.carbs_g + Number(e.carbs_g),
+    fat_g: a.fat_g + Number(e.fat_g),
+    sodio_mg: a.sodio_mg + Number(e.micros?.sodio_mg || 0),
+  }), { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, sodio_mg: 0 });
+}
+
+// Línea mono discreta bajo el nombre de sección con la suma de sus registros.
+function SectionSummary({ items }) {
+  if (items.length === 0) return null;
+  const t = sectionTotals(items);
+  return (
+    <div className="text-xs font-mono tabular-nums flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      <span className="text-text-2">{round(t.kcal, 0)} kcal</span>
+      {t.protein_g > 0 && <span className="text-d-prot">P {round(t.protein_g, 1)}</span>}
+      {t.carbs_g > 0 && <span className="text-d-carb">C {round(t.carbs_g, 1)}</span>}
+      {t.fat_g > 0 && <span className="text-d-fat">G {round(t.fat_g, 1)}</span>}
+      {t.sodio_mg > 0 && <span className="text-text-3">Na {round(t.sodio_mg, 0)}</span>}
+    </div>
+  );
+}
+
 // Sección de una etiqueta real: reordenable (handle) y droppable (cards de otras secciones).
 function SortableSection({ group: g, isOver, editingId, onAdd, onEditEntry, onDeleteEntry }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -626,7 +652,10 @@ function SortableSection({ group: g, isOver, editingId, onAdd, onEditEntry, onDe
       className={`flex flex-col gap-2 rounded-2xl ${isDragging ? 'opacity-60' : ''}`}
     >
       <div className="flex items-center justify-between min-h-[44px]">
-        <h2 className={`text-sm transition-colors duration-150 ${isOver ? 'text-accent' : 'text-text-3'}`}>{g.name}</h2>
+        <div className="min-w-0 flex flex-col">
+          <h2 className={`text-sm transition-colors duration-150 ${isOver ? 'text-accent' : 'text-text-3'}`}>{g.name}</h2>
+          <SectionSummary items={g.items} />
+        </div>
         <div className="flex items-center gap-1 -mr-2.5">
           <button
             {...attributes}
@@ -658,7 +687,10 @@ function DropOnlySection({ group: g, isOver, editingId, onEditEntry, onDeleteEnt
   return (
     <div ref={setNodeRef} className="flex flex-col gap-2 rounded-2xl">
       <div className="flex items-center min-h-[44px]">
-        <h2 className={`text-sm transition-colors duration-150 ${isOver ? 'text-accent' : 'text-text-3'}`}>{g.name}</h2>
+        <div className="min-w-0 flex flex-col">
+          <h2 className={`text-sm transition-colors duration-150 ${isOver ? 'text-accent' : 'text-text-3'}`}>{g.name}</h2>
+          <SectionSummary items={g.items} />
+        </div>
       </div>
       {g.items.map((e) => (
         <SwipeCard key={e.id} entry={e} labelId={g.id} editing={e.id === editingId} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
