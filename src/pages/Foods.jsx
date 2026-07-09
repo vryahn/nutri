@@ -34,6 +34,13 @@ function snapDensity(v) {
   return near ? near.value : n;
 }
 
+// Alimento-centinela de agua (ver Today.jsx): kcal 0 y micros = solo {agua_ml}. Se
+// oculta del CRUD de Alimentos, se gestiona solo desde la tarjeta de agua en Hoy.
+function isWaterSentinel(f) {
+  const keys = Object.keys(f.micros || {});
+  return f.kcal === 0 && keys.length === 1 && keys[0] === 'agua_ml';
+}
+
 const EMPTY_FOOD = {
   name: '', brand: '', kcal: '', protein_g: '', carbs_g: '', fat_g: '',
   micros: {}, portions: [], density_g_ml: '', source: 'manual',
@@ -79,7 +86,7 @@ export default function Foods() {
     let req = supabase.from('foods').select('*').order('name');
     if (query.trim()) req = req.ilike('name', `%${query.trim()}%`);
     const { data, error } = await req;
-    if (!error) setFoods(data);
+    if (!error) setFoods(data.filter((f) => !isWaterSentinel(f)));
     setLoading(false);
   }
 
@@ -117,10 +124,15 @@ export default function Foods() {
     const food = foods.find((f) => f.id === id);
     setEditing(null);
     setFoods((fs) => fs.filter((f) => f.id !== id));
-    const { error } = await supabase.from('foods').delete().eq('id', id);
+    const { data, error } = await supabase.from('foods').delete().eq('id', id).select('id');
     if (error) {
       load();
       showToast('Tiene registros asociados, no se puede borrar.');
+      return;
+    }
+    if (!data || data.length === 0) {
+      load();
+      showToast('Solo puedes borrar tus propios alimentos.');
       return;
     }
     setUndoData((prev) => {
