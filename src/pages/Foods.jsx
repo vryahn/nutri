@@ -7,6 +7,8 @@ import {
   componentsInconsistent,
 } from '../lib/domain.js';
 import { fetchOFF, searchFDC, fetchFDC } from '../lib/sources.js';
+import SwipeToDelete from '../components/SwipeToDelete.jsx';
+import UndoToast from '../components/UndoToast.jsx';
 
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY;
 const GEMINI_MODEL = 'gemini-3.5-flash';
@@ -45,6 +47,7 @@ export default function Foods() {
   const [toast, showToast] = useToast();
   const [userId, setUserId] = useState(null);
   const [favs, setFavs] = useState([]); // prefs.data.fav_micros: micros promovidos fuera de "Más micros"
+  const [undoData, setUndoData] = useState(null); // { food, timer } tras un borrado, para "Deshacer"
 
   useEffect(() => {
     const t = setTimeout(load, 250);
@@ -108,16 +111,32 @@ export default function Foods() {
     load();
   }
 
+  // Borrado sin confirmación (swipe en la lista y botón "Borrar" del form):
+  // optimista + toast "Deshacer" 5 s que reinserta el alimento. Homologado con Hoy.
   async function handleDelete(id) {
-    if (!confirm('¿Borrar este alimento?')) return;
+    const food = foods.find((f) => f.id === id);
+    setEditing(null);
+    setFoods((fs) => fs.filter((f) => f.id !== id));
     const { error } = await supabase.from('foods').delete().eq('id', id);
     if (error) {
+      load();
       showToast('Tiene registros asociados, no se puede borrar.');
       return;
     }
-    showToast('Borrado.');
-    setEditing(null);
-    load();
+    setUndoData((prev) => {
+      if (prev?.timer) clearTimeout(prev.timer);
+      const timer = setTimeout(() => setUndoData(null), 5000);
+      return { food, timer };
+    });
+  }
+
+  async function handleUndo() {
+    if (!undoData) return;
+    clearTimeout(undoData.timer);
+    const { id, ...rest } = undoData.food; // reinsertar sin el id; nada lo referencia (era borrable → sin registros)
+    setUndoData(null);
+    const { error } = await supabase.from('foods').insert(rest);
+    if (!error) load();
   }
 
   if (editing) {
@@ -169,10 +188,11 @@ export default function Foods() {
 
       {!loading &&
         foods.map((f) => (
-          <button
+          <SwipeToDelete
             key={f.id}
-            onClick={() => setEditing(f)}
-            className="text-left rounded-2xl bg-surface border border-border p-4 press"
+            onTap={() => setEditing(f)}
+            onDelete={() => handleDelete(f.id)}
+            className="rounded-2xl bg-surface border border-border p-4"
           >
             <div className="flex justify-between items-baseline gap-2">
               <span className="font-medium">
@@ -188,7 +208,7 @@ export default function Foods() {
               <span className="font-mono tabular-nums text-text-2 text-sm shrink-0">{f.kcal} kcal</span>
             </div>
             {f.brand && <span className="text-sm text-text-3">{f.brand}</span>}
-          </button>
+          </SwipeToDelete>
         ))}
 
       {!loading && foods.length > 0 && (
@@ -201,7 +221,9 @@ export default function Foods() {
         </button>
       )}
 
-      {toast && (
+      {undoData && <UndoToast message="Alimento borrado" onUndo={handleUndo} />}
+
+      {!undoData && toast && (
         <div
           role="status"
           aria-live="polite"

@@ -2,11 +2,16 @@ import { useEffect, useState } from 'react';
 import { Plus, ChevronLeft, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { computeRecipePer100g } from '../lib/domain.js';
+import { useToast } from '../lib/useToast.js';
+import SwipeToDelete from '../components/SwipeToDelete.jsx';
+import UndoToast from '../components/UndoToast.jsx';
 
 export default function Recipes() {
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // null | {} | recipe
+  const [toast, showToast] = useToast();
+  const [undoData, setUndoData] = useState(null); // { recipe, items, timer } tras un borrado, para "Deshacer"
 
   useEffect(() => {
     load();
@@ -59,14 +64,40 @@ export default function Recipes() {
     load();
   }
 
+  // Borrado sin confirmación (swipe y botón "Borrar"): optimista + "Deshacer" 5 s
+  // que reinserta la receta y sus ingredientes. Homologado con Hoy.
   async function handleDelete(id) {
-    if (!confirm('¿Borrar esta receta?')) return;
+    const recipe = recipes.find((r) => r.id === id);
+    const { data: items } = await supabase.from('recipe_items').select('food_id, grams').eq('recipe_id', id);
+    setEditing(null);
+    setRecipes((rs) => rs.filter((r) => r.id !== id));
     const { error } = await supabase.from('recipes').delete().eq('id', id);
     if (error) {
-      alert('Tiene registros asociados, no se puede borrar.');
+      load();
+      showToast('Tiene registros asociados, no se puede borrar.');
       return;
     }
-    setEditing(null);
+    setUndoData((prev) => {
+      if (prev?.timer) clearTimeout(prev.timer);
+      const timer = setTimeout(() => setUndoData(null), 5000);
+      return { recipe, items: items || [], timer };
+    });
+  }
+
+  async function handleUndo() {
+    if (!undoData) return;
+    clearTimeout(undoData.timer);
+    const { recipe, items } = undoData;
+    setUndoData(null);
+    const { data, error } = await supabase
+      .from('recipes')
+      .insert({ name: recipe.name, cooked_weight_g: recipe.cooked_weight_g })
+      .select()
+      .single();
+    if (error) return;
+    if (items.length > 0) {
+      await supabase.from('recipe_items').insert(items.map((i) => ({ ...i, recipe_id: data.id })));
+    }
     load();
   }
 
@@ -107,14 +138,15 @@ export default function Recipes() {
 
       {!loading &&
         recipes.map((r) => (
-          <button
+          <SwipeToDelete
             key={r.id}
-            onClick={() => openEditor(r)}
-            className="text-left rounded-2xl bg-surface border border-border p-4 flex justify-between items-center press"
+            onTap={() => openEditor(r)}
+            onDelete={() => handleDelete(r.id)}
+            className="rounded-2xl bg-surface border border-border p-4 flex justify-between items-center"
           >
             <span className="font-medium">{r.name}</span>
             {r.kcal100 != null && <span className="font-mono tabular-nums text-text-2 text-sm">{r.kcal100} kcal/100g</span>}
-          </button>
+          </SwipeToDelete>
         ))}
 
       {!loading && recipes.length > 0 && (
@@ -125,6 +157,18 @@ export default function Recipes() {
         >
           <Plus size={24} />
         </button>
+      )}
+
+      {undoData && <UndoToast message="Receta borrada" onUndo={handleUndo} />}
+
+      {!undoData && toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 text-center text-sm"
+        >
+          {toast}
+        </div>
       )}
     </div>
   );
