@@ -902,7 +902,8 @@ export default function Dashboard() {
 
         <section className="lg:col-span-8 rounded-2xl bg-surface border border-border p-4">
           <p className="text-sm text-text-3 mb-2">Kcal por día</p>
-          <ResponsiveContainer width="100%" height={220}>
+          <div className="h-[220px] lg:h-80">
+          <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={kcalChart}>
               <defs>
                 <linearGradient id="kcalGrad" x1="0" y1="0" x2="0" y2="1">
@@ -925,6 +926,7 @@ export default function Dashboard() {
               <Line dataKey="ma7" name="MA-7" stroke="var(--d-carb)" strokeDasharray="4 3" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
             </ComposedChart>
           </ResponsiveContainer>
+          </div>
         </section>
 
         <section className="lg:col-span-4 rounded-2xl bg-surface border border-border p-4">
@@ -932,7 +934,8 @@ export default function Dashboard() {
           {macroTotalKcal <= 0 ? (
             <p className="text-sm text-text-2 py-8 text-center">Sin registros en el rango</p>
           ) : stats.diasRegistrados >= 3 ? (
-            <ResponsiveContainer width="100%" height={220}>
+            <div className="h-[220px] lg:h-80">
+            <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={macroStreamData} stackOffset="silhouette">
                 <defs>
                   <linearGradient id="protGrad" x1="0" y1="0" x2="0" y2="1">
@@ -956,6 +959,7 @@ export default function Dashboard() {
                 <Area type="monotone" dataKey="fat" name="Grasa" stackId="1" stroke="var(--d-fat)" fill="url(#fatGrad)" isAnimationActive={!reducedMotion} />
               </AreaChart>
             </ResponsiveContainer>
+            </div>
           ) : (
             <div className="flex flex-col gap-2 py-4">
               <div className="h-4 rounded-full overflow-hidden flex">
@@ -977,7 +981,8 @@ export default function Dashboard() {
           {radarData.length === 0 ? (
             <p className="text-sm text-text-2 py-8 text-center">Registra objetivos de micros en Metas</p>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
+            <div className="h-[220px] lg:h-80">
+            <ResponsiveContainer width="100%" height="100%">
               <RadarChart data={radarData} outerRadius="75%">
                 <PolarGrid stroke="var(--border)" />
                 <PolarAngleAxis dataKey="label" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
@@ -986,6 +991,7 @@ export default function Dashboard() {
                 <Tooltip contentStyle={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text)' }} />
               </RadarChart>
             </ResponsiveContainer>
+            </div>
           )}
         </section>
 
@@ -998,7 +1004,8 @@ export default function Dashboard() {
 
         <section className="lg:col-span-6 rounded-2xl bg-surface border border-border p-4">
           <p className="text-sm text-text-3 mb-2">Proteína semanal vs piso</p>
-          <ResponsiveContainer width="100%" height={200}>
+          <div className="h-[200px] lg:h-80">
+          <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={proteinWeekly}>
               <CartesianGrid stroke="var(--border)" vertical={false} />
               <XAxis dataKey="week" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
@@ -1012,11 +1019,13 @@ export default function Dashboard() {
               <Line dataKey="floor" name="Piso" stroke="var(--accent)" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
             </ComposedChart>
           </ResponsiveContainer>
+          </div>
         </section>
 
         <section className="lg:col-span-6 rounded-2xl bg-surface border border-border p-4">
           <p className="text-sm text-text-3 mb-2">Sodio diario vs piso</p>
-          <ResponsiveContainer width="100%" height={200}>
+          <div className="h-[200px] lg:h-80">
+          <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData}>
               <defs>
                 <linearGradient id="sodioGrad" x1="0" y1="0" x2="0" y2="1">
@@ -1048,6 +1057,7 @@ export default function Dashboard() {
               />
             </ComposedChart>
           </ResponsiveContainer>
+          </div>
         </section>
 
         <section className="md:col-span-2 lg:col-span-12 rounded-2xl bg-surface border border-border p-4">

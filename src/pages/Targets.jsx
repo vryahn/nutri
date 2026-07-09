@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { History, ChevronLeft, ChevronDown } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { History, ChevronLeft, ChevronDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { MICROS, todayISO, addDaysISO, resolveTarget } from '../lib/domain.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
@@ -155,6 +155,18 @@ function friendly(error, dupMsg) {
   return error.message || 'No se pudo guardar.';
 }
 
+// lg+ cambia sheet→edición/alta inline (§A.2, §A.3 de la propuesta desktop).
+function useLgUp() {
+  const [lg, setLg] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = (e) => setLg(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return lg;
+}
+
 // ===== Página =====
 export default function Targets() {
   const [targets, setTargets] = useState([]);
@@ -162,10 +174,42 @@ export default function Targets() {
   const [userId, setUserId] = useState(null);
   const [sheet, setSheet] = useState(null); // unión discriminada por .type
   const [vigVer, setVigVer] = useState(0); // fuerza remontar la card vigente a lectura tras guardar
+  const lgUp = useLgUp();
+  const [expandedVf, setExpandedVf] = useState(null); // fase programada en edición inline (lg+)
+  const [expandedOverrideId, setExpandedOverrideId] = useState(null); // override en edición inline (lg+)
+  const [newOverrideInline, setNewOverrideInline] = useState(false); // alta de override inline (lg+)
+  const programadaRowRefs = useRef(new Map());
+  const overrideRowRefs = useRef(new Map());
+  const newOverrideBtnRef = useRef(null);
 
   useEffect(() => {
     load();
   }, []);
+
+  function collapseProgramada(vf) {
+    setExpandedVf(null);
+    requestAnimationFrame(() => programadaRowRefs.current.get(vf)?.focus());
+  }
+  function collapseOverride(id) {
+    setExpandedOverrideId(null);
+    requestAnimationFrame(() => overrideRowRefs.current.get(id)?.focus());
+  }
+  function collapseNewOverride() {
+    setNewOverrideInline(false);
+    requestAnimationFrame(() => newOverrideBtnRef.current?.focus());
+  }
+
+  // Esc colapsa la edición/alta inline (lg+) sin guardar; foco vuelve a la fila.
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key !== 'Escape') return;
+      if (expandedVf) collapseProgramada(expandedVf);
+      else if (expandedOverrideId) collapseOverride(expandedOverrideId);
+      else if (newOverrideInline) collapseNewOverride();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [expandedVf, expandedOverrideId, newOverrideInline]);
 
   async function load() {
     setLoading(true);
@@ -270,133 +314,231 @@ export default function Targets() {
     <div className="px-4 py-4 flex flex-col gap-6">
       <h1 className="font-display text-xl">Objetivos</h1>
 
-      {/* Fase vigente (hero) */}
-      {vigenteVf ? (
-        <PhaseCard
-          key={`vig-${vigenteVf}-${vigVer}`}
-          variant="vigente"
-          validFrom={vigenteVf}
-          label={labelOf(vigenteVf)}
-          description={descOf(vigenteVf)}
-          week={weekOf(vigenteVf)}
-          nextVf={nextVfOf(vigenteVf)}
-          onSave={(draft) => {
-            setSheet({ type: 'decision', draft });
-            return null; // abre hoja de decisión; no persiste aún
-          }}
-        />
-      ) : (
-        <div className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
-          <Kicker variant="vigente" />
-          <p className="text-text-2 text-sm">Sin fase vigente. Programa una fase para empezar.</p>
-          <button
-            onClick={() => setSheet({ type: 'newPhase' })}
-            className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press"
-          >
-            Crear fase
-          </button>
-        </div>
-      )}
+      <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:gap-6 lg:items-start">
+        <div className="flex flex-col gap-6">
+          {/* Fase vigente (hero) */}
+          {vigenteVf ? (
+            <PhaseCard
+              key={`vig-${vigenteVf}-${vigVer}`}
+              variant="vigente"
+              validFrom={vigenteVf}
+              label={labelOf(vigenteVf)}
+              description={descOf(vigenteVf)}
+              week={weekOf(vigenteVf)}
+              nextVf={nextVfOf(vigenteVf)}
+              onSave={(draft) => {
+                setSheet({ type: 'decision', draft });
+                return null; // abre hoja de decisión; no persiste aún
+              }}
+            />
+          ) : (
+            <div className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
+              <Kicker variant="vigente" />
+              <p className="text-text-2 text-sm">Sin fase vigente. Programa una fase para empezar.</p>
+              <button
+                onClick={() => setSheet({ type: 'newPhase' })}
+                className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press"
+              >
+                Crear fase
+              </button>
+            </div>
+          )}
 
-      {/* Fases programadas */}
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">Fases programadas</h2>
-          <button
-            onClick={() => setSheet({ type: 'newPhase' })}
-            className="text-[13px] text-accent min-h-[44px] px-2 rounded-lg hover:bg-surface-2 press"
-          >
-            + Programar
-          </button>
+          {/* Fases programadas */}
+          <section className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-medium">Fases programadas</h2>
+              <button
+                onClick={() => setSheet({ type: 'newPhase' })}
+                className="text-[13px] text-accent min-h-[44px] px-2 rounded-lg hover:bg-surface-2 press"
+              >
+                + Programar
+              </button>
+            </div>
+
+            {programadaVfs.length === 0 ? (
+              <p className="text-[13px] text-text-2">Sin fases programadas</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {programadaVfs.map((vf) => {
+                  const nvf = nextVfOf(vf);
+                  const d = daysBetween(today, vf);
+
+                  if (lgUp && expandedVf === vf) {
+                    return (
+                      <PhaseCard
+                        key={vf}
+                        variant="programada"
+                        validFrom={vf}
+                        label={labelOf(vf)}
+                        description={descOf(vf)}
+                        week={weekOf(vf)}
+                        nextVf={nvf}
+                        initialEditing
+                        forceCollapse
+                        onSave={async (draft) => {
+                          const err = await saveProgramada(vf, draft);
+                          if (!err) collapseProgramada(vf);
+                          return err;
+                        }}
+                        onCancel={() => collapseProgramada(vf)}
+                      />
+                    );
+                  }
+
+                  return (
+                    <div key={vf} className="relative group">
+                      <SwipeToDelete
+                        nodeRef={(node) => {
+                          if (node) programadaRowRefs.current.set(vf, node);
+                        }}
+                        radius="rounded-xl"
+                        resetOnDelete
+                        onDelete={() => setSheet({ type: 'confirmDeletePhase', vf })}
+                        onTap={() => (lgUp ? setExpandedVf(vf) : setSheet({ type: 'phase', vf }))}
+                        className="rounded-xl bg-surface border border-border px-3.5 py-3.5"
+                      >
+                        <p className="font-medium text-sm leading-tight" style={{ margin: 0 }}>
+                          {labelOf(vf) || 'Sin nombre'}
+                        </p>
+                        <p className="font-mono text-[11.5px] text-text-3 mt-1" style={{ margin: 0 }}>
+                          {fmtShort(vf)} → {nvf ? fmtShort(addDaysISO(nvf, -1)) : 'sin fin'} · en {d} {d === 1 ? 'día' : 'días'}
+                        </p>
+                      </SwipeToDelete>
+                      <div className="hidden lg:group-hover:flex lg:group-focus-within:flex absolute right-3 top-1/2 -translate-y-1/2 gap-1 bg-surface rounded-lg">
+                        <button
+                          onPointerDown={(ev) => ev.stopPropagation()}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            setSheet({ type: 'confirmDeletePhase', vf });
+                          }}
+                          className="p-1.5 text-text-2 hover:text-danger"
+                          aria-label="Borrar fase"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {previaVfs.length > 0 && (
+              <button
+                onClick={() => setSheet({ type: 'previas' })}
+                className="flex items-center justify-center gap-2 min-h-[44px] rounded-xl border border-border text-text-2 text-[13px] press"
+              >
+                <History size={15} /> Fases previas ({previaVfs.length})
+              </button>
+            )}
+          </section>
         </div>
 
-        {programadaVfs.length === 0 ? (
-          <p className="text-[13px] text-text-2">Sin fases programadas</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {programadaVfs.map((vf) => {
-              const nvf = nextVfOf(vf);
-              const d = daysBetween(today, vf);
-              return (
-                <SwipeToDelete
-                  key={vf}
-                  radius="rounded-xl"
-                  resetOnDelete
-                  onDelete={() => setSheet({ type: 'confirmDeletePhase', vf })}
-                  onTap={() => setSheet({ type: 'phase', vf })}
-                  className="rounded-xl bg-surface border border-border px-3.5 py-3.5"
-                >
-                  <p className="font-medium text-sm leading-tight" style={{ margin: 0 }}>
-                    {labelOf(vf) || 'Sin nombre'}
-                  </p>
-                  <p className="font-mono text-[11.5px] text-text-3 mt-1" style={{ margin: 0 }}>
-                    {fmtShort(vf)} → {nvf ? fmtShort(addDaysISO(nvf, -1)) : 'sin fin'} · en {d} {d === 1 ? 'día' : 'días'}
-                  </p>
-                </SwipeToDelete>
-              );
-            })}
+        {/* Fechas específicas */}
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium">Fechas específicas</h2>
+            <button
+              ref={newOverrideBtnRef}
+              onClick={() => (lgUp ? setNewOverrideInline(true) : setSheet({ type: 'newOverride' }))}
+              className="text-[13px] text-accent min-h-[44px] px-2 rounded-lg hover:bg-surface-2 press"
+            >
+              + Añadir
+            </button>
           </div>
-        )}
 
-        {previaVfs.length > 0 && (
-          <button
-            onClick={() => setSheet({ type: 'previas' })}
-            className="flex items-center justify-center gap-2 min-h-[44px] rounded-xl border border-border text-text-2 text-[13px] press"
-          >
-            <History size={15} /> Fases previas ({previaVfs.length})
-          </button>
-        )}
-      </section>
+          {lgUp && newOverrideInline && (
+            <OverrideCard
+              variant="newOverride"
+              override={null}
+              faseFor={faseFor}
+              initialEditing
+              forceCollapse
+              onSave={async (d) => {
+                const err = await saveOverride(d, null);
+                if (!err) collapseNewOverride();
+                return err;
+              }}
+              onCancel={collapseNewOverride}
+            />
+          )}
 
-      {/* Fechas específicas */}
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">Fechas específicas</h2>
-          <button
-            onClick={() => setSheet({ type: 'newOverride' })}
-            className="text-[13px] text-accent min-h-[44px] px-2 rounded-lg hover:bg-surface-2 press"
-          >
-            + Añadir
-          </button>
-        </div>
+          {overrides.length === 0 ? (
+            <p className="text-[13px] text-text-2">Sin fechas específicas aún</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {overrides.map((ov) => {
+                const fase = faseFor(ov.day);
+                const delta = ov.kcal != null && fase?.kcal != null ? Number(ov.kcal) - Number(fase.kcal) : null;
 
-        {overrides.length === 0 ? (
-          <p className="text-[13px] text-text-2">Sin fechas específicas aún</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {overrides.map((ov) => {
-              const fase = faseFor(ov.day);
-              const delta = ov.kcal != null && fase?.kcal != null ? Number(ov.kcal) - Number(fase.kcal) : null;
-              return (
-                <SwipeToDelete
-                  key={ov.id}
-                  radius="rounded-xl"
-                  onDelete={() => deleteOverride(ov.id)}
-                  onTap={() => setSheet({ type: 'override', id: ov.id })}
-                  className="rounded-xl bg-surface border border-border px-3.5 py-3 flex items-center justify-between gap-3"
-                >
-                  <span className="min-w-0">
-                    <span className="block text-[13.5px] font-medium leading-tight truncate">
-                      {fmtDow(ov.day)}
-                      {ov.label ? <span className="text-text-2 font-normal"> · {ov.label}</span> : null}
-                    </span>
-                    <span className="block font-mono text-[11.5px] text-text-3 mt-0.5">{ov.kcal == null ? '–' : ov.kcal} kcal</span>
-                  </span>
-                  {delta != null && (
-                    <span
-                      className="shrink-0 font-mono text-[11px] px-2 py-1 rounded-md"
-                      style={{ background: tint('--warn', 14), color: 'var(--warn)' }}
+                if (lgUp && expandedOverrideId === ov.id) {
+                  return (
+                    <OverrideCard
+                      key={ov.id}
+                      variant="override"
+                      override={ov}
+                      faseFor={faseFor}
+                      initialEditing
+                      forceCollapse
+                      onSave={async (d) => {
+                        const err = await saveOverride(d, ov.id);
+                        if (!err) collapseOverride(ov.id);
+                        return err;
+                      }}
+                      onCancel={() => collapseOverride(ov.id)}
+                    />
+                  );
+                }
+
+                return (
+                  <div key={ov.id} className="relative group">
+                    <SwipeToDelete
+                      nodeRef={(node) => {
+                        if (node) overrideRowRefs.current.set(ov.id, node);
+                      }}
+                      radius="rounded-xl"
+                      onDelete={() => deleteOverride(ov.id)}
+                      onTap={() => (lgUp ? setExpandedOverrideId(ov.id) : setSheet({ type: 'override', id: ov.id }))}
+                      className="rounded-xl bg-surface border border-border px-3.5 py-3 flex items-center justify-between gap-3"
                     >
-                      {delta > 0 ? '+' : '−'}
-                      {Math.abs(delta)} vs fase
-                    </span>
-                  )}
-                </SwipeToDelete>
-              );
-            })}
-          </div>
-        )}
-      </section>
+                      <span className="min-w-0">
+                        <span className="block text-[13.5px] font-medium leading-tight truncate">
+                          {fmtDow(ov.day)}
+                          {ov.label ? <span className="text-text-2 font-normal"> · {ov.label}</span> : null}
+                        </span>
+                        <span className="block font-mono text-[11.5px] text-text-3 mt-0.5">{ov.kcal == null ? '–' : ov.kcal} kcal</span>
+                      </span>
+                      {delta != null && (
+                        <span
+                          className="shrink-0 font-mono text-[11px] px-2 py-1 rounded-md"
+                          style={{ background: tint('--warn', 14), color: 'var(--warn)' }}
+                        >
+                          {delta > 0 ? '+' : '−'}
+                          {Math.abs(delta)} vs fase
+                        </span>
+                      )}
+                    </SwipeToDelete>
+                    <div className="hidden lg:group-hover:flex lg:group-focus-within:flex absolute right-3 top-1/2 -translate-y-1/2 gap-1 bg-surface rounded-lg">
+                      <button
+                        onPointerDown={(ev) => ev.stopPropagation()}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          deleteOverride(ov.id);
+                        }}
+                        className="p-1.5 text-text-2 hover:text-danger"
+                        aria-label="Borrar fecha específica"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
 
       {/* ===== Hojas ===== */}
       {sheet?.type === 'phase' && (
@@ -475,7 +617,7 @@ export default function Targets() {
 }
 
 // ===== Card de fase (lectura + edición), espejo entre vigente y hojas (§2.1, §3) =====
-function PhaseCard({ variant, validFrom, label = '', description = '', week, nextVf, copyWeek, initialEditing = false, onSave, onCancel }) {
+function PhaseCard({ variant, validFrom, label = '', description = '', week, nextVf, copyWeek, initialEditing = false, forceCollapse = false, onSave, onCancel }) {
   const today = todayISO();
   const editable = variant === 'vigente' || variant === 'programada' || variant === 'new';
   const showValidFrom = variant === 'programada' || variant === 'new';
@@ -500,7 +642,7 @@ function PhaseCard({ variant, validFrom, label = '', description = '', week, nex
     setEditing(true);
   }
   function cancel() {
-    if (variant === 'new') return onCancel?.();
+    if (variant === 'new' || forceCollapse) return onCancel?.();
     setEditing(false);
     setSaveError('');
   }
@@ -617,7 +759,7 @@ function PhaseCard({ variant, validFrom, label = '', description = '', week, nex
 }
 
 // ===== Card de fecha específica (override) =====
-function OverrideCard({ variant, override, faseFor, initialEditing = false, onSave, onCancel }) {
+function OverrideCard({ variant, override, faseFor, initialEditing = false, forceCollapse = false, onSave, onCancel }) {
   const today = todayISO();
   const [editing, setEditing] = useState(initialEditing);
   const [draft, setDraft] = useState(() => ({ day: override?.day || today, label: override?.label || '', values: valuesOf(override) }));
@@ -630,7 +772,7 @@ function OverrideCard({ variant, override, faseFor, initialEditing = false, onSa
     setEditing(true);
   }
   function cancel() {
-    if (variant === 'newOverride') return onCancel?.();
+    if (variant === 'newOverride' || forceCollapse) return onCancel?.();
     setEditing(false);
     setSaveError('');
   }
