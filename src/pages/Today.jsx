@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, GlassWater, Settings, GripVertical, Pencil, Trash2, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, GlassWater, Settings, GripVertical, Pencil, Trash2, Check, History, Copy, ClipboardPaste } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { useToast } from '../lib/useToast.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
@@ -55,6 +55,8 @@ export default function Today() {
   const [quickAddInitialLabel, setQuickAddInitialLabel] = useState(null);
   const quickAddInputRef = useRef(null);
   const isLg = useIsLgUp();
+  // Día copiado para "Pegar" (localStorage: sobrevive cambio de fecha y recarga).
+  const [copiedDay, setCopiedDay] = useState(() => localStorage.getItem('nutri.today.copiedDay') || null);
   // Secciones contraídas: Set de claves (String(labelId) o 'none'), persistido en
   // localStorage — sobrevive reload sin escritura remota (ponytail: no DB).
   const [collapsed, setCollapsed] = useState(() => {
@@ -325,16 +327,17 @@ export default function Today() {
     if (!error) loadDay();
   }
 
-  async function handleCopyPrevDay() {
-    const prevDay = addDaysISO(date, -1);
-    const { data: prevEntries } = await supabase
+  // Inserta en la fecha actual los registros de `sourceDay`. Reusado por "Ayer"
+  // (sourceDay = date-1) y "Pegar" (sourceDay = copiedDay). El agua no se copia:
+  // se registra con los vasos del día.
+  async function copyEntriesFrom(sourceDay) {
+    const { data: srcEntries } = await supabase
       .from('entries')
       .select('meal_label_id, food_id, recipe_id, grams')
-      .eq('day', prevDay);
-    // El agua no se copia: se registra con los vasos del día.
-    const toCopy = prevEntries?.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id)) || [];
+      .eq('day', sourceDay);
+    const toCopy = srcEntries?.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id)) || [];
     if (toCopy.length === 0) {
-      showToast('El día anterior no tiene registros.');
+      showToast('Ese día no tiene registros.');
       return;
     }
     const rows = toCopy.map((e) => ({ ...e, day: date }));
@@ -346,6 +349,12 @@ export default function Today() {
     showToast(`${rows.length} registros copiados.`);
     loadDay();
     loadRecent();
+  }
+
+  function handleCopyDay() {
+    setCopiedDay(date);
+    localStorage.setItem('nutri.today.copiedDay', date);
+    showToast('Día copiado.');
   }
 
   // Sección "+": en lg+ no abre el sheet (reemplazado por el quick-add inline),
@@ -409,6 +418,40 @@ export default function Today() {
         <button onClick={() => setDate(addDaysISO(date, 1))} className="p-2 press" aria-label="Día siguiente">
           <ChevronRight size={22} />
         </button>
+      </div>
+
+      {/* Acciones del día: iconos en móvil, icono+label en lg+. "Ayer" (copiar día
+          anterior) solo cuando ves hoy; "Pegar" solo con un día copiado. */}
+      <div className="flex justify-end gap-2 -mt-2 lg:col-start-1">
+        {date === todayISO() && (
+          <button
+            onClick={() => copyEntriesFrom(addDaysISO(date, -1))}
+            className="inline-flex items-center justify-center gap-1.5 h-10 w-10 lg:w-auto lg:px-3 rounded-xl border border-border text-text-2 press text-sm"
+            aria-label="Copiar día anterior"
+          >
+            <History size={18} /><span className="hidden lg:inline">Ayer</span>
+          </button>
+        )}
+        <button
+          onClick={handleCopyDay}
+          className="inline-flex items-center justify-center gap-1.5 h-10 w-10 lg:w-auto lg:px-3 rounded-xl border border-border text-text-2 press text-sm"
+          aria-label="Copiar este día"
+        >
+          <Copy size={18} /><span className="hidden lg:inline">Copiar</span>
+        </button>
+        {copiedDay && (
+          <button
+            onClick={() => copyEntriesFrom(copiedDay)}
+            className="inline-flex items-center justify-center gap-1.5 h-10 w-10 lg:w-auto lg:px-3 rounded-xl border border-accent-deep text-accent press text-sm"
+            style={{ backgroundColor: 'color-mix(in srgb, var(--accent) 12%, transparent)' }}
+            aria-label={`Pegar registros del día copiado`}
+          >
+            <ClipboardPaste size={18} />
+            <span className="hidden lg:inline">
+              Pegar {new Date(copiedDay + 'T00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Quick-add inline: solo lg+, reemplaza el flujo FAB+sheet. */}
@@ -558,12 +601,6 @@ export default function Today() {
               onSettings={() => setWaterSettingsOpen(true)}
             />
 
-            <button
-              onClick={handleCopyPrevDay}
-              className="min-h-[44px] rounded-xl border border-border text-text-2 press"
-            >
-              Copiar día anterior
-            </button>
           </>
         )}
       </div>
