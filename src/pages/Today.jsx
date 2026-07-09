@@ -328,6 +328,10 @@ export default function Today() {
   const target = resolveTarget(targets, date);
   const kcalStatus = classifyKcal(totals.kcal, target?.kcal);
   const kcalPct = target?.kcal > 0 ? Math.round((totals.kcal / target.kcal) * 100) : null;
+  // Anillo de kcal (rail desktop): circunferencia de r=52, arco = fracción de la meta (tope 100%).
+  const kcalArc = kcalPct != null ? 326.726 * (1 - Math.min(1, kcalPct / 100)) : null;
+  const potassiumPct = target?.micros?.potasio_mg > 0
+    ? Math.round((totals.potasio_mg / target.micros.potasio_mg) * 100) : null;
   const proteinStatus = classifyFloor(totals.protein_g, target?.protein_g);
   const statusColor = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' };
   const sodiumLow = sodiumIsLow(totals.sodio_mg, foodEntries.length > 0);
@@ -416,27 +420,55 @@ export default function Today() {
           </div>
         ) : (
           <>
-            <div className="hidden lg:flex lg:flex-col lg:gap-3 rounded-2xl bg-surface border border-border p-4">
-              <div className={statusColor[kcalStatus] || 'text-d-kcal'}>
-                <div className="flex items-end justify-between">
-                  <div>
-                    <p className="font-mono tabular-nums text-3xl leading-none">{round(totals.kcal, 0)}</p>
-                    <p className="text-xs text-text-3 mt-1">kcal{target?.kcal > 0 ? ` / ${round(target.kcal, 0)}` : ''}</p>
+            <div className="hidden lg:flex lg:flex-col lg:gap-4 rounded-2xl bg-surface border border-border p-5">
+              {/* Hero kcal: anillo (color = adherencia classifyKcal) + % y meta. */}
+              <div className="flex items-center gap-4">
+                <div className={`relative w-[104px] h-[104px] flex-none ${statusColor[kcalStatus] || 'text-d-kcal'}`}>
+                  <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+                    <circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface-2)" strokeWidth="11" />
+                    {kcalArc != null && (
+                      <circle
+                        cx="60" cy="60" r="52" fill="none" stroke="currentColor" strokeWidth="11" strokeLinecap="round"
+                        strokeDasharray="326.726" strokeDashoffset={kcalArc}
+                      />
+                    )}
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="font-mono tabular-nums text-2xl leading-none text-text">{round(totals.kcal, 0)}</span>
+                    <span className="text-[10px] text-text-3 mt-0.5">kcal</span>
                   </div>
-                  {kcalPct != null && <p className="font-mono tabular-nums text-2xl">{kcalPct}%</p>}
                 </div>
-                {kcalPct != null && (
-                  <div className="mt-2 h-2 rounded-full bg-surface-2 overflow-hidden">
-                    <div className="h-full bg-current rounded-full" style={{ width: `${Math.min(100, kcalPct)}%` }} />
-                  </div>
-                )}
+                <div className={`min-w-0 ${statusColor[kcalStatus] || 'text-d-kcal'}`}>
+                  {kcalPct != null ? (
+                    <>
+                      <p className="font-mono tabular-nums text-2xl leading-none">{kcalPct}%</p>
+                      <p className="text-xs text-text-3 mt-2">meta {round(target.kcal, 0)} kcal</p>
+                    </>
+                  ) : (
+                    <p className="text-xs text-text-3">sin meta de kcal</p>
+                  )}
+                </div>
               </div>
               <div className="h-px bg-border" />
-              <RailStat label="Prot" value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
-              <RailStat label="Carbs" value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
-              <RailStat label="Grasa" value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
-              <RailStat label="Sodio" value={totals.sodio_mg} color="text-danger" target={target?.micros?.sodio_mg} decimals={0} />
-              <RailStat label="Potasio" value={totals.potasio_mg} color="text-warn" target={target?.micros?.potasio_mg} decimals={0} />
+              <div className="flex flex-col gap-3">
+                <RailStat label="Prot" value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
+                <RailStat label="Carbs" value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
+                <RailStat label="Grasa" value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
+              </div>
+              <div className="h-px bg-border" />
+              {/* Minerales aparte de los macros: sodio rojo = piso médico; potasio ámbar. */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-surface-2 p-3">
+                  <p className="text-[10px] uppercase tracking-wide text-text-3">Sodio</p>
+                  <p className="font-mono tabular-nums text-lg text-danger mt-1">{round(totals.sodio_mg, 0)}</p>
+                  <p className="text-[10px] text-text-3 mt-0.5">mg · piso {SODIUM_FLOOR_MG}</p>
+                </div>
+                <div className="rounded-xl bg-surface-2 p-3">
+                  <p className="text-[10px] uppercase tracking-wide text-text-3">Potasio</p>
+                  <p className="font-mono tabular-nums text-lg text-warn mt-1">{round(totals.potasio_mg, 0)}</p>
+                  <p className="text-[10px] text-text-3 mt-0.5">mg{potassiumPct != null ? ` · ${potassiumPct}% de ${round(target.micros.potasio_mg, 0)}` : ''}</p>
+                </div>
+              </div>
             </div>
 
             {sodiumLow && (
@@ -911,7 +943,10 @@ function RailStat({ label, value, color, target, decimals = 1 }) {
   return (
     <div className={color}>
       <div className="flex items-baseline justify-between text-sm">
-        <span className="text-text-3">{label}</span>
+        <span className="flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-sm bg-current" />
+          <span className="text-text-3">{label}</span>
+        </span>
         <span className="font-mono tabular-nums">
           {round(value, decimals)}
           {target > 0 && <span className="text-text-3"> / {round(target, decimals)}</span>}
