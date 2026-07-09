@@ -148,15 +148,9 @@ export default function Recipes() {
   return (
     <div className="px-4 py-4 flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-6 lg:items-start">
       <div className="flex flex-col gap-4 lg:col-start-1">
-        <div className="flex items-center justify-between">
-          <h1 className="font-display text-xl">Recetas</h1>
-          <button
-            onClick={() => openEditor({})}
-            className="hidden lg:inline-flex min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
-          >
-            ＋ Nueva
-          </button>
-        </div>
+        {/* En lg+ el alta va por el panel derecho ("＋ Nueva receta" del estado vacío);
+            en <lg por el FAB. Sin botón de cabecera para no duplicar. */}
+        <h1 className="font-display text-xl">Recetas</h1>
 
         {loading && (
           <div className="flex flex-col gap-2">

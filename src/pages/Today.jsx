@@ -320,7 +320,7 @@ export default function Today() {
   const groups = groupByLabel(foodEntries, labels, activeEntry != null);
 
   return (
-    <div className="px-4 pt-4 pb-20 grid grid-cols-1 gap-4 lg:gap-x-6 lg:grid-cols-[1fr_320px] lg:items-start">
+    <div className="px-4 pt-4 pb-20 grid grid-cols-1 gap-4 lg:gap-x-6 lg:grid-cols-[1fr_320px] lg:grid-rows-[auto_auto_1fr] lg:items-start">
       <div className="flex items-center justify-between lg:col-start-1">
         <button onClick={() => setDate(addDaysISO(date, -1))} className="p-2 press" aria-label="Día anterior">
           <ChevronLeft size={22} />
@@ -367,6 +367,9 @@ export default function Today() {
       </div>
 
       {/* Rail derecho (lg+): sticky, muestra el resumen del día o el editor de la entry activa. */}
+      {/* El rail abarca las 3 filas de col-1 (grid-rows-[auto_auto_1fr] en el contenedor).
+          Sin esas filas explícitas, `1/-1` colapsa a span-1 e infla la fila 1 con la altura
+          del rail (hueco en col-1). La fila 1fr absorbe el excedente del rail por abajo. */}
       <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-1 lg:[grid-row:1/-1] lg:sticky lg:top-6 lg:self-start">
         {isLg && editing ? (
           <div className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-4">
