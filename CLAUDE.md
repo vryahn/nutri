@@ -18,7 +18,9 @@ App personal de registro nutricional (tipo Cronometer, simple) para 2 usuarios. 
 
 ```
 supabase/migration.sql   # migración inicial 000 (YA aplicada en producción)
-supabase/migrations/     # migraciones incrementales (001 prefs+targets.label, 002 foods.portions+density_g_ml — ambas aplicadas)
+supabase/migrations/     # migraciones incrementales, todas aplicadas: 001 prefs+targets.label · 002 foods.portions+density_g_ml ·
+                          # 003 recetas from Cronometer + targets.description · 004 recetas saladas from Cronometer · 005 recipes.source ·
+                          # 006 entries.sort_order · 007 catálogo privado por usuario (RLS)
 src/lib/supabase.js      # createClient, schema 'nutri'
 src/lib/domain.js        # MICROS, resolución de targets, adherencia, fórmula de recetas, reorderLabels
 src/lib/sources.js       # clientes Open Food Facts y USDA FDC, por 100 g, mapeados a claves MICROS
