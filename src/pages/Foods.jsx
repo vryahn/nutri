@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Plus, ChevronLeft, Search, Sparkles, ImagePlus, X, Star, AlertTriangle, Trash2,
+  Plus, ChevronLeft, Search, X, Star, AlertTriangle, Trash2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { useToast } from '../lib/useToast.js';
@@ -13,6 +13,7 @@ import { GEMINI_KEY, DENSITY_PRESETS, snapDensity, estimateFood } from '../lib/a
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import UndoToast from '../components/UndoToast.jsx';
 import SortTh from '../components/SortTh.jsx';
+import AiDataCard from '../components/AiDataCard.jsx';
 
 const FDC_KEY = import.meta.env.VITE_FDC_KEY;
 
@@ -694,48 +695,17 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
       </div>
 
       {!form.id && GEMINI_KEY && (
-        <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
-          <p className="text-sm text-text-2 flex items-center gap-2">
-            <Sparkles size={16} className="text-accent" /> Datos con IA
-          </p>
-          <textarea
-            value={aiText}
-            onChange={(e) => setAiText(e.target.value)}
-            rows={2}
-            placeholder="Describe el alimento, pega un código de barras (EAN) o adjunta una foto de etiqueta/platillo"
-            className="rounded-xl bg-surface-3 border border-border px-3 py-2 text-text focus:outline-none focus:ring-2 focus:ring-accent resize-none"
-          />
-          <div className="flex gap-2 items-center">
-            <label className="flex-1 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 flex items-center gap-2 text-sm text-text-2 cursor-pointer press">
-              <ImagePlus size={18} />
-              <span className="truncate">{aiFile ? aiFile.name : 'Foto (etiqueta o platillo)'}</span>
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => setAiFile(e.target.files[0] || null)}
-              />
-            </label>
-            {aiFile && (
-              <button
-                type="button"
-                onClick={() => setAiFile(null)}
-                className="min-w-[44px] min-h-[44px] rounded-xl bg-surface-3 border border-border flex items-center justify-center text-text-2"
-                aria-label="Quitar foto"
-              >
-                <X size={18} />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handleFetchData}
-              disabled={aiLoading || (!aiText.trim() && !aiFile)}
-              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium disabled:opacity-40 press"
-            >
-              {aiLoading ? 'Obteniendo…' : 'Obtener datos'}
-            </button>
-          </div>
-          {aiError && <p className="text-sm text-danger">{aiError}</p>}
+        <AiDataCard
+          text={aiText}
+          onText={setAiText}
+          file={aiFile}
+          onFile={setAiFile}
+          loading={aiLoading}
+          error={aiError}
+          onSubmit={handleFetchData}
+          placeholder="Describe el alimento, pega un código de barras (EAN) o adjunta una foto de etiqueta/platillo"
+          hint="Etiqueta legible → se transcribe. EAN → Open Food Facts. Si no, estimación IA con chips USDA para genéricos. Siempre por 100 g; revisa antes de guardar."
+        >
           {aiResult && <p className="text-xs text-text-2">{resultBadgeText(aiResult)}</p>}
           {aiMissing.length > 0 && (
             <p className="text-xs text-warn" role="status">Sin dato fiable de: {aiMissing.join(', ')}</p>
@@ -745,11 +715,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
               ⚠ La etiqueta y Open Food Facts difieren en: {labelMismatch.join(', ')}.
             </p>
           )}
-          <p className="text-xs text-text-3">
-            Etiqueta legible → se transcribe. EAN → Open Food Facts. Si no, estimación IA con chips USDA para
-            genéricos. Siempre por 100 g; revisa antes de guardar.
-          </p>
-        </div>
+        </AiDataCard>
       )}
 
       {!form.id && FDC_KEY && (

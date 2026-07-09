@@ -72,6 +72,92 @@ const GEMINI_SCHEMA = {
   required: ['mode', 'name'],
 };
 
+// Prompt de descomposición en ingredientes: Gemini NUNCA aporta valores nutricionales
+// aquí, solo nombres/gramos/total/kcal_total_estimate (esta última solo para
+// verificación cruzada en UI, jamás se persiste).
+function recipePrompt(catalogNames) {
+  return `Eres un asistente de nutrición para México. El usuario describe un platillo, bebida o receta (texto y/o foto). NO estimes valores nutricionales. Descompón en ingredientes con su cantidad en GRAMOS tal como van en la preparación.
+Prefiere pocos ingredientes compuestos ("leche entera", no "leche + grasa"). Máximo 15.
+Se te da la lista EXACTA de alimentos del catálogo del usuario. Para cada ingrediente, si uno de esos nombres corresponde claramente al ingrediente, devuelve ese nombre LITERAL en "db_match"; si no hay correspondencia clara, "db_match" = null. Nunca inventes nombres que no estén en la lista.
+Catálogo del usuario: ${catalogNames.length ? catalogNames.join(', ') : '(vacío)'}
+Para ingredientes genéricos sin match, da "usda_query" (nombre en inglés apto para buscar en USDA FoodData Central); si no aplica, null.
+Si el usuario indica tamaño total (p. ej. "350ml"), conviértelo a gramos con densidad razonable y devuélvelo en "total_weight_g"; si no lo indica, tu mejor estimación del peso total preparado; null si imposible.
+"kcal_total_estimate": tu estimación gruesa de kcal TOTALES del platillo completo (solo para verificación cruzada, jamás se persiste); null si no puedes fundarla.
+"name": nombre corto de la receta en español. "confidence": "alta"|"media"|"baja".`;
+}
+
+const RECIPE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    name: { type: 'STRING' },
+    confidence: { type: 'STRING' },
+    total_weight_g: { type: 'NUMBER', nullable: true },
+    kcal_total_estimate: { type: 'NUMBER', nullable: true },
+    ingredients: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          name_es: { type: 'STRING' },
+          grams: { type: 'NUMBER' },
+          db_match: { type: 'STRING', nullable: true },
+          usda_query: { type: 'STRING', nullable: true },
+        },
+        required: ['name_es', 'grams'],
+      },
+    },
+  },
+  required: ['name', 'ingredients'],
+};
+
+export async function estimateRecipe(text, imageFile, catalogNames) {
+  const parts = [{ text: text.trim() || 'Analiza la imagen.' }];
+  if (imageFile) {
+    parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(imageFile) } });
+  }
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: recipePrompt(catalogNames) }] },
+      contents: [{ parts }],
+      generationConfig: { response_mime_type: 'application/json', response_schema: RECIPE_SCHEMA },
+    }),
+  });
+  if (!res.ok) throw new Error(`Gemini ${res.status}`);
+  const data = await res.json();
+  const out = JSON.parse(data.candidates[0].content.parts[0].text);
+  // grams fuera de rango físico razonable → pendiente con gramos vacíos, no se descarta
+  // el ingrediente (el usuario lo captura a mano). Truncado a 15 ingredientes.
+  const ingredients = (out.ingredients || []).slice(0, 15).map((i) => ({
+    name_es: i.name_es || '',
+    grams: i.grams > 0 && i.grams <= 2000 ? i.grams : '',
+    db_match: i.db_match || null,
+    usda_query: i.usda_query || null,
+  }));
+  return {
+    name: out.name || '',
+    confidence: out.confidence || null,
+    total_weight_g: out.total_weight_g ?? null,
+    kcal_total_estimate: out.kcal_total_estimate ?? null,
+    ingredients,
+  };
+}
+
+// Cantidad tecleada por el usuario SIEMPRE gana sobre la estimada por Gemini. Extrae
+// la primera cantidad (ml|l|g|gr|kg, case-insensitive) del texto y normaliza a ml o g
+// (l→×1000, kg→×1000). null si el texto no trae cantidad.
+export function parseAmount(text) {
+  const m = text.match(/(\d+(?:[.,]\d+)?)\s*(ml|l|g|gr|kg)\b/i);
+  if (!m) return null;
+  const value = Number(m[1].replace(',', '.'));
+  const unit = m[2].toLowerCase();
+  if (unit === 'l') return { unit: 'ml', value: value * 1000 };
+  if (unit === 'kg') return { unit: 'g', value: value * 1000 };
+  if (unit === 'gr') return { unit: 'g', value };
+  return { unit, value }; // 'ml' | 'g'
+}
+
 export async function estimateFood(text, imageFile) {
   const parts = [{ text: text.trim() || 'Analiza la imagen.' }];
   if (imageFile) {
