@@ -3,7 +3,7 @@ import { Plus, ChevronLeft, Trash2, Search, X, Save } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { computeRecipePer100g, MICROS, MICROS_DEFAULT, round, isWaterSentinel } from '../lib/domain.js';
 import { useToast } from '../lib/useToast.js';
-import { GEMINI_KEY, estimateRecipe, estimateFood, parseAmount, snapDensity } from '../lib/ai.js';
+import { GEMINI_KEY, estimateRecipe, parseAmount, snapDensity } from '../lib/ai.js';
 import { searchFDC, fetchFDC, translateEnEs } from '../lib/sources.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import UndoToast from '../components/UndoToast.jsx';
@@ -392,9 +392,9 @@ function stripAmountText(text) {
 // recipe_items tiene PK compuesta (recipe_id, food_id): dos ingredientes de texto
 // distinto pueden resolver al mismo alimento (alias + db_match, o dos búsquedas
 // manuales). Sumar gramos en vez de duplicar evita el 409 al guardar.
-function mergeIngredient(ingredients, food, grams, procedencia, isNew = false) {
+function mergeIngredient(ingredients, food, grams, procedencia, isNew = false, fromAi = false) {
   const idx = ingredients.findIndex((i) => i.food.id === food.id);
-  if (idx === -1) return [...ingredients, { food, grams, procedencia, isNew }];
+  if (idx === -1) return [...ingredients, { food, grams, procedencia, isNew, fromAi }];
   const next = [...ingredients];
   next[idx] = { ...next[idx], grams: (Number(next[idx].grams) || 0) + (Number(grams) || 0) };
   return next;
@@ -412,7 +412,6 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   const [aiError, setAiError] = useState('');
   const [aiResult, setAiResult] = useState(null); // { confidence, kcalTotalEstimate }
   const [dupMatches, setDupMatches] = useState([]);
-  const [pendingIngredients, setPendingIngredients] = useState([]); // [{ name_es, grams, usda_query }]
   const [confirmNew, setConfirmNew] = useState(false); // gate de guardado: confirmar alta de alimentos staged
   const [saveError, setSaveError] = useState('');
 
@@ -510,33 +509,60 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       totalG = Number(result.total_weight_g);
     }
 
-    let resolved = [];
-    const pending = [];
+    // Ingredientes con match de catálogo/alias → food real (fila compacta). Sin match →
+    // card staged (isNew) prefilleada con los nutrientes de respaldo de la IA, editable y
+    // con guardado individual. Prioridad: alias/catálogo > IA (la card ofrece USDA como swap).
+    let aiCatalog = [];
+    const staged = [];
     for (const ing of result.ingredients) {
       const norm = ing.name_es.trim().toLowerCase();
       const aliasFood = norm && aliases[norm] ? catalogFoods.find((f) => f.id === aliases[norm]) : null;
       if (aliasFood) {
-        resolved = mergeIngredient(resolved, aliasFood, ing.grams, 'alias');
+        aiCatalog = mergeIngredient(aiCatalog, aliasFood, ing.grams, 'alias', false, true);
         continue;
       }
       const dbFood = ing.db_match
         ? catalogFoods.find((f) => f.name.trim().toLowerCase() === ing.db_match.trim().toLowerCase())
         : null;
       if (dbFood) {
-        resolved = mergeIngredient(resolved, dbFood, ing.grams, 'catálogo');
+        aiCatalog = mergeIngredient(aiCatalog, dbFood, ing.grams, 'catálogo', false, true);
         continue;
       }
-      pending.push({ name_es: ing.name_es, grams: ing.grams, usda_query: ing.usda_query });
+      staged.push({
+        food: {
+          name: ing.name_es,
+          kcal: ing.kcal,
+          protein_g: ing.protein_g,
+          carbs_g: ing.carbs_g,
+          fat_g: ing.fat_g,
+          micros: ing.micros || {},
+          id: crypto.randomUUID(),
+          source: 'gemini',
+        },
+        grams: ing.grams,
+        procedencia: 'IA',
+        isNew: true,
+        fromAi: true,
+        name_es: ing.name_es,
+        usda_query: ing.usda_query,
+      });
     }
 
-    setForm((f) => ({
-      ...f,
-      name: f.name || result.name,
-      cooked_weight_g: totalG ?? f.cooked_weight_g,
-      ingredients: resolved.reduce((acc, r) => mergeIngredient(acc, r.food, r.grams, r.procedencia), f.ingredients),
-      source: 'gemini',
-    }));
-    setPendingIngredients((p) => [...p, ...pending]);
+    // Re-ejecutar "Obtener datos" REEMPLAZA lo derivado de IA (fromAi); solo sobrevive lo
+    // añadido a mano por el usuario. Evita la acumulación al presionar varias veces.
+    // ponytail: lo guardado individualmente conserva fromAi, así el re-tap también lo
+    // reemplaza (queda en el catálogo, no se pierde) y no hay doble conteo de gramos.
+    setForm((f) => {
+      let next = f.ingredients.filter((i) => !i.fromAi);
+      for (const r of aiCatalog) next = mergeIngredient(next, r.food, r.grams, r.procedencia, false, true);
+      return {
+        ...f,
+        name: f.name || result.name,
+        cooked_weight_g: totalG ?? f.cooked_weight_g,
+        ingredients: [...next, ...staged],
+        source: 'gemini',
+      };
+    });
     setAiResult({ confidence: result.confidence, kcalTotalEstimate: result.kcal_total_estimate });
   }
 
@@ -548,11 +574,35 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), ingredient_aliases: aliases } });
   }
 
-  function resolvePendingIngredient(index, food, procedencia, learn, isNew = false) {
-    const item = pendingIngredients[index];
-    setForm((f) => ({ ...f, ingredients: mergeIngredient(f.ingredients, food, item.grams || '', procedencia, isNew) }));
-    setPendingIngredients((p) => p.filter((_, i) => i !== index));
-    if (learn) learnAlias(item.name_es, food.id);
+  // Edición inline de una card staged (nombre/kcal/macros); el preview reacciona al vuelo.
+  function setIngredientFood(index, patch) {
+    setForm((f) => ({
+      ...f,
+      ingredients: f.ingredients.map((x, i) => (i === index ? { ...x, food: { ...x.food, ...patch } } : x)),
+    }));
+  }
+
+  // Swap de una card staged a un alimento REAL del catálogo: sale de modo edición (fila
+  // compacta). Aprende alias del nombre original. Conserva fromAi (lo derivado de IA).
+  function swapIngredientToCatalog(index, food, learn) {
+    const nameEs = form.ingredients[index]?.name_es;
+    setForm((f) => {
+      const item = f.ingredients[index];
+      const rest = f.ingredients.filter((_, i) => i !== index);
+      return { ...f, ingredients: mergeIngredient(rest, food, item.grams || '', 'catálogo', false, item.fromAi) };
+    });
+    if (learn && nameEs) learnAlias(nameEs, food.id);
+  }
+
+  // Swap a datos USDA: sigue staged (isNew) y editable, prefill con valores por 100 g de
+  // USDA; el nombre en español del flujo se conserva.
+  function swapIngredientToUsda(index, detail) {
+    setForm((f) => ({
+      ...f,
+      ingredients: f.ingredients.map((x, i) =>
+        i === index ? { ...x, food: { ...detail, name: x.name_es, id: crypto.randomUUID(), source: 'usda' } } : x
+      ),
+    }));
   }
 
   // Inserta un alimento staged (sin id) y devuelve la fila real. Compartido por el
@@ -581,24 +631,15 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     setForm((f) => ({
       ...f,
       ingredients: f.ingredients.map((x, i) =>
-        i === index ? { food: saved, grams: x.grams, procedencia: x.procedencia } : x
+        i === index ? { food: saved, grams: x.grams, procedencia: x.procedencia, fromAi: x.fromAi } : x
       ),
     }));
-  }
-
-  function setPendingGrams(index, grams) {
-    setPendingIngredients((p) => p.map((it, i) => (i === index ? { ...it, grams } : it)));
-  }
-
-  function removePendingIngredient(index) {
-    setPendingIngredients((p) => p.filter((_, i) => i !== index));
   }
 
   const preview = computeRecipePer100g(form.ingredients, form.cooked_weight_g);
   const previewMicros = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favMicros.includes(m.key)) && m.key !== 'agua_ml');
 
-  // Avisos deterministas del flujo IA: nunca bloqueantes salvo pendientes (esos sí
-  // bloquean Guardar, se resuelven en la línea de arriba de este componente).
+  // Avisos deterministas del flujo IA, nunca bloqueantes.
   const sumGrams = form.ingredients.reduce((s, i) => s + (Number(i.grams) || 0), 0);
   const totalGNum = Number(form.cooked_weight_g) || 0;
   const massDiffRatio = totalGNum > 0 && sumGrams > 0 ? Math.abs(sumGrams - totalGNum) / totalGNum : 0;
@@ -609,7 +650,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   const calcKcalTotal = preview && totalGNum > 0 ? round((preview.kcal * totalGNum) / 100, 0) : null;
   const kcalTotalEstimate = aiResult?.kcalTotalEstimate;
   const kcalMismatch =
-    pendingIngredients.length === 0 &&
+    form.ingredients.every((i) => !i.isNew) &&
     kcalTotalEstimate != null &&
     calcKcalTotal != null &&
     calcKcalTotal >= 50 &&
@@ -672,7 +713,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
           error={aiError}
           onSubmit={handleAiSubmit}
           placeholder="Describe el platillo o bebida (p. ej. «Caramel Macchiato 350ml») o adjunta una foto"
-          hint="Gemini descompone en ingredientes y gramos; nunca estima nutrientes. Revisa cantidades antes de guardar."
+          hint="Gemini descompone en ingredientes con nutrientes de respaldo (prefill revisable). Cada alimento nuevo se edita y guarda por separado; prioridad: catálogo › USDA › IA."
         >
           {dupMatches.length > 0 && (
             <div className="flex flex-col gap-2">
@@ -703,7 +744,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
           )}
           {aiResult && (
             <p className="text-xs text-text-2">
-              ≈ Ingredientes estimados por IA (confianza {aiResult.confidence || '—'}) — revisa cantidades antes de guardar.
+              ≈ Ingredientes por IA (confianza {aiResult.confidence || '—'}) — revisa cantidades y nutrientes; guarda cada alimento nuevo.
             </p>
           )}
         </AiDataCard>
@@ -722,50 +763,39 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
 
           <div className="flex flex-col gap-2">
             <p className="text-sm text-text-2">Ingredientes</p>
-            {form.ingredients.map((ing, i) => (
-              <div key={i} className="flex items-center gap-2 rounded-xl bg-surface-2 border border-border px-3 py-2">
-                <div className="flex-1 flex flex-col min-w-0">
-                  <span className="truncate">{ing.food.name}</span>
-                  {ing.procedencia && (
-                    <span className="text-xs text-text-3">
-                      {ing.procedencia}{ing.isNew ? ' · sin guardar' : ''}
-                    </span>
-                  )}
-                </div>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step="any"
-                  value={ing.grams}
-                  onChange={(e) => setIngredientGrams(i, e.target.value)}
-                  placeholder="g"
-                  className="w-20 min-h-[44px] rounded-lg bg-surface-3 border border-border px-2 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+            {form.ingredients.map((ing, i) =>
+              ing.isNew ? (
+                <StagedIngredientCard
+                  key={ing.food.id}
+                  ing={ing}
+                  onFood={(patch) => setIngredientFood(i, patch)}
+                  onGrams={(v) => setIngredientGrams(i, v)}
+                  onSave={() => saveIngredientNow(i)}
+                  onRemove={() => removeIngredient(i)}
+                  onSwapCatalog={(food, learn) => swapIngredientToCatalog(i, food, learn)}
+                  onSwapUsda={(detail) => swapIngredientToUsda(i, detail)}
                 />
-                {ing.isNew && (
-                  <button
-                    onClick={() => saveIngredientNow(i)}
-                    className="p-1 text-text-2 hover:text-accent"
-                    title="Guardar alimento"
-                    aria-label={`Guardar ${ing.food.name}`}
-                  >
-                    <Save size={16} />
+              ) : (
+                <div key={ing.food.id} className="flex items-center gap-2 rounded-xl bg-surface-2 border border-border px-3 py-2">
+                  <div className="flex-1 flex flex-col min-w-0">
+                    <span className="truncate">{ing.food.name}</span>
+                    {ing.procedencia && <span className="text-xs text-text-3">{ing.procedencia}</span>}
+                  </div>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    value={ing.grams}
+                    onChange={(e) => setIngredientGrams(i, e.target.value)}
+                    placeholder="g"
+                    className="w-20 min-h-[44px] rounded-lg bg-surface-3 border border-border px-2 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+                  />
+                  <button onClick={() => removeIngredient(i)} className="p-1 text-danger" aria-label="Quitar ingrediente">
+                    <Trash2 size={16} />
                   </button>
-                )}
-                <button onClick={() => removeIngredient(i)} className="p-1 text-danger" aria-label="Quitar ingrediente">
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ))}
-
-            {pendingIngredients.map((item, i) => (
-              <PendingIngredientRow
-                key={`${item.name_es}-${i}`}
-                item={item}
-                onResolve={(food, procedencia, learn) => resolvePendingIngredient(i, food, procedencia, learn)}
-                onRemove={() => removePendingIngredient(i)}
-                onGramsChange={(v) => setPendingGrams(i, v)}
-              />
-            ))}
+                </div>
+              )
+            )}
 
             <input
               value={query}
@@ -797,9 +827,9 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
             <p className="text-xs text-text-3">vacío = suma de ingredientes</p>
           </div>
 
-          {pendingIngredients.length > 0 && (
-            <p className="text-sm text-warn" role="status">
-              ⚠ {pendingIngredients.length} ingrediente{pendingIngredients.length === 1 ? '' : 's'} sin resolver.
+          {newFoods.length > 0 && (
+            <p className="text-sm text-text-3" role="status">
+              {newFoods.length} alimento{newFoods.length === 1 ? '' : 's'} nuevo{newFoods.length === 1 ? '' : 's'} sin guardar — se crea{newFoods.length === 1 ? '' : 'n'} al guardar la receta, o guárdalo con ⤓.
             </p>
           )}
           {showAdjustButton && (
@@ -901,7 +931,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
 
       <button
         onClick={handleSaveClick}
-        disabled={!form.name || form.ingredients.length === 0 || pendingIngredients.length > 0}
+        disabled={!form.name || form.ingredients.length === 0}
         className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press disabled:opacity-50"
       >
         Guardar
@@ -919,17 +949,17 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   );
 }
 
-// Ingrediente sin resolver: buscador inline (aprende alias al usarse), chips USDA
-// opcionales y estimación IA opt-in. Resuelto = sale de la lista de pendientes.
-function PendingIngredientRow({ item, onResolve, onRemove, onGramsChange }) {
-  const [query, setQuery] = useState(item.name_es);
+// Card de un alimento nuevo (staged, isNew) del flujo IA: permanece en modo edición
+// —nombre, kcal y macros por 100 g editables (prefill de respaldo)— hasta que el usuario
+// lo guarda con ⤓ (queda como fila compacta). USDA se busca y traduce de inmediato al
+// montar y se ofrece como swap; el catálogo (match manual) tiene prioridad sobre la IA.
+function StagedIngredientCard({ ing, onFood, onGrams, onSave, onRemove, onSwapCatalog, onSwapUsda }) {
+  const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [fdcChips, setFdcChips] = useState([]);
-  const [fdcOpen, setFdcOpen] = useState(false);
-  const [translated, setTranslated] = useState(null); // { [fdcId]: descripción_es }
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState('');
-  const [aiPreview, setAiPreview] = useState(null);
+  const [translated, setTranslated] = useState({}); // { [fdcId]: descripción_es }
+  const [saving, setSaving] = useState(false);
+  const { food } = ing;
 
   useEffect(() => {
     if (!query.trim()) {
@@ -947,87 +977,94 @@ function PendingIngredientRow({ item, onResolve, onRemove, onGramsChange }) {
     return () => clearTimeout(t);
   }, [query]);
 
-  // USDA se consulta de inmediato al montar; los chips se revelan (y traducen) a demanda.
+  // USDA de inmediato al montar: busca y traduce sin que el usuario lo pida.
   useEffect(() => {
-    if (!item.usda_query || !FDC_KEY) return;
+    if (!ing.usda_query || !FDC_KEY) return;
     let alive = true;
-    searchFDC(item.usda_query).then((m) => {
-      if (alive) setFdcChips(m);
+    searchFDC(ing.usda_query).then(async (chips) => {
+      if (!alive) return;
+      setFdcChips(chips);
+      const entries = await Promise.all(chips.map(async (c) => [c.fdcId, await translateEnEs(c.description)]));
+      if (alive) setTranslated(Object.fromEntries(entries));
     });
     return () => {
       alive = false;
     };
-  }, [item.usda_query]);
+  }, [ing.usda_query]);
 
-  async function revealUsda() {
-    setFdcOpen(true);
-    if (translated) return;
-    const entries = await Promise.all(
-      fdcChips.map(async (c) => [c.fdcId, await translateEnEs(c.description)])
-    );
-    setTranslated(Object.fromEntries(entries));
-  }
-
-  // Stagea el alimento USDA (nombre en español limpio; datos por 100 g de USDA).
-  // No inserta: se crea al guardar la receta o con el ícono de guardar individual.
   async function handleUsdaPick(fdcId) {
     const detail = await fetchFDC(fdcId);
-    if (!detail) return;
-    onResolve({ ...detail, name: item.name_es, id: crypto.randomUUID(), source: 'usda' }, 'USDA', false, true);
+    if (detail) onSwapUsda(detail);
   }
 
-  async function handleAiEstimate() {
-    setAiLoading(true);
-    setAiError('');
-    try {
-      const est = await estimateFood(item.name_es, null);
-      setAiPreview(est);
-    } catch (e) {
-      setAiError(e.message || 'No se pudo estimar.');
-    }
-    setAiLoading(false);
+  async function handleSave() {
+    setSaving(true);
+    await onSave();
+    setSaving(false);
   }
 
-  function stageAiFood() {
-    onResolve(
-      {
-        name: aiPreview.name || item.name_es,
-        kcal: aiPreview.kcal,
-        protein_g: aiPreview.protein_g,
-        carbs_g: aiPreview.carbs_g,
-        fat_g: aiPreview.fat_g,
-        micros: aiPreview.micros,
-        id: crypto.randomUUID(),
-        source: 'gemini',
-      },
-      'IA',
-      false,
-      true
-    );
-  }
+  const num = (v) => (v === '' || v == null ? '' : v);
 
   return (
     <div className="rounded-xl bg-surface-2 border border-warn p-3 flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <span className="flex-1 text-sm truncate">{item.name_es}</span>
+        <input
+          value={food.name}
+          onChange={(e) => onFood({ name: e.target.value })}
+          placeholder="Nombre del alimento"
+          className="flex-1 min-w-0 min-h-[44px] rounded-lg bg-surface-3 border border-border px-2 text-text text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+        />
         <input
           type="number"
           inputMode="decimal"
           step="any"
-          value={item.grams}
-          onChange={(e) => onGramsChange(e.target.value)}
+          value={ing.grams}
+          onChange={(e) => onGrams(e.target.value)}
           placeholder="g"
-          className="w-20 min-h-[44px] rounded-lg bg-surface-3 border border-border px-2 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
+          className="w-16 min-h-[44px] rounded-lg bg-surface-3 border border-border px-2 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
         />
-        <button type="button" onClick={onRemove} className="p-1 text-danger" aria-label={`Quitar ${item.name_es}`}>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || !food.name}
+          className="p-1.5 text-text-2 hover:text-accent disabled:opacity-40"
+          title="Guardar alimento"
+          aria-label={`Guardar ${food.name}`}
+        >
+          <Save size={16} />
+        </button>
+        <button type="button" onClick={onRemove} className="p-1 text-danger" aria-label={`Quitar ${food.name}`}>
           <X size={16} />
         </button>
+      </div>
+
+      <p className="text-xs text-text-3">{ing.procedencia || 'IA'} · sin guardar · valores por 100 g</p>
+      <div className="grid grid-cols-4 gap-2">
+        {[
+          ['kcal', 'Kcal'],
+          ['protein_g', 'Prot'],
+          ['carbs_g', 'Carbs'],
+          ['fat_g', 'Grasa'],
+        ].map(([key, label]) => (
+          <label key={key} className="flex flex-col gap-0.5">
+            <span className="text-[10px] text-text-3">{label}</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="any"
+              value={num(food[key])}
+              onChange={(e) => onFood({ [key]: e.target.value })}
+              placeholder="—"
+              className="min-h-[44px] rounded-lg bg-surface-3 border border-border px-2 text-text font-mono tabular-nums text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </label>
+        ))}
       </div>
 
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Buscar en tu catálogo…"
+        placeholder="¿Ya está en tu catálogo? Búscalo…"
         className="input text-sm"
       />
       {results.length > 0 && (
@@ -1036,7 +1073,7 @@ function PendingIngredientRow({ item, onResolve, onRemove, onGramsChange }) {
             <button
               key={f.id}
               type="button"
-              onClick={() => onResolve(f, 'catálogo', true)}
+              onClick={() => onSwapCatalog(f, true)}
               className="w-full text-left px-3 py-2 text-sm active:bg-surface-2"
             >
               {f.name}
@@ -1045,49 +1082,19 @@ function PendingIngredientRow({ item, onResolve, onRemove, onGramsChange }) {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 items-center">
-        {fdcChips.length > 0 && !fdcOpen && (
-          <button
-            type="button"
-            onClick={revealUsda}
-            className="text-xs min-h-[36px] px-3 rounded-full border border-border text-text-2 press"
-          >
-            Ver {fdcChips.length} coincidencia{fdcChips.length === 1 ? '' : 's'} USDA
-          </button>
-        )}
-        {fdcOpen &&
-          fdcChips.map((c) => (
+      {fdcChips.length > 0 && (
+        <div className="flex flex-wrap gap-2 items-center">
+          {fdcChips.map((c) => (
             <button
               key={c.fdcId}
               type="button"
               onClick={() => handleUsdaPick(c.fdcId)}
               className="text-xs min-h-[36px] px-3 rounded-full bg-surface-3 border border-border text-text-2 press"
             >
-              USDA: {translated?.[c.fdcId] || c.description}
+              USDA: {translated[c.fdcId] || c.description}
             </button>
           ))}
-        {GEMINI_KEY && !aiPreview && (
-          <button
-            type="button"
-            onClick={handleAiEstimate}
-            disabled={aiLoading}
-            className="text-xs min-h-[36px] px-3 rounded-full border border-border text-text-2 press"
-          >
-            {aiLoading ? 'Estimando…' : 'Estimar con IA'}
-          </button>
-        )}
-      </div>
-
-      {aiError && <p className="text-xs text-danger">{aiError}</p>}
-      {aiPreview && (
-        <button
-          type="button"
-          onClick={stageAiFood}
-          className="rounded-lg bg-surface-3 border border-border p-2 text-left text-xs press active:bg-surface-2"
-        >
-          <span className="text-accent">Usar estimación IA · </span>
-          {aiPreview.name || item.name_es}: {aiPreview.kcal || 0} kcal · P {aiPreview.protein_g || 0} · C {aiPreview.carbs_g || 0} · G {aiPreview.fat_g || 0}
-        </button>
+        </div>
       )}
     </div>
   );

@@ -72,15 +72,18 @@ const GEMINI_SCHEMA = {
   required: ['mode', 'name'],
 };
 
-// Prompt de descomposición en ingredientes: Gemini NUNCA aporta valores nutricionales
-// aquí, solo nombres/gramos/total/kcal_total_estimate (esta última solo para
-// verificación cruzada en UI, jamás se persiste).
+// Prompt de descomposición en ingredientes: además de nombres/gramos/db_match/usda_query,
+// Gemini da por CADA ingrediente sus valores por 100 g como RESPALDO revisable (prefill,
+// nunca guardado silencioso: cada ingrediente sin match del catálogo se muestra como card
+// editable con guardado individual). Prioridad de precisión en UI: catálogo > USDA > IA.
 function recipePrompt(catalogNames) {
-  return `Eres un asistente de nutrición para México. El usuario describe un platillo, bebida o receta (texto y/o foto). NO estimes valores nutricionales. Descompón en ingredientes con su cantidad en GRAMOS tal como van en la preparación.
+  const units = MICROS.map((m) => `${m.key} (${m.unit})`).join(', ');
+  return `Eres un asistente de nutrición para México. El usuario describe un platillo, bebida o receta (texto y/o foto). Descompón en ingredientes con su cantidad en GRAMOS tal como van en la preparación.
 Prefiere pocos ingredientes compuestos ("leche entera", no "leche + grasa"). Máximo 15.
 Se te da la lista EXACTA de alimentos del catálogo del usuario. Para cada ingrediente, si uno de esos nombres corresponde claramente al ingrediente, devuelve ese nombre LITERAL en "db_match"; si no hay correspondencia clara, "db_match" = null. Nunca inventes nombres que no estén en la lista.
 Catálogo del usuario: ${catalogNames.length ? catalogNames.join(', ') : '(vacío)'}
 Para ingredientes genéricos sin match, da "usda_query" (nombre en inglés apto para buscar en USDA FoodData Central); si no aplica, null.
+Para CADA ingrediente da además sus valores nutricionales por 100 g de porción comestible, como respaldo revisable (base tipo USDA priorizando México). OBLIGATORIOS siempre con tu mejor estimación disponible: kcal, protein_g, carbs_g, fat_g, sodio_mg, potasio_mg, magnesio_mg (null SOLO si es imposible fundarlo, nunca 0 inventado). Resto de micros: solo con dato fiable, si no null. Unidades: kcal en kcal; protein_g/carbs_g/fat_g en gramos; micros: ${units}.
 Si el usuario indica tamaño total (p. ej. "350ml"), conviértelo a gramos con densidad razonable y devuélvelo en "total_weight_g"; si no lo indica, tu mejor estimación del peso total preparado; null si imposible.
 "kcal_total_estimate": tu estimación gruesa de kcal TOTALES del platillo completo (solo para verificación cruzada, jamás se persiste); null si no puedes fundarla.
 "name": nombre corto de la receta en español. "confidence": "alta"|"media"|"baja".`;
@@ -102,6 +105,14 @@ const RECIPE_SCHEMA = {
           grams: { type: 'NUMBER' },
           db_match: { type: 'STRING', nullable: true },
           usda_query: { type: 'STRING', nullable: true },
+          kcal: { type: 'NUMBER', nullable: true },
+          protein_g: { type: 'NUMBER', nullable: true },
+          carbs_g: { type: 'NUMBER', nullable: true },
+          fat_g: { type: 'NUMBER', nullable: true },
+          micros: {
+            type: 'OBJECT',
+            properties: Object.fromEntries(MICROS.map((m) => [m.key, { type: 'NUMBER', nullable: true }])),
+          },
         },
         required: ['name_es', 'grams'],
       },
@@ -127,14 +138,27 @@ export async function estimateRecipe(text, imageFile, catalogNames) {
   if (!res.ok) throw new Error(`Gemini ${res.status}`);
   const data = await res.json();
   const out = JSON.parse(data.candidates[0].content.parts[0].text);
-  // grams fuera de rango físico razonable → pendiente con gramos vacíos, no se descarta
-  // el ingrediente (el usuario lo captura a mano). Truncado a 15 ingredientes.
-  const ingredients = (out.ingredients || []).slice(0, 15).map((i) => ({
-    name_es: i.name_es || '',
-    grams: i.grams > 0 && i.grams <= 2000 ? i.grams : '',
-    db_match: i.db_match || null,
-    usda_query: i.usda_query || null,
-  }));
+  // grams fuera de rango físico razonable → gramos vacíos, no se descarta el ingrediente
+  // (el usuario lo captura a mano). Truncado a 15. Nutrientes = respaldo por 100 g (prefill);
+  // se descartan micros null igual que estimateFood.
+  const ingredients = (out.ingredients || []).slice(0, 15).map((i) => {
+    const micros = {};
+    for (const m of MICROS) {
+      const v = i.micros?.[m.key];
+      if (v != null) micros[m.key] = v;
+    }
+    return {
+      name_es: i.name_es || '',
+      grams: i.grams > 0 && i.grams <= 2000 ? i.grams : '',
+      db_match: i.db_match || null,
+      usda_query: i.usda_query || null,
+      kcal: i.kcal ?? '',
+      protein_g: i.protein_g ?? '',
+      carbs_g: i.carbs_g ?? '',
+      fat_g: i.fat_g ?? '',
+      micros,
+    };
+  });
   return {
     name: out.name || '',
     confidence: out.confidence || null,
