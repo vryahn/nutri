@@ -337,7 +337,8 @@ export default function Foods() {
                   <SortTh label="P" sortKey="protein_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
                   <SortTh label="C" sortKey="carbs_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
                   <SortTh label="G" sortKey="fat_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
-                  <SortTh label="Origen" sortKey="source" active={sortKey} dir={sortDir} onSort={toggleSort} className="hidden xl:table-cell" />
+                  {/* Origen fuera de la tabla: la columna maestra (5/12, tope max-w-6xl ≈ 455px)
+                      nunca da ancho para 7 columnas. El origen se ve en la ficha del panel. */}
                   <th className="px-3 py-2 text-center">⚠</th>
                 </tr>
               </thead>
@@ -358,7 +359,6 @@ export default function Foods() {
                     <td className="px-3 py-2 text-right font-mono tabular-nums">{f.protein_g}</td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">{f.carbs_g}</td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">{f.fat_g}</td>
-                    <td className="px-3 py-2 text-text-2 hidden xl:table-cell">{f.source}</td>
                     <td className="px-3 py-2 text-center">
                       {hasWarning(f) && (
                         <AlertTriangle size={14} className="inline text-warn" aria-label="Valores nutricionales requieren revisión" />
@@ -378,7 +378,7 @@ export default function Foods() {
                 ))}
                 {visibleFoods.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-3 py-6 text-center text-text-2">Sin resultados con estos filtros.</td>
+                    <td colSpan={6} className="px-3 py-6 text-center text-text-2">Sin resultados con estos filtros.</td>
                   </tr>
                 )}
               </tbody>
@@ -439,12 +439,12 @@ export default function Foods() {
 }
 
 // Encabezado de columna ordenable en la tabla lg+.
-function SortTh({ label, sortKey: key, active, dir, onSort, align, className = '' }) {
+function SortTh({ label, sortKey: key, active, dir, onSort, align }) {
   const isActive = active === key;
   return (
     <th
       aria-sort={isActive ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-      className={`px-3 py-2 font-medium cursor-pointer select-none ${align === 'right' ? 'text-right' : ''} ${className}`}
+      className={`px-3 py-2 font-medium cursor-pointer select-none ${align === 'right' ? 'text-right' : ''}`}
       onClick={() => onSort(key)}
     >
       <span className="inline-flex items-center gap-1">
