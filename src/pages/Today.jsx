@@ -745,15 +745,16 @@ function sectionTotals(items) {
   }), { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, sodio_mg: 0, potasio_mg: 0, magnesio_mg: 0 });
 }
 
-// Barra resumen = nivel 1 (total de la sección): tinte lima, nombre en eyebrow,
-// macros con color + micros (Na/K/Mg, solo lg) y kcal grande a la derecha. Click en
-// la zona izquierda contrae/expande. `handle` = botón de drag de sección (opcional).
+// Barra resumen = nivel 1 (total de la sección): fondo neutro; con registros, el
+// título y el borde pasan a lima (recolor discreto que la distingue de una sección
+// vacía). Macros con color + micros (Na/K/Mg, solo lg) y kcal grande a la derecha.
+// Click en la zona izquierda contrae/expande. `handle` = botón de drag (opcional).
 function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, handle }) {
   const t = sectionTotals(items);
   const has = items.length > 0;
   const label = (
     <>
-      <span className="flex items-center gap-1 text-[11px] uppercase tracking-wider font-semibold text-accent">
+      <span className={`flex items-center gap-1 text-[11px] uppercase tracking-wider font-semibold ${has ? 'text-accent' : 'text-text-2'}`}>
         {has && <ChevronDown size={13} className={`transition-transform motion-reduce:transition-none ${collapsed ? '-rotate-90' : ''}`} />}
         {name}
       </span>
@@ -771,12 +772,13 @@ function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, handle })
   );
   return (
     <div
-      className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 min-h-[44px] transition-colors"
+      className="flex items-center justify-between gap-2 rounded-xl border bg-surface-2 px-3 py-2.5 min-h-[44px] transition-colors"
       style={{
-        background: 'color-mix(in srgb, var(--accent) 6%, transparent)',
         borderColor: isOver
-          ? 'color-mix(in srgb, var(--accent) 45%, transparent)'
-          : 'color-mix(in srgb, var(--accent) 16%, transparent)',
+          ? 'color-mix(in srgb, var(--accent) 55%, transparent)'
+          : has
+          ? 'color-mix(in srgb, var(--accent) 40%, transparent)'
+          : 'var(--border)',
       }}
     >
       {has ? (
