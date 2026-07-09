@@ -358,6 +358,24 @@ export default function Today() {
     showToast('Día copiado.');
   }
 
+  // Borra los alimentos del día (no el agua, que se lleva por vasos). Destructivo
+  // e irreversible: confirma antes.
+  async function handleDeleteDay() {
+    const foods = entries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id));
+    if (foods.length === 0) {
+      showToast('Este día no tiene alimentos.');
+      return;
+    }
+    if (!window.confirm(`¿Borrar los ${foods.length} registros de alimentos de este día? No se puede deshacer.`)) return;
+    const { error } = await supabase.from('entries').delete().in('id', foods.map((e) => e.id));
+    if (error) {
+      showToast('Error al borrar.');
+      return;
+    }
+    showToast(`${foods.length} registros borrados.`);
+    loadDay();
+  }
+
   // Publica Ayer/Copiar/Pegar en el botón "Más opciones" del layout (App.jsx).
   // "Ayer" solo con la fecha en hoy; "Pegar" solo con un día copiado.
   useEffect(() => {
@@ -374,9 +392,10 @@ export default function Today() {
         onClick: () => copyEntriesFrom(copiedDay),
       });
     }
+    actions.push({ key: 'borrar', label: 'Borrar día', icon: Trash2, onClick: handleDeleteDay });
     setSectionMenu(actions);
     return () => setSectionMenu([]);
-  }, [date, copiedDay, prefs.water_food_id]);
+  }, [date, copiedDay, prefs.water_food_id, entries]);
 
   // Sección "+": en lg+ no abre el sheet (reemplazado por el quick-add inline),
   // solo prellena su etiqueta y remonta el form (foco vía autoFocus); en <lg
@@ -430,11 +449,15 @@ export default function Today() {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className={`bg-transparent text-center font-display text-lg focus:outline-none ${date === todayISO() ? 'text-transparent' : ''}`}
+            onClick={(e) => e.currentTarget.showPicker?.()}
+            className="absolute inset-0 w-full opacity-0 cursor-pointer"
+            aria-label="Elegir fecha"
           />
-          {date === todayISO() && (
-            <span className="pointer-events-none absolute inset-0 flex items-center justify-center font-display text-lg">Hoy</span>
-          )}
+          <span className="pointer-events-none font-display text-lg">
+            {date === todayISO()
+              ? 'Hoy'
+              : new Date(date + 'T00:00').toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' })}
+          </span>
         </div>
         <button onClick={() => setDate(addDaysISO(date, 1))} className="p-2 press" aria-label="Día siguiente">
           <ChevronRight size={22} />
