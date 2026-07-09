@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
-import { CalendarDays, Apple, ChefHat, Target, BarChart3, LogOut, Tags } from 'lucide-react';
+import { CalendarDays, Apple, ChefHat, Target, BarChart3, LogOut, Tags, MoreHorizontal } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
+import { subscribeSectionMenu } from './lib/sectionMenu.js';
 import Login from './pages/Login.jsx';
 import Today from './pages/Today.jsx';
 import Foods from './pages/Foods.jsx';
@@ -30,8 +31,58 @@ function useSession() {
   return session;
 }
 
+// "Más opciones": botón dinámico que anida las acciones que publica la página
+// activa (setSectionMenu). Sin acciones no se renderiza. `placement` decide si
+// el menú abre hacia abajo (header móvil) o hacia arriba (sidebar, al pie).
+function MoreOptions({ actions, placement = 'bottom', className, label }) {
+  const [open, setOpen] = useState(false);
+  if (!actions.length) return null;
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className={className}
+        aria-label="Más opciones"
+        aria-expanded={open}
+      >
+        <MoreHorizontal size={20} />
+        {label && <span className="text-sm">{label}</span>}
+      </button>
+      {open && (
+        <>
+          <button
+            className="fixed inset-0 z-40 cursor-default"
+            aria-hidden
+            tabIndex={-1}
+            onClick={() => setOpen(false)}
+          />
+          <div
+            className={`absolute z-50 right-0 min-w-44 rounded-xl border border-border bg-surface p-1 shadow-lg ${
+              placement === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'
+            }`}
+          >
+            {actions.map(({ key, label, icon: Icon, onClick }) => (
+              <button
+                key={key}
+                onClick={() => {
+                  setOpen(false);
+                  onClick();
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-2 hover:bg-surface-2 press text-left"
+              >
+                {Icon && <Icon size={18} />}
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // Sidebar fija en md+ (reemplaza header + tab bar inferior de móvil).
-function Sidebar({ onLabels }) {
+function Sidebar({ onLabels, menuActions }) {
   return (
     <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:left-0 md:w-52 md:border-r md:border-border md:bg-surface md:py-4 md:px-3">
       <span className="font-display text-lg px-2 pb-4">
@@ -57,6 +108,12 @@ function Sidebar({ onLabels }) {
       </nav>
 
       <div className="flex flex-col gap-1 pt-2 border-t border-border">
+        <MoreOptions
+          actions={menuActions}
+          placement="top"
+          label="Más opciones"
+          className="flex items-center gap-3 min-h-[44px] w-full px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
+        />
         <button
           onClick={onLabels}
           className="flex items-center gap-3 min-h-[44px] px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
@@ -78,12 +135,15 @@ function Sidebar({ onLabels }) {
 
 function Layout({ children }) {
   const [labelsOpen, setLabelsOpen] = useState(false);
+  const [menuActions, setMenuActions] = useState([]);
   const location = useLocation();
   const isDashboard = location.pathname === '/dashboard';
 
+  useEffect(() => subscribeSectionMenu(setMenuActions), []);
+
   return (
     <div className="min-h-dvh flex flex-col md:flex-row">
-      <Sidebar onLabels={() => setLabelsOpen(true)} />
+      <Sidebar onLabels={() => setLabelsOpen(true)} menuActions={menuActions} />
 
       <div className="flex-1 flex flex-col min-w-0 md:ml-52">
         <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border">
@@ -91,6 +151,11 @@ function Layout({ children }) {
             nutri<span className="text-accent">.</span>
           </span>
           <div className="flex items-center gap-1">
+            <MoreOptions
+              actions={menuActions}
+              placement="bottom"
+              className="p-2 rounded-lg press text-text-2"
+            />
             <button
               onClick={() => setLabelsOpen(true)}
               className="p-2 rounded-lg press text-text-2"

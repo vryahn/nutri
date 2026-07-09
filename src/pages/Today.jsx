@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, GlassWater, Settings, GripVertical, Pencil, Trash2, Check, History, Copy, ClipboardPaste } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
+import { setSectionMenu } from '../lib/sectionMenu.js';
 import { useToast } from '../lib/useToast.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import {
@@ -357,6 +358,26 @@ export default function Today() {
     showToast('Día copiado.');
   }
 
+  // Publica Ayer/Copiar/Pegar en el botón "Más opciones" del layout (App.jsx).
+  // "Ayer" solo con la fecha en hoy; "Pegar" solo con un día copiado.
+  useEffect(() => {
+    const actions = [];
+    if (date === todayISO()) {
+      actions.push({ key: 'ayer', label: 'Ayer', icon: History, onClick: () => copyEntriesFrom(addDaysISO(date, -1)) });
+    }
+    actions.push({ key: 'copiar', label: 'Copiar', icon: Copy, onClick: handleCopyDay });
+    if (copiedDay) {
+      actions.push({
+        key: 'pegar',
+        label: `Pegar ${new Date(copiedDay + 'T00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}`,
+        icon: ClipboardPaste,
+        onClick: () => copyEntriesFrom(copiedDay),
+      });
+    }
+    setSectionMenu(actions);
+    return () => setSectionMenu([]);
+  }, [date, copiedDay, prefs.water_food_id]);
+
   // Sección "+": en lg+ no abre el sheet (reemplazado por el quick-add inline),
   // solo prellena su etiqueta y remonta el form (foco vía autoFocus); en <lg
   // conserva el sheet actual.
@@ -418,39 +439,6 @@ export default function Today() {
         <button onClick={() => setDate(addDaysISO(date, 1))} className="p-2 press" aria-label="Día siguiente">
           <ChevronRight size={22} />
         </button>
-      </div>
-
-      {/* Acciones del día: iconos en móvil, icono+label en lg+. "Ayer" (copiar día
-          anterior) solo cuando ves hoy; "Pegar" solo con un día copiado. */}
-      <div className="flex justify-end gap-2 -mt-2 lg:col-start-1">
-        {date === todayISO() && (
-          <button
-            onClick={() => copyEntriesFrom(addDaysISO(date, -1))}
-            className="inline-flex items-center justify-center gap-1.5 h-10 w-10 lg:w-auto lg:px-3 rounded-xl border border-border text-text-2 press text-sm"
-            aria-label="Copiar día anterior"
-          >
-            <History size={18} /><span className="hidden lg:inline">Ayer</span>
-          </button>
-        )}
-        <button
-          onClick={handleCopyDay}
-          className="inline-flex items-center justify-center gap-1.5 h-10 w-10 lg:w-auto lg:px-3 rounded-xl border border-border text-text-2 press text-sm"
-          aria-label="Copiar este día"
-        >
-          <Copy size={18} /><span className="hidden lg:inline">Copiar</span>
-        </button>
-        {copiedDay && (
-          <button
-            onClick={() => copyEntriesFrom(copiedDay)}
-            className="inline-flex items-center justify-center gap-1.5 h-10 w-10 lg:w-auto lg:px-3 rounded-xl border border-border text-text-2 press text-sm"
-            aria-label={`Pegar registros del día copiado`}
-          >
-            <ClipboardPaste size={18} />
-            <span className="hidden lg:inline">
-              Pegar {new Date(copiedDay + 'T00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}
-            </span>
-          </button>
-        )}
       </div>
 
       {/* Quick-add inline: solo lg+, reemplaza el flujo FAB+sheet. */}
