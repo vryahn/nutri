@@ -7,7 +7,6 @@ import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import {
   todayISO,
   addDaysISO,
-  recentWindowStart,
   resolveTarget,
   classifyKcal,
   classifyFloor,
@@ -40,7 +39,6 @@ export default function Today() {
   const [date, setDate] = useState(todayISO());
   const [entries, setEntries] = useState([]);
   const [labels, setLabels] = useState([]);
-  const [recent, setRecent] = useState([]);
   const [targets, setTargets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(null); // { labelId } | null
@@ -81,7 +79,6 @@ export default function Today() {
 
   useEffect(() => {
     loadLabels();
-    loadRecent();
     loadTargets();
     loadPrefs();
     // LabelsModal vive en App.jsx encima de esta página: sin remount, avisa por evento.
@@ -186,38 +183,6 @@ export default function Today() {
   async function loadLabels() {
     const { data } = await supabase.from('meal_labels').select('*').order('sort_order');
     setLabels(data || []);
-  }
-
-  async function loadRecent() {
-    const today = todayISO();
-    const { data: tgts } = await supabase.from('targets').select('valid_from').not('dow', 'is', null);
-    const phaseVfs = [...new Set((tgts || []).map((t) => t.valid_from))];
-    const windowStart = recentWindowStart(phaseVfs, today);
-    const { data } = await supabase
-      .from('entry_nutrients')
-      .select('food_id, recipe_id, item, grams')
-      .gte('day', windowStart)
-      .order('created_at', { ascending: false })
-      .limit(500); // ponytail: techo de seguridad; la ventana (fase o 40 d) ya acota
-    if (!data) return;
-    // dedup por food/receta (más reciente primero) + gramos por defecto = MODA de la
-    // ventana (empate → el más reciente, que es el primero que vemos por el orden desc).
-    const byKey = new Map();
-    for (const e of data) {
-      const key = e.food_id || e.recipe_id;
-      let rec = byKey.get(key);
-      if (!rec) { rec = { food_id: e.food_id, recipe_id: e.recipe_id, item: e.item, counts: new Map() }; byKey.set(key, rec); }
-      const g = Number(e.grams);
-      rec.counts.set(g, (rec.counts.get(g) || 0) + 1);
-    }
-    const uniques = [];
-    for (const rec of byKey.values()) {
-      let best = null, bestCount = 0;
-      for (const [g, c] of rec.counts) if (c > bestCount) { best = g; bestCount = c; }
-      uniques.push({ food_id: rec.food_id, recipe_id: rec.recipe_id, item: rec.item, grams: best });
-      if (uniques.length >= 8) break;
-    }
-    setRecent(uniques);
   }
 
   async function persistLabelOrder(reordered) {
@@ -349,7 +314,6 @@ export default function Today() {
     }
     showToast(`${rows.length} registros copiados.`);
     loadDay();
-    loadRecent();
   }
 
   function handleCopyDay() {
@@ -471,7 +435,6 @@ export default function Today() {
             key={quickAddKey}
             date={date}
             labels={labels}
-            recent={recent}
             waterFoodId={prefs.water_food_id}
             initialLabelId={quickAddInitialLabel}
             inputRef={quickAddInputRef}
@@ -480,7 +443,6 @@ export default function Today() {
               setQuickAddKey((k) => k + 1);
               setQuickAddInitialLabel(null);
               loadDay();
-              loadRecent();
             }}
           />
         </div>
@@ -503,7 +465,7 @@ export default function Today() {
         {isLg && editing ? (
           <div className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-display text-lg truncate">{editing.item}</h2>
+              <h2 className="font-display text-lg">{editing.item}{editing.brand && <span className="text-text-3 text-sm font-normal ml-1.5">{editing.brand}</span>}</h2>
               <button onClick={() => setEditing(null)} className="p-2 -mr-2 press" aria-label="Cerrar">
                 <X size={20} />
               </button>
@@ -700,14 +662,12 @@ export default function Today() {
         <AddEntrySheet
           date={date}
           labels={labels}
-          recent={recent}
           waterFoodId={prefs.water_food_id}
           initialLabelId={adding.labelId}
           onClose={() => setAdding(null)}
           onAdded={() => {
             setAdding(null);
             loadDay();
-            loadRecent();
           }}
         />
       )}
@@ -981,7 +941,7 @@ function CardBody({ entry: e }) {
   return (
     <>
       <div className="min-w-0">
-        <p className="font-medium truncate">{e.item}</p>
+        <p className="font-medium">{e.item}{e.brand && <span className="text-text-3 text-sm font-normal ml-1.5">{e.brand}</span>}</p>
         <div className="text-sm font-mono tabular-nums mt-0.5 text-text-2 flex flex-wrap items-center gap-y-0.5 [&>.sep]:text-text-3 [&>.sep]:mx-1.5">
           <span>{e.grams}g</span>
           {Number(e.protein_g) > 0 && <><span className="sep">|</span><span>P {round(Number(e.protein_g), 1)}</span></>}
@@ -1279,7 +1239,7 @@ function AmountField({ grams, onGrams, meta, placeholder, required = true }) {
 // Núcleo de "añadir registro": buscador con recientes, cantidad y etiqueta.
 // Reutilizado por AddEntrySheet (sheet, <lg) y el quick-add inline (rail, lg+).
 // Navegación por teclado en resultados: ↓/↑ mueve la selección, Enter la confirma.
-function AddEntryForm({ date, labels, recent, waterFoodId, initialLabelId, onAdded, inputRef, autoFocus }) {
+function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inputRef, autoFocus }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -1287,11 +1247,48 @@ function AddEntryForm({ date, labels, recent, waterFoodId, initialLabelId, onAdd
   const [grams, setGrams] = useState('');
   const [presetGrams, setPresetGrams] = useState(null);
   const [labelId, setLabelId] = useState(initialLabelId || '');
+  const [frequent, setFrequent] = useState([]);
   const foodMeta = useFoodMeta(selected?.type === 'food' ? selected.id : null, selected?.type === 'recipe' ? selected.id : null);
 
   useEffect(() => {
     setActiveIndex(-1);
   }, [results]);
+
+  // Top 8 más registrados (dedup food/receta, gramos default = moda), filtrando
+  // agua; si hay etiqueta activa, acota el historial a esa etiqueta.
+  async function loadFrequent() {
+    let q = supabase
+      .from('entry_nutrients')
+      .select('food_id, recipe_id, item, brand, grams, meal_label_id')
+      .order('created_at', { ascending: false })
+      .limit(1000);
+    if (initialLabelId) q = q.eq('meal_label_id', initialLabelId);
+    const { data } = await q;
+    if (!data) return;
+    const byKey = new Map();
+    for (const e of data) {
+      const key = e.food_id || e.recipe_id;
+      let rec = byKey.get(key);
+      if (!rec) { rec = { food_id: e.food_id, recipe_id: e.recipe_id, item: e.item, brand: e.brand, freq: 0, counts: new Map() }; byKey.set(key, rec); }
+      rec.freq++;
+      const g = Number(e.grams);
+      rec.counts.set(g, (rec.counts.get(g) || 0) + 1);
+    }
+    const uniques = [...byKey.values()]
+      .filter((r) => !(r.food_id && r.food_id === waterFoodId))
+      .sort((a, b) => b.freq - a.freq)
+      .slice(0, 8)
+      .map((r) => {
+        let best = null, bestCount = 0;
+        for (const [g, c] of r.counts) if (c > bestCount) { best = g; bestCount = c; }
+        return { food_id: r.food_id, recipe_id: r.recipe_id, item: r.item, brand: r.brand, grams: best };
+      });
+    setFrequent(uniques);
+  }
+
+  useEffect(() => {
+    loadFrequent();
+  }, [initialLabelId, waterFoodId]);
 
   useEffect(() => {
     if (!query.trim() || selected) {
@@ -1299,9 +1296,10 @@ function AddEntryForm({ date, labels, recent, waterFoodId, initialLabelId, onAdd
       return;
     }
     const t = setTimeout(async () => {
+      const q = query.trim().replace(/[,()]/g, ' ');
       const [{ data: foods }, { data: recipes }] = await Promise.all([
-        supabase.from('foods').select('id,name').ilike('name', `%${query.trim()}%`).limit(8),
-        supabase.from('recipes').select('id,name').ilike('name', `%${query.trim()}%`).limit(8),
+        supabase.from('foods').select('id,name,brand').or(`name.ilike.%${q}%,brand.ilike.%${q}%`).limit(8),
+        supabase.from('recipes').select('id,name').ilike('name', `%${q}%`).limit(8),
       ]);
       setResults([
         // el Agua se registra desde su tarjeta, no como comida
@@ -1355,24 +1353,25 @@ function AddEntryForm({ date, labels, recent, waterFoodId, initialLabelId, onAdd
       recipe_id: selected.type === 'recipe' ? selected.id : null,
     };
     const { error } = await supabase.from('entries').insert(payload);
-    if (!error) onAdded();
+    if (!error) {
+      onAdded();
+      loadFrequent();
+    }
   }
-
-  const visibleRecent = recent.filter((r) => !(r.food_id && r.food_id === waterFoodId));
 
   return (
     <div className="flex flex-col gap-4">
-      {!selected && visibleRecent.length > 0 && (
+      {!selected && frequent.length > 0 && (
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-text-3">Recientes</p>
+          <p className="text-sm text-text-3">Elementos frecuentes</p>
           <div className="flex flex-wrap gap-2">
-            {visibleRecent.map((r) => (
+            {frequent.map((r) => (
               <button
                 key={(r.food_id || r.recipe_id) + r.item}
                 onClick={() => pick({ id: r.food_id || r.recipe_id, name: r.item, type: r.food_id ? 'food' : 'recipe' }, r.grams)}
                 className="px-3 py-2 rounded-full bg-surface-2 border border-border text-sm press"
               >
-                {r.item}
+                {r.item}{r.brand && <span className="text-text-3 text-xs font-normal ml-1">{r.brand}</span>}
               </button>
             ))}
           </div>
@@ -1401,7 +1400,7 @@ function AddEntryForm({ date, labels, recent, waterFoodId, initialLabelId, onAdd
                 onClick={() => pick(r)}
                 className={`w-full text-left px-3 py-2 flex justify-between ${i === activeIndex ? 'bg-surface-3' : 'active:bg-surface-3'}`}
               >
-                <span>{r.name}</span>
+                <span>{r.name}{r.brand && <span className="text-text-3 text-sm font-normal ml-1.5">{r.brand}</span>}</span>
                 {r.type === 'recipe' && <span className="text-xs text-text-3">receta</span>}
               </button>
             ))}
@@ -1439,13 +1438,12 @@ function AddEntryForm({ date, labels, recent, waterFoodId, initialLabelId, onAdd
   );
 }
 
-function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onClose, onAdded }) {
+function AddEntrySheet({ date, labels, waterFoodId, initialLabelId, onClose, onAdded }) {
   return (
     <Sheet title="Añadir registro" onClose={onClose}>
       <AddEntryForm
         date={date}
         labels={labels}
-        recent={recent}
         waterFoodId={waterFoodId}
         initialLabelId={initialLabelId}
         onAdded={onAdded}
@@ -1512,7 +1510,7 @@ function EditEntryForm({ entry, labels, favMicros, onDelete, onSaved }) {
 
 function EditEntrySheet({ entry, labels, favMicros, onClose, onDelete, onSaved }) {
   return (
-    <Sheet title={entry.item} onClose={onClose}>
+    <Sheet title={<>{entry.item}{entry.brand && <span className="text-text-3 text-sm font-normal ml-1.5">{entry.brand}</span>}</>} onClose={onClose}>
       <EditEntryForm entry={entry} labels={labels} favMicros={favMicros} onDelete={onDelete} onSaved={onSaved} />
     </Sheet>
   );
