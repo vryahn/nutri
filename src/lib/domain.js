@@ -153,6 +153,16 @@ export function addDaysISO(iso, delta) {
   return d.toLocaleDateString('sv-SE');
 }
 
+// Ventana para la "moda de gramos" de Recientes en Hoy: si hay fase de objetivos
+// vigente y lleva ≥7 días corridos, se limita a la fase (refleja el patrón actual
+// de porciones); antes de esa semana no hay muestra suficiente → ventana de 40 días.
+// phaseVfs = valid_from distintos de filas dow; today = ISO yyyy-mm-dd.
+export function recentWindowStart(phaseVfs, today) {
+  const vigente = [...phaseVfs].filter((vf) => vf <= today).sort().pop() || null;
+  if (vigente && addDaysISO(vigente, 7) <= today) return vigente;
+  return addDaysISO(today, -40);
+}
+
 export function weekdayOf(iso) {
   return new Date(`${iso}T00:00:00`).getDay(); // 0=domingo, coincide con dow
 }

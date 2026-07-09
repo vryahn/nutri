@@ -6,6 +6,7 @@ import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import {
   todayISO,
   addDaysISO,
+  recentWindowStart,
   resolveTarget,
   classifyKcal,
   classifyFloor,
@@ -170,19 +171,32 @@ export default function Today() {
   }
 
   async function loadRecent() {
+    const today = todayISO();
+    const { data: tgts } = await supabase.from('targets').select('valid_from').not('dow', 'is', null);
+    const phaseVfs = [...new Set((tgts || []).map((t) => t.valid_from))];
+    const windowStart = recentWindowStart(phaseVfs, today);
     const { data } = await supabase
       .from('entry_nutrients')
       .select('food_id, recipe_id, item, grams')
+      .gte('day', windowStart)
       .order('created_at', { ascending: false })
-      .limit(40);
+      .limit(500); // ponytail: techo de seguridad; la ventana (fase o 40 d) ya acota
     if (!data) return;
-    const seen = new Set();
-    const uniques = [];
+    // dedup por food/receta (más reciente primero) + gramos por defecto = MODA de la
+    // ventana (empate → el más reciente, que es el primero que vemos por el orden desc).
+    const byKey = new Map();
     for (const e of data) {
       const key = e.food_id || e.recipe_id;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      uniques.push(e);
+      let rec = byKey.get(key);
+      if (!rec) { rec = { food_id: e.food_id, recipe_id: e.recipe_id, item: e.item, counts: new Map() }; byKey.set(key, rec); }
+      const g = Number(e.grams);
+      rec.counts.set(g, (rec.counts.get(g) || 0) + 1);
+    }
+    const uniques = [];
+    for (const rec of byKey.values()) {
+      let best = null, bestCount = 0;
+      for (const [g, c] of rec.counts) if (c > bestCount) { best = g; bestCount = c; }
+      uniques.push({ food_id: rec.food_id, recipe_id: rec.recipe_id, item: rec.item, grams: best });
       if (uniques.length >= 8) break;
     }
     setRecent(uniques);
@@ -313,6 +327,7 @@ export default function Today() {
 
   const target = resolveTarget(targets, date);
   const kcalStatus = classifyKcal(totals.kcal, target?.kcal);
+  const kcalPct = target?.kcal > 0 ? Math.round((totals.kcal / target.kcal) * 100) : null;
   const proteinStatus = classifyFloor(totals.protein_g, target?.protein_g);
   const statusColor = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' };
   const sodiumLow = sodiumIsLow(totals.sodio_mg, foodEntries.length > 0);
@@ -325,12 +340,17 @@ export default function Today() {
         <button onClick={() => setDate(addDaysISO(date, -1))} className="p-2 press" aria-label="Día anterior">
           <ChevronLeft size={22} />
         </button>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="bg-transparent text-center font-display text-lg focus:outline-none"
-        />
+        <div className="relative flex-1 flex justify-center">
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className={`bg-transparent text-center font-display text-lg focus:outline-none ${date === todayISO() ? 'text-transparent' : ''}`}
+          />
+          {date === todayISO() && (
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center font-display text-lg">Hoy</span>
+          )}
+        </div>
         <button onClick={() => setDate(addDaysISO(date, 1))} className="p-2 press" aria-label="Día siguiente">
           <ChevronRight size={22} />
         </button>
@@ -370,7 +390,7 @@ export default function Today() {
       {/* El rail abarca las 3 filas de col-1 (grid-rows-[auto_auto_1fr] en el contenedor).
           Sin esas filas explícitas, `1/-1` colapsa a span-1 e infla la fila 1 con la altura
           del rail (hueco en col-1). La fila 1fr absorbe el excedente del rail por abajo. */}
-      <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-1 lg:[grid-row:1/-1] lg:sticky lg:top-6 lg:self-start">
+      <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-1 lg:[grid-row:1/-1] lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto">
         {isLg && editing ? (
           <div className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-4">
             <div className="flex items-center justify-between">
@@ -396,7 +416,21 @@ export default function Today() {
         ) : (
           <>
             <div className="hidden lg:flex lg:flex-col lg:gap-3 rounded-2xl bg-surface border border-border p-4">
-              <RailStat label="Kcal" value={totals.kcal} color={statusColor[kcalStatus] || 'text-d-kcal'} target={target?.kcal} />
+              <div className={statusColor[kcalStatus] || 'text-d-kcal'}>
+                <div className="flex items-end justify-between">
+                  <div>
+                    <p className="font-mono tabular-nums text-3xl leading-none">{round(totals.kcal, 0)}</p>
+                    <p className="text-xs text-text-3 mt-1">kcal{target?.kcal > 0 ? ` / ${round(target.kcal, 0)}` : ''}</p>
+                  </div>
+                  {kcalPct != null && <p className="font-mono tabular-nums text-2xl">{kcalPct}%</p>}
+                </div>
+                {kcalPct != null && (
+                  <div className="mt-2 h-2 rounded-full bg-surface-2 overflow-hidden">
+                    <div className="h-full bg-current rounded-full" style={{ width: `${Math.min(100, kcalPct)}%` }} />
+                  </div>
+                )}
+              </div>
+              <div className="h-px bg-border" />
               <RailStat label="Prot" value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
               <RailStat label="Carbs" value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
               <RailStat label="Grasa" value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
@@ -645,7 +679,8 @@ function SwipeCard({ entry: e, labelId, editing, onEdit, onDelete }) {
     data: { type: 'card', entryId: e.id, labelId },
   });
   return (
-    <div className={`relative group rounded-2xl ${editing ? 'ring-1 ring-accent' : ''}`}>
+    <div className="relative group rounded-2xl">
+      {editing && <span aria-hidden className="absolute left-0 top-2 bottom-2 w-1 rounded-full bg-accent" />}
       <SwipeToDelete
         onDelete={onDelete}
         onTap={onEdit}
@@ -653,7 +688,7 @@ function SwipeCard({ entry: e, labelId, editing, onEdit, onDelete }) {
         onPointerDownExtra={listeners.onPointerDown}
         nodeRef={setNodeRef}
         dragAttributes={attributes}
-        className={`bg-surface border border-border p-3 flex justify-between items-center gap-3 ${isDragging ? 'opacity-30' : ''}`}
+        className={`${editing ? 'bg-surface-2' : 'bg-surface'} border border-border p-3 flex justify-between items-center gap-3 ${isDragging ? 'opacity-30' : ''}`}
       >
         <CardBody entry={e} />
       </SwipeToDelete>
@@ -840,19 +875,20 @@ function Stat({ label, value, color, target, decimals = 1 }) {
 
 // Fila del rail derecho (lg+): mismo dato de Stat, presentado como barra de progreso.
 function RailStat({ label, value, color, target, decimals = 1 }) {
-  const pct = target > 0 ? Math.min(100, Math.round((value / target) * 100)) : null;
+  const pct = target > 0 ? Math.round((value / target) * 100) : null;
   return (
     <div className={color}>
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex items-baseline justify-between text-sm">
         <span className="text-text-3">{label}</span>
         <span className="font-mono tabular-nums">
           {round(value, decimals)}
-          {target > 0 ? ` / ${round(target, decimals)}` : ''}
+          {target > 0 && <span className="text-text-3"> / {round(target, decimals)}</span>}
+          {pct != null && <span className="ml-2">{pct}%</span>}
         </span>
       </div>
       {target > 0 && (
         <div className="mt-1 h-1.5 rounded-full bg-surface-2 overflow-hidden">
-          <div className="h-full bg-current rounded-full" style={{ width: `${pct}%` }} />
+          <div className="h-full bg-current rounded-full" style={{ width: `${Math.min(100, pct)}%` }} />
         </div>
       )}
     </div>
@@ -980,6 +1016,7 @@ function AddEntryForm({ date, labels, recent, waterFoodId, initialLabelId, onAdd
   const [activeIndex, setActiveIndex] = useState(-1);
   const [selected, setSelected] = useState(null); // { id, name, type }
   const [grams, setGrams] = useState('');
+  const [presetGrams, setPresetGrams] = useState(null);
   const [labelId, setLabelId] = useState(initialLabelId || '');
   const foodMeta = useFoodMeta(selected?.type === 'food' ? selected.id : null, selected?.type === 'recipe' ? selected.id : null);
 
@@ -1006,11 +1043,21 @@ function AddEntryForm({ date, labels, recent, waterFoodId, initialLabelId, onAdd
     return () => clearTimeout(t);
   }, [query]);
 
-  function pick(item, presetGrams) {
+  function pick(item, preset) {
     setSelected(item);
     setQuery(item.name);
     setResults([]);
-    if (presetGrams) setGrams(String(presetGrams));
+    setGrams('');
+    setPresetGrams(preset != null ? String(preset) : null);
+  }
+
+  function reset() {
+    setSelected(null);
+    setQuery('');
+    setResults([]);
+    setGrams('');
+    setPresetGrams(null);
+    setLabelId(initialLabelId || '');
   }
 
   function handleQueryKeyDown(e) {
@@ -1029,10 +1076,11 @@ function AddEntryForm({ date, labels, recent, waterFoodId, initialLabelId, onAdd
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!selected || !grams) return;
+    const finalGrams = grams === '' ? presetGrams : grams;
+    if (!selected || !finalGrams) return;
     const payload = {
       day: date,
-      grams: Number(grams),
+      grams: Number(finalGrams),
       meal_label_id: labelId || null,
       food_id: selected.type === 'food' ? selected.id : null,
       recipe_id: selected.type === 'recipe' ? selected.id : null,
@@ -1094,7 +1142,7 @@ function AddEntryForm({ date, labels, recent, waterFoodId, initialLabelId, onAdd
 
       {selected && (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <AmountField grams={grams} onGrams={setGrams} meta={foodMeta} />
+          <AmountField grams={grams} onGrams={setGrams} meta={foodMeta} placeholder={presetGrams ?? undefined} required={presetGrams == null} />
 
           <div className="flex flex-col gap-1">
             <label className="text-sm text-text-2">Etiqueta</label>
@@ -1112,12 +1160,10 @@ function AddEntryForm({ date, labels, recent, waterFoodId, initialLabelId, onAdd
             </select>
           </div>
 
-          <button
-            type="submit"
-            className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press"
-          >
-            Registrar
-          </button>
+          <div className="flex gap-2">
+            <button type="button" onClick={reset} className="min-h-[44px] flex-1 rounded-xl border border-border text-text-2 press">Cancelar</button>
+            <button type="submit" className="min-h-[44px] flex-1 rounded-xl bg-accent-deep text-text font-medium press">Registrar</button>
+          </div>
         </form>
       )}
     </div>
