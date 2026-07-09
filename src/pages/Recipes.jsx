@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, ChevronLeft, Trash2, Search, X } from 'lucide-react';
+import { Plus, ChevronLeft, Trash2, Search, X, Save } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { computeRecipePer100g, MICROS, MICROS_DEFAULT, round, isWaterSentinel } from '../lib/domain.js';
 import { useToast } from '../lib/useToast.js';
 import { GEMINI_KEY, estimateRecipe, estimateFood, parseAmount, snapDensity } from '../lib/ai.js';
-import { searchFDC, fetchFDC } from '../lib/sources.js';
+import { searchFDC, fetchFDC, translateEnEs } from '../lib/sources.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import UndoToast from '../components/UndoToast.jsx';
 import SortTh from '../components/SortTh.jsx';
@@ -392,9 +392,9 @@ function stripAmountText(text) {
 // recipe_items tiene PK compuesta (recipe_id, food_id): dos ingredientes de texto
 // distinto pueden resolver al mismo alimento (alias + db_match, o dos búsquedas
 // manuales). Sumar gramos en vez de duplicar evita el 409 al guardar.
-function mergeIngredient(ingredients, food, grams, procedencia) {
+function mergeIngredient(ingredients, food, grams, procedencia, isNew = false) {
   const idx = ingredients.findIndex((i) => i.food.id === food.id);
-  if (idx === -1) return [...ingredients, { food, grams, procedencia }];
+  if (idx === -1) return [...ingredients, { food, grams, procedencia, isNew }];
   const next = [...ingredients];
   next[idx] = { ...next[idx], grams: (Number(next[idx].grams) || 0) + (Number(grams) || 0) };
   return next;
@@ -413,6 +413,8 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   const [aiResult, setAiResult] = useState(null); // { confidence, kcalTotalEstimate }
   const [dupMatches, setDupMatches] = useState([]);
   const [pendingIngredients, setPendingIngredients] = useState([]); // [{ name_es, grams, usda_query }]
+  const [confirmNew, setConfirmNew] = useState(false); // gate de guardado: confirmar alta de alimentos staged
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -546,11 +548,42 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), ingredient_aliases: aliases } });
   }
 
-  function resolvePendingIngredient(index, food, procedencia, learn) {
+  function resolvePendingIngredient(index, food, procedencia, learn, isNew = false) {
     const item = pendingIngredients[index];
-    setForm((f) => ({ ...f, ingredients: mergeIngredient(f.ingredients, food, item.grams || '', procedencia) }));
+    setForm((f) => ({ ...f, ingredients: mergeIngredient(f.ingredients, food, item.grams || '', procedencia, isNew) }));
     setPendingIngredients((p) => p.filter((_, i) => i !== index));
     if (learn) learnAlias(item.name_es, food.id);
+  }
+
+  // Inserta un alimento staged (sin id) y devuelve la fila real. Compartido por el
+  // guardado individual y el guardado de la receta. Null si falla el insert.
+  async function persistNewFood(food) {
+    const payload = {
+      name: food.name,
+      kcal: Number(food.kcal) || 0,
+      protein_g: Number(food.protein_g) || 0,
+      carbs_g: Number(food.carbs_g) || 0,
+      fat_g: Number(food.fat_g) || 0,
+      micros: food.micros || {},
+      source: food.source || 'gemini',
+    };
+    const { data, error } = await supabase.from('foods').insert(payload).select().single();
+    return error ? null : data;
+  }
+
+  async function saveIngredientNow(index) {
+    const ing = form.ingredients[index];
+    const saved = await persistNewFood(ing.food);
+    if (!saved) {
+      setSaveError('No se pudo guardar el alimento. Intenta de nuevo.');
+      return;
+    }
+    setForm((f) => ({
+      ...f,
+      ingredients: f.ingredients.map((x, i) =>
+        i === index ? { food: saved, grams: x.grams, procedencia: x.procedencia } : x
+      ),
+    }));
   }
 
   function setPendingGrams(index, grams) {
@@ -589,6 +622,35 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       ...f,
       ingredients: f.ingredients.map((ing) => ({ ...ing, grams: Math.round(Number(ing.grams) * adjustFactor) })),
     }));
+  }
+
+  // Alimentos staged (elegidos de USDA/IA) aún no persistidos. Se crean al confirmar
+  // el guardado de la receta; el usuario también puede guardarlos uno a uno antes.
+  const newFoods = form.ingredients.filter((i) => i.isNew);
+
+  async function handleSaveClick() {
+    if (newFoods.length > 0 && !confirmNew) {
+      setConfirmNew(true);
+      return;
+    }
+    setSaveError('');
+    const resolved = [];
+    for (let idx = 0; idx < form.ingredients.length; idx++) {
+      const ing = form.ingredients[idx];
+      if (!ing.isNew) {
+        resolved.push(ing);
+        continue;
+      }
+      const saved = await persistNewFood(ing.food);
+      if (!saved) {
+        // Conserva los ya creados como no-nuevos para que un reintento no los duplique.
+        setForm((f) => ({ ...f, ingredients: [...resolved, ...f.ingredients.slice(idx)] }));
+        setSaveError('No se pudo crear un alimento nuevo. Intenta de nuevo.');
+        return;
+      }
+      resolved.push({ food: saved, grams: ing.grams, procedencia: ing.procedencia });
+    }
+    onSave({ ...form, ingredients: resolved });
   }
 
   return (
@@ -664,7 +726,11 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
               <div key={i} className="flex items-center gap-2 rounded-xl bg-surface-2 border border-border px-3 py-2">
                 <div className="flex-1 flex flex-col min-w-0">
                   <span className="truncate">{ing.food.name}</span>
-                  {ing.procedencia && <span className="text-xs text-text-3">{ing.procedencia}</span>}
+                  {ing.procedencia && (
+                    <span className="text-xs text-text-3">
+                      {ing.procedencia}{ing.isNew ? ' · sin guardar' : ''}
+                    </span>
+                  )}
                 </div>
                 <input
                   type="number"
@@ -675,6 +741,16 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
                   placeholder="g"
                   className="w-20 min-h-[44px] rounded-lg bg-surface-3 border border-border px-2 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
                 />
+                {ing.isNew && (
+                  <button
+                    onClick={() => saveIngredientNow(i)}
+                    className="p-1 text-text-2 hover:text-accent"
+                    title="Guardar alimento"
+                    aria-label={`Guardar ${ing.food.name}`}
+                  >
+                    <Save size={16} />
+                  </button>
+                )}
                 <button onClick={() => removeIngredient(i)} className="p-1 text-danger" aria-label="Quitar ingrediente">
                   <Trash2 size={16} />
                 </button>
@@ -727,16 +803,16 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
             </p>
           )}
           {showAdjustButton && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2">
               {massWarn && (
-                <p className="text-sm text-warn flex-1" role="status">
+                <p className="text-sm text-warn" role="status">
                   ⚠ La suma de ingredientes ({sumGrams} g) no cuadra con el total ({totalGNum} g).
                 </p>
               )}
               <button
                 type="button"
                 onClick={handleAdjustMass}
-                className="min-h-[44px] px-3 rounded-xl border border-border text-text-2 press whitespace-nowrap"
+                className="self-start min-h-[44px] px-3 rounded-xl border border-border text-text-2 press"
               >
                 Ajustar ingredientes al total (×{adjustFactor})
               </button>
@@ -792,8 +868,39 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
         )}
       </div>
 
+      {confirmNew && newFoods.length > 0 && (
+        <div className="rounded-2xl bg-surface-2 border border-border p-4 flex flex-col gap-3">
+          <p className="text-sm text-text-2">
+            Se crearán {newFoods.length} alimento{newFoods.length === 1 ? '' : 's'} nuevo{newFoods.length === 1 ? '' : 's'} en tu catálogo:
+          </p>
+          <ul className="text-sm list-disc pl-5 flex flex-col gap-0.5">
+            {newFoods.map((i, idx) => (
+              <li key={idx}>{i.food.name}</li>
+            ))}
+          </ul>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleSaveClick}
+              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
+            >
+              Confirmar y guardar
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmNew(false)}
+              className="min-h-[44px] px-4 rounded-xl border border-border text-text-2 press"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {saveError && <p className="text-sm text-danger" role="status">{saveError}</p>}
+
       <button
-        onClick={() => onSave(form)}
+        onClick={handleSaveClick}
         disabled={!form.name || form.ingredients.length === 0 || pendingIngredients.length > 0}
         className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press disabled:opacity-50"
       >
@@ -818,7 +925,8 @@ function PendingIngredientRow({ item, onResolve, onRemove, onGramsChange }) {
   const [query, setQuery] = useState(item.name_es);
   const [results, setResults] = useState([]);
   const [fdcChips, setFdcChips] = useState([]);
-  const [fdcLoading, setFdcLoading] = useState(false);
+  const [fdcOpen, setFdcOpen] = useState(false);
+  const [translated, setTranslated] = useState(null); // { [fdcId]: descripción_es }
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiPreview, setAiPreview] = useState(null);
@@ -839,19 +947,33 @@ function PendingIngredientRow({ item, onResolve, onRemove, onGramsChange }) {
     return () => clearTimeout(t);
   }, [query]);
 
-  async function handleUsdaSearch() {
-    if (!item.usda_query) return;
-    setFdcLoading(true);
-    const matches = await searchFDC(item.usda_query);
-    setFdcChips(matches);
-    setFdcLoading(false);
+  // USDA se consulta de inmediato al montar; los chips se revelan (y traducen) a demanda.
+  useEffect(() => {
+    if (!item.usda_query || !FDC_KEY) return;
+    let alive = true;
+    searchFDC(item.usda_query).then((m) => {
+      if (alive) setFdcChips(m);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [item.usda_query]);
+
+  async function revealUsda() {
+    setFdcOpen(true);
+    if (translated) return;
+    const entries = await Promise.all(
+      fdcChips.map(async (c) => [c.fdcId, await translateEnEs(c.description)])
+    );
+    setTranslated(Object.fromEntries(entries));
   }
 
-  async function handleUsdaPick(fdcId, description) {
+  // Stagea el alimento USDA (nombre en español limpio; datos por 100 g de USDA).
+  // No inserta: se crea al guardar la receta o con el ícono de guardar individual.
+  async function handleUsdaPick(fdcId) {
     const detail = await fetchFDC(fdcId);
     if (!detail) return;
-    const { data, error } = await supabase.from('foods').insert({ ...detail, source: 'usda' }).select().single();
-    if (!error) onResolve(data, 'USDA', false);
+    onResolve({ ...detail, name: item.name_es, id: crypto.randomUUID(), source: 'usda' }, 'USDA', false, true);
   }
 
   async function handleAiEstimate() {
@@ -866,18 +988,22 @@ function PendingIngredientRow({ item, onResolve, onRemove, onGramsChange }) {
     setAiLoading(false);
   }
 
-  async function handleAiCreate() {
-    const payload = {
-      name: aiPreview.name || item.name_es,
-      kcal: Number(aiPreview.kcal) || 0,
-      protein_g: Number(aiPreview.protein_g) || 0,
-      carbs_g: Number(aiPreview.carbs_g) || 0,
-      fat_g: Number(aiPreview.fat_g) || 0,
-      micros: aiPreview.micros,
-      source: 'gemini',
-    };
-    const { data, error } = await supabase.from('foods').insert(payload).select().single();
-    if (!error) onResolve(data, 'IA', false);
+  function stageAiFood() {
+    onResolve(
+      {
+        name: aiPreview.name || item.name_es,
+        kcal: aiPreview.kcal,
+        protein_g: aiPreview.protein_g,
+        carbs_g: aiPreview.carbs_g,
+        fat_g: aiPreview.fat_g,
+        micros: aiPreview.micros,
+        id: crypto.randomUUID(),
+        source: 'gemini',
+      },
+      'IA',
+      false,
+      true
+    );
   }
 
   return (
@@ -920,26 +1046,26 @@ function PendingIngredientRow({ item, onResolve, onRemove, onGramsChange }) {
       )}
 
       <div className="flex flex-wrap gap-2 items-center">
-        {item.usda_query && FDC_KEY && (
+        {fdcChips.length > 0 && !fdcOpen && (
           <button
             type="button"
-            onClick={handleUsdaSearch}
-            disabled={fdcLoading}
+            onClick={revealUsda}
             className="text-xs min-h-[36px] px-3 rounded-full border border-border text-text-2 press"
           >
-            {fdcLoading ? 'Buscando…' : 'Buscar en USDA'}
+            Ver {fdcChips.length} coincidencia{fdcChips.length === 1 ? '' : 's'} USDA
           </button>
         )}
-        {fdcChips.map((c) => (
-          <button
-            key={c.fdcId}
-            type="button"
-            onClick={() => handleUsdaPick(c.fdcId, c.description)}
-            className="text-xs min-h-[36px] px-3 rounded-full bg-surface-3 border border-border text-text-2 press"
-          >
-            USDA: {c.description}
-          </button>
-        ))}
+        {fdcOpen &&
+          fdcChips.map((c) => (
+            <button
+              key={c.fdcId}
+              type="button"
+              onClick={() => handleUsdaPick(c.fdcId)}
+              className="text-xs min-h-[36px] px-3 rounded-full bg-surface-3 border border-border text-text-2 press"
+            >
+              USDA: {translated?.[c.fdcId] || c.description}
+            </button>
+          ))}
         {GEMINI_KEY && !aiPreview && (
           <button
             type="button"
@@ -954,18 +1080,14 @@ function PendingIngredientRow({ item, onResolve, onRemove, onGramsChange }) {
 
       {aiError && <p className="text-xs text-danger">{aiError}</p>}
       {aiPreview && (
-        <div className="rounded-lg bg-surface-3 border border-border p-2 flex flex-col gap-1 text-xs">
-          <span>
-            {aiPreview.name || item.name_es}: {aiPreview.kcal || 0} kcal · P {aiPreview.protein_g || 0} · C {aiPreview.carbs_g || 0} · G {aiPreview.fat_g || 0}
-          </span>
-          <button
-            type="button"
-            onClick={handleAiCreate}
-            className="self-start min-h-[36px] px-3 rounded-full bg-accent-deep text-text press"
-          >
-            Crear alimento y añadir
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={stageAiFood}
+          className="rounded-lg bg-surface-3 border border-border p-2 text-left text-xs press active:bg-surface-2"
+        >
+          <span className="text-accent">Usar estimación IA · </span>
+          {aiPreview.name || item.name_es}: {aiPreview.kcal || 0} kcal · P {aiPreview.protein_g || 0} · C {aiPreview.carbs_g || 0} · G {aiPreview.fat_g || 0}
+        </button>
       )}
     </div>
   );

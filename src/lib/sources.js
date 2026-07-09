@@ -101,6 +101,30 @@ export async function searchFDC(query) {
   return (data.foods || []).map((f) => ({ fdcId: f.fdcId, description: f.description, dataType: f.dataType }));
 }
 
+// --- Traducción EN→ES (MyMemory, gratis, sin key, CORS abierto) ---
+// Solo ayuda visual para elegir la variante USDA correcta; NUNCA entra a la DB
+// (el alimento se guarda con el nombre en español que ya trae el flujo).
+const _trCache = new Map();
+export async function translateEnEs(text) {
+  if (!text) return text;
+  if (_trCache.has(text)) return _trCache.get(text);
+  let out = text;
+  try {
+    const res = await fetch(
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|es`
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const t = data?.responseData?.translatedText;
+      if (t && data.responseStatus === 200) out = t;
+    }
+  } catch {
+    // ponytail: MyMemory free tier ~1000 palabras/día; fallback a inglés, subir a key propia si la cuota molesta
+  }
+  _trCache.set(text, out);
+  return out;
+}
+
 export async function fetchFDC(fdcId) {
   if (!FDC_KEY) return null;
   let res;
