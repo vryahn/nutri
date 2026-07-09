@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, GlassWater, Settings, GripVertical, Pencil, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, GlassWater, Settings, GripVertical, Pencil, Trash2, Check } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { useToast } from '../lib/useToast.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
@@ -440,10 +440,19 @@ export default function Today() {
                 </div>
                 <div className={`min-w-0 ${statusColor[kcalStatus] || 'text-d-kcal'}`}>
                   {kcalPct != null ? (
-                    <>
-                      <p className="font-mono tabular-nums text-2xl leading-none">{kcalPct}%</p>
-                      <p className="text-xs text-text-3 mt-2">meta {round(target.kcal, 0)} kcal</p>
-                    </>
+                    kcalStatus === 'ok' ? (
+                      <>
+                        <p className="flex items-center gap-1.5 text-lg"><Check size={18} />en meta</p>
+                        <p className="text-xs text-text-3 mt-2">meta {round(target.kcal, 0)} kcal</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-mono tabular-nums text-2xl leading-none">
+                          {totals.kcal < target.kcal ? '−' : '+'}{Math.abs(round(totals.kcal - target.kcal, 0))}
+                        </p>
+                        <p className="text-xs text-text-3 mt-2">kcal · meta {round(target.kcal, 0)}</p>
+                      </>
+                    )
                   ) : (
                     <p className="text-xs text-text-3">sin meta de kcal</p>
                   )}
@@ -456,17 +465,28 @@ export default function Today() {
                 <RailStat label="Grasa" value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
               </div>
               <div className="h-px bg-border" />
-              {/* Minerales aparte de los macros: sodio rojo = piso médico; potasio ámbar. */}
+              {/* Minerales aparte de los macros. Sodio: acotado por piso médico (no meta a alcanzar);
+                  delta rojo sólo hacia el piso 1500. Potasio: meta a alcanzar, delta ámbar. */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-xl bg-surface-2 p-3">
                   <p className="text-[10px] uppercase tracking-wide text-text-3">Sodio</p>
                   <p className="font-mono tabular-nums text-lg text-danger mt-1">{round(totals.sodio_mg, 0)}</p>
-                  <p className="text-[10px] text-text-3 mt-0.5">mg · piso {SODIUM_FLOOR_MG}</p>
+                  {sodiumLow ? (
+                    <p className="font-mono tabular-nums text-[11px] text-danger mt-0.5">−{round(SODIUM_FLOOR_MG - totals.sodio_mg, 0)} al piso</p>
+                  ) : (
+                    <p className="text-[10px] text-text-3 mt-0.5">mg · piso {SODIUM_FLOOR_MG}</p>
+                  )}
                 </div>
                 <div className="rounded-xl bg-surface-2 p-3">
                   <p className="text-[10px] uppercase tracking-wide text-text-3">Potasio</p>
-                  <p className="font-mono tabular-nums text-lg text-warn mt-1">{round(totals.potasio_mg, 0)}</p>
-                  <p className="text-[10px] text-text-3 mt-0.5">mg{potassiumPct != null ? ` · ${potassiumPct}% de ${round(target.micros.potasio_mg, 0)}` : ''}</p>
+                  <p className={`font-mono tabular-nums text-lg mt-1 ${potassiumPct != null && totals.potasio_mg >= target.micros.potasio_mg ? 'text-ok' : 'text-warn'}`}>{round(totals.potasio_mg, 0)}</p>
+                  {potassiumPct == null ? (
+                    <p className="text-[10px] text-text-3 mt-0.5">mg</p>
+                  ) : totals.potasio_mg >= target.micros.potasio_mg ? (
+                    <p className="flex items-center gap-1 text-[11px] text-ok mt-0.5"><Check size={12} />meta</p>
+                  ) : (
+                    <p className="font-mono tabular-nums text-[11px] text-warn mt-0.5">−{round(target.micros.potasio_mg - totals.potasio_mg, 0)} de {round(target.micros.potasio_mg, 0)}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -937,24 +957,33 @@ function Stat({ label, value, color, target, decimals = 1 }) {
   );
 }
 
-// Fila del rail derecho (lg+): mismo dato de Stat, presentado como barra de progreso.
+// Fila del rail derecho (lg+): protagoniza el delta a la meta (−N g = lo que resta,
+// en el color del macro). Cumplida la meta → check + fila atenuada; el tramo vacío
+// de la barra va en el propio color del macro (tenue) = "esto te falta, en su tono".
 function RailStat({ label, value, color, target, decimals = 1 }) {
-  const pct = target > 0 ? Math.round((value / target) * 100) : null;
+  const has = target > 0;
+  const pct = has ? Math.round((value / target) * 100) : null;
+  const met = has && value >= target;
   return (
-    <div className={color}>
+    <div className={`${color}${met ? ' opacity-60' : ''}`}>
       <div className="flex items-baseline justify-between text-sm">
         <span className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-sm bg-current" />
           <span className="text-text-3">{label}</span>
         </span>
-        <span className="font-mono tabular-nums">
-          {round(value, decimals)}
-          {target > 0 && <span className="text-text-3"> / {round(target, decimals)}</span>}
-          {pct != null && <span className="ml-2">{pct}%</span>}
+        <span className="flex items-baseline gap-2 font-mono tabular-nums">
+          {met ? (
+            <Check size={14} className="self-center" />
+          ) : has ? (
+            <span>−{round(target - value, decimals)} g</span>
+          ) : (
+            <span>{round(value, decimals)} g</span>
+          )}
+          {has && <span className="text-text-3 text-xs">{round(value, decimals)}/{round(target, decimals)}</span>}
         </span>
       </div>
-      {target > 0 && (
-        <div className="mt-1 h-1.5 rounded-full bg-surface-2 overflow-hidden">
+      {has && (
+        <div className="mt-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'color-mix(in srgb, currentColor 16%, transparent)' }}>
           <div className="h-full bg-current rounded-full" style={{ width: `${Math.min(100, pct)}%` }} />
         </div>
       )}
