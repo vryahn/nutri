@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Plus, ChevronLeft, Search, Sparkles, ImagePlus, X, Star, AlertTriangle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Plus, ChevronLeft, ChevronUp, ChevronDown, Search, Sparkles, ImagePlus, X, Star, AlertTriangle, Trash2,
+} from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { useToast } from '../lib/useToast.js';
 import {
@@ -26,6 +28,24 @@ const DENSITY_PRESETS = [
   { label: 'Aceite', value: 0.92 },
   { label: 'Miel o jarabe', value: 1.4 },
 ];
+
+// ponytail: matchMedia en vez de resize-observer propio; mismo patrón que Today.jsx.
+function useIsLgUp() {
+  const [isLg, setIsLg] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const handler = () => setIsLg(mq.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return isLg;
+}
+
+function hasWarning(f) {
+  return kcalSuspicious(f) || macrosImplausible(f) || componentsInconsistent(f);
+}
+
+const SOURCE_OPTIONS = ['manual', 'etiqueta', 'gemini', 'off', 'usda', 'cronometer'];
 
 function snapDensity(v) {
   const n = Number(v);
@@ -55,11 +75,35 @@ export default function Foods() {
   const [userId, setUserId] = useState(null);
   const [favs, setFavs] = useState([]); // prefs.data.fav_micros: micros promovidos fuera de "Más micros"
   const [undoData, setUndoData] = useState(null); // { food, timer } tras un borrado, para "Deshacer"
+  const isLg = useIsLgUp();
+  const [sortKey, setSortKey] = useState(null);
+  const [sortDir, setSortDir] = useState('asc');
+  const [filterSource, setFilterSource] = useState('');
+  const [warnOnly, setWarnOnly] = useState(false);
+  const searchRef = useRef(null);
 
   useEffect(() => {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
   }, [query]);
+
+  // Atajos lg+: "/" enfoca el buscador (si el foco no está en un input), Esc cierra el panel.
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === 'Escape') {
+        if (editing) setEditing(null);
+        return;
+      }
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (e.key === '/') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [editing]);
 
   useEffect(() => {
     loadPrefs();
@@ -151,82 +195,234 @@ export default function Foods() {
     if (!error) load();
   }
 
-  if (editing) {
+  // <lg: reemplazo de página completa, sin cambios respecto a lo existente.
+  if (editing && !isLg) {
     return (
-      <FoodForm
-        food={editing}
-        favs={favs}
-        onToggleFav={toggleFav}
-        onCancel={() => setEditing(null)}
-        onSave={handleSave}
-        onDelete={editing.id ? () => handleDelete(editing.id) : null}
-      />
+      <div className="px-4 py-4">
+        <FoodForm
+          food={editing}
+          favs={favs}
+          onToggleFav={toggleFav}
+          onCancel={() => setEditing(null)}
+          onSave={handleSave}
+          onDelete={editing.id ? () => handleDelete(editing.id) : null}
+        />
+      </div>
     );
   }
 
+  function toggleSort(key) {
+    setSortDir((d) => (sortKey === key ? (d === 'asc' ? 'desc' : 'asc') : 'asc'));
+    setSortKey(key);
+  }
+
+  const sourceOptions = [...new Set([...SOURCE_OPTIONS, ...foods.map((f) => f.source).filter(Boolean)])];
+
+  let visibleFoods = foods;
+  if (filterSource) visibleFoods = visibleFoods.filter((f) => f.source === filterSource);
+  if (warnOnly) visibleFoods = visibleFoods.filter(hasWarning);
+  if (sortKey) {
+    visibleFoods = [...visibleFoods].sort((a, b) => {
+      let av = a[sortKey];
+      let bv = b[sortKey];
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      if (av == null) av = '';
+      if (bv == null) bv = '';
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }
+
   return (
-    <div className="px-4 py-4 flex flex-col gap-4">
-      <h1 className="font-display text-xl">Alimentos</h1>
-
-      <div className="relative">
-        <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-3" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar…"
-          className="w-full min-h-[44px] rounded-xl bg-surface-2 border border-border pl-10 pr-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
-        />
-      </div>
-
-      {loading && (
-        <div className="flex flex-col gap-2">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-16 rounded-2xl bg-surface animate-pulse" />
-          ))}
-        </div>
-      )}
-
-      {!loading && foods.length === 0 && (
-        <div className="flex flex-col items-center gap-3 py-12 text-center">
-          <p className="text-text-2">Sin alimentos aún</p>
+    <div className="px-4 py-4 flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-6 lg:items-start">
+      <div className="flex flex-col gap-4 lg:col-start-1">
+        <div className="flex items-center justify-between">
+          <h1 className="font-display text-xl">Alimentos</h1>
           <button
             onClick={() => setEditing(EMPTY_FOOD)}
-            className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
+            className="hidden lg:inline-flex min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
           >
-            Crear el primero
+            ＋ Nuevo
           </button>
         </div>
-      )}
 
-      {!loading &&
-        foods.map((f) => (
-          <SwipeToDelete
-            key={f.id}
-            onTap={() => setEditing(f)}
-            onDelete={() => handleDelete(f.id)}
-            className="rounded-2xl bg-surface border border-border p-4"
-          >
-            <div className="flex justify-between items-baseline gap-2">
-              <span className="font-medium">
-                {f.name}
-                {(kcalSuspicious(f) || macrosImplausible(f) || componentsInconsistent(f)) && (
-                  <AlertTriangle
-                    size={14}
-                    className="inline ml-1.5 -mt-0.5 text-warn"
-                    aria-label="Valores nutricionales requieren revisión"
-                  />
+        <div className="flex flex-col lg:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-3" />
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar…"
+              className="w-full min-h-[44px] rounded-xl bg-surface-2 border border-border pl-10 pr-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+          <div className="hidden lg:flex gap-2">
+            <select
+              value={filterSource}
+              onChange={(e) => setFilterSource(e.target.value)}
+              className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="">Todo origen</option>
+              {sourceOptions.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setWarnOnly((w) => !w)}
+              aria-pressed={warnOnly}
+              className={`min-h-[44px] px-3 rounded-xl border press whitespace-nowrap ${
+                warnOnly ? 'bg-warn/20 border-warn text-warn' : 'bg-surface-2 border-border text-text-2'
+              }`}
+            >
+              ⚠ solo avisos
+            </button>
+          </div>
+        </div>
+
+        {loading && (
+          <div className="flex flex-col gap-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-16 rounded-2xl bg-surface animate-pulse" />
+            ))}
+          </div>
+        )}
+
+        {!loading && foods.length === 0 && (
+          <div className="flex flex-col items-center gap-3 py-12 text-center">
+            <p className="text-text-2">Sin alimentos aún</p>
+            <button
+              onClick={() => setEditing(EMPTY_FOOD)}
+              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
+            >
+              Crear el primero
+            </button>
+          </div>
+        )}
+
+        {/* <lg: cards + swipe, sin cambios. */}
+        {!loading && foods.length > 0 && (
+          <div className="flex flex-col gap-4 lg:hidden">
+            {foods.map((f) => (
+              <SwipeToDelete
+                key={f.id}
+                onTap={() => setEditing(f)}
+                onDelete={() => handleDelete(f.id)}
+                className="rounded-2xl bg-surface border border-border p-4"
+              >
+                <div className="flex justify-between items-baseline gap-2">
+                  <span className="font-medium">
+                    {f.name}
+                    {hasWarning(f) && (
+                      <AlertTriangle
+                        size={14}
+                        className="inline ml-1.5 -mt-0.5 text-warn"
+                        aria-label="Valores nutricionales requieren revisión"
+                      />
+                    )}
+                  </span>
+                  <span className="font-mono tabular-nums text-text-2 text-sm shrink-0">{f.kcal} kcal</span>
+                </div>
+                {f.brand && <span className="text-sm text-text-3">{f.brand}</span>}
+              </SwipeToDelete>
+            ))}
+          </div>
+        )}
+
+        {/* lg+: tabla ordenable con hover-actions. */}
+        {!loading && foods.length > 0 && (
+          <div className="hidden lg:block rounded-2xl border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-surface-2 text-text-2 text-left">
+                  <SortTh label="Nombre" sortKey="name" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <SortTh label="Kcal" sortKey="kcal" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
+                  <SortTh label="P" sortKey="protein_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
+                  <SortTh label="C" sortKey="carbs_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
+                  <SortTh label="G" sortKey="fat_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
+                  <SortTh label="Origen" sortKey="source" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <th className="px-3 py-2 text-center">⚠</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleFoods.map((f) => (
+                  <tr
+                    key={f.id}
+                    onClick={() => setEditing(f)}
+                    className={`group relative border-t border-border cursor-pointer hover:bg-surface-2 ${
+                      editing?.id === f.id ? 'bg-surface-2 ring-1 ring-inset ring-accent' : ''
+                    }`}
+                  >
+                    <td className="px-3 py-2">
+                      <div className="font-medium">{f.name}</div>
+                      {f.brand && <div className="text-xs text-text-3">{f.brand}</div>}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">{f.kcal}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">{f.protein_g}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">{f.carbs_g}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">{f.fat_g}</td>
+                    <td className="px-3 py-2 text-text-2">{f.source}</td>
+                    <td className="px-3 py-2 text-center">
+                      {hasWarning(f) && (
+                        <AlertTriangle size={14} className="inline text-warn" aria-label="Valores nutricionales requieren revisión" />
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(f.id);
+                        }}
+                        className="hidden group-hover:inline-flex group-focus-within:inline-flex p-1.5 ml-2 text-text-2 hover:text-danger align-middle"
+                        aria-label={`Borrar ${f.name}`}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {visibleFoods.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-6 text-center text-text-2">Sin resultados con estos filtros.</td>
+                  </tr>
                 )}
-              </span>
-              <span className="font-mono tabular-nums text-text-2 text-sm shrink-0">{f.kcal} kcal</span>
-            </div>
-            {f.brand && <span className="text-sm text-text-3">{f.brand}</span>}
-          </SwipeToDelete>
-        ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Panel derecho (lg+): ficha/editor, master-detail. */}
+      <div className="hidden lg:block lg:col-start-2 lg:sticky lg:top-6">
+        {editing ? (
+          <div className="rounded-2xl bg-surface border border-border p-6">
+            <FoodForm
+              food={editing}
+              favs={favs}
+              onToggleFav={toggleFav}
+              onCancel={() => setEditing(null)}
+              onSave={handleSave}
+              onDelete={editing.id ? () => handleDelete(editing.id) : null}
+            />
+          </div>
+        ) : (
+          <div className="rounded-2xl bg-surface border border-border p-10 flex flex-col items-center gap-3 text-center">
+            <p className="text-text-2">Selecciona un alimento o crea uno nuevo</p>
+            <button
+              onClick={() => setEditing(EMPTY_FOOD)}
+              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
+            >
+              ＋ Nuevo alimento
+            </button>
+          </div>
+        )}
+      </div>
 
       {!loading && foods.length > 0 && (
         <button
           onClick={() => setEditing(EMPTY_FOOD)}
-          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-text flex items-center justify-center press"
+          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-text flex items-center justify-center press lg:hidden"
           aria-label="Añadir alimento"
         >
           <Plus size={24} />
@@ -239,12 +435,29 @@ export default function Foods() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 text-center text-sm"
+          className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 text-center text-sm lg:left-auto lg:right-6 lg:bottom-6"
         >
           {toast}
         </div>
       )}
     </div>
+  );
+}
+
+// Encabezado de columna ordenable en la tabla lg+.
+function SortTh({ label, sortKey: key, active, dir, onSort, align }) {
+  const isActive = active === key;
+  return (
+    <th
+      aria-sort={isActive ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className={`px-3 py-2 font-medium cursor-pointer select-none ${align === 'right' ? 'text-right' : ''}`}
+      onClick={() => onSort(key)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {isActive && (dir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+      </span>
+    </th>
   );
 }
 
@@ -603,7 +816,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const hiddenMicros = MICROS.slice(MICROS_DEFAULT);
 
   return (
-    <div className="px-4 py-4 flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
         <button onClick={onCancel} className="p-2 -ml-2 press" aria-label="Volver">
           <ChevronLeft size={22} />
@@ -752,7 +965,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
             <span className="text-xs text-accent">se convertirá a 100 g al guardar</span>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 lg:hidden">
           <NumberField
             label="Kcal"
             value={form.kcal}
@@ -799,6 +1012,66 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           ))}
         </div>
 
+        {/* lg+: básicos+obligatorios a la izquierda, resto de micros por categoría a la derecha, sin acordeón. */}
+        <div className="hidden lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
+          <div className="grid grid-cols-2 gap-3 content-start">
+            <NumberField
+              label="Kcal"
+              value={form.kcal}
+              onChange={(v) => setField('kcal', v)}
+              placeholder={aiZeros.has('kcal') ? '0' : hasMacros ? `≈ ${kcalCalc}` : ''}
+            />
+            <NumberField
+              label="Proteína (g)"
+              value={form.protein_g}
+              onChange={(v) => setField('protein_g', v)}
+              placeholder={aiZeros.has('protein_g') ? '0' : ''}
+            />
+            <NumberField
+              label="Carbs (g)"
+              value={form.carbs_g}
+              onChange={(v) => setField('carbs_g', v)}
+              placeholder={aiZeros.has('carbs_g') ? '0' : ''}
+            />
+            <NumberField
+              label="Grasa (g)"
+              value={form.fat_g}
+              onChange={(v) => setField('fat_g', v)}
+              placeholder={aiZeros.has('fat_g') ? '0' : ''}
+            />
+            {MICROS.filter((m) => REQUIRED_MICROS.includes(m.key)).map((m) => (
+              <NumberField
+                key={m.key}
+                label={`${m.label} (${m.unit})`}
+                value={form.micros[m.key] ?? ''}
+                onChange={(v) => setMicro(m.key, v)}
+                placeholder={aiZeros.has(m.key) ? '0' : ''}
+              />
+            ))}
+          </div>
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-text-3">★ = favorito, se promueve arriba en móvil.</p>
+            {microGroups(MICROS.filter((m) => !REQUIRED_MICROS.includes(m.key))).map(({ cat, items }) => (
+              <div key={cat}>
+                <p className="text-xs uppercase tracking-wide text-text-3 pb-1">{cat}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {items.map((m) => (
+                    <MicroField
+                      key={m.key}
+                      m={m}
+                      fav={favs.includes(m.key)}
+                      value={form.micros[m.key] ?? ''}
+                      onChange={(v) => setMicro(m.key, v)}
+                      onToggleFav={() => onToggleFav(m.key)}
+                      placeholder={aiZeros.has(m.key) ? '0' : ''}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {form.kcal === '' && hasMacros && (
           <p className="text-xs text-text-3">Si dejas Kcal vacío, se guardará el cálculo por macros (≈ {kcalCalc}).</p>
         )}
@@ -819,7 +1092,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           </p>
         )}
 
-        <details className="rounded-xl bg-surface-2 border border-border px-3 py-2">
+        <details className="lg:hidden rounded-xl bg-surface-2 border border-border px-3 py-2">
           <summary className="cursor-pointer text-sm text-text-2 py-1">Más micros (opcional)</summary>
           <p className="text-xs text-text-3 pt-2">★ = favorito: aparece arriba junto a los principales.</p>
           {microGroups(hiddenMicros.filter((m) => !favs.includes(m.key))).map(({ cat, items }) => (

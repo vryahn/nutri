@@ -5,7 +5,7 @@ export default function UndoToast({ message, onUndo }) {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 flex items-center justify-between gap-3"
+      className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 flex items-center justify-between gap-3 lg:left-auto lg:right-6 lg:bottom-6"
     >
       <span className="text-sm">{message}</span>
       <button onClick={onUndo} className="min-h-[44px] px-3 text-accent font-medium press">
