@@ -1,8 +1,16 @@
 // Cliente Gemini y helpers compartidos entre Foods.jsx y Recipes.jsx ("Datos con IA").
 import { MICROS } from './domain.js';
 
-export const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY;
-export const GEMINI_MODEL = 'gemini-3.5-flash';
+export const GEMINI_KEY = import.meta.env?.VITE_GEMINI_KEY;
+export const MISTRAL_KEY = import.meta.env?.VITE_MISTRAL_KEY;
+
+// Cascada de respaldo ante error/cuota: Gemini 3.5 → Gemini 2.5 → Mistral.
+// Cada paso se salta si su key no está configurada; ver callAI.
+const AI_CHAIN = [
+  { kind: 'gemini', model: 'gemini-3.5-flash' },
+  { kind: 'gemini', model: 'gemini-2.5-flash' },
+  { kind: 'mistral', model: 'mistral-small-latest' },
+];
 
 // Líquidos más consumidos con su densidad (g/ml). El usuario elige de aquí y solo
 // teclea manualmente con "Otro…". Gemini recibe estos valores canónicos y su
@@ -122,23 +130,76 @@ const RECIPE_SCHEMA = {
   required: ['name', 'ingredients'],
 };
 
+// Traduce el schema estilo Gemini (tipos en MAYÚSCULAS) a JSON Schema estándar (Mistral, modo strict).
+export function toJsonSchema(g) {
+  const t = { OBJECT: 'object', STRING: 'string', NUMBER: 'number', ARRAY: 'array' }[g.type] || String(g.type).toLowerCase();
+  const node = { type: g.nullable ? [t, 'null'] : t };
+  if (g.properties) {
+    node.properties = Object.fromEntries(Object.entries(g.properties).map(([k, v]) => [k, toJsonSchema(v)]));
+    node.required = Object.keys(g.properties); // strict de Mistral exige todas las keys en required
+    node.additionalProperties = false;
+  }
+  if (g.items) node.items = toJsonSchema(g.items);
+  return node;
+}
+
+async function callGemini(model, systemPrompt, parts, schema) {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts }],
+      generationConfig: { response_mime_type: 'application/json', response_schema: schema },
+    }),
+  });
+  if (!res.ok) throw new Error(`Gemini ${model} ${res.status}`);
+  const data = await res.json();
+  return JSON.parse(data.candidates[0].content.parts[0].text);
+}
+
+async function callMistral(model, systemPrompt, parts, schema) {
+  const content = parts.map((p) => (p.text != null
+    ? { type: 'text', text: p.text }
+    : { type: 'image_url', image_url: `data:${p.inline_data.mime_type};base64,${p.inline_data.data}` }));
+  const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${MISTRAL_KEY}` },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content }],
+      response_format: { type: 'json_schema', json_schema: { name: 'nutri', strict: true, schema: toJsonSchema(schema) } },
+    }),
+  });
+  if (!res.ok) throw new Error(`Mistral ${model} ${res.status}`);
+  const data = await res.json();
+  return JSON.parse(data.choices[0].message.content);
+}
+
+// Intenta cada modelo de AI_CHAIN en orden; ante CUALQUIER error pasa al siguiente.
+// Salta un paso si su key no está configurada. Propaga el último error si todos fallan.
+async function callAI(systemPrompt, parts, schema) {
+  let lastErr;
+  for (const step of AI_CHAIN) {
+    if (step.kind === 'gemini' && !GEMINI_KEY) continue;
+    if (step.kind === 'mistral' && !MISTRAL_KEY) continue;
+    try {
+      return step.kind === 'gemini'
+        ? await callGemini(step.model, systemPrompt, parts, schema)
+        : await callMistral(step.model, systemPrompt, parts, schema);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('Sin proveedor de IA configurado');
+}
+
 export async function estimateRecipe(text, imageFile, catalogNames) {
   const parts = [{ text: text.trim() || 'Analiza la imagen.' }];
   if (imageFile) {
     parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(imageFile) } });
   }
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: recipePrompt(catalogNames) }] },
-      contents: [{ parts }],
-      generationConfig: { response_mime_type: 'application/json', response_schema: RECIPE_SCHEMA },
-    }),
-  });
-  if (!res.ok) throw new Error(`Gemini ${res.status}`);
-  const data = await res.json();
-  const out = JSON.parse(data.candidates[0].content.parts[0].text);
+  const out = await callAI(recipePrompt(catalogNames), parts, RECIPE_SCHEMA);
   // grams fuera de rango físico razonable → gramos vacíos, no se descarta el ingrediente
   // (el usuario lo captura a mano). Truncado a 15. Nutrientes = respaldo por 100 g (prefill);
   // se descartan micros null igual que estimateFood.
@@ -188,18 +249,7 @@ export async function estimateFood(text, imageFile) {
   if (imageFile) {
     parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(imageFile) } });
   }
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: geminiPrompt() }] },
-      contents: [{ parts }],
-      generationConfig: { response_mime_type: 'application/json', response_schema: GEMINI_SCHEMA },
-    }),
-  });
-  if (!res.ok) throw new Error(`Gemini ${res.status}`);
-  const data = await res.json();
-  const out = JSON.parse(data.candidates[0].content.parts[0].text);
+  const out = await callAI(geminiPrompt(), parts, GEMINI_SCHEMA);
   const micros = {};
   for (const m of MICROS) {
     const v = out.micros?.[m.key];
