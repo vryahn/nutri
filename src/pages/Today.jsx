@@ -19,7 +19,7 @@ import {
   MICROS_DEFAULT,
   microGroups,
 } from '../lib/domain.js';
-import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragOverlay, PointerSensor, closestCenter, closestCorners, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
 // ponytail: matchMedia en vez de un resize-observer propio, ya cubre el único
@@ -160,6 +160,7 @@ export default function Today() {
       .from('entry_nutrients')
       .select('*')
       .eq('day', date)
+      .order('sort_order')
       .order('created_at');
     setEntries(data || []);
     setLoading(false);
@@ -235,12 +236,48 @@ export default function Today() {
       const newIndex = labels.findIndex((l) => `section-${l.id}` === over.id);
       if (oldIndex === -1 || newIndex === -1) return;
       persistLabelOrder(arrayMove(labels, oldIndex, newIndex));
-    } else if (data?.type === 'card') {
-      const targetLabelId = over.data.current?.labelId ?? null;
-      if (targetLabelId === data.labelId) return;
-      const { error } = await supabase.from('entries').update({ meal_label_id: targetLabelId }).eq('id', data.entryId);
-      if (!error) loadDay();
+      return;
     }
+    if (data?.type !== 'card') return;
+    const overId = String(over.id);
+    if (overId === active.id) return; // soltó sobre sí misma
+    const moving = entries.find((e) => e.id === data.entryId);
+    if (!moving) return;
+    // Etiqueta destino: sección directa (contenedor) o la de la card sobre la que se soltó.
+    const overLabel = overId.startsWith('section-')
+      ? (overId === 'section-none' ? null : overId.slice('section-'.length))
+      : (entries.find((e) => `card-${e.id}` === overId)?.meal_label_id ?? null);
+    // Nuevo orden global: quitar la card y reinsertarla en la posición destino.
+    // groupByLabel agrupa por meal_label_id preservando el orden del array, así que
+    // el orden global dentro de un grupo == orden visual de la sección.
+    const others = entries.filter((e) => e.id !== moving.id);
+    let idx;
+    if (overId.startsWith('section-')) {
+      let last = -1; // insertar tras la última card de esa etiqueta (fin de sección)
+      others.forEach((e, i) => { if ((e.meal_label_id ?? null) === overLabel) last = i; });
+      idx = last + 1;
+    } else {
+      idx = others.findIndex((e) => `card-${e.id}` === overId);
+      if (idx === -1) idx = others.length;
+    }
+    const movedEntry = { ...moving, meal_label_id: overLabel };
+    const next = [...others.slice(0, idx), movedEntry, ...others.slice(idx)];
+    setEntries(next); // optimista (render usa orden del array + meal_label_id)
+    // Persistir: renumerar sort_order de las secciones afectadas (origen y destino)
+    // y el meal_label_id de la card movida.
+    const affected = new Set([moving.meal_label_id ?? null, overLabel]);
+    const counters = new Map();
+    const updates = [];
+    for (const e of next) {
+      const L = e.meal_label_id ?? null;
+      const so = counters.get(L) ?? 0;
+      counters.set(L, so + 1);
+      if (affected.has(L)) updates.push({ id: e.id, meal_label_id: e.meal_label_id, sort_order: so });
+    }
+    const results = await Promise.all(
+      updates.map((u) => supabase.from('entries').update({ meal_label_id: u.meal_label_id, sort_order: u.sort_order }).eq('id', u.id))
+    );
+    if (results.some((r) => r.error)) loadDay();
   }
 
   function handleDragCancel() {
@@ -533,6 +570,7 @@ export default function Today() {
         <div className="flex flex-col gap-4 lg:col-start-1">
           <DndContext
             sensors={sensors}
+            collisionDetection={collisionDetectionStrategy}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
@@ -651,6 +689,19 @@ export default function Today() {
   );
 }
 
+// Al arrastrar una sección solo debe colisionar con otras secciones (si no,
+// closestCorners resolvería `over` a una card interna y el reorden fallaría).
+// Al arrastrar una card, closestCorners resuelve a la card hermana o al contenedor.
+function collisionDetectionStrategy(args) {
+  if (args.active?.data?.current?.type === 'section') {
+    return closestCenter({
+      ...args,
+      droppableContainers: args.droppableContainers.filter((c) => String(c.id).startsWith('section-')),
+    });
+  }
+  return closestCorners(args);
+}
+
 // Una sección por cada etiqueta (aunque esté vacía), en el orden de `labels`
 // (ya vienen por sort_order); "Sin etiqueta" al final si tiene items, o mientras
 // se arrastra una card (para poder soltarla ahí y quitarle la etiqueta).
@@ -726,14 +777,16 @@ function SortableSection({ group: g, isOver, editingId, onAdd, onEditEntry, onDe
           </button>
         </div>
       </div>
-      {g.items.map((e) => (
-        <SwipeCard key={e.id} entry={e} labelId={g.id} editing={e.id === editingId} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
-      ))}
+      <SortableContext items={g.items.map((e) => `card-${e.id}`)} strategy={verticalListSortingStrategy}>
+        {g.items.map((e) => (
+          <SwipeCard key={e.id} entry={e} labelId={g.id} editing={e.id === editingId} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
+        ))}
+      </SortableContext>
     </div>
   );
 }
 
-// "Sin etiqueta": no reordenable, solo droppable.
+// "Sin etiqueta": no reordenable la sección, pero sus cards sí; droppable para cross-sección.
 function DropOnlySection({ group: g, isOver, editingId, onEditEntry, onDeleteEntry }) {
   const { setNodeRef } = useDroppable({ id: 'section-none', data: { type: 'section', labelId: null } });
   return (
@@ -744,9 +797,11 @@ function DropOnlySection({ group: g, isOver, editingId, onEditEntry, onDeleteEnt
           <SectionSummary items={g.items} />
         </div>
       </div>
-      {g.items.map((e) => (
-        <SwipeCard key={e.id} entry={e} labelId={g.id} editing={e.id === editingId} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
-      ))}
+      <SortableContext items={g.items.map((e) => `card-${e.id}`)} strategy={verticalListSortingStrategy}>
+        {g.items.map((e) => (
+          <SwipeCard key={e.id} entry={e} labelId={g.id} editing={e.id === editingId} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
+        ))}
+      </SortableContext>
     </div>
   );
 }
@@ -758,7 +813,7 @@ function DropOnlySection({ group: g, isOver, editingId, onEditEntry, onDeleteEnt
 // En lg+ con puntero (hover/focus-within), iconos ✎/✕ aparecen a la derecha — capa
 // aparte (no dentro del <button> del swipe: anidar <button> rompe el HTML).
 function SwipeCard({ entry: e, labelId, editing, onEdit, onDelete }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, isDragging } = useSortable({
     id: `card-${e.id}`,
     data: { type: 'card', entryId: e.id, labelId },
   });
