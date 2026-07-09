@@ -109,7 +109,7 @@ function Layout({ children }) {
         </header>
 
         <main className="flex-1 overflow-x-hidden pb-24 md:pb-8 md:pt-6">
-          <div className={`mx-auto ${isDashboard ? 'max-w-3xl md:max-w-[1600px]' : 'max-w-3xl'}`}>{children}</div>
+          <div className={`mx-auto ${isDashboard ? 'max-w-3xl md:max-w-[1600px]' : 'max-w-3xl lg:max-w-6xl'}`}>{children}</div>
         </main>
 
         <nav

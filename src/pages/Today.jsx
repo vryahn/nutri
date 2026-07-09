@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, GlassWater, Settings, GripVertical } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Plus, X, GlassWater, Settings, GripVertical, Pencil, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { useToast } from '../lib/useToast.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
@@ -21,6 +21,19 @@ import {
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
+// ponytail: matchMedia en vez de un resize-observer propio, ya cubre el único
+// breakpoint que nos interesa (lg = layout de 2 zonas vs. flujo móvil).
+function useIsLgUp() {
+  const [isLg, setIsLg] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const handler = () => setIsLg(mq.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return isLg;
+}
+
 export default function Today() {
   const [date, setDate] = useState(todayISO());
   const [entries, setEntries] = useState([]);
@@ -37,6 +50,10 @@ export default function Today() {
   const [undoData, setUndoData] = useState(null); // { entry, timer } tras un borrado, para "Deshacer"
   const [activeEntry, setActiveEntry] = useState(null); // entry en arrastre (para el fantasma de DragOverlay)
   const [dragOverSection, setDragOverSection] = useState(null); // id de etiqueta (o 'none') bajo una card en arrastre
+  const [quickAddKey, setQuickAddKey] = useState(0); // bump para resetear el quick-add inline tras registrar
+  const [quickAddInitialLabel, setQuickAddInitialLabel] = useState(null);
+  const quickAddInputRef = useRef(null);
+  const isLg = useIsLgUp();
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 250, tolerance: 8 } }));
 
@@ -53,6 +70,28 @@ export default function Today() {
     window.addEventListener('labels-changed', loadLabels);
     return () => window.removeEventListener('labels-changed', loadLabels);
   }, []);
+
+  // Atajos de teclado lg+: ←/→ cambian de día, "/" enfoca el quick-add, Esc
+  // cierra panel/sheet — inactivos si el foco está en un campo de formulario.
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === 'Escape') {
+        if (editing) setEditing(null);
+        else if (adding) setAdding(null);
+        return;
+      }
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (e.key === 'ArrowLeft') setDate((d) => addDaysISO(d, -1));
+      else if (e.key === 'ArrowRight') setDate((d) => addDaysISO(d, 1));
+      else if (e.key === '/') {
+        e.preventDefault();
+        quickAddInputRef.current?.focus();
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [editing, adding]);
 
   async function loadPrefs() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -195,8 +234,8 @@ export default function Today() {
     setDragOverSection(null);
   }
 
-  // Borrado unificado (swipe en Hoy y botón "Borrar" del editor): UI optimista +
-  // toast con "Deshacer" 5 s que reinserta el registro tal cual estaba.
+  // Borrado unificado (swipe/hover-icon en Hoy y botón "Borrar" del editor): UI
+  // optimista + toast con "Deshacer" 5 s que reinserta el registro tal cual estaba.
   async function deleteEntry(entry) {
     setEntries((es) => es.filter((x) => x.id !== entry.id));
     const { error } = await supabase.from('entries').delete().eq('id', entry.id);
@@ -244,6 +283,18 @@ export default function Today() {
     loadRecent();
   }
 
+  // Sección "+": en lg+ no abre el sheet (reemplazado por el quick-add inline),
+  // solo prellena su etiqueta y enfoca la barra; en <lg conserva el sheet actual.
+  function handleSectionAdd(labelId) {
+    if (isLg) {
+      setQuickAddInitialLabel(labelId);
+      setQuickAddKey((k) => k + 1);
+      quickAddInputRef.current?.focus();
+    } else {
+      setAdding({ labelId });
+    }
+  }
+
   const waterEntries = entries.filter((e) => e.food_id && e.food_id === prefs.water_food_id);
   const foodEntries = entries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id));
   const waterMl = waterEntries.reduce((s, e) => s + Number(e.grams), 0); // densidad 1: grams = ml
@@ -269,8 +320,8 @@ export default function Today() {
   const groups = groupByLabel(foodEntries, labels, activeEntry != null);
 
   return (
-    <div className="px-4 pt-4 pb-20 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+    <div className="px-4 pt-4 pb-20 grid grid-cols-1 gap-4 lg:gap-x-6 lg:grid-cols-[1fr_320px] lg:items-start">
+      <div className="flex items-center justify-between lg:col-start-1">
         <button onClick={() => setDate(addDaysISO(date, -1))} className="p-2 press" aria-label="Día anterior">
           <ChevronLeft size={22} />
         </button>
@@ -285,7 +336,28 @@ export default function Today() {
         </button>
       </div>
 
-      <div className="rounded-2xl bg-surface border border-border p-4 grid grid-cols-3 gap-2 text-center">
+      {/* Quick-add inline: solo lg+, reemplaza el flujo FAB+sheet. */}
+      <div className="hidden lg:block lg:col-start-1">
+        <div className="rounded-2xl bg-surface border border-border p-4">
+          <AddEntryForm
+            key={quickAddKey}
+            date={date}
+            labels={labels}
+            recent={recent}
+            waterFoodId={prefs.water_food_id}
+            initialLabelId={quickAddInitialLabel}
+            inputRef={quickAddInputRef}
+            onAdded={() => {
+              setQuickAddKey((k) => k + 1);
+              setQuickAddInitialLabel(null);
+              loadDay();
+              loadRecent();
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-surface border border-border p-4 grid grid-cols-3 gap-2 text-center lg:hidden">
         <Stat label="Kcal" value={totals.kcal} color={statusColor[kcalStatus] || 'text-d-kcal'} target={target?.kcal} />
         <Stat label="Prot" value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
         <Stat label="Carbs" value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
@@ -294,31 +366,69 @@ export default function Today() {
         <Stat label="Potasio" value={totals.potasio_mg} color="text-warn" target={target?.micros?.potasio_mg} decimals={0} />
       </div>
 
-      {sodiumLow && (
-        <p className="text-sm text-danger" role="status" aria-live="polite">
-          ⚠ sodio &lt; {SODIUM_FLOOR_MG} mg
-        </p>
-      )}
+      {/* Rail derecho (lg+): sticky, muestra el resumen del día o el editor de la entry activa. */}
+      <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-1 lg:[grid-row:1/-1] lg:sticky lg:top-6 lg:self-start">
+        {isLg && editing ? (
+          <div className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-lg truncate">{editing.item}</h2>
+              <button onClick={() => setEditing(null)} className="p-2 -mr-2 press" aria-label="Cerrar">
+                <X size={20} />
+              </button>
+            </div>
+            <EditEntryForm
+              entry={editing}
+              labels={labels}
+              favMicros={prefs.fav_micros || []}
+              onDelete={() => {
+                deleteEntry(editing);
+                setEditing(null);
+              }}
+              onSaved={() => {
+                setEditing(null);
+                loadDay();
+              }}
+            />
+          </div>
+        ) : (
+          <>
+            <div className="hidden lg:flex lg:flex-col lg:gap-3 rounded-2xl bg-surface border border-border p-4">
+              <RailStat label="Kcal" value={totals.kcal} color={statusColor[kcalStatus] || 'text-d-kcal'} target={target?.kcal} />
+              <RailStat label="Prot" value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
+              <RailStat label="Carbs" value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
+              <RailStat label="Grasa" value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
+              <RailStat label="Sodio" value={totals.sodio_mg} color="text-danger" target={target?.micros?.sodio_mg} decimals={0} />
+              <RailStat label="Potasio" value={totals.potasio_mg} color="text-warn" target={target?.micros?.potasio_mg} decimals={0} />
+            </div>
 
-      <WaterCard
-        waterMl={waterMl}
-        goalMl={Number(target?.micros?.agua_ml) || 0}
-        glassMl={prefs.water_glass_ml}
-        onGlass={() => addWater(prefs.water_glass_ml)}
-        onUndo={undoWater}
-        onCustom={addWater}
-        onSettings={() => setWaterSettingsOpen(true)}
-      />
+            {sodiumLow && (
+              <p className="text-sm text-danger" role="status" aria-live="polite">
+                ⚠ sodio &lt; {SODIUM_FLOOR_MG} mg
+              </p>
+            )}
 
-      <button
-        onClick={handleCopyPrevDay}
-        className="min-h-[44px] rounded-xl border border-border text-text-2 press"
-      >
-        Copiar día anterior
-      </button>
+            <WaterCard
+              waterMl={waterMl}
+              goalMl={Number(target?.micros?.agua_ml) || 0}
+              glassMl={prefs.water_glass_ml}
+              onGlass={() => addWater(prefs.water_glass_ml)}
+              onUndo={undoWater}
+              onCustom={addWater}
+              onSettings={() => setWaterSettingsOpen(true)}
+            />
+
+            <button
+              onClick={handleCopyPrevDay}
+              className="min-h-[44px] rounded-xl border border-border text-text-2 press"
+            >
+              Copiar día anterior
+            </button>
+          </>
+        )}
+      </div>
 
       {loading && (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 lg:col-start-1">
           {[0, 1].map((i) => (
             <div key={i} className="h-14 rounded-2xl bg-surface animate-pulse" />
           ))}
@@ -326,52 +436,56 @@ export default function Today() {
       )}
 
       {!loading && entries.length === 0 && labels.length === 0 && (
-        <p className="text-text-2 text-center py-6">Sin registros este día</p>
+        <p className="text-text-2 text-center py-6 lg:col-start-1">Sin registros este día</p>
       )}
 
       {!loading && (
-        <DndContext
-          sensors={sensors}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
-        >
-          <SortableContext items={labels.map((l) => `section-${l.id}`)} strategy={verticalListSortingStrategy}>
-            {groups.map((g) =>
-              g.id != null ? (
-                <SortableSection
-                  key={g.id}
-                  group={g}
-                  isOver={dragOverSection === g.id}
-                  onAdd={() => setAdding({ labelId: g.id })}
-                  onEditEntry={setEditing}
-                  onDeleteEntry={deleteEntry}
-                />
-              ) : (
-                <DropOnlySection
-                  key="none"
-                  group={g}
-                  isOver={dragOverSection === 'none'}
-                  onEditEntry={setEditing}
-                  onDeleteEntry={deleteEntry}
-                />
-              )
-            )}
-          </SortableContext>
-          <DragOverlay>
-            {activeEntry && (
-              <div className="rounded-2xl bg-surface border border-border p-3 flex justify-between items-center gap-3 shadow-lg scale-[1.02]">
-                <CardBody entry={activeEntry} />
-              </div>
-            )}
-          </DragOverlay>
-        </DndContext>
+        <div className="flex flex-col gap-4 lg:col-start-1">
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
+            <SortableContext items={labels.map((l) => `section-${l.id}`)} strategy={verticalListSortingStrategy}>
+              {groups.map((g) =>
+                g.id != null ? (
+                  <SortableSection
+                    key={g.id}
+                    group={g}
+                    isOver={dragOverSection === g.id}
+                    editingId={editing?.id}
+                    onAdd={() => handleSectionAdd(g.id)}
+                    onEditEntry={setEditing}
+                    onDeleteEntry={deleteEntry}
+                  />
+                ) : (
+                  <DropOnlySection
+                    key="none"
+                    group={g}
+                    isOver={dragOverSection === 'none'}
+                    editingId={editing?.id}
+                    onEditEntry={setEditing}
+                    onDeleteEntry={deleteEntry}
+                  />
+                )
+              )}
+            </SortableContext>
+            <DragOverlay>
+              {activeEntry && (
+                <div className="rounded-2xl bg-surface border border-border p-3 flex justify-between items-center gap-3 shadow-lg scale-[1.02]">
+                  <CardBody entry={activeEntry} />
+                </div>
+              )}
+            </DragOverlay>
+          </DndContext>
+        </div>
       )}
 
       <button
         onClick={() => setAdding({ labelId: null })}
-        className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-text flex items-center justify-center press"
+        className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-text flex items-center justify-center press lg:hidden"
         aria-label="Añadir registro"
       >
         <Plus size={24} />
@@ -405,7 +519,7 @@ export default function Today() {
         />
       )}
 
-      {editing && (
+      {editing && !isLg && (
         <EditEntrySheet
           entry={editing}
           labels={labels}
@@ -426,7 +540,7 @@ export default function Today() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 flex items-center justify-between gap-3"
+          className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 flex items-center justify-between gap-3 lg:left-auto lg:right-6 lg:bottom-6"
         >
           <span className="text-sm">Registro borrado</span>
           <button
@@ -439,7 +553,7 @@ export default function Today() {
       )}
 
       {!undoData && toast && (
-        <div role="status" aria-live="polite" className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 text-center text-sm">
+        <div role="status" aria-live="polite" className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 text-center text-sm lg:left-auto lg:right-6 lg:bottom-6">
           {toast}
         </div>
       )}
@@ -461,7 +575,7 @@ function groupByLabel(entries, labels, showEmptyNone) {
 }
 
 // Sección de una etiqueta real: reordenable (handle) y droppable (cards de otras secciones).
-function SortableSection({ group: g, isOver, onAdd, onEditEntry, onDeleteEntry }) {
+function SortableSection({ group: g, isOver, editingId, onAdd, onEditEntry, onDeleteEntry }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `section-${g.id}`,
     data: { type: 'section', labelId: g.id },
@@ -495,14 +609,14 @@ function SortableSection({ group: g, isOver, onAdd, onEditEntry, onDeleteEntry }
         </div>
       </div>
       {g.items.map((e) => (
-        <SwipeCard key={e.id} entry={e} labelId={g.id} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
+        <SwipeCard key={e.id} entry={e} labelId={g.id} editing={e.id === editingId} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
       ))}
     </div>
   );
 }
 
 // "Sin etiqueta": no reordenable, solo droppable.
-function DropOnlySection({ group: g, isOver, onEditEntry, onDeleteEntry }) {
+function DropOnlySection({ group: g, isOver, editingId, onEditEntry, onDeleteEntry }) {
   const { setNodeRef } = useDroppable({ id: 'section-none', data: { type: 'section', labelId: null } });
   return (
     <div ref={setNodeRef} className="flex flex-col gap-2 rounded-2xl">
@@ -510,7 +624,7 @@ function DropOnlySection({ group: g, isOver, onEditEntry, onDeleteEntry }) {
         <h2 className={`text-sm transition-colors duration-150 ${isOver ? 'text-accent' : 'text-text-3'}`}>{g.name}</h2>
       </div>
       {g.items.map((e) => (
-        <SwipeCard key={e.id} entry={e} labelId={g.id} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
+        <SwipeCard key={e.id} entry={e} labelId={g.id} editing={e.id === editingId} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
       ))}
     </div>
   );
@@ -520,23 +634,51 @@ function DropOnlySection({ group: g, isOver, onEditEntry, onDeleteEntry }) {
 // long-press 250 ms sin moverse → drag entre secciones (dnd-kit). El swipe vive en
 // SwipeToDelete (compartido con Objetivos); su umbral de movimiento (8 px) coincide con
 // la tolerance de dnd-kit para que ambos gestos se "auto-cancelen" de forma consistente.
-function SwipeCard({ entry: e, labelId, onEdit, onDelete }) {
+// En lg+ con puntero (hover/focus-within), iconos ✎/✕ aparecen a la derecha — capa
+// aparte (no dentro del <button> del swipe: anidar <button> rompe el HTML).
+function SwipeCard({ entry: e, labelId, editing, onEdit, onDelete }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `card-${e.id}`,
     data: { type: 'card', entryId: e.id, labelId },
   });
   return (
-    <SwipeToDelete
-      onDelete={onDelete}
-      onTap={onEdit}
-      dragDisabled={isDragging}
-      onPointerDownExtra={listeners.onPointerDown}
-      nodeRef={setNodeRef}
-      dragAttributes={attributes}
-      className={`rounded-2xl bg-surface border border-border p-3 flex justify-between items-center gap-3 ${isDragging ? 'opacity-30' : ''}`}
-    >
-      <CardBody entry={e} />
-    </SwipeToDelete>
+    <div className={`relative group rounded-2xl ${editing ? 'ring-1 ring-accent' : ''}`}>
+      <SwipeToDelete
+        onDelete={onDelete}
+        onTap={onEdit}
+        dragDisabled={isDragging}
+        onPointerDownExtra={listeners.onPointerDown}
+        nodeRef={setNodeRef}
+        dragAttributes={attributes}
+        className={`bg-surface border border-border p-3 flex justify-between items-center gap-3 ${isDragging ? 'opacity-30' : ''}`}
+      >
+        <CardBody entry={e} />
+      </SwipeToDelete>
+      <div className="hidden lg:group-hover:flex lg:group-focus-within:flex absolute right-3 top-1/2 -translate-y-1/2 gap-1 bg-surface rounded-lg">
+        <button
+          onPointerDown={(ev) => ev.stopPropagation()}
+          onClick={(ev) => {
+            ev.stopPropagation();
+            onEdit();
+          }}
+          className="p-1.5 text-text-2 hover:text-accent"
+          aria-label="Editar"
+        >
+          <Pencil size={16} />
+        </button>
+        <button
+          onPointerDown={(ev) => ev.stopPropagation()}
+          onClick={(ev) => {
+            ev.stopPropagation();
+            onDelete();
+          }}
+          className="p-1.5 text-text-2 hover:text-danger"
+          aria-label="Borrar"
+        >
+          <Trash2 size={16} />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -693,6 +835,27 @@ function Stat({ label, value, color, target, decimals = 1 }) {
   );
 }
 
+// Fila del rail derecho (lg+): mismo dato de Stat, presentado como barra de progreso.
+function RailStat({ label, value, color, target, decimals = 1 }) {
+  const pct = target > 0 ? Math.min(100, Math.round((value / target) * 100)) : null;
+  return (
+    <div className={color}>
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-text-3">{label}</span>
+        <span className="font-mono tabular-nums">
+          {round(value, decimals)}
+          {target > 0 ? ` / ${round(target, decimals)}` : ''}
+        </span>
+      </div>
+      {target > 0 && (
+        <div className="mt-1 h-1.5 rounded-full bg-surface-2 overflow-hidden">
+          <div className="h-full bg-current rounded-full" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Valores por 100 g (kcal, macros, micros) + porciones/densidad (solo foods,
 // para chips y toggle g/ml) del food o receta seleccionado.
 function useFoodMeta(foodId, recipeId) {
@@ -805,13 +968,21 @@ function AmountField({ grams, onGrams, meta, placeholder, required = true }) {
   );
 }
 
-function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onClose, onAdded }) {
+// Núcleo de "añadir registro": buscador con recientes, cantidad y etiqueta.
+// Reutilizado por AddEntrySheet (sheet, <lg) y el quick-add inline (rail, lg+).
+// Navegación por teclado en resultados: ↓/↑ mueve la selección, Enter la confirma.
+function AddEntryForm({ date, labels, recent, waterFoodId, initialLabelId, onAdded, inputRef, autoFocus }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [selected, setSelected] = useState(null); // { id, name, type }
   const [grams, setGrams] = useState('');
   const [labelId, setLabelId] = useState(initialLabelId || '');
-  const foodMeta = useFoodMeta(selected?.type === 'food' ? selected.id : null);
+  const foodMeta = useFoodMeta(selected?.type === 'food' ? selected.id : null, selected?.type === 'recipe' ? selected.id : null);
+
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [results]);
 
   useEffect(() => {
     if (!query.trim() || selected) {
@@ -839,6 +1010,20 @@ function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onCl
     if (presetGrams) setGrams(String(presetGrams));
   }
 
+  function handleQueryKeyDown(e) {
+    if (results.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((i) => Math.min(i + 1, results.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault();
+      pick(results[activeIndex]);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (!selected || !grams) return;
@@ -853,13 +1038,15 @@ function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onCl
     if (!error) onAdded();
   }
 
+  const visibleRecent = recent.filter((r) => !(r.food_id && r.food_id === waterFoodId));
+
   return (
-    <Sheet title="Añadir registro" onClose={onClose}>
-      {!selected && recent.filter((r) => !(r.food_id && r.food_id === waterFoodId)).length > 0 && (
+    <div className="flex flex-col gap-4">
+      {!selected && visibleRecent.length > 0 && (
         <div className="flex flex-col gap-2">
           <p className="text-sm text-text-3">Recientes</p>
           <div className="flex flex-wrap gap-2">
-            {recent.filter((r) => !(r.food_id && r.food_id === waterFoodId)).map((r) => (
+            {visibleRecent.map((r) => (
               <button
                 key={(r.food_id || r.recipe_id) + r.item}
                 onClick={() => pick({ id: r.food_id || r.recipe_id, name: r.item, type: r.food_id ? 'food' : 'recipe' }, r.grams)}
@@ -875,21 +1062,24 @@ function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onCl
       <div className="flex flex-col gap-1">
         <label className="text-sm text-text-2">Alimento o receta</label>
         <input
+          ref={inputRef}
+          autoFocus={autoFocus}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
             setSelected(null);
           }}
+          onKeyDown={handleQueryKeyDown}
           placeholder="Buscar…"
           className="input"
         />
         {results.length > 0 && (
           <div className="rounded-xl bg-surface-2 border border-border overflow-hidden">
-            {results.map((r) => (
+            {results.map((r, i) => (
               <button
                 key={r.type + r.id}
                 onClick={() => pick(r)}
-                className="w-full text-left px-3 py-2 flex justify-between active:bg-surface-3"
+                className={`w-full text-left px-3 py-2 flex justify-between ${i === activeIndex ? 'bg-surface-3' : 'active:bg-surface-3'}`}
               >
                 <span>{r.name}</span>
                 {r.type === 'recipe' && <span className="text-xs text-text-3">receta</span>}
@@ -927,11 +1117,29 @@ function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onCl
           </button>
         </form>
       )}
+    </div>
+  );
+}
+
+function AddEntrySheet({ date, labels, recent, waterFoodId, initialLabelId, onClose, onAdded }) {
+  return (
+    <Sheet title="Añadir registro" onClose={onClose}>
+      <AddEntryForm
+        date={date}
+        labels={labels}
+        recent={recent}
+        waterFoodId={waterFoodId}
+        initialLabelId={initialLabelId}
+        onAdded={onAdded}
+        autoFocus
+      />
     </Sheet>
   );
 }
 
-function EditEntrySheet({ entry, labels, favMicros, onClose, onDelete, onSaved }) {
+// Núcleo de "editar registro": cantidad, etiqueta y el panel "Aporta". Reutilizado
+// por EditEntrySheet (sheet, <lg) y el panel de edición inline (rail, lg+).
+function EditEntryForm({ entry, labels, favMicros, onDelete, onSaved }) {
   const [grams, setGrams] = useState('');
   const [labelId, setLabelId] = useState(entry.meal_label_id || '');
   const foodMeta = useFoodMeta(entry.food_id, entry.recipe_id);
@@ -947,7 +1155,7 @@ function EditEntrySheet({ entry, labels, favMicros, onClose, onDelete, onSaved }
   }
 
   return (
-    <Sheet title={entry.item} onClose={onClose}>
+    <>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <AmountField grams={grams} onGrams={setGrams} meta={foodMeta} placeholder={String(entry.grams)} required={false} />
 
@@ -980,6 +1188,14 @@ function EditEntrySheet({ entry, labels, favMicros, onClose, onDelete, onSaved }
       </form>
 
       <AportaPanel grams={grams || entry.grams} meta={foodMeta} favMicros={favMicros} />
+    </>
+  );
+}
+
+function EditEntrySheet({ entry, labels, favMicros, onClose, onDelete, onSaved }) {
+  return (
+    <Sheet title={entry.item} onClose={onClose}>
+      <EditEntryForm entry={entry} labels={labels} favMicros={favMicros} onDelete={onDelete} onSaved={onSaved} />
     </Sheet>
   );
 }
