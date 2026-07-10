@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { X, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { reorderLabels } from '../lib/domain.js';
+import ConfirmSheet from './ConfirmSheet.jsx';
 
 export default function LabelsModal({ onClose }) {
   const [labels, setLabels] = useState([]);
   const [name, setName] = useState('');
+  const [deleting, setDeleting] = useState(null); // etiqueta a confirmar borrado
 
   useEffect(() => {
     load();
@@ -33,8 +35,8 @@ export default function LabelsModal({ onClose }) {
   }
 
   async function remove(id) {
-    if (!confirm('¿Borrar esta etiqueta?')) return;
     await supabase.from('meal_labels').delete().eq('id', id);
+    setDeleting(null);
     load();
   }
 
@@ -92,13 +94,23 @@ export default function LabelsModal({ onClose }) {
               >
                 <ArrowDown size={16} />
               </button>
-              <button onClick={() => remove(l.id)} className="p-1 text-danger" aria-label="Borrar">
+              <button onClick={() => setDeleting(l)} className="p-1 text-danger" aria-label="Borrar">
                 <Trash2 size={16} />
               </button>
             </div>
           ))}
         </div>
       </div>
+
+      {deleting && (
+        <ConfirmSheet
+          title={`¿Borrar “${deleting.name}”?`}
+          body="Los registros con esta etiqueta quedarán sin sección. No se puede deshacer."
+          confirmLabel="Borrar etiqueta"
+          onConfirm={() => remove(deleting.id)}
+          onClose={() => setDeleting(null)}
+        />
+      )}
     </div>
   );
 }

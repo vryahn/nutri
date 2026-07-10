@@ -6,6 +6,7 @@ import { setSectionMenu } from '../lib/sectionMenu.js';
 import { useToast } from '../lib/useToast.js';
 import { t, useLang, locale } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
+import ConfirmSheet from '../components/ConfirmSheet.jsx';
 import AmountField from '../components/AmountField.jsx';
 import {
   todayISO,
@@ -173,6 +174,7 @@ export default function Today() {
   const isLg = useIsLgUp();
   // Día copiado para "Pegar" (localStorage: sobrevive cambio de fecha y recarga).
   const [copiedDay, setCopiedDay] = useState(() => localStorage.getItem('nutri.today.copiedDay') || null);
+  const [confirmingDeleteDay, setConfirmingDeleteDay] = useState(false);
   // Secciones contraídas: Set de claves (String(labelId) o 'none'), persistido en
   // localStorage — sobrevive reload sin escritura remota (ponytail: no DB).
   const [collapsed, setCollapsed] = useState(() => {
@@ -458,16 +460,20 @@ export default function Today() {
   }
 
   // Borra los alimentos del día (no el agua, que se lleva por vasos). Destructivo
-  // e irreversible: confirma antes.
-  async function handleDeleteDay() {
+  // e irreversible: confirma antes con ConfirmSheet.
+  function handleDeleteDay() {
     const foods = entries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id));
     if (foods.length === 0) {
       showToast(t('Este día no tiene alimentos.'));
       return;
     }
-    const confirmMsg = t('¿Borrar los %n registros de alimentos de este día? No se puede deshacer.').replace('%n', foods.length);
-    if (!window.confirm(confirmMsg)) return;
+    setConfirmingDeleteDay(true);
+  }
+
+  async function doDeleteDay() {
+    const foods = entries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id));
     const { error } = await supabase.from('entries').delete().in('id', foods.map((e) => e.id));
+    setConfirmingDeleteDay(false);
     if (error) {
       showToast(t('Error al borrar.'));
       return;
@@ -730,6 +736,19 @@ export default function Today() {
       >
         <Plus size={24} />
       </button>
+
+      {confirmingDeleteDay && (
+        <ConfirmSheet
+          title={t('Borrar día')}
+          body={t('¿Borrar los %n registros de alimentos de este día? No se puede deshacer.').replace(
+            '%n',
+            entries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id)).length
+          )}
+          confirmLabel={t('Borrar día')}
+          onConfirm={doDeleteDay}
+          onClose={() => setConfirmingDeleteDay(false)}
+        />
+      )}
 
       {waterSettingsOpen && (
         <Sheet title={t('Ajustes de agua')} onClose={() => setWaterSettingsOpen(false)}>

@@ -3,6 +3,7 @@ import { History, ChevronLeft, ChevronDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { MICROS, PHASE_GOALS, goalLabel, todayISO, addDaysISO, resolveTarget } from '../lib/domain.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
+import ConfirmSheet from '../components/ConfirmSheet.jsx';
 
 // ===== Helpers puros (agrupación §2.1, fechas §5) =====
 // dow 0=domingo (contrato de la columna). Orden visual de despliegue Lun→Dom.
@@ -613,7 +614,13 @@ export default function Targets() {
       )}
 
       {sheet?.type === 'confirmDeletePhase' && (
-        <ConfirmDeleteSheet name={labelOf(sheet.vf) || 'Sin nombre'} onConfirm={() => deletePhase(sheet.vf)} onClose={() => setSheet(null)} />
+        <ConfirmSheet
+          title={`¿Borrar “${labelOf(sheet.vf) || 'Sin nombre'}”?`}
+          body="Se eliminarán sus 7 objetivos diarios. Esta acción no se puede deshacer."
+          confirmLabel="Borrar fase"
+          onConfirm={() => deletePhase(sheet.vf)}
+          onClose={() => setSheet(null)}
+        />
       )}
 
       {sheet?.type === 'previas' && (
@@ -1176,33 +1183,6 @@ function DecisionSheet({ validFrom, onCorregir, onNueva, onClose }) {
         </button>
         {err && <p className="text-xs text-danger">{err}</p>}
         <button onClick={onClose} disabled={busy} className="min-h-[44px] rounded-xl text-text-2 press">
-          Cancelar
-        </button>
-      </div>
-    </Sheet>
-  );
-}
-
-function ConfirmDeleteSheet({ name, onConfirm, onClose }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <Sheet onClose={onClose}>
-      <div className="flex flex-col gap-3">
-        <h2 className="font-display text-[19px]">¿Borrar “{name}”?</h2>
-        <p className="text-sm text-text-2" style={{ margin: 0 }}>
-          Se eliminarán sus 7 objetivos diarios. Esta acción no se puede deshacer.
-        </p>
-        <button
-          onClick={async () => {
-            setBusy(true);
-            await onConfirm();
-          }}
-          disabled={busy}
-          className="min-h-[44px] rounded-xl bg-danger text-bg font-medium press disabled:opacity-60"
-        >
-          Borrar fase
-        </button>
-        <button onClick={onClose} disabled={busy} className="min-h-[44px] rounded-xl border border-border text-text-2 press">
           Cancelar
         </button>
       </div>
