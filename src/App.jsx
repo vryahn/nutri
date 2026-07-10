@@ -11,12 +11,15 @@ import LangToggle from './components/LangToggle.jsx';
 import UnitsToggle from './components/UnitsToggle.jsx';
 import Login from './pages/Login.jsx';
 import Today from './pages/Today.jsx';
-import Foods from './pages/Foods.jsx';
-import Recipes from './pages/Recipes.jsx';
-import Targets from './pages/Targets.jsx';
-// Recharts (~479 kB) solo se descarga al abrir la tab.
-const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 import LabelsModal from './components/LabelsModal.jsx';
+
+// Today queda eager (ruta principal); el resto solo se descarga al abrir su tab.
+const Foods = lazy(() => import('./pages/Foods.jsx'));
+const Recipes = lazy(() => import('./pages/Recipes.jsx'));
+const Targets = lazy(() => import('./pages/Targets.jsx'));
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+
+const PageFallback = <div className="px-4 py-8 text-center text-text-2">Cargando…</div>;
 
 const TABS = [
   { to: '/', label: 'Hoy', icon: CalendarDays, end: true },
@@ -277,7 +280,9 @@ export default function App() {
         path="/foods"
         element={
           <RequireAuth session={session}>
-            <Foods />
+            <Suspense fallback={PageFallback}>
+              <Foods />
+            </Suspense>
           </RequireAuth>
         }
       />
@@ -285,7 +290,9 @@ export default function App() {
         path="/recipes"
         element={
           <RequireAuth session={session}>
-            <Recipes />
+            <Suspense fallback={PageFallback}>
+              <Recipes />
+            </Suspense>
           </RequireAuth>
         }
       />
@@ -293,7 +300,9 @@ export default function App() {
         path="/targets"
         element={
           <RequireAuth session={session}>
-            <Targets />
+            <Suspense fallback={PageFallback}>
+              <Targets />
+            </Suspense>
           </RequireAuth>
         }
       />
@@ -301,7 +310,7 @@ export default function App() {
         path="/dashboard"
         element={
           <RequireAuth session={session}>
-            <Suspense fallback={<div className="px-4 py-8 text-center text-text-2">Cargando…</div>}>
+            <Suspense fallback={PageFallback}>
               <Dashboard />
             </Suspense>
           </RequireAuth>
