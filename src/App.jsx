@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom'
 import { CalendarDays, Apple, ChefHat, Target, BarChart3, LogOut, Tags, MoreHorizontal } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { subscribeSectionMenu } from './lib/sectionMenu.js';
+import { useOutsideClose } from './lib/useOutsideClose.js';
 import { watchSystem } from './lib/theme.js';
 import ThemeToggle from './components/ThemeToggle.jsx';
 import Login from './pages/Login.jsx';
@@ -39,6 +40,7 @@ function useSession() {
 // el menú abre hacia abajo (header móvil) o hacia la derecha (sidebar, al pie).
 // En ambos casos flota sobre el contenido, así que lleva `.glass`; abrirlo hacia
 // arriba lo dejaba dentro del sidebar, sin nada detrás que difuminar.
+// Cierre al tocar fuera: `useOutsideClose`, no un backdrop (el header es .glass).
 const MENU_PLACEMENT = {
   bottom: 'top-full right-0 mt-1',
   right: 'left-full bottom-0 ml-1',
@@ -46,9 +48,10 @@ const MENU_PLACEMENT = {
 
 function MoreOptions({ actions, placement = 'bottom', className, label }) {
   const [open, setOpen] = useState(false);
+  const ref = useOutsideClose(open, setOpen);
   if (!actions.length) return null;
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
         className={className}
@@ -59,33 +62,25 @@ function MoreOptions({ actions, placement = 'bottom', className, label }) {
         {label && <span className="text-sm">{label}</span>}
       </button>
       {open && (
-        <>
-          <button
-            className="fixed inset-0 z-40 cursor-default"
-            aria-hidden
-            tabIndex={-1}
-            onClick={() => setOpen(false)}
-          />
-          <div
-            className={`absolute z-50 min-w-44 rounded-xl border border-border p-1 shadow-lg glass ${
-              MENU_PLACEMENT[placement] ?? MENU_PLACEMENT.bottom
-            }`}
-          >
-            {actions.map(({ key, label, icon: Icon, onClick }) => (
-              <button
-                key={key}
-                onClick={() => {
-                  setOpen(false);
-                  onClick();
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-2 hover:bg-surface-2 press text-left"
-              >
-                {Icon && <Icon size={18} />}
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
-        </>
+        <div
+          className={`absolute z-50 min-w-44 rounded-xl border border-border p-1 shadow-lg glass ${
+            MENU_PLACEMENT[placement] ?? MENU_PLACEMENT.bottom
+          }`}
+        >
+          {actions.map(({ key, label, icon: Icon, onClick }) => (
+            <button
+              key={key}
+              onClick={() => {
+                setOpen(false);
+                onClick();
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-2 hover:bg-surface-2 press text-left"
+            >
+              {Icon && <Icon size={18} />}
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

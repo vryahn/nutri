@@ -21,6 +21,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { supabase } from '../lib/supabase.js';
+import { useOutsideClose } from '../lib/useOutsideClose.js';
 import Hint from '../components/Hint.jsx';
 import {
   MICROS,
@@ -1203,6 +1204,7 @@ export default function Dashboard() {
 // se deshabilita con su causa concreta, nunca desaparece.
 function PhaseMenu({ phases, selection, active, label, onSelect }) {
   const [open, setOpen] = useState(false);
+  const ref = useOutsideClose(open, setOpen);
   const actual = phases[phases.length - 1] || null;
   const previa = phases[phases.length - 2] || null;
   const fmt = (p) => `${p.label || 'Sin nombre'} · ${p.vf.slice(5)} → ${p.end.slice(5)}`; // MM-DD, como el eje de los charts
@@ -1238,7 +1240,7 @@ function PhaseMenu({ phases, selection, active, label, onSelect }) {
     active && it.sel.kind === selection.kind && (it.sel.kind !== 'goal' || it.sel.goal === selection.goal);
 
   return (
-    <div className="relative shrink-0">
+    <div className="relative shrink-0" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
@@ -1249,8 +1251,6 @@ function PhaseMenu({ phases, selection, active, label, onSelect }) {
         {label} {open ? '▴' : '▾'}
       </button>
       {open && (
-        <>
-          <button className="fixed inset-0 z-40 cursor-default" aria-hidden tabIndex={-1} onClick={() => setOpen(false)} />
           <div className="absolute z-50 top-full right-0 mt-1 w-64 rounded-xl border border-border p-1 shadow-lg glass">
             {items.map((it) => (
               <div key={it.key} className={it.divider ? 'border-t border-border mt-1 pt-1' : ''}>
@@ -1276,7 +1276,6 @@ function PhaseMenu({ phases, selection, active, label, onSelect }) {
               </div>
             ))}
           </div>
-        </>
       )}
     </div>
   );
