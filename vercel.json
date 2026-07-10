@@ -5,7 +5,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'sha256-/e8B5QZbuC132tmqiVnhd4aSln1iHZHGlvZip8JqrqA='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://shzoiqbahfmfszjsrkzy.supabase.co wss://shzoiqbahfmfszjsrkzy.supabase.co https://generativelanguage.googleapis.com https://api.mistral.ai https://world.openfoodfacts.org https://api.nal.usda.gov https://api.mymemory.translated.net; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+          "value": "default-src 'self'; script-src 'self' 'sha256-NjgTmGPf2b2407VP+4mOm+PUUlxWRMkXcgngIXOvUzk='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://shzoiqbahfmfszjsrkzy.supabase.co wss://shzoiqbahfmfszjsrkzy.supabase.co https://generativelanguage.googleapis.com https://api.mistral.ai https://world.openfoodfacts.org https://api.nal.usda.gov https://api.mymemory.translated.net; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         },
         {
           "key": "X-Content-Type-Options",
