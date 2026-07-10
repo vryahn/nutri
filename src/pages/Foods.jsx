@@ -765,6 +765,8 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         </AiDataCard>
       )}
 
+      {/* ponytail: buscador manual de USDA desactivado a petición del usuario. Los chips
+          USDA de `usda_query` (Gemini) siguen activos. Para reactivarlo, descomentar.
       {!form.id && FDC_KEY && (
         <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
           <p className="text-sm text-text-2 flex items-center gap-2">
@@ -792,6 +794,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           {usdaError && <p className="text-sm text-danger">{usdaError}</p>}
         </div>
       )}
+      */}
 
       {fdcChips.length > 0 && (
         <div className="flex flex-wrap gap-2">
