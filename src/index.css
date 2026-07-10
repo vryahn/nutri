@@ -2,50 +2,54 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Nutrimetry — paleta "Petróleo": tinta verdeazulada + acento turquesa.
+   El acento no ocupa el hue de ningún dato: por eso los carbohidratos viven en
+   índigo (--d-carb) y no en el azul del acento. Las luminosidades se resolvieron
+   en OKLCH contra --surface-2 (el fondo más adverso de cada tema): ningún par
+   texto/fondo baja de 4.5:1. */
 :root {
-  /* Nutrimetry — base tinta grafito + acento lima (medición precisa) */
-  --bg: #0A0F0D;
-  --surface: #111815;
-  --surface-2: #18211C;
-  --surface-3: #223029;
-  --border: rgba(244, 247, 245, 0.08);
-  --text: #F4F7F5;
-  --text-2: #98A8A0;
-  --text-3: #5F6F67;
-  --accent: #A3E635;
-  --accent-deep: #3F6212; /* lima profundo: AA (>6:1) con --on-accent sobre botones */
-  --on-accent: #F4F7F5;
-  --ok: #34D399;
-  --warn: #FBBF24;
-  --danger: #F87171;
-  --d-kcal: #F97316;
-  --d-prot: #34D399;
-  --d-carb: #60A5FA;
-  --d-fat: #FBBF24;
+  --bg: #071010;
+  --surface: #101A1A;
+  --surface-2: #182525;
+  --surface-3: #243232;
+  --border: #2D3939;
+  --text: #E9F7F6;
+  --text-2: #9CB2B1;
+  --text-3: #7A8F8E;
+  --accent: #069C92;
+  --accent-deep: #028078; /* turquesa profundo: 4.6:1 con --on-accent sobre botones */
+  --on-accent: #F7FBFB;
+  --ok: #4F9B53;
+  --warn: #B97F2C;
+  --danger: #DE6666;
+  --d-kcal: #D56F46;
+  --d-prot: #4F9B53;
+  --d-carb: #6389E2;
+  --d-fat: #AA8621;
 }
 
-/* Tema claro. El lima brillante da 1.6:1 sobre blanco, así que --accent baja a
-   lima profundo y los colores de datos conservan el hue pero pierden luminancia:
-   ningún par foreground/background queda bajo 4.5:1. */
+/* Tema claro. El turquesa brillante pierde contraste sobre blanco, así que
+   --accent baja de luminancia; los colores de datos conservan el hue y hacen lo
+   mismo. Ningún par foreground/background queda bajo 4.5:1. */
 :root[data-theme='light'] {
-  --bg: #F7FAF8;
-  --surface: #FFFFFF;
-  --surface-2: #F0F4F1;
-  --surface-3: #E1E8E4;
-  --border: #D6DFDA;
-  --text: #0A0F0D;
-  --text-2: #3F4A45;
-  --text-3: #5A6A62;
-  --accent: #4D7C0F;
-  --accent-deep: #3F6212;
-  --on-accent: #F7FAF8;
-  --ok: #047857;
-  --warn: #B45309;
-  --danger: #DC2626;
-  --d-kcal: #C2410C;
-  --d-prot: #047857;
-  --d-carb: #1D4ED8;
-  --d-fat: #A16207;
+  --bg: #F3F9F9;
+  --surface: #FCFFFF;
+  --surface-2: #EBF3F3;
+  --surface-3: #DAE6E5;
+  --border: #CDD9D9;
+  --text: #0A1C1C;
+  --text-2: #415454;
+  --text-3: #5C7070;
+  --accent: #047972;
+  --accent-deep: #058179;
+  --on-accent: #F8FDFD;
+  --ok: #2E7C35;
+  --warn: #966104;
+  --danger: #B84548;
+  --d-kcal: #B24F25;
+  --d-prot: #2E7C35;
+  --d-carb: #4669BF;
+  --d-fat: #876804;
 }
 
 html, body {

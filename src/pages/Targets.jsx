@@ -337,7 +337,7 @@ export default function Targets() {
               <p className="text-text-2 text-sm">Sin fase vigente. Programa una fase para empezar.</p>
               <button
                 onClick={() => setSheet({ type: 'newPhase' })}
-                className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press"
+                className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press"
               >
                 Crear fase
               </button>
@@ -747,7 +747,7 @@ function PhaseCard({ variant, validFrom, label = '', description = '', week, nex
             <button
               onClick={save}
               disabled={busy}
-              className="flex-1 min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press disabled:opacity-60"
+              className="flex-1 min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60"
             >
               {busy ? 'Guardando…' : 'Guardar'}
             </button>
@@ -860,7 +860,7 @@ function OverrideCard({ variant, override, faseFor, initialEditing = false, forc
             <button
               onClick={save}
               disabled={busy}
-              className="flex-1 min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press disabled:opacity-60"
+              className="flex-1 min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60"
             >
               {busy ? 'Guardando…' : 'Guardar'}
             </button>

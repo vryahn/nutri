@@ -13,8 +13,8 @@ export default defineConfig({
         name: 'Nutrimetry',
         short_name: 'nutri.',
         description: 'Registro nutricional personal',
-        theme_color: '#0A0F0D',
-        background_color: '#0A0F0D',
+        theme_color: '#071010',
+        background_color: '#071010',
         display: 'standalone',
         start_url: '/',
         icons: [

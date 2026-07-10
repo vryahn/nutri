@@ -252,7 +252,7 @@ export default function Recipes() {
             <p className="text-text-2">Sin recetas aún</p>
             <button
               onClick={() => openEditor({})}
-              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
+              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press"
             >
               Crear la primera
             </button>
@@ -351,7 +351,7 @@ export default function Recipes() {
             <p className="text-text-2">Selecciona una receta o crea una nueva</p>
             <button
               onClick={() => openEditor({})}
-              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
+              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press"
             >
               ＋ Nueva receta
             </button>
@@ -362,7 +362,7 @@ export default function Recipes() {
       {!loading && recipes.length > 0 && (
         <button
           onClick={() => openEditor({})}
-          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-text flex items-center justify-center press lg:hidden"
+          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-on-accent flex items-center justify-center press lg:hidden"
           aria-label="Añadir receta"
         >
           <Plus size={24} />
@@ -925,7 +925,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
             <button
               type="button"
               onClick={handleSaveClick}
-              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
+              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press"
             >
               Confirmar y guardar
             </button>
@@ -945,7 +945,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       <button
         onClick={handleSaveClick}
         disabled={!form.name || form.ingredients.length === 0}
-        className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press disabled:opacity-50"
+        className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-50"
       >
         Guardar
       </button>

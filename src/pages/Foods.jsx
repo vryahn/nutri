@@ -265,7 +265,7 @@ export default function Foods() {
             <p className="text-text-2">Sin alimentos aún</p>
             <button
               onClick={() => setEditing(EMPTY_FOOD)}
-              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
+              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press"
             >
               Crear el primero
             </button>
@@ -384,7 +384,7 @@ export default function Foods() {
             <p className="text-text-2">Selecciona un alimento o crea uno nuevo</p>
             <button
               onClick={() => setEditing(EMPTY_FOOD)}
-              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
+              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press"
             >
               ＋ Nuevo alimento
             </button>
@@ -395,7 +395,7 @@ export default function Foods() {
       {!loading && foods.length > 0 && (
         <button
           onClick={() => setEditing(EMPTY_FOOD)}
-          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-text flex items-center justify-center press lg:hidden"
+          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-on-accent flex items-center justify-center press lg:hidden"
           aria-label="Añadir alimento"
         >
           <Plus size={24} />
@@ -784,7 +784,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
               type="button"
               onClick={handleUsdaSearch}
               disabled={usdaLoading || !usdaQuery.trim()}
-              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium disabled:opacity-40 press"
+              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium disabled:opacity-40 press"
             >
               {usdaLoading ? 'Buscando…' : 'Buscar en USDA'}
             </button>
@@ -1116,7 +1116,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         <button
           type="submit"
           disabled={basisBlocked}
-          className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press disabled:opacity-40"
+          className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-40"
         >
           Guardar
         </button>

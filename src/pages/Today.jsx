@@ -641,7 +641,7 @@ export default function Today() {
 
       <button
         onClick={() => setAdding({ labelId: null })}
-        className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-text flex items-center justify-center press lg:hidden"
+        className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-on-accent flex items-center justify-center press lg:hidden"
         aria-label="Añadir registro"
       >
         <Plus size={24} />
@@ -1068,7 +1068,7 @@ function WaterSettingsForm({ glassMl, onSave }) {
       </div>
       <button
         type="submit"
-        className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press"
+        className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press"
       >
         Guardar
       </button>
@@ -1347,7 +1347,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
 
           <div className="flex gap-2">
             <button type="button" onClick={reset} className="min-h-[44px] flex-1 rounded-xl border border-border text-text-2 press">Cancelar</button>
-            <button type="submit" className="min-h-[44px] flex-1 rounded-xl bg-accent-deep text-text font-medium press">Registrar</button>
+            <button type="submit" className="min-h-[44px] flex-1 rounded-xl bg-accent-deep text-on-accent font-medium press">Registrar</button>
           </div>
         </form>
       )}
@@ -1408,7 +1408,7 @@ function EditEntryForm({ entry, labels, favMicros, onDelete, onSaved }) {
           </select>
         </div>
 
-        <button type="submit" className="min-h-[44px] rounded-xl bg-accent-deep text-text font-medium press">
+        <button type="submit" className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press">
           Guardar
         </button>
         <button
@@ -1498,7 +1498,7 @@ function Sheet({ title, onClose, children }) {
   // redundante aquí, así que se omite — la del editor inline (riel lg+, sin
   // backdrop) sí se conserva porque ahí no hay tap-fuera.
   return (
-    <div onClick={onClose} className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
+    <div onClick={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50">
       <div onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-sm bg-surface-3 rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-4 max-h-[85dvh] overflow-y-auto">
         <h2 className="font-display text-lg">{title}</h2>
         {children}

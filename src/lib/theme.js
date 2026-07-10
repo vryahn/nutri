@@ -15,11 +15,12 @@ export function getMode() {
 const resolve = (mode) => (mode === 'system' ? (mq().matches ? 'dark' : 'light') : mode);
 
 function applyMode(mode) {
-  const theme = resolve(mode);
-  document.documentElement.dataset.theme = theme;
-  document
-    .querySelector('meta[name="theme-color"]')
-    ?.setAttribute('content', theme === 'dark' ? '#0A0F0D' : '#F7FAF8');
+  const root = document.documentElement;
+  root.dataset.theme = resolve(mode);
+  // El color se lee del token ya aplicado, no de una copia del hex: así cambiar
+  // la paleta en index.css no deja el theme-color apuntando al color anterior.
+  const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
+  if (bg) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg);
 }
 
 export function setMode(mode) {
