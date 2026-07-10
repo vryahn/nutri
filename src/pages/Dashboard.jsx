@@ -66,25 +66,25 @@ const CALC_ADVANCED = [
   {
     key: 'mediana',
     label: 'Mediana + IQR',
-    desc: 'Tu día típico: la mediana ignora los días atípicos (fiestas, ayunos) que distorsionan el promedio. IQR = P25–P75.',
+    desc: 'Tu día típico. A diferencia del promedio, no la mueven los días raros (una fiesta, un ayuno). El paréntesis es el rango donde cae la mitad de tus días.',
     minDias: MIN_DIAS_MEDIANA,
   },
   {
     key: 'stddev',
     label: 'Desv. estándar + CV',
-    desc: 'Qué tan consistente eres día a día. El CV (%) permite comparar la variabilidad de kcal contra micros de escalas distintas.',
+    desc: 'Qué tan parejo comes de un día a otro. Número chico = días parecidos. El % permite comparar kcal contra micros aunque midan cosas distintas.',
     minDias: MIN_DIAS_STDDEV,
   },
   {
     key: 'tendencia',
     label: 'Tendencia',
-    desc: 'Pendiente de regresión lineal simple en unidades/día: ¿tu ingesta sube o baja a lo largo del rango?',
+    desc: 'Cuánto sube o baja tu consumo cada día, en promedio, a lo largo del periodo.',
     minDias: MIN_DIAS_TENDENCIA,
   },
   {
     key: 'bayes',
     label: 'Adherencia bayesiana',
-    desc: 'Probabilidad de que un día cualquiera cumplas tu objetivo, con intervalo de credibilidad del 95 %. Con pocos días registrados el intervalo es ancho: honesta por diseño.',
+    desc: 'Qué tan seguido cumples tu objetivo, y qué tan confiable es esa cifra. Con pocos días el rango sale ancho: es honestidad, no un error.',
     minDias: MIN_DIAS_BAYES,
     needsObjetivo: true,
   },
@@ -96,20 +96,20 @@ const CALC_ALL = [...CALC_BASIC, ...CALC_ADVANCED];
 //        diasCompletosPhase, diasParcialesPhase, crossesPhases }
 function calcDisabledReason(opt, ctx) {
   if (opt.key === 'suma' || opt.key === 'promedio') {
-    return ctx.diasRegistrados >= 1 ? null : 'Sin registros en el rango';
+    return ctx.diasRegistrados >= 1 ? null : 'No registraste nada en este periodo.';
   }
   if (opt.key === 'bayes') {
     if (ctx.diasCompletosFull < opt.minDias) {
-      return `Requiere ≥${opt.minDias} días completos (tienes ${ctx.diasCompletosFull} completos y ${ctx.diasParcialesFull} parciales)`;
+      return `Necesitas al menos ${opt.minDias} días completos. Llevas ${ctx.diasCompletosFull} completos y ${ctx.diasParcialesFull} incompletos.`;
     }
-    if (opt.needsObjetivo && ctx.diasConObjetivo < 1) return 'Requiere objetivos en Metas';
+    if (opt.needsObjetivo && ctx.diasConObjetivo < 1) return 'Primero fija tus objetivos en Metas.';
     return null;
   }
   // mediana, stddev, tendencia — inmunes a fases: sobre la fase vigente si el rango cruza >1.
   if (ctx.diasCompletosPhase < opt.minDias) {
     return ctx.crossesPhases
-      ? `Requiere ≥${opt.minDias} días completos en la fase actual (tienes ${ctx.diasCompletosPhase})`
-      : `Requiere ≥${opt.minDias} días completos (tienes ${ctx.diasCompletosPhase} completos y ${ctx.diasParcialesPhase} parciales)`;
+      ? `Necesitas al menos ${opt.minDias} días completos en la fase actual. Llevas ${ctx.diasCompletosPhase}.`
+      : `Necesitas al menos ${opt.minDias} días completos. Llevas ${ctx.diasCompletosPhase} completos y ${ctx.diasParcialesPhase} incompletos.`;
   }
   return null;
 }
@@ -186,23 +186,26 @@ function bayesForMetric(days, key) {
   return bayesAdherence(applicable.filter(Boolean).length, applicable.length);
 }
 
+// Texto único de "falta el objetivo": bayesCell lo compara para decidir el primary.
+const NO_TARGET_HINT = 'Aún no tienes objetivo para este nutriente. Ponlo en la pestaña Metas.';
+
 // Motivo por el que bayesForMetric devolvió null, para el Hint de la celda.
 function bayesUnavailableReason(days, key) {
-  if (!days.length) return 'Sin registros en el rango';
+  if (!days.length) return 'No registraste nada en este periodo.';
   if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') {
     const field = BAYES_TARGET_FIELD[key];
-    return days.some((d) => d[field] != null) ? null : 'Sin objetivo para este nutriente — regístralo en Metas';
+    return days.some((d) => d[field] != null) ? null : NO_TARGET_HINT;
   }
-  if (key === 'protein_g') return days.some((d) => d.proteinFloor != null) ? null : 'Sin objetivo para este nutriente — regístralo en Metas';
+  if (key === 'protein_g') return days.some((d) => d.proteinFloor != null) ? null : NO_TARGET_HINT;
   if (key === 'sodio_mg') return null;
-  return days.some((d) => d.targetMicros?.[key] != null) ? null : 'Sin objetivo para este nutriente — regístralo en Metas';
+  return days.some((d) => d.targetMicros?.[key] != null) ? null : NO_TARGET_HINT;
 }
 
 // Criterio de éxito de un día, declarado para que el % de adherencia sea auditable.
 function bayesCriterionHint(key) {
-  if (key === 'sodio_mg') return `Éxito = día ≥ ${SODIUM_FLOOR_MG.toLocaleString('es-MX')} mg (piso de seguridad)`;
-  if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') return `Éxito = día dentro de ±${round(BAYES_KCAL_TOL * 100, 0)}% del objetivo`;
-  return 'Éxito = día ≥ objetivo (piso)';
+  if (key === 'sodio_mg') return `Cuenta como día cumplido si comiste al menos ${SODIUM_FLOOR_MG.toLocaleString('es-MX')} mg de sodio.`;
+  if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') return `Cuenta como día cumplido si quedaste a ±${round(BAYES_KCAL_TOL * 100, 0)}% de tu objetivo.`;
+  return 'Cuenta como día cumplido si llegaste a tu objetivo o lo pasaste.';
 }
 
 // { primary, secondary, hint, degraded } de la celda de adherencia bayesiana.
@@ -218,7 +221,7 @@ function bayesCell(days, key) {
     };
   }
   const reason = bayesUnavailableReason(days, key);
-  return { primary: reason.startsWith('Sin objetivo') ? 'Sin objetivo' : '–', secondary: null, hint: reason, degraded: true };
+  return { primary: reason === NO_TARGET_HINT ? 'Sin objetivo' : '–', secondary: null, hint: reason, degraded: true };
 }
 
 // { primary, secondary } de una métrica según el cálculo elegido. unit incluye
@@ -286,7 +289,7 @@ function MetricLines({ display, className = '' }) {
 // Objetivo mostrado en la tabla de micros, según el modo (Fix 1).
 function objetivoCell(calcMode, objStats, unit) {
   if (objStats.n === 0) {
-    return <Hint text="Sin objetivo para este nutriente — regístralo en Metas">–</Hint>;
+    return <Hint text={NO_TARGET_HINT}>–</Hint>;
   }
   if (calcMode === 'stddev' || calcMode === 'tendencia') return '–';
   if (calcMode === 'suma') return `${round(objStats.sum, 1)} ${unit}`;
@@ -723,9 +726,9 @@ export default function Dashboard() {
   const bFat = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'fat_g') : null;
   const bSodio = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'sodio_mg') : null;
   const phaseHintText = unionMode
-    ? `Une ${selectedPhases.length} fases de ${selectionLabel}, con objetivos distintos entre sí; calculado sobre sus ${advancedDays.length} días completos`
+    ? `Estás viendo ${selectedPhases.length} fases de ${selectionLabel}, cada una con sus propios objetivos. El cálculo usa sus ${advancedDays.length} días completos.`
     : crossesPhases
-      ? `El rango cruza ${realPhases.length} fases de objetivo; calculado sobre la fase actual (${advancedDays.length} días) para no mezclar regímenes`
+      ? `El periodo abarca ${realPhases.length} fases con objetivos distintos. Para no mezclarlas, el cálculo usa solo la fase actual (${advancedDays.length} días).`
       : null;
   const isPhaseScopedMode = calcMode === 'mediana' || calcMode === 'stddev' || calcMode === 'tendencia';
 
@@ -817,7 +820,7 @@ export default function Dashboard() {
       {unionMode && (
         <p className="text-xs text-text-3">
           {selectedPhases.length} fases de {selectionLabel} · {dates.length} días.{' '}
-          <Hint text={`Sin periodo previo comparable: la ventana anterior al ${start} pertenece a otro régimen`}>
+          <Hint text={`No hay periodo anterior con qué comparar: los días antes del ${start} eran de otra fase, con otros objetivos.`}>
             Sin comparación vs periodo previo
           </Hint>
         </p>
@@ -961,7 +964,7 @@ export default function Dashboard() {
             display={{
               primary: `${calcCtx.diasCompletosFull}${diasParcialesFull > 0 ? ` +${diasParcialesFull}p` : ''}`,
               secondary: null,
-              hint: `${calcCtx.diasCompletosFull} completos, ${diasParcialesFull} parciales (registro incompleto inferido), ${dates.length} días en el rango`,
+              hint: `${calcCtx.diasCompletosFull} días con todo registrado y ${diasParcialesFull} a los que parece faltarles comidas, de ${dates.length} días del periodo.`,
             }}
             delta={showDelta ? pctDelta(stats.diasRegistrados, prevStats.diasRegistrados) : null}
             suffix={` / ${dates.length}`}
@@ -1221,14 +1224,14 @@ function PhaseMenu({ phases, selection, active, label, onSelect }) {
       sel: { kind: 'actual' },
       label: 'Fase actual',
       sub: actual ? fmt(actual) : null,
-      reason: actual ? null : 'Sin fase vigente — créala en Metas',
+      reason: actual ? null : 'Todavía no tienes una fase en curso. Créala en Metas.',
     },
     {
       key: 'previa',
       sel: { kind: 'previa' },
       label: 'Fase previa',
       sub: previa ? fmt(previa) : null,
-      reason: previa ? null : 'Solo hay una fase iniciada — la previa aparece al empezar la siguiente',
+      reason: previa ? null : 'Solo llevas una fase. La anterior aparecerá cuando empieces la siguiente.',
     },
     ...PHASE_GOALS.map((g) => {
       const n = phases.filter((p) => p.goal === g.key).length;
@@ -1237,7 +1240,7 @@ function PhaseMenu({ phases, selection, active, label, onSelect }) {
         sel: { kind: 'goal', goal: g.key },
         label: g.label,
         sub: n ? `${n} ${n === 1 ? 'fase' : 'fases'} en el histórico` : null,
-        reason: n ? null : `Ninguna fase marcada como ${g.label} — márcala en Metas`,
+        reason: n ? null : `No has marcado ninguna fase como ${g.label}. Puedes hacerlo en Metas.`,
         divider: g.key === PHASE_GOALS[0].key,
       };
     }),
@@ -1308,7 +1311,7 @@ function AdherenceHeatmap({ weeks, dateSet, dayInfo }) {
               cls = status ? STATUS_BG[status] : 'bg-surface-3';
             }
             const parcial = info?.completeness === 'parcial';
-            const parcialSuffix = parcial ? ' (parcial: registro incompleto inferido)' : '';
+            const parcialSuffix = parcial ? ' (día incompleto: parece que faltaron comidas)' : '';
             return (
               <div
                 key={`${wi}-${di}`}
@@ -1362,7 +1365,7 @@ function MicrosTable({
         <td className={`py-2 text-right whitespace-normal font-mono tabular-nums ${sodiumDanger ? 'text-danger' : ''} ${degraded ? 'text-text-3' : ''}`}>
           <MetricCellText display={consumidoDisplay} />
           {zero.warn && (
-            <Hint text={`${zero.n} de ${zero.m} días sin dato de este micro: el 0 puede significar 'sin registro', no 'consumo 0'`}>
+            <Hint text={`En ${zero.n} de ${zero.m} días no registraste este nutriente. El 0 puede significar 'no lo anotaste', no 'no lo comiste'.`}>
               {' '}
               ⚠
             </Hint>
