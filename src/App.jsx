@@ -36,7 +36,14 @@ function useSession() {
 
 // "Más opciones": botón dinámico que anida las acciones que publica la página
 // activa (setSectionMenu). Sin acciones no se renderiza. `placement` decide si
-// el menú abre hacia abajo (header móvil) o hacia arriba (sidebar, al pie).
+// el menú abre hacia abajo (header móvil) o hacia la derecha (sidebar, al pie).
+// En ambos casos flota sobre el contenido, así que lleva `.glass`; abrirlo hacia
+// arriba lo dejaba dentro del sidebar, sin nada detrás que difuminar.
+const MENU_PLACEMENT = {
+  bottom: 'top-full right-0 mt-1',
+  right: 'left-full bottom-0 ml-1',
+};
+
 function MoreOptions({ actions, placement = 'bottom', className, label }) {
   const [open, setOpen] = useState(false);
   if (!actions.length) return null;
@@ -60,8 +67,8 @@ function MoreOptions({ actions, placement = 'bottom', className, label }) {
             onClick={() => setOpen(false)}
           />
           <div
-            className={`absolute z-50 right-0 min-w-44 rounded-xl border border-border bg-surface p-1 shadow-lg ${
-              placement === 'top' ? 'bottom-full mb-1' : 'top-full mt-1'
+            className={`absolute z-50 min-w-44 rounded-xl border border-border p-1 shadow-lg glass ${
+              MENU_PLACEMENT[placement] ?? MENU_PLACEMENT.bottom
             }`}
           >
             {actions.map(({ key, label, icon: Icon, onClick }) => (
@@ -113,7 +120,7 @@ function Sidebar({ onLabels, menuActions }) {
       <div className="flex flex-col gap-1 pt-2 border-t border-border">
         <MoreOptions
           actions={menuActions}
-          placement="top"
+          placement="right"
           label="Más opciones"
           className="flex items-center gap-3 min-h-[44px] w-full px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
         />
