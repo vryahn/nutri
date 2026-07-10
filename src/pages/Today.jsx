@@ -301,24 +301,27 @@ export default function Today() {
   }
 
   async function loadTargets() {
-    const { data } = await supabase.from('targets').select('*');
+    const { data, error } = await supabase.from('targets').select('*');
+    if (error) { showToast(t('No se pudieron cargar los objetivos — revisa tu conexión.')); return; }
     setTargets(data || []);
   }
 
   async function loadDay() {
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('entry_nutrients')
       .select('*')
       .eq('day', date)
       .order('sort_order')
       .order('created_at');
+    if (error) { showToast(t('No se pudo cargar el día — revisa tu conexión.')); setLoading(false); return; }
     setEntries(data || []);
     setLoading(false);
   }
 
   async function loadLabels() {
-    const { data } = await supabase.from('meal_labels').select('*').order('sort_order');
+    const { data, error } = await supabase.from('meal_labels').select('*').order('sort_order');
+    if (error) { showToast(t('No se pudieron cargar las etiquetas — revisa tu conexión.')); return; }
     setLabels(data || []);
   }
 

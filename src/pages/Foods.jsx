@@ -120,7 +120,8 @@ export default function Foods() {
     let req = supabase.from('foods').select('*').order('name');
     if (query.trim()) req = req.ilike('name', `%${query.trim()}%`);
     const { data, error } = await req;
-    if (!error) setFoods(data.filter((f) => !isWaterSentinel(f)));
+    if (error) { showToast(t('No se pudieron cargar los alimentos — revisa tu conexión.')); setLoading(false); return; }
+    setFoods(data.filter((f) => !isWaterSentinel(f)));
     setLoading(false);
   }
 

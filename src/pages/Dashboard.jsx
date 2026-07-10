@@ -22,6 +22,7 @@ import {
 } from 'recharts';
 import { supabase } from '../lib/supabase.js';
 import { useOutsideClose } from '../lib/useOutsideClose.js';
+import { useToast } from '../lib/useToast.js';
 import Hint from '../components/Hint.jsx';
 import {
   MICROS,
@@ -587,6 +588,7 @@ export default function Dashboard() {
   const [itemRows, setItemRows] = useState([]); // entry_nutrients del rango, para "Top alimentos"
   const [topMetric, setTopMetric] = useState('kcal');
   const [csvNotice, setCsvNotice] = useState('');
+  const [toast, showToast] = useToast();
   const [loading, setLoading] = useState(true);
   const [calcMode, setCalcMode] = usePersistentState('nutri.dash.calcMode', 'promedio');
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -633,7 +635,7 @@ export default function Dashboard() {
     setCsvNotice('');
     const { prevStart, prevEnd } = prevRangeOf(start, end);
     const historyStart = addDaysISO(todayISO(), -89);
-    const [{ data: dt }, { data: prevDt }, { data: hist }, { data: tg }, { data: pf }, { data: items }] = await Promise.all([
+    const results = await Promise.all([
       supabase.from('daily_totals').select('*').gte('day', start).lte('day', end),
       supabase.from('daily_totals').select('*').gte('day', prevStart).lte('day', prevEnd),
       supabase.from('daily_totals').select('day,kcal').gte('day', historyStart).lte('day', todayISO()),
@@ -641,6 +643,12 @@ export default function Dashboard() {
       supabase.from('prefs').select('data').maybeSingle(),
       supabase.from('entry_nutrients').select('day,meal,food_id,recipe_id,item,kcal,protein_g').gte('day', start).lte('day', end),
     ]);
+    if (results.some((r) => r.error)) {
+      showToast(t('No se pudo cargar el Dashboard — revisa tu conexión.'));
+      setLoading(false);
+      return;
+    }
+    const [{ data: dt }, { data: prevDt }, { data: hist }, { data: tg }, { data: pf }, { data: items }] = results;
     setDailyTotals(dt || []);
     setPrevDailyTotals(prevDt || []);
     setHistoryTotals(hist || []);
@@ -1287,6 +1295,16 @@ export default function Dashboard() {
           />
         </div>
       </div>
+
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 text-center text-sm lg:left-auto lg:right-6 lg:bottom-6"
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

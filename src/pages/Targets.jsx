@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { History, ChevronLeft, ChevronDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
+import { useToast } from '../lib/useToast.js';
 import { MICROS, PHASE_GOALS, goalLabel, todayISO, addDaysISO, resolveTarget } from '../lib/domain.js';
 import { t, useLang, getLang, locale } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
@@ -187,6 +188,7 @@ export default function Targets() {
   const [targets, setTargets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState(null);
+  const [toast, showToast] = useToast();
   const [sheet, setSheet] = useState(null); // unión discriminada por .type
   const [vigVer, setVigVer] = useState(0); // fuerza remontar la card vigente a lectura tras guardar
   const lgUp = useLgUp();
@@ -230,7 +232,8 @@ export default function Targets() {
     setLoading(true);
     const { data: { session } } = await supabase.auth.getSession();
     setUserId(session?.user?.id || null);
-    const { data } = await supabase.from('targets').select('*');
+    const { data, error } = await supabase.from('targets').select('*');
+    if (error) { showToast(t('No se pudieron cargar los objetivos — revisa tu conexión.')); setLoading(false); return; }
     setTargets(data || []);
     setLoading(false);
   }
@@ -647,6 +650,16 @@ export default function Targets() {
           nextVfOf={nextVfOf}
           onClose={() => setSheet(null)}
         />
+      )}
+
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 text-center text-sm lg:left-auto lg:right-6 lg:bottom-6"
+        >
+          {toast}
+        </div>
       )}
     </div>
   );

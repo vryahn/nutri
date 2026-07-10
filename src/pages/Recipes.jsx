@@ -78,10 +78,15 @@ export default function Recipes() {
     setLoading(true);
     let req = supabase.from('recipes').select('*').order('name');
     if (query.trim()) req = req.ilike('name', `%${query.trim()}%`);
-    const [{ data: rs }, { data: per100 }] = await Promise.all([
+    const [{ data: rs, error: rsError }, { data: per100, error: per100Error }] = await Promise.all([
       req,
       supabase.from('recipe_per_100g').select('recipe_id, kcal'),
     ]);
+    if (rsError || per100Error) {
+      showToast(t('No se pudieron cargar las recetas — revisa tu conexión.'));
+      setLoading(false);
+      return;
+    }
     const kcalById = new Map((per100 || []).map((p) => [p.recipe_id, p.kcal]));
     setRecipes((rs || []).map((r) => ({ ...r, kcal100: kcalById.get(r.id) })));
     setLoading(false);
