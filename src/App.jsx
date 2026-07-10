@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
 import { CalendarDays, Apple, ChefHat, Target, BarChart3, LogOut, Tags, MoreHorizontal } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
@@ -8,7 +8,8 @@ import Today from './pages/Today.jsx';
 import Foods from './pages/Foods.jsx';
 import Recipes from './pages/Recipes.jsx';
 import Targets from './pages/Targets.jsx';
-import Dashboard from './pages/Dashboard.jsx';
+// Recharts (~479 kB) solo se descarga al abrir la tab.
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 import LabelsModal from './components/LabelsModal.jsx';
 
 const TABS = [
@@ -260,7 +261,9 @@ export default function App() {
         path="/dashboard"
         element={
           <RequireAuth session={session}>
-            <Dashboard />
+            <Suspense fallback={<div className="px-4 py-8 text-center text-text-2">Cargando…</div>}>
+              <Dashboard />
+            </Suspense>
           </RequireAuth>
         }
       />
