@@ -21,7 +21,7 @@ export async function fetchOFF(ean) {
   return mapOFF(data.product);
 }
 
-function mapOFF(p) {
+export function mapOFF(p) {
   const n = p.nutriments || {};
   const out = {
     name: p.product_name || '',
@@ -80,7 +80,7 @@ const EXPECTED_UNIT = {
 };
 
 // FDC devuelve el agua en g (unitName "g"); 1 g de agua ≈ 1 ml, se acepta 1:1.
-function toDomainUnit(amount, apiUnit, domainUnit) {
+export function toDomainUnit(amount, apiUnit, domainUnit) {
   if (apiUnit === domainUnit) return amount;
   if (apiUnit === 'g' && domainUnit === 'mg') return amount * 1000;
   if (apiUnit === 'mg' && domainUnit === 'µg') return amount * 1000;

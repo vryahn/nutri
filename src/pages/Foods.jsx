@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase.js';
 import { useToast } from '../lib/useToast.js';
 import {
   MICROS, MICROS_DEFAULT, microGroups, round, kcalFromMacros, kcalSuspicious, macrosImplausible,
-  componentsInconsistent, isWaterSentinel,
+  componentsInconsistent, isWaterSentinel, eanChecksumValid,
 } from '../lib/domain.js';
 import { fetchOFF, searchFDC, fetchFDC } from '../lib/sources.js';
 import { GEMINI_KEY, DENSITY_PRESETS, snapDensity, estimateFood } from '../lib/ai.js';
@@ -523,18 +523,6 @@ function stripZeros(obj) {
 function extractEan(text) {
   const digits = text.replace(/[\s-]/g, '');
   return /^\d{8,14}$/.test(digits) ? digits : null;
-}
-
-// Dígito verificador GS1 (EAN-8/12/13/14): desde la derecha, peso 1,3,1,3…
-// (el propio dígito de control pesa 1). Suma total debe ser múltiplo de 10.
-// Longitudes fuera de este set (permitidas por extractEan) pasan sin chequeo.
-const EAN_CHECKSUM_LENGTHS = [8, 12, 13, 14];
-
-function eanChecksumValid(digits) {
-  if (!EAN_CHECKSUM_LENGTHS.includes(digits.length)) return true;
-  const arr = digits.split('').map(Number);
-  const sum = arr.reduce((s, d, i) => s + d * ((arr.length - 1 - i) % 2 === 0 ? 1 : 3), 0);
-  return sum % 10 === 0;
 }
 
 function resultBadgeText(r) {

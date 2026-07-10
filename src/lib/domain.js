@@ -441,6 +441,18 @@ export function bayesAdherence(successes, n) {
   };
 }
 
+// Dígito verificador GS1 (EAN-8/12/13/14): desde la derecha, peso 1,3,1,3…
+// (el propio dígito de control pesa 1). Suma total debe ser múltiplo de 10.
+// Longitudes fuera de este set (permitidas por extractEan en Foods.jsx) pasan sin chequeo.
+const EAN_CHECKSUM_LENGTHS = [8, 12, 13, 14];
+
+export function eanChecksumValid(digits) {
+  if (!EAN_CHECKSUM_LENGTHS.includes(digits.length)) return true;
+  const arr = digits.split('').map(Number);
+  const sum = arr.reduce((s, d, i) => s + d * ((arr.length - 1 - i) % 2 === 0 ? 1 : 3), 0);
+  return sum % 10 === 0;
+}
+
 // Replica en cliente la vista SQL nutri.recipe_per_100g (§4.3).
 export function computeRecipePer100g(ingredients, cookedWeightG) {
   const totalGrams = ingredients.reduce((sum, i) => sum + Number(i.grams || 0), 0);
