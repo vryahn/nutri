@@ -5,7 +5,9 @@ import { supabase } from './lib/supabase.js';
 import { subscribeSectionMenu } from './lib/sectionMenu.js';
 import { useOutsideClose } from './lib/useOutsideClose.js';
 import { watchSystem } from './lib/theme.js';
+import { t, useLang, registerLangUser } from './lib/i18n.js';
 import ThemeToggle from './components/ThemeToggle.jsx';
+import LangToggle from './components/LangToggle.jsx';
 import Login from './pages/Login.jsx';
 import Today from './pages/Today.jsx';
 import Foods from './pages/Foods.jsx';
@@ -32,6 +34,15 @@ function useSession() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // Registra el usuario para persistir el idioma en prefs (cross-device) y
+  // aplica prefs.data.lang si difiere de lo detectado por localStorage.
+  useEffect(() => {
+    if (!session) return;
+    supabase.from('prefs').select('data').maybeSingle().then(({ data }) => {
+      registerLangUser(session.user.id, data?.data?.lang);
+    });
+  }, [session]);
+
   return session;
 }
 
@@ -47,6 +58,7 @@ const MENU_PLACEMENT = {
 };
 
 function MoreOptions({ actions, placement = 'bottom', className, label }) {
+  useLang();
   const [open, setOpen] = useState(false);
   const ref = useOutsideClose(open, setOpen);
   if (!actions.length) return null;
@@ -55,7 +67,7 @@ function MoreOptions({ actions, placement = 'bottom', className, label }) {
       <button
         onClick={() => setOpen((o) => !o)}
         className={className}
-        aria-label="Más opciones"
+        aria-label={t('Más opciones')}
         aria-expanded={open}
       >
         <MoreHorizontal size={20} />
@@ -88,6 +100,7 @@ function MoreOptions({ actions, placement = 'bottom', className, label }) {
 
 // Sidebar fija en md+ (reemplaza header + tab bar inferior de móvil).
 function Sidebar({ onLabels, menuActions }) {
+  useLang();
   return (
     <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:left-0 md:w-52 md:border-r md:border-border md:bg-surface md:py-4 md:px-3">
       <span className="font-display text-lg px-2 pb-4">
@@ -107,7 +120,7 @@ function Sidebar({ onLabels, menuActions }) {
             }
           >
             <Icon size={20} />
-            <span className="text-sm">{label}</span>
+            <span className="text-sm">{t(label)}</span>
           </NavLink>
         ))}
       </nav>
@@ -116,7 +129,7 @@ function Sidebar({ onLabels, menuActions }) {
         <MoreOptions
           actions={menuActions}
           placement="right"
-          label="Más opciones"
+          label={t('Más opciones')}
           className="flex items-center gap-3 min-h-[44px] w-full px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
         />
         <button
@@ -124,9 +137,13 @@ function Sidebar({ onLabels, menuActions }) {
           className="flex items-center gap-3 min-h-[44px] px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
         >
           <Tags size={20} />
-          <span className="text-sm">Etiquetas</span>
+          <span className="text-sm">{t('Etiquetas')}</span>
         </button>
         <ThemeToggle
+          showLabel
+          className="flex items-center gap-3 min-h-[44px] w-full px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
+        />
+        <LangToggle
           showLabel
           className="flex items-center gap-3 min-h-[44px] w-full px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
         />
@@ -135,7 +152,7 @@ function Sidebar({ onLabels, menuActions }) {
           className="flex items-center gap-3 min-h-[44px] px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
         >
           <LogOut size={20} />
-          <span className="text-sm">Cerrar sesión</span>
+          <span className="text-sm">{t('Cerrar sesión')}</span>
         </button>
       </div>
     </aside>
@@ -143,6 +160,7 @@ function Sidebar({ onLabels, menuActions }) {
 }
 
 function Layout({ children }) {
+  useLang();
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [menuActions, setMenuActions] = useState([]);
   const location = useLocation();
@@ -166,17 +184,18 @@ function Layout({ children }) {
               className="p-2 rounded-lg press text-text-2"
             />
             <ThemeToggle className="p-2 rounded-lg press text-text-2" />
+            <LangToggle className="p-2 rounded-lg press text-text-2" />
             <button
               onClick={() => setLabelsOpen(true)}
               className="p-2 rounded-lg press text-text-2"
-              aria-label="Etiquetas"
+              aria-label={t('Etiquetas')}
             >
               <Tags size={20} />
             </button>
             <button
               onClick={() => supabase.auth.signOut()}
               className="p-2 rounded-lg press text-text-2"
-              aria-label="Cerrar sesión"
+              aria-label={t('Cerrar sesión')}
             >
               <LogOut size={20} />
             </button>
@@ -208,7 +227,7 @@ function Layout({ children }) {
               {({ isActive }) => (
                 <>
                   <Icon size={22} />
-                  <span className="text-xs">{label}</span>
+                  <span className="text-xs">{t(label)}</span>
                   {isActive && <span className="h-0.5 w-6 rounded-full bg-accent-glass" />}
                 </>
               )}

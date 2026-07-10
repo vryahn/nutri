@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, GlassWater, Settings, 
 import { supabase } from '../lib/supabase.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
 import { useToast } from '../lib/useToast.js';
+import { t, useLang, locale } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import AmountField from '../components/AmountField.jsx';
 import {
@@ -47,11 +48,11 @@ function SummaryCard({ view, onToggleView, ...props }) {
   return (
     <div className="rounded-2xl bg-surface border border-border p-4 lg:p-5 flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <p className="text-[10px] uppercase tracking-wide text-text-3">{view === 'objetivos' ? 'Objetivos' : 'Estado actual'}</p>
+        <p className="text-[10px] uppercase tracking-wide text-text-3">{view === 'objetivos' ? t('Objetivos') : t('Estado actual')}</p>
         <button
           onClick={onToggleView}
           className="w-11 h-11 -m-2.5 flex items-center justify-center text-text-3 press"
-          aria-label={`Ver ${view === 'objetivos' ? 'estado actual' : 'objetivos'}`}
+          aria-label={view === 'objetivos' ? t('Ver estado actual') : t('Ver objetivos')}
         >
           <ArrowLeftRight size={16} />
         </button>
@@ -64,12 +65,12 @@ function SummaryCard({ view, onToggleView, ...props }) {
 function StateSummary({ totals, target, kcalStatus, proteinStatus }) {
   return (
     <div className="grid grid-cols-3 gap-2 text-center">
-      <Stat label="Kcal" value={totals.kcal} color={statusColor[kcalStatus] || 'text-d-kcal'} target={target?.kcal} />
-      <Stat label="Prot" value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
-      <Stat label="Carbs" value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
-      <Stat label="Grasa" value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
-      <Stat label="Sodio" value={totals.sodio_mg} color="text-danger" target={target?.micros?.sodio_mg} decimals={0} />
-      <Stat label="Potasio" value={totals.potasio_mg} color="text-warn" target={target?.micros?.potasio_mg} decimals={0} />
+      <Stat label={t('Kcal')} value={totals.kcal} color={statusColor[kcalStatus] || 'text-d-kcal'} target={target?.kcal} />
+      <Stat label={t('Prot')} value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
+      <Stat label={t('Carbs')} value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
+      <Stat label={t('Grasa')} value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
+      <Stat label={t('Sodio')} value={totals.sodio_mg} color="text-danger" target={target?.micros?.sodio_mg} decimals={0} />
+      <Stat label={t('Potasio')} value={totals.potasio_mg} color="text-warn" target={target?.micros?.potasio_mg} decimals={0} />
     </div>
   );
 }
@@ -100,48 +101,48 @@ function GoalSummary({ totals, target, kcalStatus, kcalPct, kcalArc, proteinStat
           {kcalPct != null ? (
             kcalStatus === 'ok' ? (
               <>
-                <p className="flex items-center gap-1.5 text-lg"><Check size={18} />en meta</p>
-                <p className="text-xs text-text-3 mt-2">meta {round(target.kcal, 0)} kcal</p>
+                <p className="flex items-center gap-1.5 text-lg"><Check size={18} />{t('en meta')}</p>
+                <p className="text-xs text-text-3 mt-2">{t('meta')} {round(target.kcal, 0)} kcal</p>
               </>
             ) : (
               <>
                 <p className="font-mono tabular-nums text-2xl leading-none">
                   {totals.kcal < target.kcal ? '−' : '+'}{Math.abs(round(totals.kcal - target.kcal, 0))}
                 </p>
-                <p className="text-xs text-text-3 mt-2">kcal · meta {round(target.kcal, 0)}</p>
+                <p className="text-xs text-text-3 mt-2">kcal · {t('meta')} {round(target.kcal, 0)}</p>
               </>
             )
           ) : (
-            <p className="text-xs text-text-3">sin meta de kcal</p>
+            <p className="text-xs text-text-3">{t('sin meta de kcal')}</p>
           )}
         </div>
       </div>
       <div className="h-px bg-border" />
       <div className="flex flex-col gap-3">
-        <RailStat label="Prot" value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
-        <RailStat label="Carbs" value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
-        <RailStat label="Grasa" value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
+        <RailStat label={t('Prot')} value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
+        <RailStat label={t('Carbs')} value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
+        <RailStat label={t('Grasa')} value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
       </div>
       <div className="h-px bg-border" />
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-xl bg-surface-2 p-3">
-          <p className="text-[10px] uppercase tracking-wide text-text-3">Sodio</p>
+          <p className="text-[10px] uppercase tracking-wide text-text-3">{t('Sodio')}</p>
           <p className="font-mono tabular-nums text-lg text-danger mt-1">{round(totals.sodio_mg, 0)}</p>
           {sodiumLow ? (
-            <p className="font-mono tabular-nums text-[11px] text-danger mt-0.5">−{round(SODIUM_FLOOR_MG - totals.sodio_mg, 0)} al piso</p>
+            <p className="font-mono tabular-nums text-[11px] text-danger mt-0.5">−{round(SODIUM_FLOOR_MG - totals.sodio_mg, 0)} {t('al piso')}</p>
           ) : (
-            <p className="text-[10px] text-text-3 mt-0.5">mg · piso {SODIUM_FLOOR_MG}</p>
+            <p className="text-[10px] text-text-3 mt-0.5">mg · {t('piso')} {SODIUM_FLOOR_MG}</p>
           )}
         </div>
         <div className="rounded-xl bg-surface-2 p-3">
-          <p className="text-[10px] uppercase tracking-wide text-text-3">Potasio</p>
+          <p className="text-[10px] uppercase tracking-wide text-text-3">{t('Potasio')}</p>
           <p className={`font-mono tabular-nums text-lg mt-1 ${potassiumPct != null && totals.potasio_mg >= target.micros.potasio_mg ? 'text-ok' : 'text-warn'}`}>{round(totals.potasio_mg, 0)}</p>
           {potassiumPct == null ? (
             <p className="text-[10px] text-text-3 mt-0.5">mg</p>
           ) : totals.potasio_mg >= target.micros.potasio_mg ? (
-            <p className="flex items-center gap-1 text-[11px] text-ok mt-0.5"><Check size={12} />meta</p>
+            <p className="flex items-center gap-1 text-[11px] text-ok mt-0.5"><Check size={12} />{t('meta')}</p>
           ) : (
-            <p className="font-mono tabular-nums text-[11px] text-warn mt-0.5">−{round(target.micros.potasio_mg - totals.potasio_mg, 0)} de {round(target.micros.potasio_mg, 0)}</p>
+            <p className="font-mono tabular-nums text-[11px] text-warn mt-0.5">−{round(target.micros.potasio_mg - totals.potasio_mg, 0)} {t('de')} {round(target.micros.potasio_mg, 0)}</p>
           )}
         </div>
       </div>
@@ -150,6 +151,7 @@ function GoalSummary({ totals, target, kcalStatus, kcalPct, kcalArc, proteinStat
 }
 
 export default function Today() {
+  useLang();
   const [date, setDate] = useState(todayISO());
   const [entries, setEntries] = useState([]);
   const [labels, setLabels] = useState([]);
@@ -280,7 +282,7 @@ export default function Today() {
     const foodId = await getWaterFoodId();
     const { error } = await supabase.from('entries').insert({ day: date, grams: ml, food_id: foodId });
     if (error) {
-      showToast('Error al registrar agua.');
+      showToast(t('Error al registrar agua.'));
       return;
     }
     loadDay();
@@ -406,7 +408,7 @@ export default function Today() {
     const { error } = await supabase.from('entries').delete().eq('id', entry.id);
     if (error) {
       loadDay();
-      showToast('Error al borrar.');
+      showToast(t('Error al borrar.'));
       return;
     }
     setUndoData((prev) => {
@@ -435,23 +437,23 @@ export default function Today() {
       .eq('day', sourceDay);
     const toCopy = srcEntries?.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id)) || [];
     if (toCopy.length === 0) {
-      showToast('Ese día no tiene registros.');
+      showToast(t('Ese día no tiene registros.'));
       return;
     }
     const rows = toCopy.map((e) => ({ ...e, day: date }));
     const { error } = await supabase.from('entries').insert(rows);
     if (error) {
-      showToast('Error al copiar.');
+      showToast(t('Error al copiar.'));
       return;
     }
-    showToast(`${rows.length} registros copiados.`);
+    showToast(t('%n registros copiados.').replace('%n', rows.length));
     loadDay();
   }
 
   function handleCopyDay() {
     setCopiedDay(date);
     localStorage.setItem('nutri.today.copiedDay', date);
-    showToast('Día copiado.');
+    showToast(t('Día copiado.'));
   }
 
   // Borra los alimentos del día (no el agua, que se lleva por vasos). Destructivo
@@ -459,16 +461,17 @@ export default function Today() {
   async function handleDeleteDay() {
     const foods = entries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id));
     if (foods.length === 0) {
-      showToast('Este día no tiene alimentos.');
+      showToast(t('Este día no tiene alimentos.'));
       return;
     }
-    if (!window.confirm(`¿Borrar los ${foods.length} registros de alimentos de este día? No se puede deshacer.`)) return;
+    const confirmMsg = t('¿Borrar los %n registros de alimentos de este día? No se puede deshacer.').replace('%n', foods.length);
+    if (!window.confirm(confirmMsg)) return;
     const { error } = await supabase.from('entries').delete().in('id', foods.map((e) => e.id));
     if (error) {
-      showToast('Error al borrar.');
+      showToast(t('Error al borrar.'));
       return;
     }
-    showToast(`${foods.length} registros borrados.`);
+    showToast(t('%n registros borrados.').replace('%n', foods.length));
     loadDay();
   }
 
@@ -477,18 +480,18 @@ export default function Today() {
   useEffect(() => {
     const actions = [];
     if (date === todayISO()) {
-      actions.push({ key: 'ayer', label: 'Ayer', icon: History, onClick: () => copyEntriesFrom(addDaysISO(date, -1)) });
+      actions.push({ key: 'ayer', label: t('Ayer'), icon: History, onClick: () => copyEntriesFrom(addDaysISO(date, -1)) });
     }
-    actions.push({ key: 'copiar', label: 'Copiar', icon: Copy, onClick: handleCopyDay });
+    actions.push({ key: 'copiar', label: t('Copiar'), icon: Copy, onClick: handleCopyDay });
     if (copiedDay) {
       actions.push({
         key: 'pegar',
-        label: `Pegar ${new Date(copiedDay + 'T00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}`,
+        label: t('Pegar %n').replace('%n', new Date(copiedDay + 'T00:00').toLocaleDateString(locale(), { day: 'numeric', month: 'short' })),
         icon: ClipboardPaste,
         onClick: () => copyEntriesFrom(copiedDay),
       });
     }
-    actions.push({ key: 'borrar', label: 'Borrar día', icon: Trash2, onClick: handleDeleteDay });
+    actions.push({ key: 'borrar', label: t('Borrar día'), icon: Trash2, onClick: handleDeleteDay });
     setSectionMenu(actions);
     return () => setSectionMenu([]);
   }, [date, copiedDay, prefs.water_food_id, entries]);
@@ -536,7 +539,7 @@ export default function Today() {
   return (
     <div className="px-4 pt-4 pb-20 grid grid-cols-1 gap-4 lg:gap-x-6 lg:grid-cols-[1fr_320px] lg:grid-rows-[auto_auto_auto_1fr] lg:items-start">
       <div className="flex items-center justify-between lg:col-start-1">
-        <button onClick={() => setDate(addDaysISO(date, -1))} className="p-2 press" aria-label="Día anterior">
+        <button onClick={() => setDate(addDaysISO(date, -1))} className="p-2 press" aria-label={t('Día anterior')}>
           <ChevronLeft size={22} />
         </button>
         <div className="relative flex-1 flex justify-center">
@@ -546,15 +549,15 @@ export default function Today() {
             onChange={(e) => e.target.value && setDate(e.target.value)}
             onClick={(e) => e.currentTarget.showPicker?.()}
             className="absolute inset-0 w-full opacity-0 cursor-pointer"
-            aria-label="Elegir fecha"
+            aria-label={t('Elegir fecha')}
           />
           <span className="pointer-events-none font-display text-lg">
             {date === todayISO()
-              ? 'Hoy'
-              : new Date(date + 'T00:00').toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' })}
+              ? t('Hoy')
+              : new Date(date + 'T00:00').toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short' })}
           </span>
         </div>
-        <button onClick={() => setDate(addDaysISO(date, 1))} className="p-2 press" aria-label="Día siguiente">
+        <button onClick={() => setDate(addDaysISO(date, 1))} className="p-2 press" aria-label={t('Día siguiente')}>
           <ChevronRight size={22} />
         </button>
       </div>
@@ -603,7 +606,7 @@ export default function Today() {
           <div className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <h2 className="font-display text-lg">{editing.item}{editing.brand && <span className="text-text-3 text-sm font-normal ml-1.5">{editing.brand}</span>}</h2>
-              <button onClick={() => setEditing(null)} className="p-2 -mr-2 press" aria-label="Cerrar">
+              <button onClick={() => setEditing(null)} className="p-2 -mr-2 press" aria-label={t('Cerrar')}>
                 <X size={20} />
               </button>
             </div>
@@ -722,13 +725,13 @@ export default function Today() {
       <button
         onClick={() => setAdding({ labelId: null })}
         className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-on-accent flex items-center justify-center press lg:hidden"
-        aria-label="Añadir registro"
+        aria-label={t('Añadir registro')}
       >
         <Plus size={24} />
       </button>
 
       {waterSettingsOpen && (
-        <Sheet title="Ajustes de agua" onClose={() => setWaterSettingsOpen(false)}>
+        <Sheet title={t('Ajustes de agua')} onClose={() => setWaterSettingsOpen(false)}>
           <WaterSettingsForm
             glassMl={prefs.water_glass_ml}
             onSave={(ml) => {
@@ -776,12 +779,12 @@ export default function Today() {
           aria-live="polite"
           className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 flex items-center justify-between gap-3 lg:left-auto lg:right-6 lg:bottom-6"
         >
-          <span className="text-sm">Registro borrado</span>
+          <span className="text-sm">{t('Registro borrado')}</span>
           <button
             onClick={handleUndo}
             className="min-h-[44px] px-3 text-accent font-medium press"
           >
-            Deshacer
+            {t('Deshacer')}
           </button>
         </div>
       )}
@@ -814,7 +817,7 @@ function collisionDetectionStrategy(args) {
 function groupByLabel(entries, labels, showEmptyNone) {
   const groups = labels.map((l) => ({ id: l.id, name: l.name, items: [] }));
   const byId = new Map(groups.map((g) => [g.id, g]));
-  const none = { id: null, name: 'Sin etiqueta', items: [] };
+  const none = { id: null, name: t('Sin etiqueta'), items: [] };
   for (const e of entries) {
     (byId.get(e.meal_label_id) ?? none).items.push(e);
   }
@@ -839,7 +842,7 @@ function sectionTotals(items) {
 // Click en la zona izquierda contrae/expande. `dragProps` = listeners de dnd-kit
 // (long-press 150 ms sobre la barra arrastra la sección; "+" hace stopPropagation).
 function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, dragProps, dragging }) {
-  const t = sectionTotals(items);
+  const tot = sectionTotals(items);
   const has = items.length > 0;
   const label = (
     <>
@@ -849,12 +852,12 @@ function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, dragProps
       </span>
       {has && (
         <span className="mt-0.5 text-[13px] font-mono tabular-nums font-medium flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-          {t.protein_g > 0 && <span className="text-d-prot">P {round(t.protein_g, 1)}</span>}
-          {t.carbs_g > 0 && <span className="text-d-carb">C {round(t.carbs_g, 1)}</span>}
-          {t.fat_g > 0 && <span className="text-d-fat">G {round(t.fat_g, 1)}</span>}
-          {t.sodio_mg > 0 && <span className="hidden lg:inline text-text-3">Na {round(t.sodio_mg, 0)}</span>}
-          {t.potasio_mg > 0 && <span className="hidden lg:inline text-text-3">K {round(t.potasio_mg, 0)}</span>}
-          {t.magnesio_mg > 0 && <span className="hidden lg:inline text-text-3">Mg {round(t.magnesio_mg, 0)}</span>}
+          {tot.protein_g > 0 && <span className="text-d-prot">P {round(tot.protein_g, 1)}</span>}
+          {tot.carbs_g > 0 && <span className="text-d-carb">C {round(tot.carbs_g, 1)}</span>}
+          {tot.fat_g > 0 && <span className="text-d-fat">{t('G')} {round(tot.fat_g, 1)}</span>}
+          {tot.sodio_mg > 0 && <span className="hidden lg:inline text-text-3">Na {round(tot.sodio_mg, 0)}</span>}
+          {tot.potasio_mg > 0 && <span className="hidden lg:inline text-text-3">K {round(tot.potasio_mg, 0)}</span>}
+          {tot.magnesio_mg > 0 && <span className="hidden lg:inline text-text-3">Mg {round(tot.magnesio_mg, 0)}</span>}
         </span>
       )}
     </>
@@ -876,7 +879,7 @@ function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, dragProps
           type="button"
           onClick={onToggle}
           aria-expanded={!collapsed}
-          aria-label={`${collapsed ? 'Expandir' : 'Contraer'} ${name}`}
+          aria-label={`${collapsed ? t('Expandir') : t('Contraer')} ${name}`}
           className="min-w-0 flex-1 flex flex-col text-left"
         >
           {label}
@@ -887,7 +890,7 @@ function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, dragProps
       <div className="flex items-center gap-1 flex-none -mr-1">
         {has && (
           <span className="font-mono tabular-nums text-xl font-semibold text-text leading-none">
-            {round(t.kcal, 0)}<span className="text-xs font-normal text-text-2 ml-0.5">kcal</span>
+            {round(tot.kcal, 0)}<span className="text-xs font-normal text-text-2 ml-0.5">kcal</span>
           </span>
         )}
         {onAdd && (
@@ -896,7 +899,7 @@ function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, dragProps
             onMouseDown={(ev) => ev.stopPropagation()}
             onTouchStart={(ev) => ev.stopPropagation()}
             className="p-2.5 text-accent press"
-            aria-label={`Añadir a ${name}`}
+            aria-label={t('Añadir a %n').replace('%n', name)}
           >
             <Plus size={20} />
           </button>
@@ -998,7 +1001,7 @@ function SwipeCard({ entry: e, labelId, editing, onEdit, onDelete }) {
             onEdit();
           }}
           className="p-1.5 text-text-2 hover:text-accent"
-          aria-label="Editar"
+          aria-label={t('Editar')}
         >
           <Pencil size={16} />
         </button>
@@ -1009,7 +1012,7 @@ function SwipeCard({ entry: e, labelId, editing, onEdit, onDelete }) {
             onDelete();
           }}
           className="p-1.5 text-text-2 hover:text-danger"
-          aria-label="Borrar"
+          aria-label={t('Borrar')}
         >
           <Trash2 size={16} />
         </button>
@@ -1030,7 +1033,7 @@ function CardBody({ entry: e }) {
           <span>{e.grams}g</span>
           {Number(e.protein_g) > 0 && <><span className="sep">|</span><span>P {round(Number(e.protein_g), 1)}</span></>}
           {Number(e.carbs_g) > 0 && <><span className="sep">|</span><span>C {round(Number(e.carbs_g), 1)}</span></>}
-          {Number(e.fat_g) > 0 && <><span className="sep">|</span><span>G {round(Number(e.fat_g), 1)}</span></>}
+          {Number(e.fat_g) > 0 && <><span className="sep">|</span><span>{t('G')} {round(Number(e.fat_g), 1)}</span></>}
           {Number(e.micros?.sodio_mg) > 0 && <><span className="sep hidden lg:inline">|</span><span className="hidden lg:inline">Na {round(Number(e.micros.sodio_mg), 0)}</span></>}
           {Number(e.micros?.potasio_mg) > 0 && <><span className="sep hidden lg:inline">|</span><span className="hidden lg:inline">K {round(Number(e.micros.potasio_mg), 0)}</span></>}
           {Number(e.micros?.magnesio_mg) > 0 && <><span className="sep hidden lg:inline">|</span><span className="hidden lg:inline">Mg {round(Number(e.micros.magnesio_mg), 0)}</span></>}
@@ -1038,12 +1041,12 @@ function CardBody({ entry: e }) {
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         {highNa && (
-          <span title="Alto en sodio" className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-danger/20 text-danger">
+          <span title={t('Alto en sodio')} className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-danger/20 text-danger">
             Na {round(Number(e.micros.sodio_mg), 0)}
           </span>
         )}
         {highK && (
-          <span title="Alto en potasio" className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-warn/20 text-warn">
+          <span title={t('Alto en potasio')} className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-warn/20 text-warn">
             K {round(Number(e.micros.potasio_mg), 0)}
           </span>
         )}
@@ -1064,7 +1067,7 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
     <section className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <h2 className="font-medium">
-          Agua{' '}
+          {t('Agua')}{' '}
           <span className="text-sm text-text-3 font-mono tabular-nums">
             {Math.round(waterMl)}{goalMl > 0 ? ` / ${goalMl}` : ''} ml
           </span>
@@ -1072,7 +1075,7 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
         <button
           onClick={onSettings}
           className="p-2 -mr-2 text-text-3 press"
-          aria-label="Ajustes de agua"
+          aria-label={t('Ajustes de agua')}
         >
           <Settings size={18} />
         </button>
@@ -1088,7 +1091,7 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
               className={`relative w-11 h-11 rounded-xl border border-border flex items-center justify-center press ${
                 isFilled ? 'bg-surface-2 text-d-carb' : 'text-text-3'
               }`}
-              aria-label={isFilled ? 'Quitar último registro de agua' : `Añadir vaso de ${glassMl} ml`}
+              aria-label={isFilled ? t('Quitar último registro de agua') : t('Añadir vaso de %n ml').replace('%n', glassMl)}
             >
               <GlassWater size={22} />
               {i === filled && <Plus size={11} className="absolute top-1 right-1 text-text-2" />}
@@ -1120,14 +1123,14 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
           step="any"
           value={customMl}
           onChange={(e) => setCustomMl(e.target.value)}
-          placeholder="Cantidad (ml)"
+          placeholder={t('Cantidad (ml)')}
           className="flex-1 min-w-0 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <button
           type="submit"
           className="min-h-[44px] px-4 rounded-xl border border-border text-text-2 press"
         >
-          Añadir
+          {t('Añadir')}
         </button>
       </form>
     </section>
@@ -1145,7 +1148,7 @@ function WaterSettingsForm({ glassMl, onSave }) {
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1">
-        <label className="text-sm text-text-2">Tamaño de vaso (ml)</label>
+        <label className="text-sm text-text-2">{t('Tamaño de vaso (ml)')}</label>
         <input
           type="number"
           inputMode="decimal"
@@ -1161,7 +1164,7 @@ function WaterSettingsForm({ glassMl, onSave }) {
         type="submit"
         className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press"
       >
-        Guardar
+        {t('Guardar')}
       </button>
     </form>
   );
@@ -1303,7 +1306,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
       setResults([]);
       return;
     }
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const q = query.trim().replace(/[,()]/g, ' ');
       const [{ data: foods }, { data: recipes }] = await Promise.all([
         supabase.from('foods').select('id,name,brand').or(`name.ilike.%${q}%,brand.ilike.%${q}%`).limit(8),
@@ -1315,7 +1318,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
         ...(recipes || []).map((r) => ({ ...r, type: 'recipe' })),
       ]);
     }, 250);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [query]);
 
   function pick(item, preset) {
@@ -1371,7 +1374,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
     <div className="flex flex-col gap-4">
       {!selected && frequent.length > 0 && (
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-text-3">Elementos frecuentes</p>
+          <p className="text-sm text-text-3">{t('Elementos frecuentes')}</p>
           <div className="flex flex-wrap gap-2">
             {frequent.map((r) => (
               <button
@@ -1387,7 +1390,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
       )}
 
       <div className="flex flex-col gap-1">
-        <label className="text-sm text-text-2">Alimento o receta</label>
+        <label className="text-sm text-text-2">{t('Alimento o receta')}</label>
         <input
           ref={inputRef}
           autoFocus={autoFocus}
@@ -1397,7 +1400,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
             setSelected(null);
           }}
           onKeyDown={handleQueryKeyDown}
-          placeholder="Buscar…"
+          placeholder={t('Buscar…')}
           className="input"
         />
         {results.length > 0 && (
@@ -1409,7 +1412,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
                 className={`w-full text-left px-3 py-2 flex justify-between ${i === activeIndex ? 'bg-surface-3' : 'active:bg-surface-3'}`}
               >
                 <span>{r.name}{r.brand && <span className="text-text-3 text-sm font-normal ml-1.5">{r.brand}</span>}</span>
-                {r.type === 'recipe' && <span className="text-xs text-text-3">receta</span>}
+                {r.type === 'recipe' && <span className="text-xs text-text-3">{t('receta')}</span>}
               </button>
             ))}
           </div>
@@ -1421,13 +1424,13 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
           <AmountField grams={grams} onGrams={setGrams} meta={foodMeta} placeholder={presetGrams ?? undefined} required={presetGrams == null} />
 
           <div className="flex flex-col gap-1">
-            <label className="text-sm text-text-2">Etiqueta</label>
+            <label className="text-sm text-text-2">{t('Etiqueta')}</label>
             <select
               value={labelId}
               onChange={(e) => setLabelId(e.target.value)}
               className="input"
             >
-              <option value="">Sin etiqueta</option>
+              <option value="">{t('Sin etiqueta')}</option>
               {labels.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name}
@@ -1437,8 +1440,8 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
           </div>
 
           <div className="flex gap-2">
-            <button type="button" onClick={reset} className="min-h-[44px] flex-1 rounded-xl border border-border text-text-2 press">Cancelar</button>
-            <button type="submit" className="min-h-[44px] flex-1 rounded-xl bg-accent-deep text-on-accent font-medium press">Registrar</button>
+            <button type="button" onClick={reset} className="min-h-[44px] flex-1 rounded-xl border border-border text-text-2 press">{t('Cancelar')}</button>
+            <button type="submit" className="min-h-[44px] flex-1 rounded-xl bg-accent-deep text-on-accent font-medium press">{t('Registrar')}</button>
           </div>
         </form>
       )}
@@ -1448,7 +1451,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
 
 function AddEntrySheet({ date, labels, waterFoodId, initialLabelId, onClose, onAdded }) {
   return (
-    <Sheet title="Añadir registro" onClose={onClose}>
+    <Sheet title={t('Añadir registro')} onClose={onClose}>
       <AddEntryForm
         date={date}
         labels={labels}
@@ -1483,13 +1486,13 @@ function EditEntryForm({ entry, labels, favMicros, onDelete, onSaved }) {
         <AmountField grams={grams} onGrams={setGrams} meta={foodMeta} placeholder={String(entry.grams)} required={false} />
 
         <div className="flex flex-col gap-1">
-          <label className="text-sm text-text-2">Etiqueta</label>
+          <label className="text-sm text-text-2">{t('Etiqueta')}</label>
           <select
             value={labelId}
             onChange={(e) => setLabelId(e.target.value)}
             className="input"
           >
-            <option value="">Sin etiqueta</option>
+            <option value="">{t('Sin etiqueta')}</option>
             {labels.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.name}
@@ -1499,14 +1502,14 @@ function EditEntryForm({ entry, labels, favMicros, onDelete, onSaved }) {
         </div>
 
         <button type="submit" className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press">
-          Guardar
+          {t('Guardar')}
         </button>
         <button
           type="button"
           onClick={onDelete}
           className="min-h-[44px] rounded-xl border border-danger text-danger font-medium press"
         >
-          Borrar
+          {t('Borrar')}
         </button>
       </form>
 
@@ -1537,7 +1540,7 @@ function AportaPanel({ grams, meta, favMicros }) {
     const v = scale(meta.micros?.[m.key], 2);
     return (
       <div key={m.key} className="flex justify-between py-1.5 border-t border-border text-sm">
-        <span className="text-text-2">{m.label}</span>
+        <span className="text-text-2">{t(m.label)}</span>
         <span className={`font-mono tabular-nums ${v === 0 ? 'text-text-3' : ''}`}>
           {v} {m.unit}
         </span>
@@ -1547,20 +1550,20 @@ function AportaPanel({ grams, meta, favMicros }) {
 
   return (
     <section className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col">
-      <p className="text-sm text-text-3 mb-2">Aporta</p>
+      <p className="text-sm text-text-3 mb-2">{t('Aporta')}</p>
       <div className="grid grid-cols-4 gap-2 text-center pb-3 border-b border-border">
-        <AportaStat label="Kcal" value={scale(meta.kcal, 1)} color="text-d-kcal" />
-        <AportaStat label="Prot" value={scale(meta.protein_g, 1)} color="text-d-prot" unit="g" />
-        <AportaStat label="Carbs" value={scale(meta.carbs_g, 1)} color="text-d-carb" unit="g" />
-        <AportaStat label="Grasa" value={scale(meta.fat_g, 1)} color="text-d-fat" unit="g" />
+        <AportaStat label={t('Kcal')} value={scale(meta.kcal, 1)} color="text-d-kcal" />
+        <AportaStat label={t('Prot')} value={scale(meta.protein_g, 1)} color="text-d-prot" unit="g" />
+        <AportaStat label={t('Carbs')} value={scale(meta.carbs_g, 1)} color="text-d-carb" unit="g" />
+        <AportaStat label={t('Grasa')} value={scale(meta.fat_g, 1)} color="text-d-fat" unit="g" />
       </div>
       {visible.map(microRow)}
       {hidden.length > 0 && (
         <details className="mt-1">
-          <summary className="min-h-[44px] flex items-center cursor-pointer text-sm text-text-2">Más micros ({hidden.length})</summary>
+          <summary className="min-h-[44px] flex items-center cursor-pointer text-sm text-text-2">{t('Más micros (%n)').replace('%n', hidden.length)}</summary>
           {microGroups(hidden).flatMap(({ cat, items }) => [
             <p key={cat} className="pt-3 pb-1 text-xs uppercase tracking-wide text-text-3">
-              {cat}
+              {t(cat)}
             </p>,
             ...items.map(microRow),
           ])}
