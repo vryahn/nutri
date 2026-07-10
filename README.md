@@ -241,13 +241,20 @@ Con eso y los `targets` del periodo, el agente puede calcular adherencia (la app
 Dos GitHub Actions garantizan el free tier de Supabase sin intervención manual:
 
 - `.github/workflows/keepalive.yml` — cron semanal que hace `GET /rest/v1/` (evita la pausa automática por 7 días de inactividad del proyecto).
-- `.github/workflows/backup.yml` — cron mensual que corre `pg_dump` y sube el resultado como artefacto del workflow (retención 90 días; el free tier no incluye backups).
+- `.github/workflows/backup.yml` — cron mensual que corre `pg_dump`, cifra el resultado con GPG (AES256 simétrico) y sube SOLO `backup.sql.gpg` como artefacto del workflow (retención 90 días; el free tier no incluye backups). El repo es público — el dump incluye `auth.users` (emails, hashes), por eso nunca sube sin cifrar.
 
 Configura en **Settings → Secrets and variables → Actions** del repo:
 
 - `SUPABASE_URL` — el Project URL (usado por keepalive).
 - `ANON_KEY` — la anon/publishable key (usado por keepalive).
 - `SUPABASE_DB_URL` — connection string de Postgres **del Session Pooler**, con password (botón **Connect** en el dashboard del proyecto → pestaña *Session pooler* → revela el password). No uses la conexión directa (`db.<ref>.supabase.co`): resuelve solo a IPv6 y los runners de GitHub Actions no tienen salida IPv6, el workflow falla con "Network is unreachable".
+- `BACKUP_PASSPHRASE` — passphrase simétrica para cifrar/descifrar el backup mensual.
+
+Para descifrar un backup descargado:
+
+```
+gpg --batch --decrypt --passphrase "..." backup.sql.gpg > backup.sql
+```
 
 ### Datos con IA (F6)
 
