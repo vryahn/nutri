@@ -43,7 +43,7 @@ export default function AiDataCard({
           type="button"
           onClick={onSubmit}
           disabled={loading || (!text.trim() && !file)}
-          className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium disabled:opacity-40 press"
+          className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium disabled:opacity-40 press"
         >
           {loading ? 'Obteniendo…' : 'Obtener datos'}
         </button>

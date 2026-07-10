@@ -13,7 +13,8 @@
   --text-2: #98A8A0;
   --text-3: #5F6F67;
   --accent: #A3E635;
-  --accent-deep: #3F6212; /* lima profundo: AA (>6:1) con --text sobre botones */
+  --accent-deep: #3F6212; /* lima profundo: AA (>6:1) con --on-accent sobre botones */
+  --on-accent: #F4F7F5;
   --ok: #34D399;
   --warn: #FBBF24;
   --danger: #F87171;
@@ -21,6 +22,30 @@
   --d-prot: #34D399;
   --d-carb: #60A5FA;
   --d-fat: #FBBF24;
+}
+
+/* Tema claro. El lima brillante da 1.6:1 sobre blanco, así que --accent baja a
+   lima profundo y los colores de datos conservan el hue pero pierden luminancia:
+   ningún par foreground/background queda bajo 4.5:1. */
+:root[data-theme='light'] {
+  --bg: #F7FAF8;
+  --surface: #FFFFFF;
+  --surface-2: #F0F4F1;
+  --surface-3: #E1E8E4;
+  --border: #D6DFDA;
+  --text: #0A0F0D;
+  --text-2: #3F4A45;
+  --text-3: #5A6A62;
+  --accent: #4D7C0F;
+  --accent-deep: #3F6212;
+  --on-accent: #F7FAF8;
+  --ok: #047857;
+  --warn: #B45309;
+  --danger: #DC2626;
+  --d-kcal: #C2410C;
+  --d-prot: #047857;
+  --d-carb: #1D4ED8;
+  --d-fat: #A16207;
 }
 
 html, body {

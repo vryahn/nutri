@@ -14,6 +14,7 @@ export default {
         'text-3': 'var(--text-3)',
         accent: 'var(--accent)',
         'accent-deep': 'var(--accent-deep)',
+        'on-accent': 'var(--on-accent)',
         ok: 'var(--ok)',
         warn: 'var(--warn)',
         danger: 'var(--danger)',

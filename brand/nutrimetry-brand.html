@@ -127,7 +127,7 @@ p strong{color:var(--tx)}
   <section>
     <div class="kick">03 · Color</div>
     <h2 style="font-size:28px;margin:.3em 0">Tinta grafito + un acento lima</h2>
-    <p>La app es <strong>dark-only</strong>: la base es una tinta grafito casi negra y el único acento interactivo es el lima. El modo claro se documenta para usos fuera de la app (redes, docs, impresos).</p>
+    <p>El tema por defecto es la <strong>tinta grafito</strong>: base casi negra y un único acento interactivo, el lima. La app también tiene <strong>modo claro</strong> (Auto / Claro / Oscuro), que reusa la misma escala para redes, docs e impresos.</p>
 
     <div style="margin-top:22px"><div class="kick">Modo oscuro · app</div>
       <div class="swrow" style="margin-top:12px">
@@ -160,14 +160,28 @@ p strong{color:var(--tx)}
       </div>
     </div>
 
-    <div style="margin-top:22px"><div class="kick">Modo claro · fuera de la app</div>
+    <div style="margin-top:22px"><div class="kick">Modo claro</div>
       <div class="swrow" style="margin-top:12px">
         <div class="sw light"><div class="b" style="background:#F7FAF8"></div><div class="m"><div class="n">bg</div><div class="h">#F7FAF8</div></div></div>
         <div class="sw light"><div class="b" style="background:#FFFFFF;border-bottom:1px solid #dfe7e2"></div><div class="m"><div class="n">Surface</div><div class="h">#FFFFFF</div></div></div>
+        <div class="sw light"><div class="b" style="background:#F0F4F1"></div><div class="m"><div class="n">Surface-2</div><div class="h">#F0F4F1</div></div></div>
+        <div class="sw light"><div class="b" style="background:#E1E8E4"></div><div class="m"><div class="n">Surface-3</div><div class="h">#E1E8E4</div></div></div>
+        <div class="sw light"><div class="b" style="background:#D6DFDA"></div><div class="m"><div class="n">Border</div><div class="h">#D6DFDA</div></div></div>
         <div class="sw light"><div class="b" style="background:#4D7C0F"></div><div class="m"><div class="n">Accent</div><div class="h">#4D7C0F</div></div></div>
+        <div class="sw light"><div class="b" style="background:#3F6212"></div><div class="m"><div class="n">Accent-deep</div><div class="h">#3F6212</div></div></div>
         <div class="sw light"><div class="b" style="background:#0A0F0D"></div><div class="m"><div class="n">Text</div><div class="h">#0A0F0D</div></div></div>
+        <div class="sw light"><div class="b" style="background:#3F4A45"></div><div class="m"><div class="n">Text-2</div><div class="h">#3F4A45</div></div></div>
+        <div class="sw light"><div class="b" style="background:#5A6A62"></div><div class="m"><div class="n">Text-3</div><div class="h">#5A6A62</div></div></div>
       </div>
-      <p style="font-size:13px;margin-top:10px">En claro el lima brillante pierde contraste sobre blanco: para texto/relleno interactivo se usa el lima profundo <span class="mono">#4D7C0F</span> (AA). El lima brillante queda solo como resalte sobre tinta.</p>
+      <div class="swrow" style="margin-top:12px">
+        <div class="sw light"><div class="b" style="background:#047857"></div><div class="m"><div class="n">OK · Proteína</div><div class="h">#047857</div></div></div>
+        <div class="sw light"><div class="b" style="background:#B45309"></div><div class="m"><div class="n">Warn ⚠</div><div class="h">#B45309</div></div></div>
+        <div class="sw light"><div class="b" style="background:#DC2626"></div><div class="m"><div class="n">Danger</div><div class="h">#DC2626</div></div></div>
+        <div class="sw light"><div class="b" style="background:#C2410C"></div><div class="m"><div class="n">kcal</div><div class="h">#C2410C</div></div></div>
+        <div class="sw light"><div class="b" style="background:#1D4ED8"></div><div class="m"><div class="n">Carbos</div><div class="h">#1D4ED8</div></div></div>
+        <div class="sw light"><div class="b" style="background:#A16207"></div><div class="m"><div class="n">Grasa</div><div class="h">#A16207</div></div></div>
+      </div>
+      <p style="font-size:13px;margin-top:10px">En claro el lima brillante pierde contraste sobre blanco (1.6:1): para texto/relleno interactivo se usa el lima profundo <span class="mono">#4D7C0F</span> (AA). El lima brillante queda solo como resalte sobre tinta — p. ej. el punto del logo dentro del tile oscuro. Los colores de datos conservan el hue del tema oscuro pero bajan de luminancia; ningún par foreground/background baja de 4.5:1.</p>
     </div>
   </section>
 

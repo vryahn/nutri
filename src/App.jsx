@@ -3,6 +3,8 @@ import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom'
 import { CalendarDays, Apple, ChefHat, Target, BarChart3, LogOut, Tags, MoreHorizontal } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { subscribeSectionMenu } from './lib/sectionMenu.js';
+import { watchSystem } from './lib/theme.js';
+import ThemeToggle from './components/ThemeToggle.jsx';
 import Login from './pages/Login.jsx';
 import Today from './pages/Today.jsx';
 import Foods from './pages/Foods.jsx';
@@ -122,6 +124,10 @@ function Sidebar({ onLabels, menuActions }) {
           <Tags size={20} />
           <span className="text-sm">Etiquetas</span>
         </button>
+        <ThemeToggle
+          showLabel
+          className="flex items-center gap-3 min-h-[44px] w-full px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
+        />
         <button
           onClick={() => supabase.auth.signOut()}
           className="flex items-center gap-3 min-h-[44px] px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
@@ -157,6 +163,7 @@ function Layout({ children }) {
               placement="bottom"
               className="p-2 rounded-lg press text-text-2"
             />
+            <ThemeToggle className="p-2 rounded-lg press text-text-2" />
             <button
               onClick={() => setLabelsOpen(true)}
               className="p-2 rounded-lg press text-text-2"
@@ -218,6 +225,8 @@ function RequireAuth({ session, children }) {
 
 export default function App() {
   const session = useSession();
+
+  useEffect(watchSystem, []);
 
   return (
     <Routes>

@@ -7,7 +7,7 @@ App personal de registro nutricional (tipo Cronometer, simple) para 2 usuarios. 
 - **Prioridad núcleo del proyecto: precisión y fiabilidad de los datos almacenados.** Ante cualquier trade-off (UX, velocidad, alcance), gana la exactitud de los valores nutricionales. Datos dudosos se marcan (⚠), nunca se guardan en silencio.
 - **Stack cerrado:** react, react-dom, react-router-dom, @supabase/supabase-js, recharts, tailwindcss, lucide-react, vite-plugin-pwa. Ninguna dependencia nueva sin justificarla en una línea en el commit.
 - **JavaScript (JSX), no TypeScript.** Estructura plana, objetivo ≤20 archivos en `src/`. Un archivo por página; lógica compartida SOLO en `src/lib/`; componentes extraídos solo si se usan ≥2 veces.
-- **Estilo:** Tailwind en el JSX; colores/fuentes SOLO vía los tokens CSS de `src/index.css` + `tailwind.config.js`. Solo modo oscuro. Mobile-first (375 px sin scroll horizontal, touch ≥44 px, `prefers-reduced-motion` respetado).
+- **Estilo:** Tailwind en el JSX; colores/fuentes SOLO vía los tokens CSS de `src/index.css` + `tailwind.config.js`. Dos temas: `:root` = oscuro (default) y `:root[data-theme='light']` = claro; todo token nuevo se declara en AMBOS y ningún par texto/fondo baja de 4.5:1. Mobile-first (375 px sin scroll horizontal, touch ≥44 px, `prefers-reduced-motion` respetado).
 - **Regla de seguridad médica:** el badge rojo de sodio < 1,500 mg (constante `SODIUM_FLOOR_MG` en `src/lib/domain.js`) no se quita ni se hace configurable.
 - La `service_role`/secret key de Supabase no se usa en ningún lugar del proyecto.
 - Repo **público**: nunca commitear credenciales, keys ni connection strings.
@@ -24,14 +24,17 @@ supabase/migrations/     # migraciones incrementales, todas aplicadas: 001 prefs
 src/lib/supabase.js      # createClient, schema 'nutri'
 src/lib/domain.js        # MICROS, resolución de targets, adherencia, fórmula de recetas, reorderLabels
 src/lib/sources.js       # clientes Open Food Facts y USDA FDC, por 100 g, mapeados a claves MICROS
+src/lib/theme.js         # modo claro/oscuro/sistema en localStorage + data-theme en <html>
 src/pages/               # Login, Today, Foods, Recipes, Targets, Dashboard (una por tab)
-src/components/          # LabelsModal
+src/components/          # LabelsModal, ThemeToggle
 src/App.jsx              # router, guard de sesión, tab bar
 brand/                   # manual de marca Nutrimetry (nutrimetry-brand.html)
 .github/workflows/       # keepalive.yml (semanal), backup.yml (mensual)
 ```
 
 **Identidad visual:** marca PROPIA de Nutrimetry (no la personal de Bryan). Base tinta grafito `#0A0F0D` + acento lima `#A3E635` (`--accent-deep #3F6212` para botones AA con texto blanco); display **Space Grotesk**, cuerpo Inter, datos JetBrains Mono; logo "medidor n." (n geométrica como path en `public/icon.svg`, punto lima = punto de lectura). Todo el color de la app sale de los tokens de `src/index.css` — recolorear = editar tokens, no JSX. Manual completo en `brand/nutrimetry-brand.html`.
+
+**Temas:** `ThemeToggle` (header móvil + pie del sidebar) cicla Auto → Claro → Oscuro; el modo vive en `localStorage['nutri-theme']` (NO en `prefs`: debe aplicarse antes del primer paint). El script inline de `index.html` resuelve `system` a un `data-theme` explícito en `<html>` antes de pintar, así el CSS solo necesita el bloque `[data-theme='light']` y no hay flash. En claro el lima brillante da 1.6:1 sobre blanco: `--accent` baja a `#4D7C0F` y los colores de datos conservan el hue con menos luminancia. `--on-accent` es el texto sobre `--accent-deep` (near-white en ambos temas) — los botones primarios NO usan `text-text`, que se invierte. `theme-color` de `<meta>` sí sigue al tema; el del manifest PWA no puede.
 
 Invariantes de dominio:
 - Todo valor nutricional se almacena **por 100 g**; cantidades siempre en gramos.
@@ -93,4 +96,6 @@ Recordar: vistas con `security_invoker = true`; nuevas tablas necesitan RLS + po
 
 ## Fuera de alcance (spec §11 — no construir)
 
-Peso corporal, sueño, entrenamiento (viven en Notion/Hevy). TypeScript, tests E2E, i18n, modo claro, registro público de usuarios, recuperación de contraseña self-service, escáner de cámara, edge functions.
+Peso corporal, sueño, entrenamiento (viven en Notion/Hevy). TypeScript, tests E2E, i18n, registro público de usuarios, recuperación de contraseña self-service, escáner de cámara, edge functions.
+
+(El spec §11 listaba el modo claro fuera de alcance; se construyó después — `ThemeToggle` + `src/lib/theme.js`. El resto de §11 sigue vigente.)

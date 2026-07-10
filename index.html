@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0A0F0D" />
+    <script>
+      // Antes del primer paint: sin esto el tema claro arranca con un flash oscuro.
+      // Resuelve 'system' a un data-theme explícito, así el CSS solo define un override.
+      (function () {
+        var m = localStorage.getItem('nutri-theme') || 'system';
+        var dark = m === 'dark' || (m !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        if (!dark) document.querySelector('meta[name="theme-color"]').content = '#F7FAF8';
+      })();
+    </script>
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Nutrimetry</title>

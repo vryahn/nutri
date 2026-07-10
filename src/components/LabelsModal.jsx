@@ -64,7 +64,7 @@ export default function LabelsModal({ onClose }) {
           />
           <button
             type="submit"
-            className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-text font-medium press"
+            className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press"
           >
             Añadir
           </button>
