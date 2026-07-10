@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { X, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { reorderLabels } from '../lib/domain.js';
+import { t, useLang } from '../lib/i18n.js';
 import ConfirmSheet from './ConfirmSheet.jsx';
 
 export default function LabelsModal({ onClose }) {
+  useLang();
   const [labels, setLabels] = useState([]);
   const [name, setName] = useState('');
   const [deleting, setDeleting] = useState(null); // etiqueta a confirmar borrado
@@ -51,8 +53,8 @@ export default function LabelsModal({ onClose }) {
     <div onClick={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50">
       <div onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-sm bg-surface-3 rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-4 max-h-[80dvh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-lg">Etiquetas</h2>
-          <button onClick={onClose} className="p-2 -mr-2 press" aria-label="Cerrar">
+          <h2 className="font-display text-lg">{t('Etiquetas')}</h2>
+          <button onClick={onClose} className="p-2 -mr-2 press" aria-label={t('Cerrar')}>
             <X size={20} />
           </button>
         </div>
@@ -61,18 +63,18 @@ export default function LabelsModal({ onClose }) {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Nueva etiqueta"
+            placeholder={t('Nueva etiqueta')}
             className="flex-1 input"
           />
           <button
             type="submit"
             className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press"
           >
-            Añadir
+            {t('Añadir')}
           </button>
         </form>
 
-        {labels.length === 0 && <p className="text-text-2 text-center py-4">Sin etiquetas aún</p>}
+        {labels.length === 0 && <p className="text-text-2 text-center py-4">{t('Sin etiquetas aún')}</p>}
 
         <div className="flex flex-col gap-2">
           {labels.map((l, i) => (
@@ -83,18 +85,18 @@ export default function LabelsModal({ onClose }) {
                 onBlur={(e) => rename(l.id, e.target.value)}
                 className="flex-1 bg-transparent text-text focus:outline-none"
               />
-              <button onClick={() => move(i, -1)} disabled={i === 0} className="p-1 text-text-2 disabled:opacity-30" aria-label="Subir">
+              <button onClick={() => move(i, -1)} disabled={i === 0} className="p-1 text-text-2 disabled:opacity-30" aria-label={t('Subir')}>
                 <ArrowUp size={16} />
               </button>
               <button
                 onClick={() => move(i, 1)}
                 disabled={i === labels.length - 1}
                 className="p-1 text-text-2 disabled:opacity-30"
-                aria-label="Bajar"
+                aria-label={t('Bajar')}
               >
                 <ArrowDown size={16} />
               </button>
-              <button onClick={() => setDeleting(l)} className="p-1 text-danger" aria-label="Borrar">
+              <button onClick={() => setDeleting(l)} className="p-1 text-danger" aria-label={t('Borrar')}>
                 <Trash2 size={16} />
               </button>
             </div>
@@ -104,9 +106,9 @@ export default function LabelsModal({ onClose }) {
 
       {deleting && (
         <ConfirmSheet
-          title={`¿Borrar “${deleting.name}”?`}
-          body="Los registros con esta etiqueta quedarán sin sección. No se puede deshacer."
-          confirmLabel="Borrar etiqueta"
+          title={`${t('¿Borrar')} "${deleting.name}"?`}
+          body={t('Los registros con esta etiqueta quedarán sin sección. No se puede deshacer.')}
+          confirmLabel={t('Borrar etiqueta')}
           onConfirm={() => remove(deleting.id)}
           onClose={() => setDeleting(null)}
         />

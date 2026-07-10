@@ -55,6 +55,7 @@ import {
   PHASE_GOALS,
   goalLabel,
 } from '../lib/domain.js';
+import { t, useLang, getLang, useUnits, fmtMl } from '../lib/i18n.js';
 
 // Calculo homologado del selector (Parte A). 'suma'/'promedio' siempre
 // disponibles con ≥1 día registrado; los avanzados requieren más días.
@@ -96,20 +97,23 @@ const CALC_ALL = [...CALC_BASIC, ...CALC_ADVANCED];
 //        diasCompletosPhase, diasParcialesPhase, crossesPhases }
 function calcDisabledReason(opt, ctx) {
   if (opt.key === 'suma' || opt.key === 'promedio') {
-    return ctx.diasRegistrados >= 1 ? null : 'No registraste nada en este periodo.';
+    return ctx.diasRegistrados >= 1 ? null : t('No registraste nada en este periodo.');
   }
   if (opt.key === 'bayes') {
     if (ctx.diasCompletosFull < opt.minDias) {
-      return `Necesitas al menos ${opt.minDias} días completos. Llevas ${ctx.diasCompletosFull} completos y ${ctx.diasParcialesFull} incompletos.`;
+      return t('Necesitas al menos %n días completos. Llevas %a completos y %b incompletos.')
+        .replace('%n', opt.minDias).replace('%a', ctx.diasCompletosFull).replace('%b', ctx.diasParcialesFull);
     }
-    if (opt.needsObjetivo && ctx.diasConObjetivo < 1) return 'Primero fija tus objetivos en Metas.';
+    if (opt.needsObjetivo && ctx.diasConObjetivo < 1) return t('Primero fija tus objetivos en Metas.');
     return null;
   }
   // mediana, stddev, tendencia — inmunes a fases: sobre la fase vigente si el rango cruza >1.
   if (ctx.diasCompletosPhase < opt.minDias) {
     return ctx.crossesPhases
-      ? `Necesitas al menos ${opt.minDias} días completos en la fase actual. Llevas ${ctx.diasCompletosPhase}.`
-      : `Necesitas al menos ${opt.minDias} días completos. Llevas ${ctx.diasCompletosPhase} completos y ${ctx.diasParcialesPhase} incompletos.`;
+      ? t('Necesitas al menos %n días completos en la fase actual. Llevas %a.')
+          .replace('%n', opt.minDias).replace('%a', ctx.diasCompletosPhase)
+      : t('Necesitas al menos %n días completos. Llevas %a completos y %b incompletos.')
+          .replace('%n', opt.minDias).replace('%a', ctx.diasCompletosPhase).replace('%b', ctx.diasParcialesPhase);
   }
   return null;
 }
@@ -187,25 +191,30 @@ function bayesForMetric(days, key) {
 }
 
 // Texto único de "falta el objetivo": bayesCell lo compara para decidir el primary.
-const NO_TARGET_HINT = 'Aún no tienes objetivo para este nutriente. Ponlo en la pestaña Metas.';
+const NO_TARGET_HINT_ES = 'Aún no tienes objetivo para este nutriente. Ponlo en la pestaña Metas.';
+const NO_TARGET_HINT = () => t(NO_TARGET_HINT_ES);
 
 // Motivo por el que bayesForMetric devolvió null, para el Hint de la celda.
 function bayesUnavailableReason(days, key) {
-  if (!days.length) return 'No registraste nada en este periodo.';
+  if (!days.length) return t('No registraste nada en este periodo.');
   if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') {
     const field = BAYES_TARGET_FIELD[key];
-    return days.some((d) => d[field] != null) ? null : NO_TARGET_HINT;
+    return days.some((d) => d[field] != null) ? null : NO_TARGET_HINT();
   }
-  if (key === 'protein_g') return days.some((d) => d.proteinFloor != null) ? null : NO_TARGET_HINT;
+  if (key === 'protein_g') return days.some((d) => d.proteinFloor != null) ? null : NO_TARGET_HINT();
   if (key === 'sodio_mg') return null;
-  return days.some((d) => d.targetMicros?.[key] != null) ? null : NO_TARGET_HINT;
+  return days.some((d) => d.targetMicros?.[key] != null) ? null : NO_TARGET_HINT();
 }
 
 // Criterio de éxito de un día, declarado para que el % de adherencia sea auditable.
 function bayesCriterionHint(key) {
-  if (key === 'sodio_mg') return `Cuenta como día cumplido si comiste al menos ${SODIUM_FLOOR_MG.toLocaleString('es-MX')} mg de sodio.`;
-  if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') return `Cuenta como día cumplido si quedaste a ±${round(BAYES_KCAL_TOL * 100, 0)}% de tu objetivo.`;
-  return 'Cuenta como día cumplido si llegaste a tu objetivo o lo pasaste.';
+  if (key === 'sodio_mg') {
+    return t('Cuenta como día cumplido si comiste al menos %n mg de sodio.').replace('%n', SODIUM_FLOOR_MG.toLocaleString(getLang() === 'en' ? 'en-US' : 'es-MX'));
+  }
+  if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') {
+    return t('Cuenta como día cumplido si quedaste a ±%n% de tu objetivo.').replace('%n', round(BAYES_KCAL_TOL * 100, 0));
+  }
+  return t('Cuenta como día cumplido si llegaste a tu objetivo o lo pasaste.');
 }
 
 // { primary, secondary, hint, degraded } de la celda de adherencia bayesiana.
@@ -215,13 +224,13 @@ function bayesCell(days, key) {
   if (b) {
     return {
       primary: `${round(b.mean * 100, 0)}%`,
-      secondary: `probablemente entre ${round(b.lower * 100, 0)} y ${round(b.upper * 100, 0)}%`,
+      secondary: t('probablemente entre %a y %b%').replace('%a', round(b.lower * 100, 0)).replace('%b', round(b.upper * 100, 0)),
       hint: bayesCriterionHint(key),
       degraded: false,
     };
   }
   const reason = bayesUnavailableReason(days, key);
-  return { primary: reason === NO_TARGET_HINT ? 'Sin objetivo' : '–', secondary: null, hint: reason, degraded: true };
+  return { primary: reason === NO_TARGET_HINT() ? t('Sin objetivo') : '–', secondary: null, hint: reason, degraded: true };
 }
 
 // { primary, secondary } de una métrica según el cálculo elegido. unit incluye
@@ -267,23 +276,26 @@ function metricDisplay(calcMode, ms, bayesInfo, unit, decimals) {
 function plainLanguage(calcMode, ms, bayesInfo) {
   if (calcMode === 'mediana') {
     if (ms.median == null) return null;
-    return `Tu día típico: ${round(ms.median, 0)} kcal (la mitad de tus días cae entre ${round(ms.p25, 0)} y ${round(ms.p75, 0)})`;
+    return t('Tu día típico: %n kcal (la mitad de tus días cae entre %a y %b)')
+      .replace('%n', round(ms.median, 0)).replace('%a', round(ms.p25, 0)).replace('%b', round(ms.p75, 0));
   }
   if (calcMode === 'stddev') {
     if (ms.sd == null) return null;
     const cv = ms.cv;
-    const consistencia = cv == null ? null : cv < 10 ? 'consistencia alta' : cv < 25 ? 'consistencia media' : 'consistencia baja';
-    return `Varías ±${round(ms.sd, 0)} kcal entre días${consistencia ? ` — ${consistencia} (CV ${round(cv, 0)}%)` : ''}`;
+    const consistencia = cv == null ? null : cv < 10 ? t('consistencia alta') : cv < 25 ? t('consistencia media') : t('consistencia baja');
+    const base = t('Varías ±%n kcal entre días').replace('%n', round(ms.sd, 0));
+    return consistencia ? `${base} — ${consistencia} (CV ${round(cv, 0)}%)` : base;
   }
   if (calcMode === 'tendencia') {
     if (ms.slope == null) return null;
-    const verbo = ms.slope >= 0 ? 'Subes' : 'Bajas';
-    return `${verbo} ~${round(Math.abs(ms.slope), 0)} kcal por día ≈ ${round(Math.abs(ms.slope) * 7, 0)} por semana`;
+    const verbo = ms.slope >= 0 ? t('Subes') : t('Bajas');
+    return t('%v ~%n kcal por día ≈ %m por semana')
+      .replace('%v', verbo).replace('%n', round(Math.abs(ms.slope), 0)).replace('%m', round(Math.abs(ms.slope) * 7, 0));
   }
   if (calcMode === 'bayes') {
     if (!bayesInfo || bayesInfo.degraded) return null;
     const n = Math.round((parseFloat(bayesInfo.primary) / 100) * 10);
-    return `Cumples tu objetivo ~${n} de cada 10 días`;
+    return t('Cumples tu objetivo ~%n de cada 10 días').replace('%n', n);
   }
   return null;
 }
@@ -316,7 +328,7 @@ function MetricLines({ display, className = '' }) {
 // Objetivo mostrado en la tabla de micros, según el modo (Fix 1).
 function objetivoCell(calcMode, objStats, unit) {
   if (objStats.n === 0) {
-    return <Hint text={NO_TARGET_HINT}>–</Hint>;
+    return <Hint text={NO_TARGET_HINT()}>–</Hint>;
   }
   if (calcMode === 'stddev' || calcMode === 'tendencia') return '–';
   if (calcMode === 'suma') return `${round(objStats.sum, 1)} ${unit}`;
@@ -333,7 +345,7 @@ function pctCell(calcMode, ms, objStats) {
   return '–';
 }
 
-const CALC_TITLES = {
+const CALC_TITLES_ES = {
   suma: 'Suma del rango',
   promedio: 'Promedio diario (÷ días registrados)',
   mediana: 'Mediana (P25–P75)',
@@ -341,7 +353,8 @@ const CALC_TITLES = {
   tendencia: 'Tendencia (unidades/día)',
   bayes: 'Adherencia bayesiana (IC 95%)',
 };
-const CALC_HEADERS = {
+const calcTitle = (mode) => t(CALC_TITLES_ES[mode]);
+const CALC_HEADERS_ES = {
   suma: 'Suma',
   promedio: 'Promedio',
   mediana: 'Día típico (rango medio)',
@@ -349,6 +362,7 @@ const CALC_HEADERS = {
   tendencia: 'Tendencia',
   bayes: 'Adherencia',
 };
+const calcHeader = (mode) => t(CALC_HEADERS_ES[mode]);
 
 const PRESETS = [
   { key: 'hoy', label: 'Hoy', days: 1 },
@@ -359,7 +373,9 @@ const PRESETS = [
 ];
 
 const STATUS_BG = { ok: 'bg-ok', warn: 'bg-warn', danger: 'bg-danger' };
-const DOW_SHORT = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const DOW_SHORT_ES = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const DOW_SHORT_EN = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const dowShort = () => (getLang() === 'en' ? DOW_SHORT_EN : DOW_SHORT_ES);
 
 const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -501,7 +517,7 @@ function weeklyProteinData(weeks, dateSet, dayInfo) {
       }
     }
     return {
-      week: `S${i + 1}`,
+      week: `${getLang() === 'en' ? 'W' : 'S'}${i + 1}`,
       protein: count ? sum / count : null,
       floor: floorCount ? floorSum / floorCount : null,
     };
@@ -552,7 +568,12 @@ function usePersistentState(key, initial) {
   return [value, setValue];
 }
 
+const PRESET_LABELS_EN = { hoy: 'Today', semana: 'Week', mes: 'Month', trimestre: 'Quarter', año: 'Year' };
+const presetLabel = (p) => (getLang() === 'en' ? PRESET_LABELS_EN[p.key] : p.label);
+
 export default function Dashboard() {
+  useLang();
+  useUnits();
   const [preset, setPreset] = usePersistentState('nutri.dash.preset', 'semana'); // 'hoy'|…|'año'|'custom'|'fase'
   const [phaseSel, setPhaseSel] = usePersistentState('nutri.dash.phaseSel', { kind: 'actual' }); // {kind:'actual'|'previa'} | {kind:'goal', goal}
   const [customStart, setCustomStart] = usePersistentState('nutri.dash.customStart', addDaysISO(todayISO(), -6));
@@ -595,10 +616,10 @@ export default function Dashboard() {
   const selectionLabel = !phaseMode
     ? null
     : phaseSel.kind === 'goal'
-      ? goalLabel(phaseSel.goal)
+      ? t(goalLabel(phaseSel.goal))
       : phaseSel.kind === 'actual'
-        ? 'Fase actual'
-        : 'Fase previa';
+        ? t('Fase actual')
+        : t('Fase previa');
 
   const start = phaseMode ? phaseDays[0] : preset === 'custom' ? customStart : addDaysISO(today, -(presetDef.days - 1));
   const end = phaseMode ? phaseDays[phaseDays.length - 1] : preset === 'custom' ? customEnd : today;
@@ -640,7 +661,7 @@ export default function Dashboard() {
       .order('day');
     const rows = phaseMode ? (all || []).filter((r) => dateSet.has(r.day)) : all;
     if (!rows || rows.length === 0) {
-      setCsvNotice('Sin registros en el rango');
+      setCsvNotice(t('Sin registros en el rango'));
       return;
     }
     const header = ['day', 'meal_label', 'tipo', 'item', 'grams', 'kcal', 'protein_g', 'carbs_g', 'fat_g', ...MICROS.map((m) => m.key)];
@@ -648,7 +669,7 @@ export default function Dashboard() {
     for (const r of rows) {
       const cells = [
         r.day,
-        r.meal || 'Sin etiqueta',
+        r.meal || t('Sin etiqueta'),
         r.food_id ? 'food' : 'recipe',
         r.item,
         r.grams,
@@ -808,12 +829,12 @@ export default function Dashboard() {
   return (
     <div className="px-4 py-4 flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-xl">Dashboard</h1>
+        <h1 className="font-display text-xl">{t('Dashboard')}</h1>
         <button
           onClick={exportCSV}
           className="px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap bg-surface-2 border border-border text-text-2 press"
         >
-          Exportar CSV
+          {t('Exportar CSV')}
         </button>
       </div>
 
@@ -835,7 +856,7 @@ export default function Dashboard() {
                 preset === p.key ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
               }`}
             >
-              {p.label}
+              {presetLabel(p)}
             </button>
           ))}
           <button
@@ -844,14 +865,14 @@ export default function Dashboard() {
               preset === 'custom' ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
             }`}
           >
-            Custom
+            {t('Custom')}
           </button>
         </div>
         <PhaseMenu
           phases={phases}
           selection={phaseSel}
           active={preset === 'fase'}
-          label={selectionLabel || 'Fases'}
+          label={selectionLabel || t('Fases')}
           onSelect={(sel) => {
             setPhaseSel(sel);
             setPreset('fase');
@@ -860,14 +881,14 @@ export default function Dashboard() {
       </div>
 
       {preset === 'fase' && !phaseMode && (
-        <p className="text-sm text-warn">La fase seleccionada ya no tiene días registrados — mostrando la última semana.</p>
+        <p className="text-sm text-warn">{t('La fase seleccionada ya no tiene días registrados — mostrando la última semana.')}</p>
       )}
 
       {unionMode && (
         <p className="text-xs text-text-3">
-          {selectedPhases.length} fases de {selectionLabel} · {dates.length} días.{' '}
-          <Hint text={`No hay periodo anterior con qué comparar: los días antes del ${start} eran de otra fase, con otros objetivos.`}>
-            Sin comparación vs periodo previo
+          {t('%n fases de %s · %d días.').replace('%n', selectedPhases.length).replace('%s', selectionLabel).replace('%d', dates.length)}{' '}
+          <Hint text={t('No hay periodo anterior con qué comparar: los días antes del %n eran de otra fase, con otros objetivos.').replace('%n', start)}>
+            {t('Sin comparación vs periodo previo')}
           </Hint>
         </p>
       )}
@@ -906,7 +927,7 @@ export default function Dashboard() {
                     : 'bg-surface-2 text-text-2 border border-border'
               }`}
             >
-              {opt.label}
+              {t(opt.label)}
             </button>
           );
         })}
@@ -916,7 +937,7 @@ export default function Dashboard() {
             CALC_ADVANCED.some((o) => o.key === calcMode) ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
           }`}
         >
-          Avanzadas {advancedOpen ? '▴' : '▾'}
+          {t('Avanzadas')} {advancedOpen ? '▴' : '▾'}
         </button>
       </div>
 
@@ -937,8 +958,8 @@ export default function Dashboard() {
                       : 'bg-surface border-border active:scale-[0.98]'
                 }`}
               >
-                <p className="text-sm font-medium">{opt.label}</p>
-                <p className={`text-xs mt-1 ${reason ? 'text-text-3' : 'text-text-2'}`}>{reason || opt.desc}</p>
+                <p className="text-sm font-medium">{t(opt.label)}</p>
+                <p className={`text-xs mt-1 ${reason ? 'text-text-3' : 'text-text-2'}`}>{reason || t(opt.desc)}</p>
               </button>
             );
           })}
@@ -950,10 +971,10 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 grid-flow-dense">
         <section className="md:col-span-2 lg:col-span-12 rounded-2xl bg-surface border border-border p-4">
           <div className="flex justify-between items-baseline mb-2">
-            <p className="text-sm text-text-3">Agua</p>
+            <p className="text-sm text-text-3">{t('Agua')}</p>
             <p className="font-mono tabular-nums text-sm text-d-carb">
-              {Math.round(stats.microsConsumido.agua_ml || 0)}
-              {stats.microsObjetivo.agua_ml > 0 ? ` / ${Math.round(stats.microsObjetivo.agua_ml)}` : ''} ml
+              {fmtMl(stats.microsConsumido.agua_ml || 0)}
+              {stats.microsObjetivo.agua_ml > 0 ? ` / ${fmtMl(stats.microsObjetivo.agua_ml)}` : ''}
             </p>
           </div>
           {stats.microsObjetivo.agua_ml > 0 && (
@@ -968,7 +989,7 @@ export default function Dashboard() {
 
         <section className="md:col-span-2 lg:col-span-12 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <KpiCard
-            label="Kcal"
+            label={t("Kcal")}
             display={metricDisplay(calcMode, msKcal, bKcal, '', 1)}
             delta={showDelta ? pctDelta(stats.promedio.kcal, prevStats.promedio.kcal) : null}
             status={classifyKcal(stats.consumido.kcal, stats.objetivo.kcal)}
@@ -976,7 +997,7 @@ export default function Dashboard() {
             sparkColor="var(--d-kcal)"
           />
           <KpiCard
-            label="Proteína"
+            label={t("Proteína")}
             display={metricDisplay(calcMode, msProtein, bProtein, ' g', 1)}
             delta={showDelta ? pctDelta(stats.promedio.protein_g, prevStats.promedio.protein_g) : null}
             status={classifyFloor(stats.consumido.protein_g, stats.objetivo.protein_g)}
@@ -984,21 +1005,21 @@ export default function Dashboard() {
             sparkColor="var(--d-prot)"
           />
           <KpiCard
-            label="Carbs"
+            label={t("Carbs")}
             display={metricDisplay(calcMode, msCarbs, bCarbs, ' g', 1)}
             delta={showDelta ? pctDelta(stats.promedio.carbs_g, prevStats.promedio.carbs_g) : null}
             sparkline={chartData.map((d) => (d.values ? d.values.carbs_g : null))}
             sparkColor="var(--d-carb)"
           />
           <KpiCard
-            label="Grasa"
+            label={t("Grasa")}
             display={metricDisplay(calcMode, msFat, bFat, ' g', 1)}
             delta={showDelta ? pctDelta(stats.promedio.fat_g, prevStats.promedio.fat_g) : null}
             sparkline={chartData.map((d) => (d.values ? d.values.fat_g : null))}
             sparkColor="var(--d-fat)"
           />
           <KpiCard
-            label="Sodio"
+            label={t("Sodio")}
             display={metricDisplay(calcMode, msSodio, bSodio, ' mg', 0)}
             delta={showDelta ? pctDelta(stats.avgSodio, prevStats.avgSodio) : null}
             status={sodiumIsLow(stats.avgSodio, stats.diasRegistrados > 0) ? 'danger' : null}
@@ -1006,11 +1027,12 @@ export default function Dashboard() {
             sparkColor="var(--d-carb)"
           />
           <KpiCard
-            label="Días"
+            label={t("Días")}
             display={{
               primary: `${calcCtx.diasCompletosFull}${diasParcialesFull > 0 ? ` +${diasParcialesFull}p` : ''}`,
               secondary: null,
-              hint: `${calcCtx.diasCompletosFull} días con todo registrado y ${diasParcialesFull} a los que parece faltarles comidas, de ${dates.length} días del periodo.`,
+              hint: t('%a días con todo registrado y %b a los que parece faltarles comidas, de %c días del periodo.')
+                .replace('%a', calcCtx.diasCompletosFull).replace('%b', diasParcialesFull).replace('%c', dates.length),
             }}
             delta={showDelta ? pctDelta(stats.diasRegistrados, prevStats.diasRegistrados) : null}
             suffix={` / ${dates.length}`}
@@ -1019,22 +1041,22 @@ export default function Dashboard() {
 
         <section className="md:col-span-2 lg:col-span-12 rounded-2xl bg-surface border border-border p-4">
           <p className="text-sm text-text-3 mb-2 flex items-center gap-1">
-            {CALC_TITLES[calcMode]}
+            {calcTitle(calcMode)}
             {isPhaseScopedMode && phaseHintText && <Hint text={phaseHintText}>ⓘ</Hint>}
           </p>
           {plainKcalPhrase && <p className="text-xs text-text-3 -mt-1 mb-2">{plainKcalPhrase}</p>}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <Stat label="Kcal" display={metricDisplay(calcMode, msKcal, bKcal, '', 1)} color="text-d-kcal" />
-            <Stat label="Prot" display={metricDisplay(calcMode, msProtein, bProtein, ' g', 1)} color="text-d-prot" />
-            <Stat label="Carbs" display={metricDisplay(calcMode, msCarbs, bCarbs, ' g', 1)} color="text-d-carb" />
-            <Stat label="Grasa" display={metricDisplay(calcMode, msFat, bFat, ' g', 1)} color="text-d-fat" />
+            <Stat label={t("Kcal")} display={metricDisplay(calcMode, msKcal, bKcal, '', 1)} color="text-d-kcal" />
+            <Stat label={t("Prot")} display={metricDisplay(calcMode, msProtein, bProtein, ' g', 1)} color="text-d-prot" />
+            <Stat label={t("Carbs")} display={metricDisplay(calcMode, msCarbs, bCarbs, ' g', 1)} color="text-d-carb" />
+            <Stat label={t("Grasa")} display={metricDisplay(calcMode, msFat, bFat, ' g', 1)} color="text-d-fat" />
           </div>
         </section>
 
         <section className="lg:col-span-8 rounded-2xl bg-surface border border-border p-4">
           <p className="text-sm text-text-3 mb-2 flex items-center gap-1">
-            Kcal por día
-            <Hint text="La línea sólida es lo que comiste cada día. La punteada suaviza esos altibajos con el promedio de los últimos 7 días, para ver la tendencia sin el ruido diario. La banda tenue marca ±10% de tu objetivo.">
+            {t('Kcal por día')}
+            <Hint text={t('La línea sólida es lo que comiste cada día. La punteada suaviza esos altibajos con el promedio de los últimos 7 días, para ver la tendencia sin el ruido diario. La banda tenue marca ±10% de tu objetivo.')}>
               ⓘ
             </Hint>
           </p>
@@ -1055,11 +1077,11 @@ export default function Dashboard() {
               {avgTargetKcal != null && (
                 <ReferenceArea y1={avgTargetKcal * 0.9} y2={avgTargetKcal * 1.1} fill="var(--accent)" fillOpacity={0.08} strokeOpacity={0} />
               )}
-              <Area type="monotone" dataKey="kcal" name="Kcal" stroke="var(--d-kcal)" strokeWidth={2} fill="url(#kcalGrad)" isAnimationActive={!reducedMotion} />
+              <Area type="monotone" dataKey="kcal" name={t("Kcal")} stroke="var(--d-kcal)" strokeWidth={2} fill="url(#kcalGrad)" isAnimationActive={!reducedMotion} />
               {stats.objetivo.kcal > 0 && (
-                <Line dataKey="targetKcal" name="Objetivo" stroke="var(--accent)" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
+                <Line dataKey="targetKcal" name={t("Objetivo")} stroke="var(--accent)" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
               )}
-              <Line dataKey="ma7" name="Promedio 7 días" stroke="var(--d-carb)" strokeDasharray="4 3" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
+              <Line dataKey="ma7" name={t("Promedio 7 días")} stroke="var(--d-carb)" strokeDasharray="4 3" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
             </ComposedChart>
           </ResponsiveContainer>
           </div>
@@ -1067,13 +1089,13 @@ export default function Dashboard() {
 
         <section className="lg:col-span-4 rounded-2xl bg-surface border border-border p-4">
           <p className="text-sm text-text-3 mb-2 flex items-center gap-1">
-            Distribución de macros (kcal)
-            <Hint text="Cada franja es un macronutriente (proteína, carbos, grasa) y su grosor es cuánto pesó ese día en tus calorías. Lee el ancho de cada color, no la altura total del área.">
+            {t('Distribución de macros (kcal)')}
+            <Hint text={t('Cada franja es un macronutriente (proteína, carbos, grasa) y su grosor es cuánto pesó ese día en tus calorías. Lee el ancho de cada color, no la altura total del área.')}>
               ⓘ
             </Hint>
           </p>
           {macroTotalKcal <= 0 ? (
-            <p className="text-sm text-text-2 py-8 text-center">Sin registros en el rango</p>
+            <p className="text-sm text-text-2 py-8 text-center">{t('Sin registros en el rango')}</p>
           ) : stats.diasRegistrados >= 3 ? (
             <div className="h-[220px] lg:h-80">
             <ResponsiveContainer width="100%" height="100%">
@@ -1095,9 +1117,9 @@ export default function Dashboard() {
                 <XAxis dataKey="label" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
                 <YAxis hide />
                 <Tooltip contentStyle={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text)' }} />
-                <Area type="monotone" dataKey="prot" name="Proteína" stackId="1" stroke="var(--d-prot)" fill="url(#protGrad)" isAnimationActive={!reducedMotion} />
-                <Area type="monotone" dataKey="carb" name="Carbs" stackId="1" stroke="var(--d-carb)" fill="url(#carbGrad)" isAnimationActive={!reducedMotion} />
-                <Area type="monotone" dataKey="fat" name="Grasa" stackId="1" stroke="var(--d-fat)" fill="url(#fatGrad)" isAnimationActive={!reducedMotion} />
+                <Area type="monotone" dataKey="prot" name={t("Proteína")} stackId="1" stroke="var(--d-prot)" fill="url(#protGrad)" isAnimationActive={!reducedMotion} />
+                <Area type="monotone" dataKey="carb" name={t("Carbs")} stackId="1" stroke="var(--d-carb)" fill="url(#carbGrad)" isAnimationActive={!reducedMotion} />
+                <Area type="monotone" dataKey="fat" name={t("Grasa")} stackId="1" stroke="var(--d-fat)" fill="url(#fatGrad)" isAnimationActive={!reducedMotion} />
               </AreaChart>
             </ResponsiveContainer>
             </div>
@@ -1109,9 +1131,9 @@ export default function Dashboard() {
                 <div className="h-full bg-d-fat" style={{ width: `${(stats.consumido.fat_g * 9 * 100) / macroTotalKcal}%` }} />
               </div>
               <div className="flex justify-between text-xs text-text-2">
-                <span className="text-d-prot">Prot {Math.round((stats.consumido.protein_g * 4 * 100) / macroTotalKcal)}%</span>
-                <span className="text-d-carb">Carbs {Math.round((stats.consumido.carbs_g * 4 * 100) / macroTotalKcal)}%</span>
-                <span className="text-d-fat">Grasa {Math.round((stats.consumido.fat_g * 9 * 100) / macroTotalKcal)}%</span>
+                <span className="text-d-prot">{t('Prot')} {Math.round((stats.consumido.protein_g * 4 * 100) / macroTotalKcal)}%</span>
+                <span className="text-d-carb">{t('Carbs')} {Math.round((stats.consumido.carbs_g * 4 * 100) / macroTotalKcal)}%</span>
+                <span className="text-d-fat">{t('Grasa')} {Math.round((stats.consumido.fat_g * 9 * 100) / macroTotalKcal)}%</span>
               </div>
             </div>
           )}
@@ -1119,13 +1141,13 @@ export default function Dashboard() {
 
         <section className={`${dates.length > 7 ? 'lg:col-span-6' : 'lg:col-span-12'} rounded-2xl bg-surface border border-border p-4`}>
           <p className="text-sm text-text-3 mb-3 flex items-center gap-1">
-            Huella nutricional (micros vs. objetivo)
-            <Hint text="Cada punta es un micronutriente. Cuanto más lejos del centro, más cerca (o por encima) llegaste de tu objetivo ese periodo — el borde del gráfico es 150%.">
+            {t('Huella nutricional (micros vs. objetivo)')}
+            <Hint text={t('Cada punta es un micronutriente. Cuanto más lejos del centro, más cerca (o por encima) llegaste de tu objetivo ese periodo — el borde del gráfico es 150%.')}>
               ⓘ
             </Hint>
           </p>
           {radarData.length === 0 ? (
-            <p className="text-sm text-text-2 py-8 text-center">Registra objetivos de micros en Metas</p>
+            <p className="text-sm text-text-2 py-8 text-center">{t('Registra objetivos de micros en Metas')}</p>
           ) : (
             <div className="h-[220px] lg:h-80">
             <ResponsiveContainer width="100%" height="100%">
@@ -1143,13 +1165,13 @@ export default function Dashboard() {
 
         {dates.length > 7 && (
           <section className="lg:col-span-6 rounded-2xl bg-surface border border-border p-4">
-            <p className="text-sm text-text-3 mb-3">Adherencia (kcal por día)</p>
+            <p className="text-sm text-text-3 mb-3">{t('Adherencia (kcal por día)')}</p>
             <AdherenceHeatmap weeks={weeks} dateSet={dateSet} dayInfo={dayInfo} />
           </section>
         )}
 
         <section className="lg:col-span-6 rounded-2xl bg-surface border border-border p-4">
-          <p className="text-sm text-text-3 mb-2">Proteína semanal vs piso</p>
+          <p className="text-sm text-text-3 mb-2">{t('Proteína semanal vs piso')}</p>
           <div className="h-[200px] lg:h-80">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={proteinWeekly}>
@@ -1157,19 +1179,19 @@ export default function Dashboard() {
               <XAxis dataKey="week" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
               <YAxis tick={{ fill: 'var(--text-3)', fontSize: 10 }} width={32} />
               <Tooltip contentStyle={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text)' }} />
-              <Bar dataKey="protein" name="Proteína" radius={[4, 4, 0, 0]} isAnimationActive={!reducedMotion}>
+              <Bar dataKey="protein" name={t("Proteína")} radius={[4, 4, 0, 0]} isAnimationActive={!reducedMotion}>
                 {proteinWeekly.map((w, i) => (
                   <Cell key={i} fill={`var(--${classifyFloor(w.protein, w.floor) || 'd-prot'})`} />
                 ))}
               </Bar>
-              <Line dataKey="floor" name="Piso" stroke="var(--accent)" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
+              <Line dataKey="floor" name={t("Piso")} stroke="var(--accent)" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
             </ComposedChart>
           </ResponsiveContainer>
           </div>
         </section>
 
         <section className="lg:col-span-6 rounded-2xl bg-surface border border-border p-4">
-          <p className="text-sm text-text-3 mb-2">Sodio diario vs piso</p>
+          <p className="text-sm text-text-3 mb-2">{t('Sodio diario vs piso')}</p>
           <div className="h-[200px] lg:h-80">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData}>
@@ -1189,7 +1211,7 @@ export default function Dashboard() {
               <Area
                 type="monotone"
                 dataKey="sodio"
-                name="Sodio"
+                name={t("Sodio")}
                 stroke="var(--d-carb)"
                 strokeWidth={2}
                 fill="url(#sodioGrad)"
@@ -1208,24 +1230,24 @@ export default function Dashboard() {
 
         <section className="md:col-span-2 lg:col-span-12 rounded-2xl bg-surface border border-border p-4">
           <div className="flex justify-between items-center mb-3">
-            <p className="text-sm text-text-3">Top alimentos</p>
+            <p className="text-sm text-text-3">{t('Top alimentos')}</p>
             <div className="flex gap-1">
               <button
                 onClick={() => setTopMetric('kcal')}
                 className={`px-2 py-1 min-h-[32px] rounded-full text-xs ${topMetric === 'kcal' ? 'bg-accent text-bg' : 'bg-surface-2 text-text-2'}`}
               >
-                Kcal
+                {t('Kcal')}
               </button>
               <button
                 onClick={() => setTopMetric('protein_g')}
                 className={`px-2 py-1 min-h-[32px] rounded-full text-xs ${topMetric === 'protein_g' ? 'bg-accent text-bg' : 'bg-surface-2 text-text-2'}`}
               >
-                Proteína
+                {t('Proteína')}
               </button>
             </div>
           </div>
           {top.length === 0 ? (
-            <p className="text-sm text-text-2">Sin registros en el rango</p>
+            <p className="text-sm text-text-2">{t('Sin registros en el rango')}</p>
           ) : (
             <div className="flex flex-col gap-2">
               {top.map((it) => (
@@ -1278,31 +1300,32 @@ function PhaseMenu({ phases, selection, active, label, onSelect }) {
   const ref = useOutsideClose(open, setOpen);
   const actual = phases[phases.length - 1] || null;
   const previa = phases[phases.length - 2] || null;
-  const fmt = (p) => `${p.label || 'Sin nombre'} · ${p.vf.slice(5)} → ${p.end.slice(5)}`; // MM-DD, como el eje de los charts
+  const fmt = (p) => `${p.label || t('Sin nombre')} · ${p.vf.slice(5)} → ${p.end.slice(5)}`; // MM-DD, como el eje de los charts
 
   const items = [
     {
       key: 'actual',
       sel: { kind: 'actual' },
-      label: 'Fase actual',
+      label: t('Fase actual'),
       sub: actual ? fmt(actual) : null,
-      reason: actual ? null : 'Todavía no tienes una fase en curso. Créala en Metas.',
+      reason: actual ? null : t('Todavía no tienes una fase en curso. Créala en Metas.'),
     },
     {
       key: 'previa',
       sel: { kind: 'previa' },
-      label: 'Fase previa',
+      label: t('Fase previa'),
       sub: previa ? fmt(previa) : null,
-      reason: previa ? null : 'Solo llevas una fase. La anterior aparecerá cuando empieces la siguiente.',
+      reason: previa ? null : t('Solo llevas una fase. La anterior aparecerá cuando empieces la siguiente.'),
     },
     ...PHASE_GOALS.map((g) => {
       const n = phases.filter((p) => p.goal === g.key).length;
+      const gLabel = t(g.label);
       return {
         key: g.key,
         sel: { kind: 'goal', goal: g.key },
-        label: g.label,
-        sub: n ? `${n} ${n === 1 ? 'fase' : 'fases'} en el histórico` : null,
-        reason: n ? null : `No has marcado ninguna fase como ${g.label}. Puedes hacerlo en Metas.`,
+        label: gLabel,
+        sub: n ? `${n} ${n === 1 ? t('fase') : t('fases')} ${t('en el histórico')}` : null,
+        reason: n ? null : t('No has marcado ninguna fase como %n. Puedes hacerlo en Metas.').replace('%n', gLabel),
         divider: g.key === PHASE_GOALS[0].key,
       };
     }),
@@ -1356,7 +1379,7 @@ function AdherenceHeatmap({ weeks, dateSet, dayInfo }) {
   return (
     <div className="flex gap-1 overflow-x-auto">
       <div className="grid grid-rows-7 gap-1 text-[10px] text-text-3 pr-1">
-        {DOW_SHORT.map((d, i) => (
+        {dowShort().map((d, i) => (
           <div key={i} className="h-3.5 flex items-center">
             {d}
           </div>
@@ -1373,7 +1396,7 @@ function AdherenceHeatmap({ weeks, dateSet, dayInfo }) {
               cls = status ? STATUS_BG[status] : 'bg-surface-3';
             }
             const parcial = info?.completeness === 'parcial';
-            const parcialSuffix = parcial ? ' (día incompleto: parece que faltaron comidas)' : '';
+            const parcialSuffix = parcial ? ` (${t('día incompleto: parece que faltaron comidas')})` : '';
             return (
               <div
                 key={`${wi}-${di}`}
@@ -1423,11 +1446,11 @@ function MicrosTable({
     const degraded = consumidoDisplay.degraded;
     return (
       <tr key={m.key} className="border-t border-border">
-        <td className="py-2">{m.label}</td>
+        <td className="py-2">{t(m.label)}</td>
         <td className={`py-2 text-right whitespace-normal font-mono tabular-nums ${sodiumDanger ? 'text-danger' : ''} ${degraded ? 'text-text-3' : ''}`}>
           <MetricCellText display={consumidoDisplay} />
           {zero.warn && (
-            <Hint text={`En ${zero.n} de ${zero.m} días no registraste este nutriente. El 0 puede significar 'no lo anotaste', no 'no lo comiste'.`}>
+            <Hint text={t('En %a de %b días no registraste este nutriente. El 0 puede significar \'no lo anotaste\', no \'no lo comiste\'.').replace('%a', zero.n).replace('%b', zero.m)}>
               {' '}
               ⚠
             </Hint>
@@ -1441,18 +1464,18 @@ function MicrosTable({
 
   return (
     <section className="rounded-2xl bg-surface border border-border p-4">
-      <p className="text-sm text-text-3 mb-3">Micros</p>
+      <p className="text-sm text-text-3 mb-3">{t('Micros')}</p>
       <table className="w-full text-sm">
         <thead>
           <tr className="text-text-3 text-left">
-            <th className="font-normal pb-2">Nutriente</th>
+            <th className="font-normal pb-2">{t('Nutriente')}</th>
             <th className="font-normal pb-2 text-right">
               <span className="inline-flex items-center gap-1 justify-end">
-                {CALC_HEADERS[calcMode]}
+                {calcHeader(calcMode)}
                 {phaseHintText && <Hint text={phaseHintText}>ⓘ</Hint>}
               </span>
             </th>
-            <th className="font-normal pb-2 text-right">Objetivo</th>
+            <th className="font-normal pb-2 text-right">{t('Objetivo')}</th>
             <th className="font-normal pb-2 text-right">%</th>
           </tr>
         </thead>
@@ -1460,13 +1483,13 @@ function MicrosTable({
       </table>
       {hidden.length > 0 && (
         <details className="mt-2">
-          <summary className="cursor-pointer text-sm text-text-2 py-2">Más micros ({hidden.length})</summary>
+          <summary className="cursor-pointer text-sm text-text-2 py-2">{t('Más micros (%n)').replace('%n', hidden.length)}</summary>
           <table className="w-full text-sm">
             <tbody>
               {microGroups(hidden).flatMap(({ cat, items }) => [
                 <tr key={cat}>
                   <td colSpan={4} className="pt-3 pb-1 text-xs uppercase tracking-wide text-text-3">
-                    {cat}
+                    {t(cat)}
                   </td>
                 </tr>,
                 ...items.map(renderRow),
@@ -1476,7 +1499,7 @@ function MicrosTable({
         </details>
       )}
       {sodiumIsLow(avgSodio, diasRegistrados > 0) && (
-        <p className="mt-3 text-sm text-danger">⚠ sodio promedio &lt; {SODIUM_FLOOR_MG} mg</p>
+        <p className="mt-3 text-sm text-danger">⚠ {t('sodio promedio')} &lt; {SODIUM_FLOOR_MG} mg</p>
       )}
     </section>
   );
@@ -1527,7 +1550,7 @@ function KpiCard({ label, display, delta, status, suffix = '', sparkline, sparkC
       {delta != null && (
         <p className="text-xs text-text-2">
           {delta > 0 ? '+' : ''}
-          {Math.round(delta)}% vs. anterior
+          {Math.round(delta)}% {t('vs. anterior')}
         </p>
       )}
       {sparkline && <Sparkline values={sparkline} color={sparkColor} />}

@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase.js';
+import { t, useLang } from '../lib/i18n.js';
 
 export default function Login() {
+  useLang();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -13,7 +15,7 @@ export default function Login() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    if (error) setError('Email o contraseña incorrectos.');
+    if (error) setError(t('Email o contraseña incorrectos.'));
   }
 
   return (
@@ -53,7 +55,7 @@ export default function Login() {
 
         <div className="flex flex-col gap-1">
           <label htmlFor="password" className="text-sm text-text-2">
-            Contraseña
+            {t('Contraseña')}
           </label>
           <input
             id="password"
@@ -72,7 +74,7 @@ export default function Login() {
           disabled={loading}
           className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60"
         >
-          {loading ? 'Entrando…' : 'Entrar'}
+          {loading ? t('Entrando…') : t('Entrar')}
         </button>
       </form>
     </div>

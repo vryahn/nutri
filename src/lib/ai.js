@@ -1,5 +1,12 @@
 // Cliente Gemini y helpers compartidos entre Foods.jsx y Recipes.jsx ("Datos con IA").
 import { MICROS } from './domain.js';
+import { getLang } from './i18n.js';
+
+// "name" en el idioma activo del usuario, no siempre español (el resto del
+// prompt permanece en español — Gemini entiende la instrucción igual).
+function nameLangInstruction() {
+  return getLang() === 'en' ? 'in English' : 'en español';
+}
 
 export const GEMINI_KEY = import.meta.env?.VITE_GEMINI_KEY;
 export const MISTRAL_KEY = import.meta.env?.VITE_MISTRAL_KEY;
@@ -55,7 +62,7 @@ OBLIGATORIOS: kcal, protein_g, carbs_g, fat_g, sodio_mg, potasio_mg y magnesio_m
 El resto de los micros (incluida grasa saturada/trans, azúcares y fibra): SOLO con dato fiable de etiqueta o base tipo USDA; si no, null. Un 0 real (p. ej. grasa trans en una manzana) sí es válido cuando el valor real es cero.
 Si el alimento es genérico y SIN marca (nunca para productos empaquetados, que devolverían variantes de EE. UU.), da "usda_query": su nombre en inglés apto para buscar en USDA FoodData Central; si no aplica, null.
 Si es líquido o bebida, da "density_g_ml" usando estos valores canónicos cuando el tipo coincida: ${DENSITY_PRESETS.map((p) => `${p.label.toLowerCase()} ${p.value}`).join(', ')}; para otro líquido, tu mejor estimación; si no es líquido, null.
-"confidence": "alta"|"media"|"baja" según qué tan fundada está tu respuesta. "name" corto en español. "brand" solo si es identificable.`;
+"confidence": "alta"|"media"|"baja" según qué tan fundada está tu respuesta. "name" corto, ${nameLangInstruction()}. "brand" solo si es identificable.`;
 }
 
 const GEMINI_SCHEMA = {
@@ -95,7 +102,7 @@ Para ingredientes genéricos sin match, da "usda_query" (nombre en inglés apto 
 Para CADA ingrediente da además sus valores nutricionales por 100 g de porción comestible, como respaldo revisable (base tipo USDA priorizando México). OBLIGATORIOS siempre con tu mejor estimación disponible: kcal, protein_g, carbs_g, fat_g, sodio_mg, potasio_mg, magnesio_mg (null SOLO si es imposible fundarlo, nunca 0 inventado). Resto de micros: solo con dato fiable, si no null. Unidades: kcal en kcal; protein_g/carbs_g/fat_g en gramos; micros: ${units}.
 Si el usuario indica tamaño total (p. ej. "350ml"), conviértelo a gramos con densidad razonable y devuélvelo en "total_weight_g"; si no lo indica, tu mejor estimación del peso total preparado; null si imposible.
 "kcal_total_estimate": tu estimación gruesa de kcal TOTALES del platillo completo (solo para verificación cruzada, jamás se persiste); null si no puedes fundarla.
-"name": nombre corto de la receta en español. "confidence": "alta"|"media"|"baja".`;
+"name": nombre corto de la receta, ${nameLangInstruction()}. "confidence": "alta"|"media"|"baja".`;
 }
 
 const RECIPE_SCHEMA = {

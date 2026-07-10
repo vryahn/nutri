@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { History, ChevronLeft, ChevronDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { MICROS, PHASE_GOALS, goalLabel, todayISO, addDaysISO, resolveTarget } from '../lib/domain.js';
+import { t, useLang, getLang, locale } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import ConfirmSheet from '../components/ConfirmSheet.jsx';
 
 // ===== Helpers puros (agrupación §2.1, fechas §5) =====
 // dow 0=domingo (contrato de la columna). Orden visual de despliegue Lun→Dom.
-const DOW_SHORT = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
+const DOW_SHORT_ES = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
+const DOW_SHORT_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const dowShort = () => (getLang() === 'en' ? DOW_SHORT_EN : DOW_SHORT_ES);
 const VISUAL_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
 // Tailwind v3 no genera clases de opacidad sobre tokens var() (bg-x/20 = no-op),
@@ -62,9 +65,10 @@ function chipLabels(dows) {
   const idxs = dows.map((d) => VISUAL_ORDER.indexOf(d)).sort((a, b) => a - b);
   const contiguous = idxs.every((v, i) => i === 0 || v === idxs[i - 1] + 1);
   if (dows.length >= 2 && contiguous) {
-    return [`${DOW_SHORT[VISUAL_ORDER[idxs[0]]]} – ${DOW_SHORT[VISUAL_ORDER[idxs[idxs.length - 1]]]}`];
+    const s = dowShort();
+    return [`${s[VISUAL_ORDER[idxs[0]]]} – ${s[VISUAL_ORDER[idxs[idxs.length - 1]]]}`];
   }
-  return dows.map((d) => DOW_SHORT[d]);
+  return dows.map((d) => dowShort()[d]);
 }
 
 function daysBetween(aIso, bIso) {
@@ -75,7 +79,7 @@ function daysBetween(aIso, bIso) {
 // para evitar el desfase UTC (patrón de weekdayOf).
 function fmtShort(iso) {
   const d = new Date(iso + 'T00:00:00');
-  const s = d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }).replace(/\./g, '');
+  const s = d.toLocaleDateString(locale(), { day: 'numeric', month: 'short' }).replace(/\./g, '');
   const y = d.getFullYear();
   return y === new Date().getFullYear() ? s : `${s} ${y}`;
 }
@@ -83,7 +87,7 @@ function fmtShort(iso) {
 // «Mié 8 jul» para las cards de override.
 function fmtDow(iso) {
   const d = new Date(iso + 'T00:00:00');
-  let wd = d.toLocaleDateString('es-MX', { weekday: 'short' }).replace(/\./g, '');
+  let wd = d.toLocaleDateString(locale(), { weekday: 'short' }).replace(/\./g, '');
   wd = wd.charAt(0).toUpperCase() + wd.slice(1);
   return `${wd} ${fmtShort(iso)}`;
 }
@@ -91,13 +95,21 @@ function fmtDow(iso) {
 // «Miércoles 8 de julio» (+ « de AAAA» si no es el año actual) para el meta del override.
 function fmtFull(iso) {
   const d = new Date(iso + 'T00:00:00');
-  let s = d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
-  if (d.getFullYear() !== new Date().getFullYear()) s += ` de ${d.getFullYear()}`;
+  let s = d.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' });
+  if (d.getFullYear() !== new Date().getFullYear()) {
+    s += getLang() === 'en' ? `, ${d.getFullYear()}` : ` de ${d.getFullYear()}`;
+  }
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+const dayWord = (n) => (n === 1 ? t('día') : t('días'));
+
 const relDaysLabel = (n) =>
-  n === 0 ? 'hoy' : n > 0 ? `en ${n} ${n === 1 ? 'día' : 'días'}` : `hace ${-n} ${-n === 1 ? 'día' : 'días'}`;
+  n === 0
+    ? t('hoy')
+    : n > 0
+      ? t('en %n %d').replace('%n', n).replace('%d', dayWord(n))
+      : t('hace %n %d').replace('%n', -n).replace('%d', dayWord(-n));
 
 // Valores de una fila DB → objeto editable (null → '' para los inputs).
 function valuesOf(row) {
@@ -154,7 +166,7 @@ function draftToRows(groups, { validFrom, label, description, goal, owner }) {
 function friendly(error, dupMsg) {
   if (!error) return null;
   if (error.code === '23505') return dupMsg;
-  return error.message || 'No se pudo guardar.';
+  return error.message || t('No se pudo guardar.');
 }
 
 // lg+ cambia sheet→edición/alta inline (§A.2, §A.3 de la propuesta desktop).
@@ -171,6 +183,7 @@ function useLgUp() {
 
 // ===== Página =====
 export default function Targets() {
+  useLang();
   const [targets, setTargets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState(null);
@@ -251,33 +264,33 @@ export default function Targets() {
   async function corregirFase(draft) {
     const rows = draftToRows(draft.groups, { validFrom: vigenteVf, label: draft.label, description: draft.description, goal: draft.goal, owner: userId });
     const { error } = await supabase.from('targets').upsert(rows, { onConflict: 'owner,dow,valid_from' });
-    if (error) return friendly(error, 'No se pudo corregir la fase.');
+    if (error) return friendly(error, t('No se pudo corregir la fase.'));
     afterVigenteSave();
     return null;
   }
   async function nuevaFaseDesdeHoy(draft) {
     const rows = draftToRows(draft.groups, { validFrom: today, label: draft.label, description: draft.description, goal: draft.goal, owner: userId });
     const { error } = await supabase.from('targets').insert(rows);
-    if (error) return friendly(error, 'Ya existe una fase que aplica desde hoy.');
+    if (error) return friendly(error, t('Ya existe una fase que aplica desde hoy.'));
     afterVigenteSave();
     return null;
   }
   async function saveNewPhase(draft) {
-    if (phaseVfs.includes(draft.validFrom)) return 'Ya existe una fase que aplica desde esa fecha.';
+    if (phaseVfs.includes(draft.validFrom)) return t('Ya existe una fase que aplica desde esa fecha.');
     const rows = draftToRows(draft.groups, { validFrom: draft.validFrom, label: draft.label, description: draft.description, goal: draft.goal, owner: userId });
     const { error } = await supabase.from('targets').insert(rows);
-    if (error) return friendly(error, 'Ya existe una fase que aplica desde esa fecha.');
+    if (error) return friendly(error, t('Ya existe una fase que aplica desde esa fecha.'));
     setSheet(null);
     load();
     return null;
   }
   async function saveProgramada(oldVf, draft) {
     const newVf = draft.validFrom;
-    if (newVf !== oldVf && phaseVfs.includes(newVf)) return 'Ya existe una fase que aplica desde esa fecha.';
+    if (newVf !== oldVf && phaseVfs.includes(newVf)) return t('Ya existe una fase que aplica desde esa fecha.');
     if (newVf !== oldVf) await supabase.from('targets').delete().eq('valid_from', oldVf).not('dow', 'is', null);
     const rows = draftToRows(draft.groups, { validFrom: newVf, label: draft.label, description: draft.description, goal: draft.goal, owner: userId });
     const { error } = await supabase.from('targets').upsert(rows, { onConflict: 'owner,dow,valid_from' });
-    if (error) return friendly(error, 'No se pudo guardar la fase.');
+    if (error) return friendly(error, t('No se pudo guardar la fase.'));
     setSheet(null);
     load();
     return null;
@@ -307,7 +320,7 @@ export default function Targets() {
     const { error } = id
       ? await supabase.from('targets').update(payload).eq('id', id)
       : await supabase.from('targets').insert({ owner: userId, ...payload });
-    if (error) return friendly(error, 'Ya existe una fecha específica para ese día.');
+    if (error) return friendly(error, t('Ya existe una fecha específica para ese día.'));
     setSheet(null);
     load();
     return null;
@@ -318,11 +331,11 @@ export default function Targets() {
     if (error) load();
   }
 
-  if (loading) return <div className="px-4 py-4 text-text-2">Cargando…</div>;
+  if (loading) return <div className="px-4 py-4 text-text-2">{t('Cargando…')}</div>;
 
   return (
     <div className="px-4 py-4 flex flex-col gap-6">
-      <h1 className="font-display text-xl">Objetivos</h1>
+      <h1 className="font-display text-xl">{t('Objetivos')}</h1>
 
       <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:gap-6 lg:items-start">
         <div className="flex flex-col gap-6">
@@ -345,12 +358,12 @@ export default function Targets() {
           ) : (
             <div className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
               <Kicker variant="vigente" />
-              <p className="text-text-2 text-sm">Sin fase vigente. Programa una fase para empezar.</p>
+              <p className="text-text-2 text-sm">{t('Sin fase vigente. Programa una fase para empezar.')}</p>
               <button
                 onClick={() => setSheet({ type: 'newPhase' })}
                 className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press"
               >
-                Crear fase
+                {t('Crear fase')}
               </button>
             </div>
           )}
@@ -358,17 +371,17 @@ export default function Targets() {
           {/* Fases programadas */}
           <section className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium">Fases programadas</h2>
+              <h2 className="text-sm font-medium">{t('Fases programadas')}</h2>
               <button
                 onClick={() => setSheet({ type: 'newPhase' })}
                 className="text-[13px] text-accent min-h-[44px] px-2 rounded-lg hover:bg-surface-2 press"
               >
-                + Programar
+                + {t('Programar')}
               </button>
             </div>
 
             {programadaVfs.length === 0 ? (
-              <p className="text-[13px] text-text-2">Sin fases programadas</p>
+              <p className="text-[13px] text-text-2">{t('Sin fases programadas')}</p>
             ) : (
               <div className="flex flex-col gap-2">
                 {programadaVfs.map((vf) => {
@@ -411,11 +424,11 @@ export default function Targets() {
                         className="rounded-xl bg-surface border border-border px-3.5 py-3.5"
                       >
                         <p className="font-medium text-sm leading-tight flex items-center gap-1.5" style={{ margin: 0 }}>
-                          <span>{labelOf(vf) || 'Sin nombre'}</span>
-                          {goalOf(vf) && <Chip text={goalLabel(goalOf(vf))} />}
+                          <span>{labelOf(vf) || t('Sin nombre')}</span>
+                          {goalOf(vf) && <Chip text={t(goalLabel(goalOf(vf)))} />}
                         </p>
                         <p className="font-mono text-[11.5px] text-text-3 mt-1" style={{ margin: 0 }}>
-                          {fmtShort(vf)} → {nvf ? fmtShort(addDaysISO(nvf, -1)) : 'sin fin'} · en {d} {d === 1 ? 'día' : 'días'}
+                          {fmtShort(vf)} → {nvf ? fmtShort(addDaysISO(nvf, -1)) : t('sin fin')} · {t('en %n %d').replace('%n', d).replace('%d', dayWord(d))}
                         </p>
                       </SwipeToDelete>
                       <div className="hidden lg:group-hover:flex lg:group-focus-within:flex absolute right-3 top-1/2 -translate-y-1/2 gap-1 bg-surface rounded-lg">
@@ -426,7 +439,7 @@ export default function Targets() {
                             setSheet({ type: 'confirmDeletePhase', vf });
                           }}
                           className="p-1.5 text-text-2 hover:text-danger"
-                          aria-label="Borrar fase"
+                          aria-label={t('Borrar fase')}
                         >
                           <Trash2 size={16} />
                         </button>
@@ -442,7 +455,7 @@ export default function Targets() {
                 onClick={() => setSheet({ type: 'previas' })}
                 className="flex items-center justify-center gap-2 min-h-[44px] rounded-xl border border-border text-text-2 text-[13px] press"
               >
-                <History size={15} /> Fases previas ({previaVfs.length})
+                <History size={15} /> {t('Fases previas')} ({previaVfs.length})
               </button>
             )}
           </section>
@@ -451,13 +464,13 @@ export default function Targets() {
         {/* Fechas específicas */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium">Fechas específicas</h2>
+            <h2 className="text-sm font-medium">{t('Fechas específicas')}</h2>
             <button
               ref={newOverrideBtnRef}
               onClick={() => (lgUp ? setNewOverrideInline(true) : setSheet({ type: 'newOverride' }))}
               className="text-[13px] text-accent min-h-[44px] px-2 rounded-lg hover:bg-surface-2 press"
             >
-              + Añadir
+              + {t('Añadir')}
             </button>
           </div>
 
@@ -478,7 +491,7 @@ export default function Targets() {
           )}
 
           {overrides.length === 0 ? (
-            <p className="text-[13px] text-text-2">Sin fechas específicas aún</p>
+            <p className="text-[13px] text-text-2">{t('Sin fechas específicas aún')}</p>
           ) : (
             <div className="flex flex-col gap-2">
               {overrides.map((ov) => {
@@ -528,7 +541,7 @@ export default function Targets() {
                           style={{ background: tint('--warn', 14), color: 'var(--warn)' }}
                         >
                           {delta > 0 ? '+' : '−'}
-                          {Math.abs(delta)} vs fase
+                          {Math.abs(delta)} {t('vs fase')}
                         </span>
                       )}
                     </SwipeToDelete>
@@ -540,7 +553,7 @@ export default function Targets() {
                           deleteOverride(ov.id);
                         }}
                         className="p-1.5 text-text-2 hover:text-danger"
-                        aria-label="Borrar fecha específica"
+                        aria-label={t('Borrar fecha específica')}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -615,9 +628,9 @@ export default function Targets() {
 
       {sheet?.type === 'confirmDeletePhase' && (
         <ConfirmSheet
-          title={`¿Borrar “${labelOf(sheet.vf) || 'Sin nombre'}”?`}
-          body="Se eliminarán sus 7 objetivos diarios. Esta acción no se puede deshacer."
-          confirmLabel="Borrar fase"
+          title={t('¿Borrar "%n"?').replace('%n', labelOf(sheet.vf) || t('Sin nombre'))}
+          body={t('Se eliminarán sus 7 objetivos diarios. Esta acción no se puede deshacer.')}
+          confirmLabel={t('Borrar fase')}
           onConfirm={() => deletePhase(sheet.vf)}
           onClose={() => setSheet(null)}
         />
@@ -674,7 +687,7 @@ function PhaseCard({ variant, validFrom, label = '', description = '', goal = ''
     setBusy(true);
     const err = await onSave(draft);
     setBusy(false);
-    if (err) setSaveError(typeof err === 'string' ? err : 'No se pudo guardar.');
+    if (err) setSaveError(typeof err === 'string' ? err : t('No se pudo guardar.'));
   }
 
   const setGroups = (fn) => setDraft((d) => ({ ...d, groups: fn(d.groups) }));
@@ -713,8 +726,8 @@ function PhaseCard({ variant, validFrom, label = '', description = '', goal = ''
       {!editing ? (
         <div className="flex flex-col gap-1">
           <div className="flex items-baseline gap-2 flex-wrap">
-            <h2 className="font-display text-[19px] leading-tight">{label || <span className="text-text-2">Sin nombre</span>}</h2>
-            {goal && <Chip text={goalLabel(goal)} />}
+            <h2 className="font-display text-[19px] leading-tight">{label || <span className="text-text-2">{t('Sin nombre')}</span>}</h2>
+            {goal && <Chip text={t(goalLabel(goal))} />}
           </div>
           {description && (
             <p className="text-[12.5px] text-text-2" style={{ margin: 0 }}>
@@ -724,10 +737,10 @@ function PhaseCard({ variant, validFrom, label = '', description = '', goal = ''
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          <TextField label="Nombre de fase" value={draft.label} onChange={(v) => setDraft((d) => ({ ...d, label: v }))} placeholder="p. ej. Bulk único" />
-          <TextField label="Descripción" value={draft.description} onChange={(v) => setDraft((d) => ({ ...d, description: v }))} placeholder="Objetivo de la fase" />
+          <TextField label={t('Nombre de fase')} value={draft.label} onChange={(v) => setDraft((d) => ({ ...d, label: v }))} placeholder={t('p. ej. Bulk único')} />
+          <TextField label={t('Descripción')} value={draft.description} onChange={(v) => setDraft((d) => ({ ...d, description: v }))} placeholder={t('Objetivo de la fase')} />
           <GoalField value={draft.goal} onChange={(v) => setDraft((d) => ({ ...d, goal: v }))} />
-          {showValidFrom && <DateField label="Aplica desde" value={draft.validFrom} onChange={(v) => setDraft((d) => ({ ...d, validFrom: v }))} />}
+          {showValidFrom && <DateField label={t('Aplica desde')} value={draft.validFrom} onChange={(v) => setDraft((d) => ({ ...d, validFrom: v }))} />}
         </div>
       )}
 
@@ -735,16 +748,16 @@ function PhaseCard({ variant, validFrom, label = '', description = '', goal = ''
 
       <div className="border-t border-border pt-3 flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-text-2">Semana de la fase</span>
+          <span className="text-xs font-medium text-text-2">{t('Semana de la fase')}</span>
           {editing ? (
             variant === 'new' && copyWeek ? (
               <button onClick={copyVigente} className="text-xs text-accent min-h-[44px] press">
-                Copiar semana vigente
+                {t('Copiar semana vigente')}
               </button>
             ) : null
           ) : (
             <span className="text-[11px] text-text-3">
-              {groups.length} {groups.length === 1 ? 'tipo de día' : 'tipos de día'}
+              {groups.length} {groups.length === 1 ? t('tipo de día') : t('tipos de día')}
             </span>
           )}
         </div>
@@ -770,14 +783,14 @@ function PhaseCard({ variant, validFrom, label = '', description = '', goal = ''
           {saveError && <p className="text-xs text-danger">{saveError}</p>}
           <div className="flex gap-2 pt-1">
             <button onClick={cancel} className="flex-1 min-h-[44px] rounded-xl border border-border text-text-2 press">
-              Cancelar
+              {t('Cancelar')}
             </button>
             <button
               onClick={save}
               disabled={busy}
               className="flex-1 min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60"
             >
-              {busy ? 'Guardando…' : 'Guardar'}
+              {busy ? t('Guardando…') : t('Guardar')}
             </button>
           </div>
         </>
@@ -808,7 +821,7 @@ function OverrideCard({ variant, override, faseFor, initialEditing = false, forc
     setBusy(true);
     const err = await onSave(draft);
     setBusy(false);
-    if (err) setSaveError(typeof err === 'string' ? err : 'No se pudo guardar.');
+    if (err) setSaveError(typeof err === 'string' ? err : t('No se pudo guardar.'));
   }
   const setVal = (k, v) => setDraft((d) => ({ ...d, values: { ...d.values, [k]: v } }));
   const setMicro = (k, v) =>
@@ -834,10 +847,10 @@ function OverrideCard({ variant, override, faseFor, initialEditing = false, forc
       {!editing ? (
         <>
           <div className="flex flex-col gap-1">
-            <h2 className="font-display text-[19px] leading-tight">{override?.label || <span className="text-text-2">Sin motivo</span>}</h2>
+            <h2 className="font-display text-[19px] leading-tight">{override?.label || <span className="text-text-2">{t('Sin motivo')}</span>}</h2>
             {fase && fase.kcal != null && (
               <p className="text-[12.5px] text-text-2" style={{ margin: 0 }}>
-                Sustituye a “{fase.label || 'la fase'}” ese día ({fase.kcal} kcal)
+                {t('Sustituye a "%n" ese día (%m kcal)').replace('%n', fase.label || t('la fase')).replace('%m', fase.kcal)}
               </p>
             )}
           </div>
@@ -847,12 +860,12 @@ function OverrideCard({ variant, override, faseFor, initialEditing = false, forc
           <div className="border-t border-border pt-3">
             <div className="bg-surface-2 rounded-xl p-3 flex flex-col gap-2">
               <div className="flex items-start justify-between gap-2">
-                <Chip text="DÍA ÚNICO" />
+                <Chip text={t('DÍA ÚNICO')} />
                 <div className="flex items-center gap-2 shrink-0">
                   {delta != null && (
                     <span className="font-mono text-[11px] px-2 py-1 rounded-md" style={{ background: tint('--warn', 14), color: 'var(--warn)' }}>
                       {delta > 0 ? '+' : '−'}
-                      {Math.abs(delta)} vs fase
+                      {Math.abs(delta)} {t('vs fase')}
                     </span>
                   )}
                   <span className="font-mono text-[15px]">{override?.kcal == null ? '–' : override.kcal}</span>
@@ -865,32 +878,32 @@ function OverrideCard({ variant, override, faseFor, initialEditing = false, forc
         </>
       ) : (
         <>
-          <DateField label="Fecha" value={draft.day} onChange={(v) => setDraft((d) => ({ ...d, day: v }))} />
-          <TextField label="Motivo" value={draft.label} onChange={(v) => setDraft((d) => ({ ...d, label: v }))} placeholder="p. ej. Cumpleaños" />
+          <DateField label={t('Fecha')} value={draft.day} onChange={(v) => setDraft((d) => ({ ...d, day: v }))} />
+          <TextField label={t('Motivo')} value={draft.label} onChange={(v) => setDraft((d) => ({ ...d, label: v }))} placeholder={t('p. ej. Cumpleaños')} />
           <div className="grid grid-cols-4 gap-2">
-            <MiniNumberField label="Kcal" value={draft.values.kcal} onChange={(v) => setVal('kcal', v)} />
-            <MiniNumberField label="Prot" value={draft.values.protein_g} onChange={(v) => setVal('protein_g', v)} />
-            <MiniNumberField label="Carbs" value={draft.values.carbs_g} onChange={(v) => setVal('carbs_g', v)} />
-            <MiniNumberField label="Grasa" value={draft.values.fat_g} onChange={(v) => setVal('fat_g', v)} />
+            <MiniNumberField label={t('Kcal')} value={draft.values.kcal} onChange={(v) => setVal('kcal', v)} />
+            <MiniNumberField label={t('Prot')} value={draft.values.protein_g} onChange={(v) => setVal('protein_g', v)} />
+            <MiniNumberField label={t('Carbs')} value={draft.values.carbs_g} onChange={(v) => setVal('carbs_g', v)} />
+            <MiniNumberField label={t('Grasa')} value={draft.values.fat_g} onChange={(v) => setVal('fat_g', v)} />
           </div>
           {delta != null && (
             <p className="font-mono text-[11px]" style={{ color: 'var(--warn)', margin: 0 }}>
               {delta > 0 ? '+' : '−'}
-              {Math.abs(delta)} kcal vs fase ese día
+              {Math.abs(delta)} {t('kcal vs fase ese día')}
             </p>
           )}
           <MicrosEditor micros={draft.values.micros} onMicro={setMicro} />
           {saveError && <p className="text-xs text-danger">{saveError}</p>}
           <div className="flex gap-2 pt-1">
             <button onClick={cancel} className="flex-1 min-h-[44px] rounded-xl border border-border text-text-2 press">
-              Cancelar
+              {t('Cancelar')}
             </button>
             <button
               onClick={save}
               disabled={busy}
               className="flex-1 min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60"
             >
-              {busy ? 'Guardando…' : 'Guardar'}
+              {busy ? t('Guardando…') : t('Guardar')}
             </button>
           </div>
         </>
@@ -901,14 +914,14 @@ function OverrideCard({ variant, override, faseFor, initialEditing = false, forc
 
 function PhaseMeta({ variant, validFrom, nextVf, today }) {
   const start = fmtShort(validFrom);
-  const endStr = nextVf ? fmtShort(addDaysISO(nextVf, -1)) : 'sin fin';
+  const endStr = nextVf ? fmtShort(addDaysISO(nextVf, -1)) : t('sin fin');
 
   if (variant === 'programada' || variant === 'new') {
     const d = daysBetween(today, validFrom);
     return (
       <div className="flex flex-col gap-1.5">
         <p className="font-mono text-[11px] text-text-3" style={{ margin: 0 }}>
-          {start} → {endStr} · inicia en {d} {d === 1 ? 'día' : 'días'}
+          {start} → {endStr} · {t('inicia en %n %d').replace('%n', d).replace('%d', dayWord(d))}
         </p>
         <ProgressBar pct={0} />
       </div>
@@ -919,7 +932,7 @@ function PhaseMeta({ variant, validFrom, nextVf, today }) {
     return (
       <div className="flex flex-col gap-1.5">
         <p className="font-mono text-[11px] text-text-3" style={{ margin: 0 }}>
-          {start} → {endStr} · duró {d} {d === 1 ? 'día' : 'días'}
+          {start} → {endStr} · {t('duró %n %d').replace('%n', d).replace('%d', dayWord(d))}
         </p>
         <ProgressBar pct={100} color="var(--text-3)" />
       </div>
@@ -936,7 +949,7 @@ function PhaseMeta({ variant, validFrom, nextVf, today }) {
           {start} → {endStr}
         </p>
         <p className="font-mono text-[11px] text-text-3" style={{ margin: 0 }}>
-          día {N}
+          {t('día %n').replace('%n', N)}
           {M ? ` / ${M}` : ''}
         </p>
       </div>
@@ -976,22 +989,22 @@ function GroupEditor({ group, onField, onMicro, onSplit }) {
   return (
     <div className="bg-surface-3 rounded-b-xl p-3 flex flex-col gap-3">
       <div className="grid grid-cols-4 gap-2">
-        <MiniNumberField label="Kcal" value={group.values.kcal} onChange={(v) => onField('kcal', v)} />
-        <MiniNumberField label="Prot" value={group.values.protein_g} onChange={(v) => onField('protein_g', v)} />
-        <MiniNumberField label="Carbs" value={group.values.carbs_g} onChange={(v) => onField('carbs_g', v)} />
-        <MiniNumberField label="Grasa" value={group.values.fat_g} onChange={(v) => onField('fat_g', v)} />
+        <MiniNumberField label={t('Kcal')} value={group.values.kcal} onChange={(v) => onField('kcal', v)} />
+        <MiniNumberField label={t('Prot')} value={group.values.protein_g} onChange={(v) => onField('protein_g', v)} />
+        <MiniNumberField label={t('Carbs')} value={group.values.carbs_g} onChange={(v) => onField('carbs_g', v)} />
+        <MiniNumberField label={t('Grasa')} value={group.values.fat_g} onChange={(v) => onField('fat_g', v)} />
       </div>
       <MicrosEditor micros={group.values.micros} onMicro={onMicro} />
       {group.dows.length > 1 && (
         <div>
           <button type="button" onClick={() => setSplitting((s) => !s)} className="text-xs text-accent min-h-[44px] press">
-            Separar un día
+            {t('Separar un día')}
           </button>
           {splitting && (
             <div className="flex flex-wrap gap-2 pt-1">
               {group.dows.map((d) => (
                 <button key={d} type="button" onClick={() => onSplit(d)} className="min-h-[44px] px-3 rounded-full bg-surface-2 border border-border text-xs">
-                  {DOW_SHORT[d]}
+                  {dowShort()[d]}
                 </button>
               ))}
             </div>
@@ -1005,10 +1018,10 @@ function GroupEditor({ group, onField, onMicro, onSplit }) {
 function MicrosEditor({ micros, onMicro }) {
   return (
     <details>
-      <summary className="cursor-pointer text-xs text-text-3 min-h-[44px] flex items-center">Micros</summary>
+      <summary className="cursor-pointer text-xs text-text-3 min-h-[44px] flex items-center">{t('Micros')}</summary>
       <div className="grid grid-cols-4 gap-2 pt-2">
         {MICROS.map((m) => (
-          <MiniNumberField key={m.key} label={m.label} value={micros[m.key] ?? ''} onChange={(v) => onMicro(m.key, v)} />
+          <MiniNumberField key={m.key} label={t(m.label)} value={micros[m.key] ?? ''} onChange={(v) => onMicro(m.key, v)} />
         ))}
       </div>
     </details>
@@ -1056,12 +1069,12 @@ function Kicker({ variant }) {
     newOverride: <span className="w-[7px] h-[7px] rounded-full bg-warn" />,
   };
   const text = {
-    vigente: 'FASE VIGENTE',
-    programada: 'FASE PROGRAMADA',
-    new: 'NUEVA FASE',
-    previa: 'FASE PREVIA',
-    override: 'FECHA ESPECÍFICA',
-    newOverride: 'NUEVA FECHA',
+    vigente: t('FASE VIGENTE'),
+    programada: t('FASE PROGRAMADA'),
+    new: t('NUEVA FASE'),
+    previa: t('FASE PREVIA'),
+    override: t('FECHA ESPECÍFICA'),
+    newOverride: t('NUEVA FECHA'),
   };
   return (
     <div className="flex items-center gap-1.5">
@@ -1078,7 +1091,7 @@ function EditPill({ onClick }) {
       style={{ border: `1px solid ${tint('--accent', 55)}` }}
       className="shrink-0 min-h-[44px] px-4 inline-flex items-center rounded-full text-accent text-xs hover:bg-surface-2 press"
     >
-      Editar
+      {t('Editar')}
     </button>
   );
 }
@@ -1118,12 +1131,12 @@ function TextField({ label, value, onChange, placeholder }) {
 function GoalField({ value, onChange }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-xs text-text-3">Meta</label>
+      <label className="text-xs text-text-3">{t('Meta')}</label>
       <select value={value} onChange={(e) => onChange(e.target.value)} className="input">
-        <option value="">Sin especificar</option>
+        <option value="">{t('Sin especificar')}</option>
         {PHASE_GOALS.map((g) => (
           <option key={g.key} value={g.key}>
-            {g.label}
+            {t(g.label)}
           </option>
         ))}
       </select>
@@ -1172,18 +1185,20 @@ function DecisionSheet({ validFrom, onCorregir, onNueva, onClose }) {
   return (
     <Sheet onClose={onClose}>
       <div className="flex flex-col gap-3">
-        <h2 className="font-display text-[19px]">Guardar cambios</h2>
+        <h2 className="font-display text-[19px]">{t('Guardar cambios')}</h2>
         <button onClick={() => run(onCorregir)} disabled={busy} className="text-left rounded-xl border border-border p-3.5 press disabled:opacity-60">
-          <span className="block font-medium">Corregir la fase</span>
-          <span className="block text-xs text-warn mt-1">Reescribe el objetivo desde el {fmtShort(validFrom)}. La adherencia pasada se recalcula.</span>
+          <span className="block font-medium">{t('Corregir la fase')}</span>
+          <span className="block text-xs text-warn mt-1">
+            {t('Reescribe el objetivo desde el %n. La adherencia pasada se recalcula.').replace('%n', fmtShort(validFrom))}
+          </span>
         </button>
         <button onClick={() => run(onNueva)} disabled={busy} className="text-left rounded-xl border border-border p-3.5 press disabled:opacity-60">
-          <span className="block font-medium">Nueva fase desde hoy</span>
-          <span className="block text-xs text-text-2 mt-1">Conserva el histórico intacto.</span>
+          <span className="block font-medium">{t('Nueva fase desde hoy')}</span>
+          <span className="block text-xs text-text-2 mt-1">{t('Conserva el histórico intacto.')}</span>
         </button>
         {err && <p className="text-xs text-danger">{err}</p>}
         <button onClick={onClose} disabled={busy} className="min-h-[44px] rounded-xl text-text-2 press">
-          Cancelar
+          {t('Cancelar')}
         </button>
       </div>
     </Sheet>
@@ -1197,7 +1212,7 @@ function PreviasSheet({ previaVfs, labelOf, descOf, goalOf, onGoalChange, weekOf
     return (
       <Sheet onClose={onClose}>
         <button onClick={() => setViewVf(null)} className="flex items-center gap-1 text-sm text-accent min-h-[44px] press">
-          <ChevronLeft size={16} /> Fases previas
+          <ChevronLeft size={16} /> {t('Fases previas')}
         </button>
         <div className="pt-2 flex flex-col gap-3">
           <PhaseCard variant="previa" validFrom={viewVf} label={labelOf(viewVf)} description={descOf(viewVf)} goal={goalOf(viewVf)} week={weekOf(viewVf)} nextVf={nextVfOf(viewVf)} />
@@ -1218,7 +1233,7 @@ function PreviasSheet({ previaVfs, labelOf, descOf, goalOf, onGoalChange, weekOf
 
   return (
     <Sheet onClose={onClose}>
-      <h2 className="font-display text-[17px] mb-2">Fases previas</h2>
+      <h2 className="font-display text-[17px] mb-2">{t('Fases previas')}</h2>
       <div className="flex flex-col gap-3">
         {years.map((y) => (
           <YearGroup key={y} year={y} vfs={byYear.get(y)} inert={y === curYear} labelOf={labelOf} nextVfOf={nextVfOf} onOpen={setViewVf} />
@@ -1235,7 +1250,7 @@ function YearGroup({ year, vfs, inert, labelOf, nextVfOf, onOpen }) {
     <>
       <span className="font-mono text-xs font-medium text-text-2">{year}</span>
       <span className="text-[11px] text-text-3">
-        {vfs.length} {vfs.length === 1 ? 'fase' : 'fases'}
+        {vfs.length} {vfs.length === 1 ? t('fase') : t('fases')}
       </span>
     </>
   );
@@ -1255,9 +1270,9 @@ function YearGroup({ year, vfs, inert, labelOf, nextVfOf, onOpen }) {
           const d = daysBetween(vf, nvf);
           return (
             <button key={vf} onClick={() => onOpen(vf)} className="text-left rounded-xl bg-surface border border-border px-3.5 py-3 press">
-              <span className="block font-medium text-sm">{labelOf(vf) || 'Sin nombre'}</span>
+              <span className="block font-medium text-sm">{labelOf(vf) || t('Sin nombre')}</span>
               <span className="block font-mono text-[11.5px] text-text-3 mt-1">
-                {fmtShort(vf)} → {fmtShort(addDaysISO(nvf, -1))} · {d} {d === 1 ? 'día' : 'días'}
+                {fmtShort(vf)} → {fmtShort(addDaysISO(nvf, -1))} · {d} {dayWord(d)}
               </span>
             </button>
           );

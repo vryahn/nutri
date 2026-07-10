@@ -5,9 +5,10 @@ import { supabase } from './lib/supabase.js';
 import { subscribeSectionMenu } from './lib/sectionMenu.js';
 import { useOutsideClose } from './lib/useOutsideClose.js';
 import { watchSystem } from './lib/theme.js';
-import { t, useLang, registerLangUser } from './lib/i18n.js';
+import { t, useLang, registerLangUser, useUnits, setUnits, registerUnitsUser } from './lib/i18n.js';
 import ThemeToggle from './components/ThemeToggle.jsx';
 import LangToggle from './components/LangToggle.jsx';
+import UnitsToggle from './components/UnitsToggle.jsx';
 import Login from './pages/Login.jsx';
 import Today from './pages/Today.jsx';
 import Foods from './pages/Foods.jsx';
@@ -34,12 +35,13 @@ function useSession() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Registra el usuario para persistir el idioma en prefs (cross-device) y
-  // aplica prefs.data.lang si difiere de lo detectado por localStorage.
+  // Registra el usuario para persistir idioma y unidades en prefs (cross-device)
+  // y aplica prefs.data.{lang,units} si difieren de lo detectado por localStorage.
   useEffect(() => {
     if (!session) return;
     supabase.from('prefs').select('data').maybeSingle().then(({ data }) => {
       registerLangUser(session.user.id, data?.data?.lang);
+      registerUnitsUser(data?.data?.units);
     });
   }, [session]);
 
@@ -147,6 +149,10 @@ function Sidebar({ onLabels, menuActions }) {
           showLabel
           className="flex items-center gap-3 min-h-[44px] w-full px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
         />
+        <UnitsToggle
+          showLabel
+          className="flex items-center gap-3 min-h-[44px] w-full px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
+        />
         <button
           onClick={() => supabase.auth.signOut()}
           className="flex items-center gap-3 min-h-[44px] px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
@@ -185,6 +191,7 @@ function Layout({ children }) {
             />
             <ThemeToggle className="p-2 rounded-lg press text-text-2" />
             <LangToggle className="p-2 rounded-lg press text-text-2" />
+            <UnitsToggle className="p-2 rounded-lg press text-text-2" />
             <button
               onClick={() => setLabelsOpen(true)}
               className="p-2 rounded-lg press text-text-2"

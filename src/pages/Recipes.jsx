@@ -10,6 +10,7 @@ import UndoToast from '../components/UndoToast.jsx';
 import AmountField from '../components/AmountField.jsx';
 import SortTh from '../components/SortTh.jsx';
 import AiDataCard from '../components/AiDataCard.jsx';
+import { t, useLang, useUnits, fmtG, gToOz, ozToG } from '../lib/i18n.js';
 
 const FDC_KEY = import.meta.env.VITE_FDC_KEY;
 const SOURCE_LABELS = { manual: 'Manual', gemini: 'IA' };
@@ -27,6 +28,7 @@ function useIsLgUp() {
 }
 
 export default function Recipes() {
+  useLang();
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -121,7 +123,7 @@ export default function Recipes() {
         form.ingredients.map((i) => ({ recipe_id: recipeId, food_id: i.food.id, grams: Number(i.grams) }))
       );
       if (error) {
-        showToast('Error al guardar los ingredientes.');
+        showToast(t('Error al guardar los ingredientes.'));
         return;
       }
     }
@@ -139,7 +141,7 @@ export default function Recipes() {
     const { error } = await supabase.from('recipes').delete().eq('id', id);
     if (error) {
       load();
-      showToast('Tiene registros asociados, no se puede borrar.');
+      showToast(t('Tiene registros asociados, no se puede borrar.'));
       return;
     }
     setUndoData((prev) => {
@@ -212,7 +214,7 @@ export default function Recipes() {
       <div className="flex flex-col gap-4 lg:col-start-1">
         {/* En lg+ el alta va por el panel derecho ("＋ Nueva receta" del estado vacío);
             en <lg por el FAB. Sin botón de cabecera para no duplicar. */}
-        <h1 className="font-display text-xl">Recetas</h1>
+        <h1 className="font-display text-xl">{t('Recetas')}</h1>
 
         <div className="flex flex-col lg:flex-row gap-2">
           <div className="relative flex-1">
@@ -221,7 +223,7 @@ export default function Recipes() {
               ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar…"
+              placeholder={t('Buscar…')}
               className="w-full min-h-[44px] rounded-xl bg-surface-2 border border-border pl-10 pr-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
@@ -231,9 +233,9 @@ export default function Recipes() {
               onChange={(e) => setFilterSource(e.target.value)}
               className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
             >
-              <option value="">Todos</option>
+              <option value="">{t('Todos')}</option>
               {sourceOptions.map((s) => (
-                <option key={s} value={s}>{SOURCE_LABELS[s] || s}</option>
+                <option key={s} value={s}>{t(SOURCE_LABELS[s] || s)}</option>
               ))}
             </select>
           </div>
@@ -249,12 +251,12 @@ export default function Recipes() {
 
         {!loading && recipes.length === 0 && (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
-            <p className="text-text-2">Sin recetas aún</p>
+            <p className="text-text-2">{t('Sin recetas aún')}</p>
             <button
               onClick={() => openEditor({})}
               className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press"
             >
-              Crear la primera
+              {t('Crear la primera')}
             </button>
           </div>
         )}
@@ -273,7 +275,7 @@ export default function Recipes() {
               >
                 <span className="font-medium">
                   {r.name}
-                  {r.source === 'gemini' && <span className="ml-1.5 text-[10px] text-accent align-middle">≈ IA</span>}
+                  {r.source === 'gemini' && <span className="ml-1.5 text-[10px] text-accent align-middle">≈ {t('IA')}</span>}
                 </span>
                 {r.kcal100 != null && <span className="font-mono tabular-nums text-text-2 text-sm">{r.kcal100} kcal/100g</span>}
               </SwipeToDelete>
@@ -287,7 +289,7 @@ export default function Recipes() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-surface-2 text-text-2 text-left">
-                  <SortTh label="Nombre" sortKey="name" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <SortTh label={t('Nombre')} sortKey="name" active={sortKey} dir={sortDir} onSort={toggleSort} />
                   <SortTh label="Kcal/100g" sortKey="kcal100" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
                   <th className="px-3 py-2 text-center w-20">⚠</th>
                 </tr>
@@ -306,7 +308,7 @@ export default function Recipes() {
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-center gap-1">
                         <span className="w-10 flex justify-center text-[10px] text-accent">
-                          {r.source === 'gemini' && '≈ IA'}
+                          {r.source === 'gemini' && `≈ ${t('IA')}`}
                         </span>
                         <button
                           onClick={(e) => {
@@ -314,7 +316,7 @@ export default function Recipes() {
                             handleDelete(r.id);
                           }}
                           className="p-1.5 text-text-2 hover:text-danger opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                          aria-label={`Borrar ${r.name}`}
+                          aria-label={`${t('Borrar')} ${r.name}`}
                         >
                           <Trash2 size={16} />
                         </button>
@@ -324,7 +326,7 @@ export default function Recipes() {
                 ))}
                 {visibleRecipes.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="px-3 py-6 text-center text-text-2">Sin resultados con estos filtros.</td>
+                    <td colSpan={3} className="px-3 py-6 text-center text-text-2">{t('Sin resultados con estos filtros.')}</td>
                   </tr>
                 )}
               </tbody>
@@ -348,12 +350,12 @@ export default function Recipes() {
           </div>
         ) : (
           <div className="rounded-2xl bg-surface border border-border p-10 flex flex-col items-center gap-3 text-center">
-            <p className="text-text-2">Selecciona una receta o crea una nueva</p>
+            <p className="text-text-2">{t('Selecciona una receta o crea una nueva')}</p>
             <button
               onClick={() => openEditor({})}
               className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press"
             >
-              ＋ Nueva receta
+              ＋ {t('Nueva receta')}
             </button>
           </div>
         )}
@@ -363,13 +365,13 @@ export default function Recipes() {
         <button
           onClick={() => openEditor({})}
           className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-on-accent flex items-center justify-center press lg:hidden"
-          aria-label="Añadir receta"
+          aria-label={t('Añadir receta')}
         >
           <Plus size={24} />
         </button>
       )}
 
-      {undoData && <UndoToast message="Receta borrada" onUndo={handleUndo} />}
+      {undoData && <UndoToast message={t('Receta borrada')} onUndo={handleUndo} />}
 
       {!undoData && toast && (
         <div
@@ -402,6 +404,8 @@ function mergeIngredient(ingredients, food, grams, procedencia, isNew = false, f
 }
 
 function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRecipe }) {
+  useLang();
+  const units = useUnits();
   const [form, setForm] = useState(recipe);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -487,7 +491,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       const result = await estimateRecipe(aiText, aiFile, catalogNames);
       applyEstimate(result, catalogFoods, aliases);
     } catch (e) {
-      setAiError(e.message || 'No se pudo obtener datos. Revisa la conexión o intenta con otra descripción/foto.');
+      setAiError(e.message || t('No se pudo obtener datos. Revisa la conexión o intenta con otra descripción/foto.'));
     }
     setAiLoading(false);
   }
@@ -526,7 +530,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
         ? catalogFoods.find((f) => f.name.trim().toLowerCase() === ing.db_match.trim().toLowerCase())
         : null;
       if (dbFood) {
-        aiCatalog = mergeIngredient(aiCatalog, dbFood, ing.grams, 'catálogo', false, true);
+        aiCatalog = mergeIngredient(aiCatalog, dbFood, ing.grams, t('catálogo'), false, true);
         continue;
       }
       staged.push({
@@ -541,7 +545,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
           source: 'gemini',
         },
         grams: ing.grams,
-        procedencia: 'IA',
+        procedencia: t('IA'),
         isNew: true,
         fromAi: true,
         name_es: ing.name_es,
@@ -590,7 +594,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     setForm((f) => {
       const item = f.ingredients[index];
       const rest = f.ingredients.filter((_, i) => i !== index);
-      return { ...f, ingredients: mergeIngredient(rest, food, item.grams || '', 'catálogo', false, item.fromAi) };
+      return { ...f, ingredients: mergeIngredient(rest, food, item.grams || '', t('catálogo'), false, item.fromAi) };
     });
     if (learn && nameEs) learnAlias(nameEs, food.id);
   }
@@ -626,7 +630,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     const ing = form.ingredients[index];
     const saved = await persistNewFood(ing.food);
     if (!saved) {
-      setSaveError('No se pudo guardar el alimento. Intenta de nuevo.');
+      setSaveError(t('No se pudo guardar el alimento. Intenta de nuevo.'));
       return;
     }
     setForm((f) => ({
@@ -687,7 +691,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       if (!saved) {
         // Conserva los ya creados como no-nuevos para que un reintento no los duplique.
         setForm((f) => ({ ...f, ingredients: [...resolved, ...f.ingredients.slice(idx)] }));
-        setSaveError('No se pudo crear un alimento nuevo. Intenta de nuevo.');
+        setSaveError(t('No se pudo crear un alimento nuevo. Intenta de nuevo.'));
         return;
       }
       resolved.push({ food: saved, grams: ing.grams, procedencia: ing.procedencia });
@@ -698,10 +702,10 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <button onClick={onCancel} className="p-2 -ml-2 press" aria-label="Volver">
+        <button onClick={onCancel} className="p-2 -ml-2 press" aria-label={t('Volver')}>
           <ChevronLeft size={22} />
         </button>
-        <h1 className="font-display text-xl">{form.id ? 'Editar receta' : 'Nueva receta'}</h1>
+        <h1 className="font-display text-xl">{form.id ? t('Editar receta') : t('Nueva receta')}</h1>
       </div>
 
       {!form.id && GEMINI_KEY && (
@@ -713,12 +717,12 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
           loading={aiLoading}
           error={aiError}
           onSubmit={handleAiSubmit}
-          placeholder="Describe el platillo o bebida (p. ej. «Caramel Macchiato 350ml») o adjunta una foto"
-          hint="Gemini descompone en ingredientes con nutrientes de respaldo (prefill revisable). Cada alimento nuevo se edita y guarda por separado; prioridad: catálogo › USDA › IA."
+          placeholder={t('Describe el platillo o bebida (p. ej. «Caramel Macchiato 350ml») o adjunta una foto')}
+          hint={t('Gemini descompone en ingredientes con nutrientes de respaldo (prefill revisable). Cada alimento nuevo se edita y guarda por separado; prioridad: catálogo › USDA › IA.')}
         >
           {dupMatches.length > 0 && (
             <div className="flex flex-col gap-2">
-              <p className="text-xs text-text-2">Ya la tienes:</p>
+              <p className="text-xs text-text-2">{t('Ya la tienes:')}</p>
               <div className="flex flex-wrap gap-2">
                 {dupMatches.map((r) => (
                   <button
@@ -738,14 +742,15 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
                   }}
                   className="text-xs min-h-[44px] px-3 rounded-full border border-border text-text-2 press"
                 >
-                  Continuar de todos modos
+                  {t('Continuar de todos modos')}
                 </button>
               </div>
             </div>
           )}
           {aiResult && (
             <p className="text-xs text-text-2">
-              ≈ Ingredientes por IA (confianza {aiResult.confidence || '—'}) — revisa cantidades y nutrientes; guarda cada alimento nuevo.
+              ≈ {t('Ingredientes por IA (confianza %n) — revisa cantidades y nutrientes; guarda cada alimento nuevo.')
+                .replace('%n', t(aiResult.confidence) || '—')}
             </p>
           )}
         </AiDataCard>
@@ -754,7 +759,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <label className="text-sm text-text-2">Nombre</label>
+            <label className="text-sm text-text-2">{t('Nombre')}</label>
             <input
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
@@ -763,7 +768,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
           </div>
 
           <div className="flex flex-col gap-2">
-            <p className="text-sm text-text-2">Ingredientes</p>
+            <p className="text-sm text-text-2">{t('Ingredientes')}</p>
             {form.ingredients.map((ing, i) =>
               ing.isNew ? (
                 <StagedIngredientCard
@@ -783,29 +788,16 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
                       <span className="truncate">{ing.food.name}</span>
                       {ing.procedencia && <span className="text-xs text-text-3">{ing.procedencia}</span>}
                     </div>
-                    {!(Number(ing.food.density_g_ml) > 0) && (
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        step="any"
-                        value={ing.grams}
-                        onChange={(e) => setIngredientGrams(i, e.target.value)}
-                        placeholder="g"
-                        className="w-20 min-h-[44px] rounded-lg bg-surface-3 border border-border px-2 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
-                      />
-                    )}
-                    <button onClick={() => removeIngredient(i)} className="p-1 text-danger" aria-label="Quitar ingrediente">
+                    <button onClick={() => removeIngredient(i)} className="p-1 text-danger" aria-label={t('Quitar ingrediente')}>
                       <Trash2 size={16} />
                     </button>
                   </div>
-                  {Number(ing.food.density_g_ml) > 0 && (
-                    <AmountField
-                      grams={ing.grams === '' || ing.grams == null ? '' : String(ing.grams)}
-                      onGrams={(v) => setIngredientGrams(i, v)}
-                      meta={ing.food}
-                      required={false}
-                    />
-                  )}
+                  <AmountField
+                    grams={ing.grams === '' || ing.grams == null ? '' : String(ing.grams)}
+                    onGrams={(v) => setIngredientGrams(i, v)}
+                    meta={ing.food}
+                    required={false}
+                  />
                 </div>
               )
             )}
@@ -813,7 +805,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Añadir ingrediente…"
+              placeholder={t('Añadir ingrediente…')}
               className="input"
             />
             {results.length > 0 && (
@@ -828,28 +820,35 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-sm text-text-2">Peso cocido (g)</label>
+            <label className="text-sm text-text-2">{t('Peso cocido')} ({units === 'us' ? 'oz' : 'g'})</label>
             <input
               type="number"
               inputMode="decimal"
               step="any"
-              value={form.cooked_weight_g}
-              onChange={(e) => setForm((f) => ({ ...f, cooked_weight_g: e.target.value }))}
+              value={units === 'us' ? (form.cooked_weight_g === '' ? '' : String(round(gToOz(Number(form.cooked_weight_g)), 2))) : form.cooked_weight_g}
+              onChange={(e) => {
+                const v = e.target.value;
+                setForm((f) => ({ ...f, cooked_weight_g: v === '' ? '' : units === 'us' ? String(round(ozToG(Number(v)), 1)) : v }));
+              }}
               className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
             />
-            <p className="text-xs text-text-3">vacío = suma de ingredientes</p>
+            <p className="text-xs text-text-3">{t('vacío = suma de ingredientes')}</p>
           </div>
 
           {newFoods.length > 0 && (
             <p className="text-sm text-text-3" role="status">
-              {newFoods.length} alimento{newFoods.length === 1 ? '' : 's'} nuevo{newFoods.length === 1 ? '' : 's'} sin guardar — se crea{newFoods.length === 1 ? '' : 'n'} al guardar la receta, o guárdalo con ⤓.
+              {t('%n alimento%s nuevo%s sin guardar — se crea%n2 al guardar la receta, o guárdalo con ⤓.')
+                .replace('%n', newFoods.length)
+                .replace(/%s/g, newFoods.length === 1 ? '' : 's')
+                .replace('%n2', newFoods.length === 1 ? '' : 'n')}
             </p>
           )}
           {showAdjustButton && (
             <div className="flex flex-col gap-2">
               {massWarn && (
                 <p className="text-sm text-warn" role="status">
-                  ⚠ La suma de ingredientes ({sumGrams} g) no cuadra con el total ({totalGNum} g).
+                  ⚠ {t('La suma de ingredientes (%a) no cuadra con el total (%b).')
+                    .replace('%a', fmtG(sumGrams)).replace('%b', fmtG(totalGNum))}
                 </p>
               )}
               <button
@@ -857,30 +856,31 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
                 onClick={handleAdjustMass}
                 className="self-start min-h-[44px] px-3 rounded-xl border border-border text-text-2 press"
               >
-                Ajustar ingredientes al total (×{adjustFactor})
+                {t('Ajustar ingredientes al total (×%n)').replace('%n', adjustFactor)}
               </button>
             </div>
           )}
           {kcalMismatch && (
             <p className="text-sm text-warn" role="status">
-              ⚠ Las kcal calculadas ({calcKcalTotal}) difieren de la estimación del platillo ({kcalTotalEstimate}) — revisa cantidades.
+              ⚠ {t('Las kcal calculadas (%a) difieren de la estimación del platillo (%b) — revisa cantidades.')
+                .replace('%a', calcKcalTotal).replace('%b', kcalTotalEstimate)}
             </p>
           )}
           {densityOutOfRange && (
             <p className="text-sm text-warn" role="status">
-              ⚠ Densidad calórica fuera de rango físico.
+              ⚠ {t('Densidad calórica fuera de rango físico.')}
             </p>
           )}
 
           {/* <lg: preview solo macros, en flujo normal debajo del form. */}
           {preview && (
             <div className="lg:hidden rounded-2xl bg-surface border border-border p-4">
-              <p className="text-sm text-text-3 mb-2">Preview por 100 g</p>
+              <p className="text-sm text-text-3 mb-2">{t('Preview por 100 g')}</p>
               <div className="grid grid-cols-4 gap-2 text-center">
-                <PreviewStat label="Kcal" value={preview.kcal} color="text-d-kcal" />
-                <PreviewStat label="Prot" value={preview.protein_g} color="text-d-prot" />
-                <PreviewStat label="Carbs" value={preview.carbs_g} color="text-d-carb" />
-                <PreviewStat label="Grasa" value={preview.fat_g} color="text-d-fat" />
+                <PreviewStat label={t('Kcal')} value={preview.kcal} color="text-d-kcal" />
+                <PreviewStat label={t('Prot')} value={preview.protein_g} color="text-d-prot" />
+                <PreviewStat label={t('Carbs')} value={preview.carbs_g} color="text-d-carb" />
+                <PreviewStat label={t('Grasa')} value={preview.fat_g} color="text-d-fat" />
               </div>
             </div>
           )}
@@ -889,18 +889,18 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
         {/* lg+: preview sticky a la derecha, extendido con micros visibles/favoritos. */}
         {preview && (
           <div className="hidden lg:block lg:sticky lg:top-6 rounded-2xl bg-surface border border-border p-4">
-            <p className="text-sm text-text-3 mb-2">Preview por 100 g</p>
+            <p className="text-sm text-text-3 mb-2">{t('Preview por 100 g')}</p>
             <div className="grid grid-cols-4 gap-2 text-center pb-3 border-b border-border">
-              <PreviewStat label="Kcal" value={preview.kcal} color="text-d-kcal" />
-              <PreviewStat label="Prot" value={preview.protein_g} color="text-d-prot" />
-              <PreviewStat label="Carbs" value={preview.carbs_g} color="text-d-carb" />
-              <PreviewStat label="Grasa" value={preview.fat_g} color="text-d-fat" />
+              <PreviewStat label={t('Kcal')} value={preview.kcal} color="text-d-kcal" />
+              <PreviewStat label={t('Prot')} value={preview.protein_g} color="text-d-prot" />
+              <PreviewStat label={t('Carbs')} value={preview.carbs_g} color="text-d-carb" />
+              <PreviewStat label={t('Grasa')} value={preview.fat_g} color="text-d-fat" />
             </div>
             {previewMicros.map((m) => {
               const v = preview.micros?.[m.key] ?? 0;
               return (
                 <div key={m.key} className="flex justify-between py-1.5 border-t border-border text-sm">
-                  <span className="text-text-2">{m.label}</span>
+                  <span className="text-text-2">{t(m.label)}</span>
                   <span className={`font-mono tabular-nums ${v === 0 ? 'text-text-3' : ''}`}>
                     {round(v, 2)} {m.unit}
                   </span>
@@ -914,7 +914,9 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       {confirmNew && newFoods.length > 0 && (
         <div className="rounded-2xl bg-surface-2 border border-border p-4 flex flex-col gap-3">
           <p className="text-sm text-text-2">
-            Se crearán {newFoods.length} alimento{newFoods.length === 1 ? '' : 's'} nuevo{newFoods.length === 1 ? '' : 's'} en tu catálogo:
+            {t('Se crearán %n alimento%s nuevo%s en tu catálogo:')
+              .replace('%n', newFoods.length)
+              .replace(/%s/g, newFoods.length === 1 ? '' : 's')}
           </p>
           <ul className="text-sm list-disc pl-5 flex flex-col gap-0.5">
             {newFoods.map((i, idx) => (
@@ -927,14 +929,14 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
               onClick={handleSaveClick}
               className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press"
             >
-              Confirmar y guardar
+              {t('Confirmar y guardar')}
             </button>
             <button
               type="button"
               onClick={() => setConfirmNew(false)}
               className="min-h-[44px] px-4 rounded-xl border border-border text-text-2 press"
             >
-              Cancelar
+              {t('Cancelar')}
             </button>
           </div>
         </div>
@@ -947,7 +949,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
         disabled={!form.name || form.ingredients.length === 0}
         className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-50"
       >
-        Guardar
+        {t('Guardar')}
       </button>
 
       {onDelete && (
@@ -955,7 +957,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
           onClick={onDelete}
           className="min-h-[44px] rounded-xl border border-danger text-danger font-medium press"
         >
-          Borrar
+          {t('Borrar')}
         </button>
       )}
     </div>
@@ -967,6 +969,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
 // lo guarda con ⤓ (queda como fila compacta). USDA se busca y traduce de inmediato al
 // montar y se ofrece como swap; el catálogo (match manual) tiene prioridad sobre la IA.
 function StagedIngredientCard({ ing, onFood, onGrams, onSave, onRemove, onSwapCatalog, onSwapUsda }) {
+  useLang();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [fdcChips, setFdcChips] = useState([]);
@@ -1017,6 +1020,9 @@ function StagedIngredientCard({ ing, onFood, onGrams, onSave, onRemove, onSwapCa
   }
 
   const num = (v) => (v === '' || v == null ? '' : v);
+  const units = useUnits();
+  const isUS = units === 'us';
+  const gramsDisplay = isUS ? (ing.grams === '' || ing.grams == null ? '' : String(round(gToOz(Number(ing.grams)), 2))) : ing.grams;
 
   return (
     <div className="rounded-xl bg-surface-2 border border-warn p-3 flex flex-col gap-2">
@@ -1024,16 +1030,19 @@ function StagedIngredientCard({ ing, onFood, onGrams, onSave, onRemove, onSwapCa
         <input
           value={food.name}
           onChange={(e) => onFood({ name: e.target.value })}
-          placeholder="Nombre del alimento"
+          placeholder={t('Nombre del alimento')}
           className="flex-1 min-w-0 min-h-[44px] rounded-lg bg-surface-3 border border-border px-2 text-text text-sm focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <input
           type="number"
           inputMode="decimal"
           step="any"
-          value={ing.grams}
-          onChange={(e) => onGrams(e.target.value)}
-          placeholder="g"
+          value={gramsDisplay}
+          onChange={(e) => {
+            const v = e.target.value;
+            onGrams(v === '' ? '' : isUS ? String(round(ozToG(Number(v)), 1)) : v);
+          }}
+          placeholder={isUS ? 'oz' : 'g'}
           className="w-16 min-h-[44px] rounded-lg bg-surface-3 border border-border px-2 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <button
@@ -1041,23 +1050,23 @@ function StagedIngredientCard({ ing, onFood, onGrams, onSave, onRemove, onSwapCa
           onClick={handleSave}
           disabled={saving || !food.name}
           className="p-1.5 text-text-2 hover:text-accent disabled:opacity-40"
-          title="Guardar alimento"
-          aria-label={`Guardar ${food.name}`}
+          title={t('Guardar alimento')}
+          aria-label={`${t('Guardar')} ${food.name}`}
         >
           <Save size={16} />
         </button>
-        <button type="button" onClick={onRemove} className="p-1 text-danger" aria-label={`Quitar ${food.name}`}>
+        <button type="button" onClick={onRemove} className="p-1 text-danger" aria-label={`${t('Quitar')} ${food.name}`}>
           <X size={16} />
         </button>
       </div>
 
-      <p className="text-xs text-text-3">{ing.procedencia || 'IA'} · sin guardar · valores por 100 g</p>
+      <p className="text-xs text-text-3">{ing.procedencia || t('IA')} · {t('sin guardar')} · {t('valores por 100 g')}</p>
       <div className="grid grid-cols-4 gap-2">
         {[
-          ['kcal', 'Kcal'],
-          ['protein_g', 'Prot'],
-          ['carbs_g', 'Carbs'],
-          ['fat_g', 'Grasa'],
+          ['kcal', t('Kcal')],
+          ['protein_g', t('Prot')],
+          ['carbs_g', t('Carbs')],
+          ['fat_g', t('Grasa')],
         ].map(([key, label]) => (
           <label key={key} className="flex flex-col gap-0.5">
             <span className="text-[10px] text-text-3">{label}</span>
@@ -1077,7 +1086,7 @@ function StagedIngredientCard({ ing, onFood, onGrams, onSave, onRemove, onSwapCa
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="¿Ya está en tu catálogo? Búscalo…"
+        placeholder={t('¿Ya está en tu catálogo? Búscalo…')}
         className="input text-sm"
       />
       {results.length > 0 && (

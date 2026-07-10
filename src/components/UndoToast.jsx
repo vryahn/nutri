@@ -1,6 +1,9 @@
+import { t, useLang } from '../lib/i18n.js';
+
 // Toast de borrado con acción "Deshacer" (5 s). Estilo y mecánica idénticos al
 // de Hoy; extraído para Alimentos y Recetas (Hoy conserva su copia inline).
 export default function UndoToast({ message, onUndo }) {
+  useLang();
   return (
     <div
       role="status"
@@ -9,7 +12,7 @@ export default function UndoToast({ message, onUndo }) {
     >
       <span className="text-sm">{message}</span>
       <button onClick={onUndo} className="min-h-[44px] px-3 text-accent font-medium press">
-        Deshacer
+        {t('Deshacer')}
       </button>
     </div>
   );

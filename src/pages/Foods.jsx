@@ -11,6 +11,7 @@ import {
 } from '../lib/domain.js';
 import { fetchOFF, searchFDC, fetchFDC } from '../lib/sources.js';
 import { GEMINI_KEY, DENSITY_PRESETS, snapDensity, estimateFood } from '../lib/ai.js';
+import { t, useLang } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import UndoToast from '../components/UndoToast.jsx';
 import SortTh from '../components/SortTh.jsx';
@@ -36,6 +37,9 @@ function hasWarning(f) {
 
 const SOURCE_OPTIONS = ['manual', 'etiqueta', 'gemini', 'off', 'usda', 'cronometer'];
 const SOURCE_LABELS = { manual: 'Manual', etiqueta: 'Etiqueta', gemini: 'IA', off: 'OFF', usda: 'USDA', cronometer: 'Cronometer' };
+function sourceLabel(s) {
+  return t(SOURCE_LABELS[s] || s);
+}
 
 const EMPTY_FOOD = {
   name: '', brand: '', kcal: '', protein_g: '', carbs_g: '', fat_g: '',
@@ -43,6 +47,7 @@ const EMPTY_FOOD = {
 };
 
 export default function Foods() {
+  useLang();
   const [foods, setFoods] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -139,10 +144,10 @@ export default function Foods() {
       : await supabase.from('foods').insert(payload);
 
     if (error) {
-      showToast('Error al guardar.');
+      showToast(t('Error al guardar.'));
       return;
     }
-    showToast('Guardado.');
+    showToast(t('Guardado.'));
     setEditing(null);
     load();
   }
@@ -156,12 +161,12 @@ export default function Foods() {
     const { data, error } = await supabase.from('foods').delete().eq('id', id).select('id');
     if (error) {
       load();
-      showToast('Tiene registros asociados, no se puede borrar.');
+      showToast(t('Tiene registros asociados, no se puede borrar.'));
       return;
     }
     if (!data || data.length === 0) {
       load();
-      showToast('Solo puedes borrar tus propios alimentos.');
+      showToast(t('Solo puedes borrar tus propios alimentos.'));
       return;
     }
     setUndoData((prev) => {
@@ -225,7 +230,7 @@ export default function Foods() {
       <div className="flex flex-col gap-4 lg:col-start-1">
         {/* En lg+ el alta va por el panel derecho ("＋ Nuevo alimento" del estado vacío);
             en <lg por el FAB. Sin botón de cabecera para no duplicar. */}
-        <h1 className="font-display text-xl">Alimentos</h1>
+        <h1 className="font-display text-xl">{t('Alimentos')}</h1>
 
         <div className="flex flex-col lg:flex-row gap-2">
           <div className="relative flex-1">
@@ -234,7 +239,7 @@ export default function Foods() {
               ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar…"
+              placeholder={t('Buscar…')}
               className="w-full min-h-[44px] rounded-xl bg-surface-2 border border-border pl-10 pr-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
@@ -244,9 +249,9 @@ export default function Foods() {
               onChange={(e) => setFilterSource(e.target.value)}
               className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
             >
-              <option value="">Todos</option>
+              <option value="">{t('Todos')}</option>
               {sourceOptions.map((s) => (
-                <option key={s} value={s}>{SOURCE_LABELS[s] || s}</option>
+                <option key={s} value={s}>{sourceLabel(s)}</option>
               ))}
             </select>
             <button
@@ -257,7 +262,7 @@ export default function Foods() {
                 warnOnly ? 'bg-warn/20 border-warn text-warn' : 'bg-surface-2 border-border text-text-2'
               }`}
             >
-              ⚠ solo avisos
+              ⚠ {t('solo avisos')}
             </button>
           </div>
         </div>
@@ -272,12 +277,12 @@ export default function Foods() {
 
         {!loading && foods.length === 0 && (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
-            <p className="text-text-2">Sin alimentos aún</p>
+            <p className="text-text-2">{t('Sin alimentos aún')}</p>
             <button
               onClick={() => setEditing(EMPTY_FOOD)}
               className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press"
             >
-              Crear el primero
+              {t('Crear el primero')}
             </button>
           </div>
         )}
@@ -299,7 +304,7 @@ export default function Foods() {
                       <AlertTriangle
                         size={14}
                         className="inline ml-1.5 -mt-0.5 text-warn"
-                        aria-label="Valores nutricionales requieren revisión"
+                        aria-label={t('Valores nutricionales requieren revisión')}
                       />
                     )}
                   </span>
@@ -317,11 +322,11 @@ export default function Foods() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-surface-2 text-text-2 text-left">
-                  <SortTh label="Nombre" sortKey="name" active={sortKey} dir={sortDir} onSort={toggleSort} />
-                  <SortTh label="Kcal" sortKey="kcal" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
-                  <SortTh label="P" sortKey="protein_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
-                  <SortTh label="C" sortKey="carbs_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
-                  <SortTh label="G" sortKey="fat_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
+                  <SortTh label={t('Nombre')} sortKey="name" active={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <SortTh label={t('Kcal')} sortKey="kcal" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
+                  <SortTh label={t('P')} sortKey="protein_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
+                  <SortTh label={t('C')} sortKey="carbs_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
+                  <SortTh label={t('G')} sortKey="fat_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
                   {/* Origen fuera de la tabla: la columna maestra (5/12, tope max-w-6xl ≈ 455px)
                       nunca da ancho para 7 columnas. El origen se ve en la ficha del panel. */}
                   <th className="px-3 py-2 text-center w-16">⚠</th>
@@ -348,7 +353,7 @@ export default function Foods() {
                       <div className="flex items-center justify-center gap-1">
                         <span className="w-4 flex justify-center">
                           {hasWarning(f) && (
-                            <AlertTriangle size={14} className="text-warn" aria-label="Valores nutricionales requieren revisión" />
+                            <AlertTriangle size={14} className="text-warn" aria-label={t('Valores nutricionales requieren revisión')} />
                           )}
                         </span>
                         <button
@@ -357,7 +362,7 @@ export default function Foods() {
                             handleDelete(f.id);
                           }}
                           className="p-1.5 text-text-2 hover:text-danger opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                          aria-label={`Borrar ${f.name}`}
+                          aria-label={`${t('Borrar')} ${f.name}`}
                         >
                           <Trash2 size={16} />
                         </button>
@@ -367,7 +372,7 @@ export default function Foods() {
                 ))}
                 {visibleFoods.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-text-2">Sin resultados con estos filtros.</td>
+                    <td colSpan={6} className="px-3 py-6 text-center text-text-2">{t('Sin resultados con estos filtros.')}</td>
                   </tr>
                 )}
               </tbody>
@@ -391,12 +396,12 @@ export default function Foods() {
           </div>
         ) : (
           <div className="rounded-2xl bg-surface border border-border p-10 flex flex-col items-center gap-3 text-center">
-            <p className="text-text-2">Selecciona un alimento o crea uno nuevo</p>
+            <p className="text-text-2">{t('Selecciona un alimento o crea uno nuevo')}</p>
             <button
               onClick={() => setEditing(EMPTY_FOOD)}
               className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press"
             >
-              ＋ Nuevo alimento
+              ＋ {t('Nuevo alimento')}
             </button>
           </div>
         )}
@@ -406,13 +411,13 @@ export default function Foods() {
         <button
           onClick={() => setEditing(EMPTY_FOOD)}
           className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-on-accent flex items-center justify-center press lg:hidden"
-          aria-label="Añadir alimento"
+          aria-label={t('Añadir alimento')}
         >
           <Plus size={24} />
         </button>
       )}
 
-      {undoData && <UndoToast message="Alimento borrado" onUndo={handleUndo} />}
+      {undoData && <UndoToast message={t('Alimento borrado')} onUndo={handleUndo} />}
 
       {!undoData && toast && (
         <div
@@ -434,7 +439,7 @@ const REQUIRED_KEYS = ['kcal', 'protein_g', 'carbs_g', 'fat_g', ...REQUIRED_MICR
 const MACRO_LABELS = { kcal: 'Kcal', protein_g: 'Proteína', carbs_g: 'Carbs', fat_g: 'Grasa' };
 
 function labelFor(key) {
-  return MACRO_LABELS[key] || MICROS.find((m) => m.key === key)?.label || key;
+  return t(MACRO_LABELS[key] || MICROS.find((m) => m.key === key)?.label || key);
 }
 
 const NUMERIC_KEYS = ['kcal', 'protein_g', 'carbs_g', 'fat_g'];
@@ -534,13 +539,14 @@ function eanChecksumValid(digits) {
 
 function resultBadgeText(r) {
   if (!r) return '';
-  if (r.source === 'etiqueta') return '📋 Etiqueta transcrita';
+  if (r.source === 'etiqueta') return `📋 ${t('Etiqueta transcrita')}`;
   if (r.source === 'off') return `✔ Open Food Facts: ${r.name || ''}`;
   if (r.source === 'usda') return `USDA: ${r.name || ''}`;
-  return `≈ Estimación IA (confianza ${r.confidence || '—'})`;
+  return `≈ ${t('Estimación IA')} (${t('confianza')} ${t(r.confidence) || '—'})`;
 }
 
 function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
+  useLang();
   // density de la DB (numeric) puede venir como string: se normaliza para que el select matchee.
   // Al editar, los 0 almacenados (kcal/macros/micros) arrancan vacíos con placeholder "0" (mismo
   // patrón que el prefill de IA): un 0 no aporta info nueva y así se ve qué falta por revisar.
@@ -664,10 +670,10 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
       const eanTyped = extractEan(aiText);
       if (eanTyped) {
         if (!eanChecksumValid(eanTyped)) {
-          throw new Error('Código de barras inválido: dígito verificador no coincide, revísalo');
+          throw new Error(t('Código de barras inválido: dígito verificador no coincide, revísalo'));
         }
         const off = await fetchOFF(eanTyped);
-        if (!off) throw new Error('EAN no encontrado en Open Food Facts.');
+        if (!off) throw new Error(t('EAN no encontrado en Open Food Facts.'));
         // EAN tecleado directo: sin Gemini no hay densidad conocida, así que un OFF
         // por 100 ml solo puede dejar el form en base ml a la espera de que el
         // usuario elija densidad (ver normalizeTo100).
@@ -692,7 +698,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         }
       }
     } catch (e) {
-      setAiError(e.message || 'No se pudo obtener datos. Revisa la conexión o intenta con otra descripción/foto.');
+      setAiError(e.message || t('No se pudo obtener datos. Revisa la conexión o intenta con otra descripción/foto.'));
     }
     setAiLoading(false);
   }
@@ -703,7 +709,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     setUsdaError('');
     const matches = await searchFDC(usdaQuery.trim());
     setFdcChips(matches);
-    if (matches.length === 0) setUsdaError('Sin resultados en USDA.');
+    if (matches.length === 0) setUsdaError(t('Sin resultados en USDA.'));
     setUsdaLoading(false);
   }
 
@@ -712,7 +718,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     setAiError('');
     try {
       const detail = await fetchFDC(fdcId);
-      if (!detail) throw new Error('No se pudo obtener el detalle de USDA.');
+      if (!detail) throw new Error(t('No se pudo obtener el detalle de USDA.'));
       applyPrefill(detail, 'usda', description, null);
     } catch (e) {
       setAiError(e.message);
@@ -745,10 +751,10 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <button onClick={onCancel} className="p-2 -ml-2 press" aria-label="Volver">
+        <button onClick={onCancel} className="p-2 -ml-2 press" aria-label={t('Volver')}>
           <ChevronLeft size={22} />
         </button>
-        <h1 className="font-display text-xl">{form.id ? 'Editar alimento' : 'Nuevo alimento'}</h1>
+        <h1 className="font-display text-xl">{form.id ? t('Editar alimento') : t('Nuevo alimento')}</h1>
       </div>
 
       {!form.id && GEMINI_KEY && (
@@ -760,16 +766,16 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           loading={aiLoading}
           error={aiError}
           onSubmit={handleFetchData}
-          placeholder="Describe el alimento, pega un código de barras (EAN) o adjunta una foto de etiqueta/platillo"
-          hint="Etiqueta legible → se transcribe. EAN → Open Food Facts. Si no, estimación IA con chips USDA para genéricos. Siempre por 100 g; revisa antes de guardar."
+          placeholder={t('Describe el alimento, pega un código de barras (EAN) o adjunta una foto de etiqueta/platillo')}
+          hint={t('Etiqueta legible → se transcribe. EAN → Open Food Facts. Si no, estimación IA con chips USDA para genéricos. Siempre por 100 g; revisa antes de guardar.')}
         >
           {aiResult && <p className="text-xs text-text-2">{resultBadgeText(aiResult)}</p>}
           {aiMissing.length > 0 && (
-            <p className="text-xs text-warn" role="status">Sin dato fiable de: {aiMissing.join(', ')}</p>
+            <p className="text-xs text-warn" role="status">{t('Sin dato fiable de:')} {aiMissing.join(', ')}</p>
           )}
           {labelMismatch.length > 0 && (
             <p className="text-xs text-warn" role="status">
-              ⚠ La etiqueta y Open Food Facts difieren en: {labelMismatch.join(', ')}.
+              ⚠ {t('La etiqueta y Open Food Facts difieren en:')} {labelMismatch.join(', ')}.
             </p>
           )}
         </AiDataCard>
@@ -830,7 +836,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         }}
         className="flex flex-col gap-4"
       >
-        <Field label="Nombre" required>
+        <Field label={t('Nombre')} required>
           <input
             required
             value={form.name}
@@ -839,7 +845,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           />
         </Field>
 
-        <Field label="Marca">
+        <Field label={t('Marca')}>
           <input
             value={form.brand || ''}
             onChange={(e) => setField('brand', e.target.value)}
@@ -849,7 +855,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
 
         <div className="flex flex-col gap-1 text-sm text-text-3">
           <div className="flex items-center gap-2">
-            <span>Valores por</span>
+            <span>{t('Valores por')}</span>
             <input
               type="number"
               inputMode="decimal"
@@ -858,7 +864,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
               value={basis}
               onChange={(e) => setBasis(e.target.value)}
               className="w-20 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-center text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
-              aria-label="Base de los valores capturados"
+              aria-label={t('Base de los valores capturados')}
             />
             <div className="flex rounded-lg border border-border overflow-hidden text-sm">
               {['g', 'ml'].map((u) => (
@@ -874,40 +880,40 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
             </div>
           </div>
           {basisUnit === 'g' && Number(basis) !== 100 && Number(basis) > 0 && (
-            <span className="text-xs text-accent">se convertirá a 100 g al guardar</span>
+            <span className="text-xs text-accent">{t('se convertirá a 100 g al guardar')}</span>
           )}
           {basisUnit === 'ml' && basisDensity > 0 && Number(basis) > 0 && (
             <span className="text-xs text-accent">
-              {basis} ml × {basisDensity} = {round(Number(basis) * basisDensity, 1)} g → se convertirá a 100 g al guardar
+              {basis} ml × {basisDensity} = {round(Number(basis) * basisDensity, 1)} g → {t('se convertirá a 100 g al guardar')}
             </span>
           )}
           {basisBlocked && (
             <span className="text-xs text-warn" role="status">
-              Elige el tipo de líquido para convertir ml a gramos
+              {t('Elige el tipo de líquido para convertir ml a gramos')}
             </span>
           )}
         </div>
         <div className="grid grid-cols-2 gap-3 lg:hidden">
           <NumberField
-            label="Kcal"
+            label={t('Kcal')}
             value={form.kcal}
             onChange={(v) => setField('kcal', v)}
             placeholder={aiZeros.has('kcal') ? '0' : hasMacros ? `≈ ${kcalCalc}` : ''}
           />
           <NumberField
-            label="Proteína (g)"
+            label={`${t('Proteína')} (g)`}
             value={form.protein_g}
             onChange={(v) => setField('protein_g', v)}
             placeholder={aiZeros.has('protein_g') ? '0' : ''}
           />
           <NumberField
-            label="Carbs (g)"
+            label={`${t('Carbs')} (g)`}
             value={form.carbs_g}
             onChange={(v) => setField('carbs_g', v)}
             placeholder={aiZeros.has('carbs_g') ? '0' : ''}
           />
           <NumberField
-            label="Grasa (g)"
+            label={`${t('Grasa')} (g)`}
             value={form.fat_g}
             onChange={(v) => setField('fat_g', v)}
             placeholder={aiZeros.has('fat_g') ? '0' : ''}
@@ -915,7 +921,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           {MICROS.slice(0, MICROS_DEFAULT).map((m) => (
             <NumberField
               key={m.key}
-              label={`${m.label} (${m.unit})`}
+              label={`${t(m.label)} (${m.unit})`}
               value={form.micros[m.key] ?? ''}
               onChange={(v) => setMicro(m.key, v)}
               placeholder={aiZeros.has(m.key) ? '0' : ''}
@@ -936,28 +942,28 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
 
         {/* lg+: básicos+obligatorios a la izquierda, resto de micros por categoría a la derecha, sin acordeón. */}
         <div className="hidden lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
-          <p className="col-span-2 text-xs text-text-3">★ = favorito, se promueve arriba en móvil.</p>
+          <p className="col-span-2 text-xs text-text-3">{t('★ = favorito, se promueve arriba en móvil.')}</p>
           <div className="grid grid-cols-2 gap-3 content-start">
             <NumberField
-              label="Kcal"
+              label={t('Kcal')}
               value={form.kcal}
               onChange={(v) => setField('kcal', v)}
               placeholder={aiZeros.has('kcal') ? '0' : hasMacros ? `≈ ${kcalCalc}` : ''}
             />
             <NumberField
-              label="Proteína (g)"
+              label={`${t('Proteína')} (g)`}
               value={form.protein_g}
               onChange={(v) => setField('protein_g', v)}
               placeholder={aiZeros.has('protein_g') ? '0' : ''}
             />
             <NumberField
-              label="Carbs (g)"
+              label={`${t('Carbs')} (g)`}
               value={form.carbs_g}
               onChange={(v) => setField('carbs_g', v)}
               placeholder={aiZeros.has('carbs_g') ? '0' : ''}
             />
             <NumberField
-              label="Grasa (g)"
+              label={`${t('Grasa')} (g)`}
               value={form.fat_g}
               onChange={(v) => setField('fat_g', v)}
               placeholder={aiZeros.has('fat_g') ? '0' : ''}
@@ -965,7 +971,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
             {MICROS.filter((m) => REQUIRED_MICROS.includes(m.key)).map((m) => (
               <NumberField
                 key={m.key}
-                label={`${m.label} (${m.unit})`}
+                label={`${t(m.label)} (${m.unit})`}
                 value={form.micros[m.key] ?? ''}
                 onChange={(v) => setMicro(m.key, v)}
                 placeholder={aiZeros.has(m.key) ? '0' : ''}
@@ -975,7 +981,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           <div className="flex flex-col gap-3">
             {microGroups(MICROS.filter((m) => !REQUIRED_MICROS.includes(m.key))).map(({ cat, items }) => (
               <div key={cat}>
-                <p className="text-xs uppercase tracking-wide text-text-3 pb-1">{cat}</p>
+                <p className="text-xs uppercase tracking-wide text-text-3 pb-1">{t(cat)}</p>
                 <div className="grid grid-cols-2 gap-3">
                   {items.map((m) => (
                     <MicroField
@@ -995,31 +1001,31 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         </div>
 
         {form.kcal === '' && hasMacros && (
-          <p className="text-xs text-text-3">Si dejas Kcal vacío, se guardará el cálculo por macros (≈ {kcalCalc}).</p>
+          <p className="text-xs text-text-3">{t('Si dejas Kcal vacío, se guardará el cálculo por macros (≈ %n).').replace('%n', kcalCalc)}</p>
         )}
         {suspicious && (
           <p className="text-sm text-warn" role="status">
-            ⚠ {form.kcal} kcal no cuadran con los macros (≈ {kcalCalc} kcal por Atwater). El alimento quedará
-            marcado para revisión.
+            ⚠ {t('%n kcal no cuadran con los macros (≈ %m kcal por Atwater). El alimento quedará marcado para revisión.')
+              .replace('%n', form.kcal).replace('%m', kcalCalc)}
           </p>
         )}
         {implausible && (
           <p className="text-sm text-warn" role="status">
-            ⚠ Los valores no son físicamente plausibles para 100 g. Revisa antes de guardar.
+            ⚠ {t('Los valores no son físicamente plausibles para 100 g. Revisa antes de guardar.')}
           </p>
         )}
         {inconsistent && (
           <p className="text-sm text-warn" role="status">
-            ⚠ Hay componentes inconsistentes (p. ej. azúcar o fibra mayor que los carbs). Revisa antes de guardar.
+            ⚠ {t('Hay componentes inconsistentes (p. ej. azúcar o fibra mayor que los carbs). Revisa antes de guardar.')}
           </p>
         )}
 
         <details className="lg:hidden rounded-xl bg-surface-2 border border-border px-3 py-2">
-          <summary className="cursor-pointer text-sm text-text-2 py-1">Más micros (opcional)</summary>
-          <p className="text-xs text-text-3 pt-2">★ = favorito: aparece arriba junto a los principales.</p>
+          <summary className="cursor-pointer text-sm text-text-2 py-1">{t('Más micros (opcional)')}</summary>
+          <p className="text-xs text-text-3 pt-2">{t('★ = favorito: aparece arriba junto a los principales.')}</p>
           {microGroups(hiddenMicros.filter((m) => !favs.includes(m.key))).map(({ cat, items }) => (
             <div key={cat}>
-              <p className="text-xs uppercase tracking-wide text-text-3 pt-4 pb-1">{cat}</p>
+              <p className="text-xs uppercase tracking-wide text-text-3 pt-4 pb-1">{t(cat)}</p>
               <div className="grid grid-cols-2 gap-3">
                 {items.map((m) => (
                   <MicroField
@@ -1037,7 +1043,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           ))}
         </details>
 
-        <Field label="Líquido">
+        <Field label={t('Líquido')}>
           <select
             value={densityOther ? 'otro' : String(form.density_g_ml ?? '')}
             onChange={(e) => {
@@ -1047,13 +1053,13 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
             }}
             className="input"
           >
-            <option value="">No es líquido</option>
+            <option value="">{t('No es líquido')}</option>
             {DENSITY_PRESETS.map((p) => (
               <option key={p.value} value={String(p.value)}>
-                {p.label} ({p.value} g/ml)
+                {t(p.label)} ({p.value} g/ml)
               </option>
             ))}
-            <option value="otro">Otro…</option>
+            <option value="otro">{t('Otro…')}</option>
           </select>
           {densityOther && (
             <input
@@ -1063,24 +1069,24 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
               step="any"
               value={form.density_g_ml}
               onChange={(e) => setField('density_g_ml', e.target.value)}
-              placeholder="densidad en g/ml"
+              placeholder={t('densidad en g/ml')}
               className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-text-3"
-              aria-label="Densidad en g/ml"
+              aria-label={t('Densidad en g/ml')}
             />
           )}
-          <p className="text-xs text-text-3">Si es líquido, al registrar podrás capturar en ml y se convierte a gramos.</p>
+          <p className="text-xs text-text-3">{t('Si es líquido, al registrar podrás capturar en ml y se convierte a gramos.')}</p>
         </Field>
 
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-text-2">Porciones (opcional)</p>
+          <p className="text-sm text-text-2">{t('Porciones (opcional)')}</p>
           {form.portions.map((p, i) => (
             <div key={i} className="flex gap-2">
               <input
                 value={p.name}
                 onChange={(e) => setPortion(i, { name: e.target.value })}
-                placeholder="vaso, cucharada, rebanada…"
+                placeholder={t('vaso, cucharada, rebanada…')}
                 className="flex-1 min-w-0 input"
-                aria-label={`Nombre de la porción ${i + 1}`}
+                aria-label={`${t('Nombre de la porción')} ${i + 1}`}
               />
               <input
                 type="number"
@@ -1091,13 +1097,13 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
                 onChange={(e) => setPortion(i, { grams: e.target.value })}
                 placeholder="g"
                 className="w-24 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
-                aria-label={`Gramos de la porción ${i + 1}`}
+                aria-label={`${t('Gramos de la porción')} ${i + 1}`}
               />
               <button
                 type="button"
                 onClick={() => setForm((f) => ({ ...f, portions: f.portions.filter((_, j) => j !== i) }))}
                 className="min-w-[44px] min-h-[44px] rounded-xl border border-border flex items-center justify-center text-text-2 press"
-                aria-label={`Quitar porción ${i + 1}`}
+                aria-label={`${t('Quitar porción')} ${i + 1}`}
               >
                 <X size={18} />
               </button>
@@ -1108,19 +1114,19 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
             onClick={() => setForm((f) => ({ ...f, portions: [...f.portions, { name: '', grams: '' }] }))}
             className="min-h-[44px] rounded-xl border border-border text-text-2 press"
           >
-            + Añadir porción
+            + {t('Añadir porción')}
           </button>
         </div>
 
-        <Field label="Fuente">
+        <Field label={t('Fuente')}>
           <select
             value={form.source}
             onChange={(e) => setField('source', e.target.value)}
             className="input"
           >
-            <option value="manual">Manual</option>
-            <option value="etiqueta">Etiqueta</option>
-            <option value="gemini">IA (Gemini)</option>
+            <option value="manual">{t('Manual')}</option>
+            <option value="etiqueta">{t('Etiqueta')}</option>
+            <option value="gemini">{t('IA (Gemini)')}</option>
             <option value="off">Open Food Facts</option>
             <option value="usda">USDA</option>
           </select>
@@ -1131,7 +1137,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           disabled={basisBlocked}
           className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-40"
         >
-          Guardar
+          {t('Guardar')}
         </button>
 
         {onDelete && (
@@ -1140,7 +1146,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
             onClick={onDelete}
             className="min-h-[44px] rounded-xl border border-danger text-danger font-medium press"
           >
-            Borrar
+            {t('Borrar')}
           </button>
         )}
       </form>
@@ -1177,15 +1183,16 @@ function NumberField({ label, value, onChange, placeholder }) {
 
 // Micro oculto/favorito: campo numérico con estrella para promoverlo fuera de "Más micros".
 function MicroField({ m, fav, value, onChange, onToggleFav, placeholder }) {
+  const label = t(m.label);
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between min-h-[24px]">
-        <label className="text-sm text-text-2 truncate">{m.label} ({m.unit})</label>
+        <label className="text-sm text-text-2 truncate">{label} ({m.unit})</label>
         <button
           type="button"
           onClick={onToggleFav}
           className="p-3 -my-3 -mr-2 shrink-0 press"
-          aria-label={fav ? `Quitar ${m.label} de favoritos` : `Marcar ${m.label} como favorito`}
+          aria-label={fav ? `${t('Quitar')} ${label} ${t('de favoritos')}` : `${t('Marcar')} ${label} ${t('como favorito')}`}
         >
           <Star size={16} className={fav ? 'text-accent' : 'text-text-3'} fill={fav ? 'currentColor' : 'none'} />
         </button>

@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, GlassWater, Settings, 
 import { supabase } from '../lib/supabase.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
 import { useToast } from '../lib/useToast.js';
-import { t, useLang, locale } from '../lib/i18n.js';
+import { t, useLang, locale, useUnits, fmtG, fmtMl, mlToFlOz, flOzToMl } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import ConfirmSheet from '../components/ConfirmSheet.jsx';
 import AmountField from '../components/AmountField.jsx';
@@ -154,6 +154,7 @@ function GoalSummary({ totals, target, kcalStatus, kcalPct, kcalArc, proteinStat
 
 export default function Today() {
   useLang();
+  useUnits();
   const [date, setDate] = useState(todayISO());
   const [entries, setEntries] = useState([]);
   const [labels, setLabels] = useState([]);
@@ -655,7 +656,7 @@ export default function Today() {
 
             {sodiumLow && (
               <p className="text-sm text-danger" role="status" aria-live="polite">
-                ⚠ sodio &lt; {SODIUM_FLOOR_MG} mg
+                {t('⚠ sodio < %n mg').replace('%n', SODIUM_FLOOR_MG)}
               </p>
             )}
 
@@ -682,7 +683,7 @@ export default function Today() {
       )}
 
       {!loading && entries.length === 0 && labels.length === 0 && (
-        <p className="text-text-2 text-center py-6 lg:col-start-1">Sin registros este día</p>
+        <p className="text-text-2 text-center py-6 lg:col-start-1">{t('Sin registros este día')}</p>
       )}
 
       {!loading && (
@@ -1075,7 +1076,7 @@ function CardBody({ entry: e }) {
       <div className="min-w-0">
         <p className="font-medium">{e.item}{e.brand && <span className="text-text-3 text-sm font-normal ml-1.5">{e.brand}</span>}</p>
         <div className="text-sm font-mono tabular-nums mt-0.5 text-text-2 flex flex-wrap items-center gap-y-0.5 [&>.sep]:text-text-3 [&>.sep]:mx-1.5">
-          <span>{e.grams}g</span>
+          <span>{fmtG(e.grams)}</span>
           {Number(e.protein_g) > 0 && <><span className="sep">|</span><span>P {round(Number(e.protein_g), 1)}</span></>}
           {Number(e.carbs_g) > 0 && <><span className="sep">|</span><span>C {round(Number(e.carbs_g), 1)}</span></>}
           {Number(e.fat_g) > 0 && <><span className="sep">|</span><span>{t('G')} {round(Number(e.fat_g), 1)}</span></>}
@@ -1102,7 +1103,9 @@ function CardBody({ entry: e }) {
 }
 
 function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSettings }) {
-  const [customMl, setCustomMl] = useState('');
+  const units = useUnits();
+  const isUS = units === 'us';
+  const [customAmount, setCustomAmount] = useState('');
   const filled = glassMl > 0 ? Math.floor(waterMl / glassMl) : 0;
   // ponytail: tope de 16 vasos por si el objetivo/vaso da un número absurdo
   const count = Math.min(Math.max(goalMl > 0 ? Math.ceil(goalMl / glassMl) : 3, filled + 1), 16);
@@ -1114,7 +1117,7 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
         <h2 className="font-medium">
           {t('Agua')}{' '}
           <span className="text-sm text-text-3 font-mono tabular-nums">
-            {Math.round(waterMl)}{goalMl > 0 ? ` / ${goalMl}` : ''} ml
+            {fmtMl(waterMl)}{goalMl > 0 ? ` / ${fmtMl(goalMl)}` : ''}
           </span>
         </h2>
         <button
@@ -1136,7 +1139,7 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
               className={`relative w-11 h-11 rounded-xl border border-border flex items-center justify-center press ${
                 isFilled ? 'bg-surface-2 text-d-carb' : 'text-text-3'
               }`}
-              aria-label={isFilled ? t('Quitar último registro de agua') : t('Añadir vaso de %n ml').replace('%n', glassMl)}
+              aria-label={isFilled ? t('Quitar último registro de agua') : t('Añadir vaso de %n').replace('%n', fmtMl(glassMl))}
             >
               <GlassWater size={22} />
               {i === filled && <Plus size={11} className="absolute top-1 right-1 text-text-2" />}
@@ -1154,9 +1157,10 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (Number(customMl) > 0) {
-            onCustom(Number(customMl));
-            setCustomMl('');
+          const n = Number(customAmount);
+          if (n > 0) {
+            onCustom(isUS ? flOzToMl(n) : n);
+            setCustomAmount('');
           }
         }}
         className="flex gap-2"
@@ -1166,9 +1170,9 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
           inputMode="decimal"
           min="1"
           step="any"
-          value={customMl}
-          onChange={(e) => setCustomMl(e.target.value)}
-          placeholder={t('Cantidad (ml)')}
+          value={customAmount}
+          onChange={(e) => setCustomAmount(e.target.value)}
+          placeholder={isUS ? t('Cantidad (fl oz)') : t('Cantidad (ml)')}
           className="flex-1 min-w-0 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <button
@@ -1183,25 +1187,28 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
 }
 
 function WaterSettingsForm({ glassMl, onSave }) {
-  const [ml, setMl] = useState(String(glassMl));
+  const units = useUnits();
+  const isUS = units === 'us';
+  const [amount, setAmount] = useState(String(isUS ? round(mlToFlOz(glassMl), 1) : glassMl));
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (Number(ml) > 0) onSave(Number(ml));
+        const n = Number(amount);
+        if (n > 0) onSave(isUS ? flOzToMl(n) : n);
       }}
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1">
-        <label className="text-sm text-text-2">{t('Tamaño de vaso (ml)')}</label>
+        <label className="text-sm text-text-2">{isUS ? t('Tamaño de vaso (fl oz)') : t('Tamaño de vaso (ml)')}</label>
         <input
           type="number"
           inputMode="decimal"
           min="1"
           step="any"
           required
-          value={ml}
-          onChange={(e) => setMl(e.target.value)}
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
           className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
         />
       </div>
