@@ -336,7 +336,6 @@ const EN = {
   'Ajustes de agua': 'Water settings',
   'Cantidad (ml)': 'Amount (ml)',
   'Cantidad (fl oz)': 'Amount (fl oz)',
-  Añadir: 'Add',
   'Quitar último registro de agua': 'Remove last water entry',
   'Añadir vaso de %n': 'Add %n glass',
   'Tamaño de vaso (ml)': 'Glass size (ml)',
