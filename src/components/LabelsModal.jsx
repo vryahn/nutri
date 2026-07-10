@@ -46,7 +46,7 @@ export default function LabelsModal({ onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50">
       <div className="w-full sm:max-w-sm bg-surface-3 rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-4 max-h-[80dvh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg">Etiquetas</h2>

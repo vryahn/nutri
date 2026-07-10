@@ -18,6 +18,7 @@
   --text-3: #7A8F8E;
   --accent: #069C92;
   --accent-deep: #028078; /* turquesa profundo: 4.6:1 con --on-accent sobre botones */
+  --accent-glass: #3CB8AE; /* mismo hue, +0.09 L: 4.6:1 sobre .glass con cualquier dato detrás */
   --on-accent: #F7FBFB;
   --ok: #4F9B53;
   --warn: #B97F2C;
@@ -42,6 +43,7 @@
   --text-3: #5C7070;
   --accent: #047972;
   --accent-deep: #058179;
+  --accent-glass: #076F69; /* mismo hue, -0.03 L: 4.6:1 sobre .glass con cualquier dato detrás */
   --on-accent: #F8FDFD;
   --ok: #2E7C35;
   --warn: #966104;
@@ -69,6 +71,31 @@ body {
 @layer components {
   .press { @apply active:scale-[0.98] transition-transform duration-150; }
   .input { @apply min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent; }
+
+  /* Material del cromo que el contenido cruza por debajo (header y tab bar móviles).
+     Nunca sobre datos: el fondo que se cuela bajaría el contraste del número. */
+  .glass {
+    background: color-mix(in srgb, var(--surface) 72%, transparent);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  }
+}
+
+/* En claro el texto es oscuro: necesita más opacidad o el contenido de abajo lo ensucia. */
+:root[data-theme='light'] .glass {
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass { background: var(--surface); }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background: var(--surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

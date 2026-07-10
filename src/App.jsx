@@ -153,9 +153,9 @@ function Layout({ children }) {
       <Sidebar onLabels={() => setLabelsOpen(true)} menuActions={menuActions} />
 
       <div className="flex-1 flex flex-col min-w-0 md:ml-52">
-        <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border">
+        <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-border glass">
           <span className="font-display text-lg">
-            nutri<span className="text-accent">.</span>
+            nutri<span className="text-accent-glass">.</span>
           </span>
           <div className="flex items-center gap-1">
             <MoreOptions
@@ -186,7 +186,7 @@ function Layout({ children }) {
         </main>
 
         <nav
-          className="md:hidden fixed bottom-0 inset-x-0 bg-surface border-t border-border flex"
+          className="md:hidden fixed bottom-0 inset-x-0 border-t border-border flex glass"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
           {TABS.map(({ to, label, icon: Icon, end }) => (
@@ -194,9 +194,12 @@ function Layout({ children }) {
               key={to}
               to={to}
               end={end}
+              // El label activo usa --accent-glass, no --accent: sobre el glass puede
+              // quedar una barra sólida del Dashboard (Cell fill=--d-prot) y ahí el
+              // acento normal cae a 3.3:1.
               className={({ isActive }) =>
                 `flex-1 flex flex-col items-center gap-0.5 py-2 min-h-[44px] press ${
-                  isActive ? 'text-accent' : 'text-text-2'
+                  isActive ? 'text-accent-glass' : 'text-text-2'
                 }`
               }
             >
@@ -204,7 +207,7 @@ function Layout({ children }) {
                 <>
                   <Icon size={22} />
                   <span className="text-xs">{label}</span>
-                  {isActive && <span className="h-0.5 w-6 rounded-full bg-accent" />}
+                  {isActive && <span className="h-0.5 w-6 rounded-full bg-accent-glass" />}
                 </>
               )}
             </NavLink>
