@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
@@ -1251,6 +1252,7 @@ function useFoodMeta(foodId, recipeId) {
 // Reutilizado por AddEntrySheet (sheet, <lg) y el quick-add inline (rail, lg+).
 // Navegación por teclado en resultados: ↓/↑ mueve la selección, Enter la confirma.
 function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inputRef, autoFocus }) {
+  const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -1418,6 +1420,16 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
           </div>
         )}
       </div>
+
+      {!selected && (
+        <button
+          type="button"
+          onClick={() => navigate('/foods', { state: { newFood: { name: query.trim() } } })}
+          className="min-h-[44px] self-start text-sm text-accent press"
+        >
+          ＋ {t('Nuevo alimento')}
+        </button>
+      )}
 
       {selected && (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">

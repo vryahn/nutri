@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Plus, ChevronLeft, Search, X, Star, AlertTriangle, Trash2,
 } from 'lucide-react';
@@ -45,7 +46,11 @@ export default function Foods() {
   const [foods, setFoods] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
-  const [editing, setEditing] = useState(null); // null = list view, object = form view
+  const location = useLocation();
+  // alta desde Hoy: /foods con state.newFood abre el form ya prellenado
+  const [editing, setEditing] = useState(() =>
+    location.state?.newFood ? { ...EMPTY_FOOD, ...location.state.newFood } : null
+  ); // null = list view, object = form view
   const [toast, showToast] = useToast();
   const [userId, setUserId] = useState(null);
   const [favs, setFavs] = useState([]); // prefs.data.fav_micros: micros promovidos fuera de "Más micros"
@@ -61,6 +66,11 @@ export default function Foods() {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
   }, [query]);
+
+  // ponytail: limpia el history state para que un refresh no reabra el form
+  useEffect(() => {
+    if (location.state?.newFood) window.history.replaceState({}, '');
+  }, []);
 
   // Atajos lg+: "/" enfoca el buscador (si el foco no está en un input), Esc cierra el panel.
   useEffect(() => {
