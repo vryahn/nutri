@@ -168,6 +168,7 @@ export default function Today() {
   const [undoData, setUndoData] = useState(null); // { entry, timer } tras un borrado, para "Deshacer"
   const [activeEntry, setActiveEntry] = useState(null); // entry en arrastre (para el fantasma de DragOverlay)
   const [dragOverSection, setDragOverSection] = useState(null); // id de etiqueta (o 'none') bajo una card en arrastre
+  const [draggingSection, setDraggingSection] = useState(null); // id de la sección en arrastre (atenúa a las demás)
   const [quickAddKey, setQuickAddKey] = useState(0); // bump para resetear el quick-add inline tras registrar
   const [quickAddInitialLabel, setQuickAddInitialLabel] = useState(null);
   const quickAddInputRef = useRef(null);
@@ -329,6 +330,8 @@ export default function Today() {
   function handleDragStart({ active }) {
     if (active.data.current?.type === 'card') {
       setActiveEntry(foodEntries.find((e) => e.id === active.data.current.entryId) || null);
+    } else if (active.data.current?.type === 'section') {
+      setDraggingSection(active.data.current.labelId);
     }
   }
 
@@ -345,6 +348,7 @@ export default function Today() {
   async function handleDragEnd({ active, over }) {
     setActiveEntry(null);
     setDragOverSection(null);
+    setDraggingSection(null);
     if (active.data.current?.type === 'section') lastSectionDragRef.current = Date.now();
     if (!over) return;
     const data = active.data.current;
@@ -401,6 +405,7 @@ export default function Today() {
   function handleDragCancel() {
     setActiveEntry(null);
     setDragOverSection(null);
+    setDraggingSection(null);
     lastSectionDragRef.current = Date.now();
   }
 
@@ -697,6 +702,7 @@ export default function Today() {
                     key={g.id}
                     group={g}
                     isOver={dragOverSection === g.id}
+                    dimmed={draggingSection != null && draggingSection !== g.id}
                     editingId={editing?.id}
                     collapsed={collapsed.has(String(g.id))}
                     onToggle={() => toggleCollapsed(String(g.id))}
@@ -709,6 +715,7 @@ export default function Today() {
                     key="none"
                     group={g}
                     isOver={dragOverSection === 'none'}
+                    dimmed={draggingSection != null}
                     editingId={editing?.id}
                     collapsed={collapsed.has('none')}
                     onToggle={() => toggleCollapsed('none')}
@@ -885,9 +892,11 @@ function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, dragProps
   return (
     <div
       {...dragProps}
-      className={`flex items-center justify-between gap-2 rounded-xl border bg-surface-2 px-3 py-2.5 min-h-[44px] transition-colors ${dragging ? 'shadow-lg' : ''}`}
+      className={`flex items-center justify-between gap-2 rounded-xl border bg-surface-2 px-3 py-2.5 min-h-[44px] transition-colors ${dragging ? 'cursor-grabbing' : ''}`}
       style={{
-        borderColor: isOver
+        borderColor: dragging
+          ? 'color-mix(in srgb, var(--accent) 70%, transparent)'
+          : isOver
           ? 'color-mix(in srgb, var(--accent) 55%, transparent)'
           : has
           ? 'color-mix(in srgb, var(--accent) 40%, transparent)'
@@ -930,49 +939,65 @@ function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, dragProps
 }
 
 // Sección de una etiqueta real: reordenable (long-press en su barra) y droppable
-// (cards de otras secciones). Al arrastrar se "levanta": scale + sombra en la barra,
-// las vecinas animan el hueco vía la transition de useSortable.
-function SortableSection({ group: g, isOver, editingId, collapsed, onToggle, onAdd, onEditEntry, onDeleteEntry }) {
+// (cards de otras secciones). Al arrastrar se "levanta" como losa: el nodo externo solo
+// traslada (dnd-kit anula su transition, así que scale/rotate ahí saltarían); el interno
+// anima scale, tilt, halo de acento y sombra. Las demás secciones se atenúan (`dimmed`).
+function SortableSection({ group: g, isOver, dimmed, editingId, collapsed, onToggle, onAdd, onEditEntry, onDeleteEntry }) {
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `section-${g.id}`,
     data: { type: 'section', labelId: g.id },
   });
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)${isDragging ? ' scale(1.02)' : ''}`, transition }
-    : undefined;
+  const style = {
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    transition,
+    ...(isDragging ? { position: 'relative', zIndex: 20 } : null),
+  };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`flex flex-col gap-2 rounded-2xl ${isDragging ? 'relative z-10 opacity-95' : ''}`}
-    >
-      <SectionBar
-        name={g.name}
-        items={g.items}
-        isOver={isOver}
-        collapsed={collapsed}
-        onToggle={onToggle}
-        onAdd={onAdd}
-        dragProps={listeners}
-        dragging={isDragging}
-      />
-      {!collapsed && (
-        <SortableContext items={g.items.map((e) => `card-${e.id}`)} strategy={verticalListSortingStrategy}>
-          {g.items.map((e) => (
-            <SwipeCard key={e.id} entry={e} labelId={g.id} editing={e.id === editingId} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
-          ))}
-        </SortableContext>
-      )}
+    <div ref={setNodeRef} style={style}>
+      <div
+        className={`flex flex-col gap-2 rounded-2xl transition-[transform,opacity,box-shadow] duration-200 ease-out motion-reduce:transition-none ${
+          isDragging ? 'scale-[1.015] -rotate-[0.4deg]' : dimmed ? 'opacity-40 scale-[0.99]' : ''
+        }`}
+        style={
+          isDragging
+            ? {
+                boxShadow:
+                  '0 22px 48px -18px rgba(0,0,0,.65), 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 22px -6px color-mix(in srgb, var(--accent) 35%, transparent)',
+              }
+            : undefined
+        }
+      >
+        <SectionBar
+          name={g.name}
+          items={g.items}
+          isOver={isOver}
+          collapsed={collapsed}
+          onToggle={onToggle}
+          onAdd={onAdd}
+          dragProps={listeners}
+          dragging={isDragging}
+        />
+        {!collapsed && (
+          <SortableContext items={g.items.map((e) => `card-${e.id}`)} strategy={verticalListSortingStrategy}>
+            {g.items.map((e) => (
+              <SwipeCard key={e.id} entry={e} labelId={g.id} editing={e.id === editingId} onEdit={() => onEditEntry(e)} onDelete={() => onDeleteEntry(e)} />
+            ))}
+          </SortableContext>
+        )}
+      </div>
     </div>
   );
 }
 
 // "Sin etiqueta": no reordenable la sección, pero sus cards sí; droppable para cross-sección.
-function DropOnlySection({ group: g, isOver, editingId, collapsed, onToggle, onEditEntry, onDeleteEntry }) {
+function DropOnlySection({ group: g, isOver, dimmed, editingId, collapsed, onToggle, onEditEntry, onDeleteEntry }) {
   const { setNodeRef } = useDroppable({ id: 'section-none', data: { type: 'section', labelId: null } });
   return (
-    <div ref={setNodeRef} className="flex flex-col gap-2 rounded-2xl">
+    <div
+      ref={setNodeRef}
+      className={`flex flex-col gap-2 rounded-2xl transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none ${dimmed ? 'opacity-40 scale-[0.99]' : ''}`}
+    >
       <SectionBar name={g.name} items={g.items} isOver={isOver} collapsed={collapsed} onToggle={onToggle} />
       {!collapsed && (
         <SortableContext items={g.items.map((e) => `card-${e.id}`)} strategy={verticalListSortingStrategy}>
