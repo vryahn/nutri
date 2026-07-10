@@ -971,8 +971,16 @@ function CardBody({ entry: e }) {
         </div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
-        {highNa && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-danger/20 text-danger">Na</span>}
-        {highK && <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-warn/20 text-warn">K</span>}
+        {highNa && (
+          <span title="Alto en sodio" className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-danger/20 text-danger">
+            Na {round(Number(e.micros.sodio_mg), 0)}
+          </span>
+        )}
+        {highK && (
+          <span title="Alto en potasio" className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-warn/20 text-warn">
+            K {round(Number(e.micros.potasio_mg), 0)}
+          </span>
+        )}
         <span className="font-mono tabular-nums text-text-2">{e.kcal} kcal</span>
       </div>
     </>
@@ -1381,7 +1389,6 @@ function AddEntrySheet({ date, labels, waterFoodId, initialLabelId, onClose, onA
         waterFoodId={waterFoodId}
         initialLabelId={initialLabelId}
         onAdded={onAdded}
-        autoFocus
       />
     </Sheet>
   );

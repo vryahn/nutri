@@ -507,11 +507,29 @@ function pctDelta(curr, prev) {
   return ((curr - prev) / prev) * 100;
 }
 
+// Estado de vista persistido en localStorage (por dispositivo, no en prefs):
+// sobrevive recarga sin escritura remota. `initial` se usa si no hay nada
+// guardado o el JSON está corrupto.
+function usePersistentState(key, initial) {
+  const [value, setValue] = useState(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw != null ? JSON.parse(raw) : initial;
+    } catch {
+      return initial;
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem(key, JSON.stringify(value));
+  }, [key, value]);
+  return [value, setValue];
+}
+
 export default function Dashboard() {
-  const [preset, setPreset] = useState('semana'); // 'hoy'|…|'año'|'custom'|'fase'
-  const [phaseSel, setPhaseSel] = useState({ kind: 'actual' }); // {kind:'actual'|'previa'} | {kind:'goal', goal}
-  const [customStart, setCustomStart] = useState(addDaysISO(todayISO(), -6));
-  const [customEnd, setCustomEnd] = useState(todayISO());
+  const [preset, setPreset] = usePersistentState('nutri.dash.preset', 'semana'); // 'hoy'|…|'año'|'custom'|'fase'
+  const [phaseSel, setPhaseSel] = usePersistentState('nutri.dash.phaseSel', { kind: 'actual' }); // {kind:'actual'|'previa'} | {kind:'goal', goal}
+  const [customStart, setCustomStart] = usePersistentState('nutri.dash.customStart', addDaysISO(todayISO(), -6));
+  const [customEnd, setCustomEnd] = usePersistentState('nutri.dash.customEnd', todayISO());
   const [dailyTotals, setDailyTotals] = useState([]);
   const [prevDailyTotals, setPrevDailyTotals] = useState([]);
   const [historyTotals, setHistoryTotals] = useState([]); // daily_totals(day,kcal) últimos 90 días, para completitud
@@ -522,7 +540,7 @@ export default function Dashboard() {
   const [topMetric, setTopMetric] = useState('kcal');
   const [csvNotice, setCsvNotice] = useState('');
   const [loading, setLoading] = useState(true);
-  const [calcMode, setCalcMode] = useState('promedio');
+  const [calcMode, setCalcMode] = usePersistentState('nutri.dash.calcMode', 'promedio');
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const today = todayISO();
