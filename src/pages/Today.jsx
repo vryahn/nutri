@@ -427,7 +427,7 @@ export default function Today() {
           <input
             type="date"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => e.target.value && setDate(e.target.value)}
             onClick={(e) => e.currentTarget.showPicker?.()}
             className="absolute inset-0 w-full opacity-0 cursor-pointer"
             aria-label="Elegir fecha"
