@@ -9,8 +9,8 @@ import { Trash2 } from 'lucide-react';
 // Integración con dnd-kit (Hoy): la card es a la vez draggable de dnd-kit y
 // swipeable. Los props opcionales permiten compartir el mismo nodo/gesto:
 //   dragDisabled  -> true mientras dnd-kit arrastra (aborta el swipe)
-//   onPointerDownExtra -> se llama en pointerdown antes de armar el swipe
-//                         (aquí Hoy engancha el listener de dnd-kit)
+//   dragListeners -> listeners de dnd-kit (onMouseDown/onTouchStart) a esparcir
+//                    en el elemento; conviven con el pointerdown del swipe
 //   nodeRef       -> callback de setNodeRef de dnd-kit (se fusiona con el ref interno)
 //   dragAttributes -> attributes de dnd-kit a esparcir en el elemento
 // `resetOnDelete`: al pasar el umbral, vuelve a su sitio tras invocar onDelete
@@ -26,7 +26,7 @@ export default function SwipeToDelete({
   revealStyle,
   resetOnDelete = false,
   dragDisabled = false,
-  onPointerDownExtra,
+  dragListeners,
   nodeRef,
   dragAttributes,
 }) {
@@ -36,7 +36,6 @@ export default function SwipeToDelete({
   const [restoring, setRestoring] = useState(false);
 
   function onPointerDown(ev) {
-    onPointerDownExtra?.(ev);
     gesture.current = { startX: ev.clientX, startY: ev.clientY, swiping: false, tracking: true, justSwiped: false };
   }
 
@@ -99,6 +98,7 @@ export default function SwipeToDelete({
           if (typeof nodeRef === 'function') nodeRef(node);
         }}
         {...dragAttributes}
+        {...dragListeners}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

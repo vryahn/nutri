@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, GlassWater, Settings, GripVertical, Pencil, Trash2, Check, History, Copy, ClipboardPaste } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
 import { useToast } from '../lib/useToast.js';
@@ -20,7 +20,7 @@ import {
   MICROS_DEFAULT,
   microGroups,
 } from '../lib/domain.js';
-import { DndContext, DragOverlay, PointerSensor, closestCenter, closestCorners, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragOverlay, MouseSensor, TouchSensor, closestCenter, closestCorners, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
 // ponytail: matchMedia en vez de un resize-observer propio, ya cubre el único
@@ -63,7 +63,12 @@ export default function Today() {
     try { return new Set(JSON.parse(localStorage.getItem('nutri.today.collapsed') || '[]')); }
     catch { return new Set(); }
   });
+  // Al soltar una sección, el navegador dispara un click sobre el elemento donde
+  // quedó el puntero — si el drag arrancó en la zona del toggle, ese click fantasma
+  // contraería la sección recién reordenada. Ventana de gracia tras cada drag.
+  const lastSectionDragRef = useRef(0);
   function toggleCollapsed(key) {
+    if (Date.now() - lastSectionDragRef.current < 250) return;
     setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
@@ -72,7 +77,14 @@ export default function Today() {
     });
   }
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 250, tolerance: 8 } }));
+  // MouseSensor + TouchSensor, NO PointerSensor: con touch-action pan-y (necesario
+  // para el swipe-borrar) PointerSensor no puede bloquear el scroll y iOS cancela el
+  // drag con pointercancel; TouchSensor sí hace preventDefault del touchmove al activar.
+  const DRAG_ACTIVATION = { delay: 150, tolerance: 8 };
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: DRAG_ACTIVATION }),
+    useSensor(TouchSensor, { activationConstraint: DRAG_ACTIVATION })
+  );
 
   useEffect(() => {
     loadDay();
@@ -211,6 +223,7 @@ export default function Today() {
   async function handleDragEnd({ active, over }) {
     setActiveEntry(null);
     setDragOverSection(null);
+    if (active.data.current?.type === 'section') lastSectionDragRef.current = Date.now();
     if (!over) return;
     const data = active.data.current;
     if (data?.type === 'section') {
@@ -266,6 +279,7 @@ export default function Today() {
   function handleDragCancel() {
     setActiveEntry(null);
     setDragOverSection(null);
+    lastSectionDragRef.current = Date.now();
   }
 
   // Borrado unificado (swipe/hover-icon en Hoy y botón "Borrar" del editor): UI
@@ -756,8 +770,9 @@ function sectionTotals(items) {
 // Barra resumen = nivel 1 (total de la sección): fondo neutro; con registros, el
 // título y el borde pasan a lima (recolor discreto que la distingue de una sección
 // vacía). Macros con color + micros (Na/K/Mg, solo lg) y kcal grande a la derecha.
-// Click en la zona izquierda contrae/expande. `handle` = botón de drag (opcional).
-function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, handle }) {
+// Click en la zona izquierda contrae/expande. `dragProps` = listeners de dnd-kit
+// (long-press 150 ms sobre la barra arrastra la sección; "+" hace stopPropagation).
+function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, dragProps, dragging }) {
   const t = sectionTotals(items);
   const has = items.length > 0;
   const label = (
@@ -780,7 +795,8 @@ function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, handle })
   );
   return (
     <div
-      className="flex items-center justify-between gap-2 rounded-xl border bg-surface-2 px-3 py-2.5 min-h-[44px] transition-colors"
+      {...dragProps}
+      className={`flex items-center justify-between gap-2 rounded-xl border bg-surface-2 px-3 py-2.5 min-h-[44px] transition-colors ${dragging ? 'shadow-lg' : ''}`}
       style={{
         borderColor: isOver
           ? 'color-mix(in srgb, var(--accent) 55%, transparent)'
@@ -809,29 +825,38 @@ function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, handle })
           </span>
         )}
         {onAdd && (
-          <button onClick={onAdd} className="p-2.5 text-accent press" aria-label={`Añadir a ${name}`}>
+          <button
+            onClick={onAdd}
+            onMouseDown={(ev) => ev.stopPropagation()}
+            onTouchStart={(ev) => ev.stopPropagation()}
+            className="p-2.5 text-accent press"
+            aria-label={`Añadir a ${name}`}
+          >
             <Plus size={20} />
           </button>
         )}
-        {handle}
       </div>
     </div>
   );
 }
 
-// Sección de una etiqueta real: reordenable (handle) y droppable (cards de otras secciones).
+// Sección de una etiqueta real: reordenable (long-press en su barra) y droppable
+// (cards de otras secciones). Al arrastrar se "levanta": scale + sombra en la barra,
+// las vecinas animan el hueco vía la transition de useSortable.
 function SortableSection({ group: g, isOver, editingId, collapsed, onToggle, onAdd, onEditEntry, onDeleteEntry }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `section-${g.id}`,
     data: { type: 'section', labelId: g.id },
   });
-  const style = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, transition } : undefined;
+  const style = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)${isDragging ? ' scale(1.02)' : ''}`, transition }
+    : undefined;
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex flex-col gap-2 rounded-2xl ${isDragging ? 'opacity-60' : ''}`}
+      className={`flex flex-col gap-2 rounded-2xl ${isDragging ? 'relative z-10 opacity-95' : ''}`}
     >
       <SectionBar
         name={g.name}
@@ -840,16 +865,8 @@ function SortableSection({ group: g, isOver, editingId, collapsed, onToggle, onA
         collapsed={collapsed}
         onToggle={onToggle}
         onAdd={onAdd}
-        handle={
-          <button
-            {...attributes}
-            onPointerDown={listeners.onPointerDown}
-            className="p-2.5 text-text-3 touch-none cursor-grab active:cursor-grabbing"
-            aria-label={`Arrastrar para reordenar ${g.name}`}
-          >
-            <GripVertical size={18} />
-          </button>
-        }
+        dragProps={listeners}
+        dragging={isDragging}
       />
       {!collapsed && (
         <SortableContext items={g.items.map((e) => `card-${e.id}`)} strategy={verticalListSortingStrategy}>
@@ -880,7 +897,7 @@ function DropOnlySection({ group: g, isOver, editingId, collapsed, onToggle, onE
 }
 
 // Card de una ingesta: tap → editar, arrastre horizontal inmediato → swipe (borrar),
-// long-press 250 ms sin moverse → drag entre secciones (dnd-kit). El swipe vive en
+// long-press 150 ms sin moverse → drag entre secciones (dnd-kit). El swipe vive en
 // SwipeToDelete (compartido con Objetivos); su umbral de movimiento (8 px) coincide con
 // la tolerance de dnd-kit para que ambos gestos se "auto-cancelen" de forma consistente.
 // En lg+ con puntero (hover/focus-within), iconos ✎/✕ aparecen a la derecha — capa
@@ -900,7 +917,7 @@ function SwipeCard({ entry: e, labelId, editing, onEdit, onDelete }) {
         onDelete={onDelete}
         onTap={onEdit}
         dragDisabled={isDragging}
-        onPointerDownExtra={listeners.onPointerDown}
+        dragListeners={listeners}
         nodeRef={setNodeRef}
         dragAttributes={attributes}
         className={`${editing ? 'bg-surface-2' : 'bg-surface'} border border-border p-3 flex justify-between items-center gap-3 ${isDragging ? 'opacity-30' : ''}`}
