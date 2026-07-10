@@ -50,6 +50,9 @@ import {
   BAYES_KCAL_TOL,
   dayCompleteness,
   targetPhases,
+  phaseList,
+  PHASE_GOALS,
+  goalLabel,
 } from '../lib/domain.js';
 
 // Calculo homologado del selector (Parte A). 'suma'/'promedio' siempre
@@ -451,11 +454,11 @@ function buildWeeks(start, end) {
   return weeks;
 }
 
-function weeklyProteinData(weeks, start, end, dayInfo) {
+function weeklyProteinData(weeks, dateSet, dayInfo) {
   return weeks.map((week, i) => {
     let sum = 0, count = 0, floorSum = 0, floorCount = 0;
     for (const d of week) {
-      if (d < start || d > end) continue;
+      if (!dateSet.has(d)) continue;
       const info = dayInfo.get(d);
       if (info?.registrado) {
         sum += info.protein;
@@ -501,7 +504,8 @@ function pctDelta(curr, prev) {
 }
 
 export default function Dashboard() {
-  const [preset, setPreset] = useState('semana');
+  const [preset, setPreset] = useState('semana'); // 'hoy'|…|'año'|'custom'|'fase'
+  const [phaseSel, setPhaseSel] = useState({ kind: 'actual' }); // {kind:'actual'|'previa'} | {kind:'goal', goal}
   const [customStart, setCustomStart] = useState(addDaysISO(todayISO(), -6));
   const [customEnd, setCustomEnd] = useState(todayISO());
   const [dailyTotals, setDailyTotals] = useState([]);
@@ -518,9 +522,37 @@ export default function Dashboard() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const today = todayISO();
-  const presetDef = PRESETS.find((p) => p.key === preset);
-  const start = preset === 'custom' ? customStart : addDaysISO(today, -(presetDef.days - 1));
-  const end = preset === 'custom' ? customEnd : today;
+  const presetDef = PRESETS.find((p) => p.key === preset) || PRESETS[1]; // 'custom'/'fase' caen a semana
+
+  // Fases ya iniciadas, con el fin recortado a hoy. Las programadas (vf > hoy)
+  // no tienen días registrados, así que no entran al selector.
+  const phases = phaseList(targets)
+    .filter((p) => p.vf <= today)
+    .map((p) => ({ ...p, end: p.end && p.end < today ? p.end : today }));
+
+  // Selección de fase → conjunto de días. 'actual'/'previa' son un intervalo
+  // contiguo; una meta es la UNIÓN de todas sus fases (no contigua).
+  const selectedPhases =
+    preset !== 'fase'
+      ? []
+      : phaseSel.kind === 'actual'
+        ? phases.slice(-1)
+        : phaseSel.kind === 'previa'
+          ? phases.slice(-2, -1)
+          : phases.filter((p) => p.goal === phaseSel.goal);
+  const phaseMode = preset === 'fase' && selectedPhases.length > 0;
+  const unionMode = phaseMode && selectedPhases.length > 1;
+  const phaseDays = phaseMode ? selectedPhases.flatMap((p) => datesInRange(p.vf, p.end)) : [];
+  const selectionLabel = !phaseMode
+    ? null
+    : phaseSel.kind === 'goal'
+      ? goalLabel(phaseSel.goal)
+      : phaseSel.kind === 'actual'
+        ? 'Fase actual'
+        : 'Fase previa';
+
+  const start = phaseMode ? phaseDays[0] : preset === 'custom' ? customStart : addDaysISO(today, -(presetDef.days - 1));
+  const end = phaseMode ? phaseDays[phaseDays.length - 1] : preset === 'custom' ? customEnd : today;
 
   useEffect(() => {
     load();
@@ -551,12 +583,13 @@ export default function Dashboard() {
 
   async function exportCSV() {
     setCsvNotice('');
-    const { data: rows } = await supabase
+    const { data: all } = await supabase
       .from('entry_nutrients')
       .select('day,meal,item,food_id,recipe_id,grams,kcal,protein_g,carbs_g,fat_g,micros')
       .gte('day', start)
       .lte('day', end)
       .order('day');
+    const rows = phaseMode ? (all || []).filter((r) => dateSet.has(r.day)) : all;
     if (!rows || rows.length === 0) {
       setCsvNotice('Sin registros en el rango');
       return;
@@ -583,12 +616,19 @@ export default function Dashboard() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `nutri_entries_${start}_${end}.csv`;
+    a.download = phaseMode
+      ? `nutri_entries_fase_${phaseSel.kind === 'goal' ? phaseSel.goal : phaseSel.kind}.csv`
+      : `nutri_entries_${start}_${end}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
-  const dates = datesInRange(start, end);
+  // En modo fase `dates` puede ser no contiguo (unión de fases con la misma
+  // meta): las queries siguen siendo por [start, end] y `dateSet` recorta en
+  // cliente todo lo que se indexa por día suelto (items, semanas, heatmap).
+  const dates = phaseMode ? phaseDays : datesInRange(start, end);
+  const dateSet = new Set(dates);
+  const rangeItems = phaseMode ? itemRows.filter((r) => dateSet.has(r.day)) : itemRows;
   const stats = computeStats(dates, dailyTotals, targets);
   const diasConObjetivo = dates.filter((d) => resolveTarget(targets, d)).length;
 
@@ -596,7 +636,7 @@ export default function Dashboard() {
   // por día (para el atracón único) y mediana de kcal de los últimos 90 días
   // (umbral robusto personal).
   const mealsCountByDay = new Map();
-  for (const r of itemRows) {
+  for (const r of rangeItems) {
     const s = mealsCountByDay.get(r.day) || new Set();
     s.add(r.meal || 'Sin etiqueta');
     mealsCountByDay.set(r.day, s);
@@ -618,10 +658,13 @@ export default function Dashboard() {
 
   // Fases de objetivo (Fix 5): si el rango cruza >1 fase, los cálculos
   // avanzados (mediana/σ/tendencia, NO bayes) se restringen a la fase vigente.
+  // En modo fase el recorte NO aplica: el usuario pidió explícitamente ese
+  // conjunto de fases, recortarlo a la última vaciaría el filtro. El Hint
+  // declara que las fases unidas tienen objetivos distintos.
   const phaseSegments = targetPhases(targets, dates);
   const realPhases = phaseSegments.filter((p) => p.vf != null);
   const crossesPhases = realPhases.length > 1;
-  const activePhaseDays = crossesPhases ? new Set(realPhases[realPhases.length - 1].days) : null;
+  const activePhaseDays = crossesPhases && !phaseMode ? new Set(realPhases[realPhases.length - 1].days) : null;
 
   const registeredDays = chartData.filter((d) => d.registrado);
   const completeDaysFull = registeredDays.filter((d) => d.completeness !== 'parcial');
@@ -638,7 +681,7 @@ export default function Dashboard() {
     diasParcialesFull,
     diasCompletosPhase: advancedDays.length,
     diasParcialesPhase,
-    crossesPhases,
+    crossesPhases: activePhaseDays != null, // solo cuando el recorte a la fase vigente está activo
   };
 
   // Si el cálculo activo deja de cumplir su mínimo al cambiar de rango, cae
@@ -657,13 +700,15 @@ export default function Dashboard() {
 
   const { prevStart, prevEnd } = prevRangeOf(start, end);
   const prevStats = computeStats(datesInRange(prevStart, prevEnd), prevDailyTotals, targets);
-  const showDelta = prevStats.diasRegistrados >= 1 && (calcMode === 'suma' || calcMode === 'promedio');
+  // Unir varias fases no deja un "periodo previo" con sentido: la ventana
+  // anterior al primer día cae dentro de otro régimen. Se oculta la delta.
+  const showDelta = !unionMode && prevStats.diasRegistrados >= 1 && (calcMode === 'suma' || calcMode === 'promedio');
 
   const kcalChart = withMovingAverage(chartData);
   const dayInfo = new Map(chartData.map((d) => [d.day, d]));
-  const weeks = buildWeeks(start, end);
-  const proteinWeekly = weeklyProteinData(weeks, start, end, dayInfo);
-  const top = topItems(itemRows, waterFoodId, topMetric);
+  const weeks = buildWeeks(start, end).filter((w) => w.some((d) => dateSet.has(d)));
+  const proteinWeekly = weeklyProteinData(weeks, dateSet, dayInfo);
+  const top = topItems(rangeItems, waterFoodId, topMetric);
   const maxTop = top.length ? top[0][topMetric] : 0;
 
   const msKcal = computeMetricStats(registeredDays, advancedDays, 'kcal');
@@ -676,9 +721,11 @@ export default function Dashboard() {
   const bCarbs = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'carbs_g') : null;
   const bFat = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'fat_g') : null;
   const bSodio = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'sodio_mg') : null;
-  const phaseHintText = crossesPhases
-    ? `El rango cruza ${realPhases.length} fases de objetivo; calculado sobre la fase actual (${advancedDays.length} días) para no mezclar regímenes`
-    : null;
+  const phaseHintText = unionMode
+    ? `Une ${selectedPhases.length} fases de ${selectionLabel}, con objetivos distintos entre sí; calculado sobre sus ${advancedDays.length} días completos`
+    : crossesPhases
+      ? `El rango cruza ${realPhases.length} fases de objetivo; calculado sobre la fase actual (${advancedDays.length} días) para no mezclar regímenes`
+      : null;
   const isPhaseScopedMode = calcMode === 'mediana' || calcMode === 'stddev' || calcMode === 'tendencia';
 
   // Streamgraph de macros (kcal por macro, por día); fallback de barra 100%
@@ -720,27 +767,54 @@ export default function Dashboard() {
         </button>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {PRESETS.map((p) => (
+      {/* El botón de fases vive FUERA del scroller: su popover no puede quedar
+          recortado por el overflow-x de la fila de presets. */}
+      <div className="flex items-center gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-1 flex-1 min-w-0">
+          {PRESETS.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => setPreset(p.key)}
+              className={`px-3 py-2 rounded-full text-sm whitespace-nowrap press ${
+                preset === p.key ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
           <button
-            key={p.key}
-            onClick={() => setPreset(p.key)}
+            onClick={() => setPreset('custom')}
             className={`px-3 py-2 rounded-full text-sm whitespace-nowrap press ${
-              preset === p.key ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
+              preset === 'custom' ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
             }`}
           >
-            {p.label}
+            Custom
           </button>
-        ))}
-        <button
-          onClick={() => setPreset('custom')}
-          className={`px-3 py-2 rounded-full text-sm whitespace-nowrap press ${
-            preset === 'custom' ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
-          }`}
-        >
-          Custom
-        </button>
+        </div>
+        <PhaseMenu
+          phases={phases}
+          selection={phaseSel}
+          active={preset === 'fase'}
+          label={selectionLabel || 'Fases'}
+          onSelect={(sel) => {
+            setPhaseSel(sel);
+            setPreset('fase');
+          }}
+        />
       </div>
+
+      {preset === 'fase' && !phaseMode && (
+        <p className="text-sm text-warn">La fase seleccionada ya no tiene días registrados — mostrando la última semana.</p>
+      )}
+
+      {unionMode && (
+        <p className="text-xs text-text-3">
+          {selectedPhases.length} fases de {selectionLabel} · {dates.length} días.{' '}
+          <Hint text={`Sin periodo previo comparable: la ventana anterior al ${start} pertenece a otro régimen`}>
+            Sin comparación vs periodo previo
+          </Hint>
+        </p>
+      )}
 
       {preset === 'custom' && (
         <div className="flex gap-2">
@@ -998,7 +1072,7 @@ export default function Dashboard() {
         {dates.length > 7 && (
           <section className="lg:col-span-6 rounded-2xl bg-surface border border-border p-4">
             <p className="text-sm text-text-3 mb-3">Adherencia (kcal por día)</p>
-            <AdherenceHeatmap weeks={weeks} start={start} end={end} dayInfo={dayInfo} />
+            <AdherenceHeatmap weeks={weeks} dateSet={dateSet} dayInfo={dayInfo} />
           </section>
         )}
 
@@ -1123,7 +1197,92 @@ export default function Dashboard() {
   );
 }
 
-function AdherenceHeatmap({ weeks, start, end, dayInfo }) {
+// Selector de fases: 'actual'/'previa' (un intervalo) y las 4 metas (unión de
+// todas las fases con esa meta). Flota sobre el contenido → `.glass`, y el
+// acento sobre glass es --accent-glass, nunca --accent. Toda opción sin datos
+// se deshabilita con su causa concreta, nunca desaparece.
+function PhaseMenu({ phases, selection, active, label, onSelect }) {
+  const [open, setOpen] = useState(false);
+  const actual = phases[phases.length - 1] || null;
+  const previa = phases[phases.length - 2] || null;
+  const fmt = (p) => `${p.label || 'Sin nombre'} · ${p.vf.slice(5)} → ${p.end.slice(5)}`; // MM-DD, como el eje de los charts
+
+  const items = [
+    {
+      key: 'actual',
+      sel: { kind: 'actual' },
+      label: 'Fase actual',
+      sub: actual ? fmt(actual) : null,
+      reason: actual ? null : 'Sin fase vigente — créala en Metas',
+    },
+    {
+      key: 'previa',
+      sel: { kind: 'previa' },
+      label: 'Fase previa',
+      sub: previa ? fmt(previa) : null,
+      reason: previa ? null : 'Solo hay una fase iniciada — la previa aparece al empezar la siguiente',
+    },
+    ...PHASE_GOALS.map((g) => {
+      const n = phases.filter((p) => p.goal === g.key).length;
+      return {
+        key: g.key,
+        sel: { kind: 'goal', goal: g.key },
+        label: g.label,
+        sub: n ? `${n} ${n === 1 ? 'fase' : 'fases'} en el histórico` : null,
+        reason: n ? null : `Ninguna fase marcada como ${g.label} — márcala en Metas`,
+        divider: g.key === PHASE_GOALS[0].key,
+      };
+    }),
+  ];
+  const isSel = (it) =>
+    active && it.sel.kind === selection.kind && (it.sel.kind !== 'goal' || it.sel.goal === selection.goal);
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={`px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap press ${
+          active ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
+        }`}
+      >
+        {label} {open ? '▴' : '▾'}
+      </button>
+      {open && (
+        <>
+          <button className="fixed inset-0 z-40 cursor-default" aria-hidden tabIndex={-1} onClick={() => setOpen(false)} />
+          <div className="absolute z-50 top-full right-0 mt-1 w-64 rounded-xl border border-border p-1 shadow-lg glass">
+            {items.map((it) => (
+              <div key={it.key} className={it.divider ? 'border-t border-border mt-1 pt-1' : ''}>
+                {it.reason ? (
+                  <div className="flex items-center justify-between gap-2 px-3 py-2 min-h-[44px] text-sm text-text-3">
+                    <span>{it.label}</span>
+                    <Hint text={it.reason}>ⓘ</Hint>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setOpen(false);
+                      onSelect(it.sel);
+                    }}
+                    className={`w-full text-left rounded-lg px-3 py-2 min-h-[44px] hover:bg-surface-2 press ${
+                      isSel(it) ? 'text-accent-glass font-medium' : 'text-text-2'
+                    }`}
+                  >
+                    <span className="block text-sm">{it.label}</span>
+                    {it.sub && <span className="block font-mono text-[11px] text-text-3">{it.sub}</span>}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function AdherenceHeatmap({ weeks, dateSet, dayInfo }) {
   return (
     <div className="flex gap-1 overflow-x-auto">
       <div className="grid grid-rows-7 gap-1 text-[10px] text-text-3 pr-1">
@@ -1136,8 +1295,7 @@ function AdherenceHeatmap({ weeks, start, end, dayInfo }) {
       <div className="grid grid-flow-col grid-rows-7 gap-1">
         {weeks.flatMap((week, wi) =>
           week.map((day, di) => {
-            const outOfRange = day < start || day > end;
-            if (outOfRange) return <div key={`${wi}-${di}`} className="w-3.5 h-3.5" />;
+            if (!dateSet.has(day)) return <div key={`${wi}-${di}`} className="w-3.5 h-3.5" />;
             const info = dayInfo.get(day);
             let cls = 'bg-surface-2';
             if (info?.registrado) {

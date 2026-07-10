@@ -20,7 +20,8 @@ App personal de registro nutricional (tipo Cronometer, simple) para 2 usuarios. 
 supabase/migration.sql   # migración inicial 000 (YA aplicada en producción)
 supabase/migrations/     # migraciones incrementales, todas aplicadas: 001 prefs+targets.label · 002 foods.portions+density_g_ml ·
                           # 003 recetas from Cronometer + targets.description · 004 recetas saladas from Cronometer · 005 recipes.source ·
-                          # 006 entries.sort_order · 007 catálogo privado por usuario (RLS)
+                          # 006 entries.sort_order · 007 catálogo privado por usuario (RLS) ·
+                          # 008 entry_nutrients.brand · 009 índice meal_labels · 010 targets.goal
 src/lib/supabase.js      # createClient, schema 'nutri'
 src/lib/domain.js        # MICROS, resolución de targets, adherencia, fórmula de recetas, reorderLabels
 src/lib/sources.js       # clientes Open Food Facts y USDA FDC, por 100 g, mapeados a claves MICROS
@@ -50,6 +51,7 @@ Invariantes de dominio:
 - Los nutrientes de registros se calculan siempre vía las vistas SQL (`entry_nutrients`, `daily_totals`, `recipe_per_100g`) — nunca se copian valores.
 - **`computeRecipePer100g` en `domain.js` replica la vista `recipe_per_100g`. Si cambias una, cambia la otra.** Caso canónico de verificación: 100 g de A + 200 g de B con peso cocido 250 → por 100 g = (A + 2B) / 2.5.
 - Resolución de target para fecha F: fila `day=F` si existe; si no, fila `dow=weekday(F)` con mayor `valid_from ≤ F`. `resolveTarget` en `domain.js` la implementa; Today y Dashboard la usan.
+- Fases: una fase = las 7 filas `dow` que comparten `valid_from`; `label`, `description` y `goal` se escriben iguales en las 7 (los overrides `day` las dejan en null). `targets.goal` (CHECK cerrado: `deficit|volumen|recomposicion|mantenimiento`, nullable) marca el régimen y es lo único editable en una fase previa (cambiar sus valores recalcularía adherencia histórica). `phaseList` en `domain.js` devuelve los intervalos `[vf, end]`. El botón **Fases** del Dashboard selecciona *Fase actual* / *Fase previa* (un intervalo contiguo) o una meta (**unión de todas sus fases**, no contigua): el rango de las queries sigue siendo `[min, max]` y `dateSet` recorta en cliente lo que se indexa por día suelto (Top alimentos, CSV, semanas, heatmap). Al unir ≥2 fases se apaga el recorte de mediana/σ/tendencia a la fase vigente (el usuario pidió ese conjunto) y se oculta la delta vs periodo previo; ambas cosas se declaran en un Hint.
 - RLS: catálogo (foods, recipes, recipe_items) **privado por usuario** (SELECT y escritura con `owner = auth.uid()`; recipe_items vía owner de su receta) — ya NO se comparte en lectura (migración 007; compartir a otro usuario = funcionalidad futura). entries, meal_labels, targets y prefs 100 % privados por usuario.
 - Agua: entries de un food "Agua" propio (micros `{agua_ml:100}`, grams = ml), id cacheado en `prefs.data.water_food_id`. En UI el agua va como sección propia ANTES de los macros (Hoy y Dashboard) y NUNCA en la tabla/lista de micros. Hoy la excluye de Recientes, búsqueda y "Copiar día anterior".
 - Agentes: import/export/auditoría de foods, fases de targets y evaluación de ingesta van por la API REST — playbooks con curl en README § "Playbooks para agentes". La auditoría es retroactiva gratis porque los nutrientes se calculan en vistas.

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { History, ChevronLeft, ChevronDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { MICROS, todayISO, addDaysISO, resolveTarget } from '../lib/domain.js';
+import { MICROS, PHASE_GOALS, goalLabel, todayISO, addDaysISO, resolveTarget } from '../lib/domain.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 
 // ===== Helpers puros (agrupación §2.1, fechas §5) =====
@@ -123,7 +123,7 @@ function sortGroups(groups) {
 }
 
 // Expande los grupos del draft a las 7 filas dow (§7.2d: siempre 7).
-function draftToRows(groups, { validFrom, label, description, owner }) {
+function draftToRows(groups, { validFrom, label, description, goal, owner }) {
   const byDow = {};
   for (const g of groups) {
     const row = {
@@ -143,6 +143,7 @@ function draftToRows(groups, { validFrom, label, description, owner }) {
       valid_from: validFrom,
       label: label.trim() || null,
       description: description.trim() || null,
+      goal: goal || null,
       ...(byDow[dow] || { kcal: null, protein_g: null, carbs_g: null, fat_g: null, micros: {} }),
     });
   }
@@ -236,6 +237,7 @@ export default function Targets() {
   };
   const labelOf = (vf) => phaseRows.find((t) => t.valid_from === vf && t.label)?.label || '';
   const descOf = (vf) => phaseRows.find((t) => t.valid_from === vf && t.description)?.description || '';
+  const goalOf = (vf) => phaseRows.find((t) => t.valid_from === vf && t.goal)?.goal || '';
   const faseFor = (day) => resolveTarget(phaseRows, day); // resolución sobre fase (excluye overrides)
 
   // ---- persistencia ----
@@ -246,14 +248,14 @@ export default function Targets() {
   }
 
   async function corregirFase(draft) {
-    const rows = draftToRows(draft.groups, { validFrom: vigenteVf, label: draft.label, description: draft.description, owner: userId });
+    const rows = draftToRows(draft.groups, { validFrom: vigenteVf, label: draft.label, description: draft.description, goal: draft.goal, owner: userId });
     const { error } = await supabase.from('targets').upsert(rows, { onConflict: 'owner,dow,valid_from' });
     if (error) return friendly(error, 'No se pudo corregir la fase.');
     afterVigenteSave();
     return null;
   }
   async function nuevaFaseDesdeHoy(draft) {
-    const rows = draftToRows(draft.groups, { validFrom: today, label: draft.label, description: draft.description, owner: userId });
+    const rows = draftToRows(draft.groups, { validFrom: today, label: draft.label, description: draft.description, goal: draft.goal, owner: userId });
     const { error } = await supabase.from('targets').insert(rows);
     if (error) return friendly(error, 'Ya existe una fase que aplica desde hoy.');
     afterVigenteSave();
@@ -261,7 +263,7 @@ export default function Targets() {
   }
   async function saveNewPhase(draft) {
     if (phaseVfs.includes(draft.validFrom)) return 'Ya existe una fase que aplica desde esa fecha.';
-    const rows = draftToRows(draft.groups, { validFrom: draft.validFrom, label: draft.label, description: draft.description, owner: userId });
+    const rows = draftToRows(draft.groups, { validFrom: draft.validFrom, label: draft.label, description: draft.description, goal: draft.goal, owner: userId });
     const { error } = await supabase.from('targets').insert(rows);
     if (error) return friendly(error, 'Ya existe una fase que aplica desde esa fecha.');
     setSheet(null);
@@ -272,12 +274,19 @@ export default function Targets() {
     const newVf = draft.validFrom;
     if (newVf !== oldVf && phaseVfs.includes(newVf)) return 'Ya existe una fase que aplica desde esa fecha.';
     if (newVf !== oldVf) await supabase.from('targets').delete().eq('valid_from', oldVf).not('dow', 'is', null);
-    const rows = draftToRows(draft.groups, { validFrom: newVf, label: draft.label, description: draft.description, owner: userId });
+    const rows = draftToRows(draft.groups, { validFrom: newVf, label: draft.label, description: draft.description, goal: draft.goal, owner: userId });
     const { error } = await supabase.from('targets').upsert(rows, { onConflict: 'owner,dow,valid_from' });
     if (error) return friendly(error, 'No se pudo guardar la fase.');
     setSheet(null);
     load();
     return null;
+  }
+  // Única edición posible sobre una fase previa: su meta. Los valores no se
+  // tocan (reescribirlos recalcularía la adherencia histórica), pero sin esto
+  // el histórico nunca podría filtrarse por régimen en el Dashboard.
+  async function saveGoal(vf, goal) {
+    await supabase.from('targets').update({ goal: goal || null }).eq('valid_from', vf).not('dow', 'is', null);
+    load();
   }
   async function deletePhase(vf) {
     await supabase.from('targets').delete().eq('valid_from', vf).not('dow', 'is', null);
@@ -324,6 +333,7 @@ export default function Targets() {
               validFrom={vigenteVf}
               label={labelOf(vigenteVf)}
               description={descOf(vigenteVf)}
+              goal={goalOf(vigenteVf)}
               week={weekOf(vigenteVf)}
               nextVf={nextVfOf(vigenteVf)}
               onSave={(draft) => {
@@ -372,6 +382,7 @@ export default function Targets() {
                         validFrom={vf}
                         label={labelOf(vf)}
                         description={descOf(vf)}
+                        goal={goalOf(vf)}
                         week={weekOf(vf)}
                         nextVf={nvf}
                         initialEditing
@@ -398,8 +409,9 @@ export default function Targets() {
                         onTap={() => (lgUp ? setExpandedVf(vf) : setSheet({ type: 'phase', vf }))}
                         className="rounded-xl bg-surface border border-border px-3.5 py-3.5"
                       >
-                        <p className="font-medium text-sm leading-tight" style={{ margin: 0 }}>
-                          {labelOf(vf) || 'Sin nombre'}
+                        <p className="font-medium text-sm leading-tight flex items-center gap-1.5" style={{ margin: 0 }}>
+                          <span>{labelOf(vf) || 'Sin nombre'}</span>
+                          {goalOf(vf) && <Chip text={goalLabel(goalOf(vf))} />}
                         </p>
                         <p className="font-mono text-[11.5px] text-text-3 mt-1" style={{ margin: 0 }}>
                           {fmtShort(vf)} → {nvf ? fmtShort(addDaysISO(nvf, -1)) : 'sin fin'} · en {d} {d === 1 ? 'día' : 'días'}
@@ -548,6 +560,7 @@ export default function Targets() {
             validFrom={sheet.vf}
             label={labelOf(sheet.vf)}
             description={descOf(sheet.vf)}
+            goal={goalOf(sheet.vf)}
             week={weekOf(sheet.vf)}
             nextVf={nextVfOf(sheet.vf)}
             onSave={(draft) => saveProgramada(sheet.vf, draft)}
@@ -563,6 +576,7 @@ export default function Targets() {
             validFrom={addDaysISO(today, 1)}
             label=""
             description=""
+            goal=""
             week={null}
             copyWeek={vigenteVf ? weekOf(vigenteVf) : null}
             initialEditing
@@ -607,6 +621,8 @@ export default function Targets() {
           previaVfs={previaVfs}
           labelOf={labelOf}
           descOf={descOf}
+          goalOf={goalOf}
+          onGoalChange={saveGoal}
           weekOf={weekOf}
           nextVfOf={nextVfOf}
           onClose={() => setSheet(null)}
@@ -617,7 +633,7 @@ export default function Targets() {
 }
 
 // ===== Card de fase (lectura + edición), espejo entre vigente y hojas (§2.1, §3) =====
-function PhaseCard({ variant, validFrom, label = '', description = '', week, nextVf, copyWeek, initialEditing = false, forceCollapse = false, onSave, onCancel }) {
+function PhaseCard({ variant, validFrom, label = '', description = '', goal = '', week, nextVf, copyWeek, initialEditing = false, forceCollapse = false, onSave, onCancel }) {
   const today = todayISO();
   const editable = variant === 'vigente' || variant === 'programada' || variant === 'new';
   const showValidFrom = variant === 'programada' || variant === 'new';
@@ -631,6 +647,7 @@ function PhaseCard({ variant, validFrom, label = '', description = '', week, nex
     return {
       label: label || '',
       description: description || '',
+      goal: goal || '',
       validFrom: validFrom || todayISO(),
       groups: week ? draftFromWeek(week) : emptyWeekGroups(),
     };
@@ -688,7 +705,10 @@ function PhaseCard({ variant, validFrom, label = '', description = '', week, nex
 
       {!editing ? (
         <div className="flex flex-col gap-1">
-          <h2 className="font-display text-[19px] leading-tight">{label || <span className="text-text-2">Sin nombre</span>}</h2>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <h2 className="font-display text-[19px] leading-tight">{label || <span className="text-text-2">Sin nombre</span>}</h2>
+            {goal && <Chip text={goalLabel(goal)} />}
+          </div>
           {description && (
             <p className="text-[12.5px] text-text-2" style={{ margin: 0 }}>
               {description}
@@ -699,6 +719,7 @@ function PhaseCard({ variant, validFrom, label = '', description = '', week, nex
         <div className="flex flex-col gap-2">
           <TextField label="Nombre de fase" value={draft.label} onChange={(v) => setDraft((d) => ({ ...d, label: v }))} placeholder="p. ej. Bulk único" />
           <TextField label="Descripción" value={draft.description} onChange={(v) => setDraft((d) => ({ ...d, description: v }))} placeholder="Objetivo de la fase" />
+          <GoalField value={draft.goal} onChange={(v) => setDraft((d) => ({ ...d, goal: v }))} />
           {showValidFrom && <DateField label="Aplica desde" value={draft.validFrom} onChange={(v) => setDraft((d) => ({ ...d, validFrom: v }))} />}
         </div>
       )}
@@ -1085,6 +1106,24 @@ function TextField({ label, value, onChange, placeholder }) {
   );
 }
 
+// Meta de la fase: el filtro por régimen del Dashboard lee esta columna, así que
+// "Sin especificar" ('' → null) es un valor legítimo, no un default silencioso.
+function GoalField({ value, onChange }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs text-text-3">Meta</label>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="input">
+        <option value="">Sin especificar</option>
+        {PHASE_GOALS.map((g) => (
+          <option key={g.key} value={g.key}>
+            {g.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function DateField({ label, value, onChange }) {
   return (
     <div className="flex flex-col gap-1">
@@ -1171,7 +1210,7 @@ function ConfirmDeleteSheet({ name, onConfirm, onClose }) {
   );
 }
 
-function PreviasSheet({ previaVfs, labelOf, descOf, weekOf, nextVfOf, onClose }) {
+function PreviasSheet({ previaVfs, labelOf, descOf, goalOf, onGoalChange, weekOf, nextVfOf, onClose }) {
   const [viewVf, setViewVf] = useState(null);
 
   if (viewVf) {
@@ -1180,8 +1219,9 @@ function PreviasSheet({ previaVfs, labelOf, descOf, weekOf, nextVfOf, onClose })
         <button onClick={() => setViewVf(null)} className="flex items-center gap-1 text-sm text-accent min-h-[44px] press">
           <ChevronLeft size={16} /> Fases previas
         </button>
-        <div className="pt-2">
-          <PhaseCard variant="previa" validFrom={viewVf} label={labelOf(viewVf)} description={descOf(viewVf)} week={weekOf(viewVf)} nextVf={nextVfOf(viewVf)} />
+        <div className="pt-2 flex flex-col gap-3">
+          <PhaseCard variant="previa" validFrom={viewVf} label={labelOf(viewVf)} description={descOf(viewVf)} goal={goalOf(viewVf)} week={weekOf(viewVf)} nextVf={nextVfOf(viewVf)} />
+          <GoalField value={goalOf(viewVf)} onChange={(v) => onGoalChange(viewVf, v)} />
         </div>
       </Sheet>
     );

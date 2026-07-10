@@ -257,6 +257,32 @@ export function dayCompleteness({ kcal, targetKcal, historyKcals, mealsCount, ty
   return 'sin_evaluar';
 }
 
+// Meta (régimen) de una fase. Las claves son el CHECK de `targets.goal`
+// (migración 010); una fase sin meta marcada tiene goal = null.
+export const PHASE_GOALS = [
+  { key: 'deficit', label: 'Déficit' },
+  { key: 'volumen', label: 'Volumen' },
+  { key: 'recomposicion', label: 'Recomposición' },
+  { key: 'mantenimiento', label: 'Mantenimiento' },
+];
+
+export const goalLabel = (goal) => PHASE_GOALS.find((g) => g.key === goal)?.label || null;
+
+// Fases de objetivo como intervalos cerrados: [{ vf, end, label, goal }] en
+// orden cronológico. `end` = día antes del siguiente valid_from, o null en la
+// última (abierta). label/goal se escriben iguales en las 7 filas dow de la
+// fase, así que basta la primera fila que los traiga.
+export function phaseList(targets) {
+  const rows = targets.filter((t) => t.dow != null);
+  const vfs = [...new Set(rows.map((t) => t.valid_from))].sort();
+  return vfs.map((vf, i) => ({
+    vf,
+    end: i + 1 < vfs.length ? addDaysISO(vfs[i + 1], -1) : null,
+    label: rows.find((t) => t.valid_from === vf && t.label)?.label || '',
+    goal: rows.find((t) => t.valid_from === vf && t.goal)?.goal || null,
+  }));
+}
+
 // Segmenta `dates` en fases de objetivo por generación de valid_from de las
 // filas dow de `targets` (§Fix 5) — NO por cambio del valor diario del
 // objetivo: un ciclo semanal de carb cycling comparte un único valid_from y
