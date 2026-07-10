@@ -215,7 +215,7 @@ function bayesCell(days, key) {
   if (b) {
     return {
       primary: `${round(b.mean * 100, 0)}%`,
-      secondary: `IC 95: ${round(b.lower * 100, 0)}–${round(b.upper * 100, 0)}%`,
+      secondary: `probablemente entre ${round(b.lower * 100, 0)} y ${round(b.upper * 100, 0)}%`,
       hint: bayesCriterionHint(key),
       degraded: false,
     };
@@ -259,6 +259,33 @@ function metricDisplay(calcMode, ms, bayesInfo, unit, decimals) {
     return bayesInfo;
   }
   return { ...formatMetric(calcMode, ms, unit, decimals), hint: null, degraded: false };
+}
+
+// Frase interpretativa en lenguaje llano para la card de resumen, basada en
+// kcal (representativa de las 4 métricas mostradas ahí). null = no renderizar
+// nada (stat sin dato todavía, o modo sin lectura propia como suma/promedio).
+function plainLanguage(calcMode, ms, bayesInfo) {
+  if (calcMode === 'mediana') {
+    if (ms.median == null) return null;
+    return `Tu día típico: ${round(ms.median, 0)} kcal (la mitad de tus días cae entre ${round(ms.p25, 0)} y ${round(ms.p75, 0)})`;
+  }
+  if (calcMode === 'stddev') {
+    if (ms.sd == null) return null;
+    const cv = ms.cv;
+    const consistencia = cv == null ? null : cv < 10 ? 'consistencia alta' : cv < 25 ? 'consistencia media' : 'consistencia baja';
+    return `Varías ±${round(ms.sd, 0)} kcal entre días${consistencia ? ` — ${consistencia} (CV ${round(cv, 0)}%)` : ''}`;
+  }
+  if (calcMode === 'tendencia') {
+    if (ms.slope == null) return null;
+    const verbo = ms.slope >= 0 ? 'Subes' : 'Bajas';
+    return `${verbo} ~${round(Math.abs(ms.slope), 0)} kcal por día ≈ ${round(Math.abs(ms.slope) * 7, 0)} por semana`;
+  }
+  if (calcMode === 'bayes') {
+    if (!bayesInfo || bayesInfo.degraded) return null;
+    const n = Math.round((parseFloat(bayesInfo.primary) / 100) * 10);
+    return `Cumples tu objetivo ~${n} de cada 10 días`;
+  }
+  return null;
 }
 
 // Texto de una celda { primary, secondary, hint } para la tabla de micros:
@@ -317,8 +344,8 @@ const CALC_TITLES = {
 const CALC_HEADERS = {
   suma: 'Suma',
   promedio: 'Promedio',
-  mediana: 'Mediana (IQR)',
-  stddev: 'σ (CV%)',
+  mediana: 'Día típico (rango medio)',
+  stddev: 'Variabilidad',
   tendencia: 'Tendencia',
   bayes: 'Adherencia',
 };
@@ -749,6 +776,7 @@ export default function Dashboard() {
       ? `El periodo abarca ${realPhases.length} fases con objetivos distintos. Para no mezclarlas, el cálculo usa solo la fase actual (${advancedDays.length} días).`
       : null;
   const isPhaseScopedMode = calcMode === 'mediana' || calcMode === 'stddev' || calcMode === 'tendencia';
+  const plainKcalPhrase = plainLanguage(calcMode, msKcal, bKcal);
 
   // Streamgraph de macros (kcal por macro, por día); fallback de barra 100%
   // apilada cuando el rango tiene <3 días con registro.
@@ -994,6 +1022,7 @@ export default function Dashboard() {
             {CALC_TITLES[calcMode]}
             {isPhaseScopedMode && phaseHintText && <Hint text={phaseHintText}>ⓘ</Hint>}
           </p>
+          {plainKcalPhrase && <p className="text-xs text-text-3 -mt-1 mb-2">{plainKcalPhrase}</p>}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
             <Stat label="Kcal" display={metricDisplay(calcMode, msKcal, bKcal, '', 1)} color="text-d-kcal" />
             <Stat label="Prot" display={metricDisplay(calcMode, msProtein, bProtein, ' g', 1)} color="text-d-prot" />
@@ -1003,7 +1032,12 @@ export default function Dashboard() {
         </section>
 
         <section className="lg:col-span-8 rounded-2xl bg-surface border border-border p-4">
-          <p className="text-sm text-text-3 mb-2">Kcal por día</p>
+          <p className="text-sm text-text-3 mb-2 flex items-center gap-1">
+            Kcal por día
+            <Hint text="La línea sólida es lo que comiste cada día. La punteada suaviza esos altibajos con el promedio de los últimos 7 días, para ver la tendencia sin el ruido diario. La banda tenue marca ±10% de tu objetivo.">
+              ⓘ
+            </Hint>
+          </p>
           <div className="h-[220px] lg:h-80">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={kcalChart}>
@@ -1025,14 +1059,19 @@ export default function Dashboard() {
               {stats.objetivo.kcal > 0 && (
                 <Line dataKey="targetKcal" name="Objetivo" stroke="var(--accent)" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
               )}
-              <Line dataKey="ma7" name="MA-7" stroke="var(--d-carb)" strokeDasharray="4 3" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
+              <Line dataKey="ma7" name="Promedio 7 días" stroke="var(--d-carb)" strokeDasharray="4 3" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
             </ComposedChart>
           </ResponsiveContainer>
           </div>
         </section>
 
         <section className="lg:col-span-4 rounded-2xl bg-surface border border-border p-4">
-          <p className="text-sm text-text-3 mb-2">Distribución de macros (kcal)</p>
+          <p className="text-sm text-text-3 mb-2 flex items-center gap-1">
+            Distribución de macros (kcal)
+            <Hint text="Cada franja es un macronutriente (proteína, carbos, grasa) y su grosor es cuánto pesó ese día en tus calorías. Lee el ancho de cada color, no la altura total del área.">
+              ⓘ
+            </Hint>
+          </p>
           {macroTotalKcal <= 0 ? (
             <p className="text-sm text-text-2 py-8 text-center">Sin registros en el rango</p>
           ) : stats.diasRegistrados >= 3 ? (
@@ -1079,7 +1118,12 @@ export default function Dashboard() {
         </section>
 
         <section className={`${dates.length > 7 ? 'lg:col-span-6' : 'lg:col-span-12'} rounded-2xl bg-surface border border-border p-4`}>
-          <p className="text-sm text-text-3 mb-3">Huella nutricional (micros vs. objetivo)</p>
+          <p className="text-sm text-text-3 mb-3 flex items-center gap-1">
+            Huella nutricional (micros vs. objetivo)
+            <Hint text="Cada punta es un micronutriente. Cuanto más lejos del centro, más cerca (o por encima) llegaste de tu objetivo ese periodo — el borde del gráfico es 150%.">
+              ⓘ
+            </Hint>
+          </p>
           {radarData.length === 0 ? (
             <p className="text-sm text-text-2 py-8 text-center">Registra objetivos de micros en Metas</p>
           ) : (
