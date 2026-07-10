@@ -1,6 +1,6 @@
 # nutri. — guía para sesiones de Claude
 
-App personal de registro nutricional (tipo Cronometer, simple) para 2 usuarios. **Ya está construida, desplegada y en uso** — el trabajo aquí es mantenimiento: mejoras, bugs, consultas y migraciones. `SPEC.md` es el spec original completo (referencia, no tarea pendiente).
+App personal de registro nutricional (tipo Cronometer, simple) para 2 usuarios. **Ya está construida, desplegada y en uso** — el trabajo aquí es mantenimiento: mejoras, bugs, consultas y migraciones. `SPEC.md` es el spec original completo (referencia, no tarea pendiente). **`BIBLIA.md` es el documento normativo permanente** (principios, checklists de seguridad/QA/performance, mantenimiento periódico): toda sesión lo cumple; en conflicto gana la regla más restrictiva.
 
 ## Reglas duras (siguen vigentes, no las relajes)
 
