@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
 import { useToast } from '../lib/useToast.js';
@@ -36,6 +36,119 @@ function useIsLgUp() {
   return isLg;
 }
 
+const statusColor = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' };
+
+// Resumen de Hoy, elegible por el usuario (prefs.today_view) y aplicado a
+// todos los tamaños de pantalla: 'estado' = grid compacto de valores actuales
+// (comportamiento móvil original), 'objetivos' = card orientada a metas
+// (anillo de kcal + deltas, comportamiento desktop original). El toggle vive
+// en la propia card para no competir con el resto del layout.
+function SummaryCard({ view, onToggleView, ...props }) {
+  return (
+    <div className="rounded-2xl bg-surface border border-border p-4 lg:p-5 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] uppercase tracking-wide text-text-3">{view === 'objetivos' ? 'Objetivos' : 'Estado actual'}</p>
+        <button
+          onClick={onToggleView}
+          className="w-11 h-11 -m-2.5 flex items-center justify-center text-text-3 press"
+          aria-label={`Ver ${view === 'objetivos' ? 'estado actual' : 'objetivos'}`}
+        >
+          <ArrowLeftRight size={16} />
+        </button>
+      </div>
+      {view === 'objetivos' ? <GoalSummary {...props} /> : <StateSummary {...props} />}
+    </div>
+  );
+}
+
+function StateSummary({ totals, target, kcalStatus, proteinStatus }) {
+  return (
+    <div className="grid grid-cols-3 gap-2 text-center">
+      <Stat label="Kcal" value={totals.kcal} color={statusColor[kcalStatus] || 'text-d-kcal'} target={target?.kcal} />
+      <Stat label="Prot" value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
+      <Stat label="Carbs" value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
+      <Stat label="Grasa" value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
+      <Stat label="Sodio" value={totals.sodio_mg} color="text-danger" target={target?.micros?.sodio_mg} decimals={0} />
+      <Stat label="Potasio" value={totals.potasio_mg} color="text-warn" target={target?.micros?.potasio_mg} decimals={0} />
+    </div>
+  );
+}
+
+// Hero kcal (anillo, color = adherencia classifyKcal) + % y meta, deltas de
+// macros vs. piso/meta, y minerales aparte (sodio acotado por piso médico,
+// potasio como meta a alcanzar).
+function GoalSummary({ totals, target, kcalStatus, kcalPct, kcalArc, proteinStatus, potassiumPct, sodiumLow }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-4">
+        <div className={`relative w-[104px] h-[104px] flex-none ${statusColor[kcalStatus] || 'text-d-kcal'}`}>
+          <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface-2)" strokeWidth="11" />
+            {kcalArc != null && (
+              <circle
+                cx="60" cy="60" r="52" fill="none" stroke="currentColor" strokeWidth="11" strokeLinecap="round"
+                strokeDasharray="326.726" strokeDashoffset={kcalArc}
+              />
+            )}
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="font-mono tabular-nums text-2xl leading-none text-text">{round(totals.kcal, 0)}</span>
+            <span className="text-[10px] text-text-3 mt-0.5">kcal</span>
+          </div>
+        </div>
+        <div className={`min-w-0 ${statusColor[kcalStatus] || 'text-d-kcal'}`}>
+          {kcalPct != null ? (
+            kcalStatus === 'ok' ? (
+              <>
+                <p className="flex items-center gap-1.5 text-lg"><Check size={18} />en meta</p>
+                <p className="text-xs text-text-3 mt-2">meta {round(target.kcal, 0)} kcal</p>
+              </>
+            ) : (
+              <>
+                <p className="font-mono tabular-nums text-2xl leading-none">
+                  {totals.kcal < target.kcal ? '−' : '+'}{Math.abs(round(totals.kcal - target.kcal, 0))}
+                </p>
+                <p className="text-xs text-text-3 mt-2">kcal · meta {round(target.kcal, 0)}</p>
+              </>
+            )
+          ) : (
+            <p className="text-xs text-text-3">sin meta de kcal</p>
+          )}
+        </div>
+      </div>
+      <div className="h-px bg-border" />
+      <div className="flex flex-col gap-3">
+        <RailStat label="Prot" value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
+        <RailStat label="Carbs" value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
+        <RailStat label="Grasa" value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
+      </div>
+      <div className="h-px bg-border" />
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-xl bg-surface-2 p-3">
+          <p className="text-[10px] uppercase tracking-wide text-text-3">Sodio</p>
+          <p className="font-mono tabular-nums text-lg text-danger mt-1">{round(totals.sodio_mg, 0)}</p>
+          {sodiumLow ? (
+            <p className="font-mono tabular-nums text-[11px] text-danger mt-0.5">−{round(SODIUM_FLOOR_MG - totals.sodio_mg, 0)} al piso</p>
+          ) : (
+            <p className="text-[10px] text-text-3 mt-0.5">mg · piso {SODIUM_FLOOR_MG}</p>
+          )}
+        </div>
+        <div className="rounded-xl bg-surface-2 p-3">
+          <p className="text-[10px] uppercase tracking-wide text-text-3">Potasio</p>
+          <p className={`font-mono tabular-nums text-lg mt-1 ${potassiumPct != null && totals.potasio_mg >= target.micros.potasio_mg ? 'text-ok' : 'text-warn'}`}>{round(totals.potasio_mg, 0)}</p>
+          {potassiumPct == null ? (
+            <p className="text-[10px] text-text-3 mt-0.5">mg</p>
+          ) : totals.potasio_mg >= target.micros.potasio_mg ? (
+            <p className="flex items-center gap-1 text-[11px] text-ok mt-0.5"><Check size={12} />meta</p>
+          ) : (
+            <p className="font-mono tabular-nums text-[11px] text-warn mt-0.5">−{round(target.micros.potasio_mg - totals.potasio_mg, 0)} de {round(target.micros.potasio_mg, 0)}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Today() {
   const [date, setDate] = useState(todayISO());
   const [entries, setEntries] = useState([]);
@@ -46,7 +159,7 @@ export default function Today() {
   const [editing, setEditing] = useState(null); // entry being edited
   const [toast, showToast] = useToast();
   const [userId, setUserId] = useState(null);
-  const [prefs, setPrefs] = useState({ water_glass_ml: 1000, water_food_id: null });
+  const [prefs, setPrefs] = useState({ water_glass_ml: 1000, water_food_id: null, today_view: 'estado' });
   const [waterSettingsOpen, setWaterSettingsOpen] = useState(false);
   const [undoData, setUndoData] = useState(null); // { entry, timer } tras un borrado, para "Deshacer"
   const [activeEntry, setActiveEntry] = useState(null); // entry en arrastre (para el fantasma de DragOverlay)
@@ -134,6 +247,10 @@ export default function Today() {
     setPrefs(next);
     await supabase.from('prefs').upsert({ owner: userId, data: next });
     return next;
+  }
+
+  function toggleTodayView() {
+    savePrefs({ today_view: prefs.today_view === 'objetivos' ? 'estado' : 'objetivos' });
   }
 
   // El agua se registra como entries de un food "Agua" propio (micros {agua_ml:100},
@@ -412,7 +529,6 @@ export default function Today() {
   const potassiumPct = target?.micros?.potasio_mg > 0
     ? Math.round((totals.potasio_mg / target.micros.potasio_mg) * 100) : null;
   const proteinStatus = classifyFloor(totals.protein_g, target?.protein_g);
-  const statusColor = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' };
   const sodiumLow = sodiumIsLow(totals.sodio_mg, foodEntries.length > 0);
 
   const groups = groupByLabel(foodEntries, labels, activeEntry != null);
@@ -463,13 +579,19 @@ export default function Today() {
         </div>
       </div>
 
-      <div className="rounded-2xl bg-surface border border-border p-4 grid grid-cols-3 gap-2 text-center lg:hidden">
-        <Stat label="Kcal" value={totals.kcal} color={statusColor[kcalStatus] || 'text-d-kcal'} target={target?.kcal} />
-        <Stat label="Prot" value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
-        <Stat label="Carbs" value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
-        <Stat label="Grasa" value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
-        <Stat label="Sodio" value={totals.sodio_mg} color="text-danger" target={target?.micros?.sodio_mg} decimals={0} />
-        <Stat label="Potasio" value={totals.potasio_mg} color="text-warn" target={target?.micros?.potasio_mg} decimals={0} />
+      <div className="lg:hidden">
+        <SummaryCard
+          view={prefs.today_view || 'estado'}
+          onToggleView={toggleTodayView}
+          totals={totals}
+          target={target}
+          kcalStatus={kcalStatus}
+          kcalPct={kcalPct}
+          kcalArc={kcalArc}
+          proteinStatus={proteinStatus}
+          potassiumPct={potassiumPct}
+          sodiumLow={sodiumLow}
+        />
       </div>
 
       {/* Rail derecho (lg+): sticky, muestra el resumen del día o el editor de la entry activa. */}
@@ -501,75 +623,19 @@ export default function Today() {
           </div>
         ) : (
           <>
-            <div className="hidden lg:flex lg:flex-col lg:gap-4 rounded-2xl bg-surface border border-border p-5">
-              {/* Hero kcal: anillo (color = adherencia classifyKcal) + % y meta. */}
-              <div className="flex items-center gap-4">
-                <div className={`relative w-[104px] h-[104px] flex-none ${statusColor[kcalStatus] || 'text-d-kcal'}`}>
-                  <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
-                    <circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface-2)" strokeWidth="11" />
-                    {kcalArc != null && (
-                      <circle
-                        cx="60" cy="60" r="52" fill="none" stroke="currentColor" strokeWidth="11" strokeLinecap="round"
-                        strokeDasharray="326.726" strokeDashoffset={kcalArc}
-                      />
-                    )}
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="font-mono tabular-nums text-2xl leading-none text-text">{round(totals.kcal, 0)}</span>
-                    <span className="text-[10px] text-text-3 mt-0.5">kcal</span>
-                  </div>
-                </div>
-                <div className={`min-w-0 ${statusColor[kcalStatus] || 'text-d-kcal'}`}>
-                  {kcalPct != null ? (
-                    kcalStatus === 'ok' ? (
-                      <>
-                        <p className="flex items-center gap-1.5 text-lg"><Check size={18} />en meta</p>
-                        <p className="text-xs text-text-3 mt-2">meta {round(target.kcal, 0)} kcal</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="font-mono tabular-nums text-2xl leading-none">
-                          {totals.kcal < target.kcal ? '−' : '+'}{Math.abs(round(totals.kcal - target.kcal, 0))}
-                        </p>
-                        <p className="text-xs text-text-3 mt-2">kcal · meta {round(target.kcal, 0)}</p>
-                      </>
-                    )
-                  ) : (
-                    <p className="text-xs text-text-3">sin meta de kcal</p>
-                  )}
-                </div>
-              </div>
-              <div className="h-px bg-border" />
-              <div className="flex flex-col gap-3">
-                <RailStat label="Prot" value={totals.protein_g} color={statusColor[proteinStatus] || 'text-d-prot'} target={target?.protein_g} />
-                <RailStat label="Carbs" value={totals.carbs_g} color="text-d-carb" target={target?.carbs_g} />
-                <RailStat label="Grasa" value={totals.fat_g} color="text-d-fat" target={target?.fat_g} />
-              </div>
-              <div className="h-px bg-border" />
-              {/* Minerales aparte de los macros. Sodio: acotado por piso médico (no meta a alcanzar);
-                  delta rojo sólo hacia el piso 1500. Potasio: meta a alcanzar, delta ámbar. */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl bg-surface-2 p-3">
-                  <p className="text-[10px] uppercase tracking-wide text-text-3">Sodio</p>
-                  <p className="font-mono tabular-nums text-lg text-danger mt-1">{round(totals.sodio_mg, 0)}</p>
-                  {sodiumLow ? (
-                    <p className="font-mono tabular-nums text-[11px] text-danger mt-0.5">−{round(SODIUM_FLOOR_MG - totals.sodio_mg, 0)} al piso</p>
-                  ) : (
-                    <p className="text-[10px] text-text-3 mt-0.5">mg · piso {SODIUM_FLOOR_MG}</p>
-                  )}
-                </div>
-                <div className="rounded-xl bg-surface-2 p-3">
-                  <p className="text-[10px] uppercase tracking-wide text-text-3">Potasio</p>
-                  <p className={`font-mono tabular-nums text-lg mt-1 ${potassiumPct != null && totals.potasio_mg >= target.micros.potasio_mg ? 'text-ok' : 'text-warn'}`}>{round(totals.potasio_mg, 0)}</p>
-                  {potassiumPct == null ? (
-                    <p className="text-[10px] text-text-3 mt-0.5">mg</p>
-                  ) : totals.potasio_mg >= target.micros.potasio_mg ? (
-                    <p className="flex items-center gap-1 text-[11px] text-ok mt-0.5"><Check size={12} />meta</p>
-                  ) : (
-                    <p className="font-mono tabular-nums text-[11px] text-warn mt-0.5">−{round(target.micros.potasio_mg - totals.potasio_mg, 0)} de {round(target.micros.potasio_mg, 0)}</p>
-                  )}
-                </div>
-              </div>
+            <div className="hidden lg:block">
+              <SummaryCard
+                view={prefs.today_view || 'estado'}
+                onToggleView={toggleTodayView}
+                totals={totals}
+                target={target}
+                kcalStatus={kcalStatus}
+                kcalPct={kcalPct}
+                kcalArc={kcalArc}
+                proteinStatus={proteinStatus}
+                potassiumPct={potassiumPct}
+                sodiumLow={sodiumLow}
+              />
             </div>
 
             {sodiumLow && (
