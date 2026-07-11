@@ -279,6 +279,22 @@ export default function Today() {
     window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
   }
 
+  // Tras guardar un registro, deja la barra de su sección arriba (bajo el header
+  // sticky). setTimeout 0: espera al re-render con la entry nueva antes de medir
+  // (rAF no corre en pestañas sin frames, p. ej. en background).
+  function scrollToSection(labelId) {
+    setTimeout(() => {
+      const el = document.getElementById(labelId ? `sec-${labelId}` : 'sec-none');
+      if (!el) return;
+      const header = document.querySelector('header')?.offsetHeight || 0;
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({
+        top: el.getBoundingClientRect().top + window.scrollY - header - 8,
+        behavior: reduce ? 'auto' : 'smooth',
+      });
+    }, 0);
+  }
+
   useEffect(() => {
     loadLabels();
     loadTargets();
@@ -671,10 +687,10 @@ export default function Today() {
             initialLabelId={quickAddInitialLabel}
             inputRef={quickAddInputRef}
             autoFocus={quickAddKey > 0}
-            onAdded={() => {
+            onAdded={(labelId) => {
               setQuickAddKey((k) => k + 1);
               setQuickAddInitialLabel(null);
-              loadDay(true);
+              loadDay(true).then(() => scrollToSection(labelId));
             }}
           />
         </div>
@@ -875,9 +891,9 @@ export default function Today() {
           waterFoodId={prefs.water_food_id}
           initialLabelId={adding.labelId}
           onClose={() => setAdding(null)}
-          onAdded={() => {
+          onAdded={(labelId) => {
             setAdding(null);
-            loadDay(true);
+            loadDay(true).then(() => scrollToSection(labelId));
           }}
         />
       )}
@@ -1053,7 +1069,7 @@ function SortableSection({ group: g, isOver, dimmed, editingId, collapsed, onTog
   };
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div ref={setNodeRef} style={style} id={`sec-${g.id}`}>
       <div
         className={`flex flex-col gap-2 rounded-2xl transition-[transform,opacity,box-shadow] duration-200 ease-out motion-reduce:transition-none ${
           isDragging ? 'scale-[1.015] -rotate-[0.4deg]' : dimmed ? 'opacity-40 scale-[0.99]' : ''
@@ -1095,6 +1111,7 @@ function DropOnlySection({ group: g, isOver, dimmed, editingId, collapsed, onTog
   return (
     <div
       ref={setNodeRef}
+      id="sec-none"
       className={`flex flex-col gap-2 rounded-2xl transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none ${dimmed ? 'opacity-40 scale-[0.99]' : ''}`}
     >
       <SectionBar name={g.name} items={g.items} isOver={isOver} collapsed={collapsed} onToggle={onToggle} />
@@ -1488,7 +1505,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
     };
     const { error } = await supabase.from('entries').insert(payload);
     if (!error) {
-      onAdded();
+      onAdded(labelId || null);
       // Recarga en background; actualiza la lista si el form sigue montado (rail lg+).
       refreshFrequent()
         .then(() => getFrequent(initialLabelId, waterFoodId))
