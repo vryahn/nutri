@@ -584,7 +584,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     food.density_g_ml > 0 && !DENSITY_PRESETS.some((p) => p.value === Number(food.density_g_ml))
   );
   const [aiText, setAiText] = useState('');
-  const [aiFile, setAiFile] = useState(null);
+  const [aiFiles, setAiFiles] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiZeros, setAiZeros] = useState(initialZeros); // claves cuyo valor (inicial o de prefill IA) fue 0 → placeholder, no valor
@@ -638,7 +638,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   }
 
   async function handleFetchData() {
-    if (!aiText.trim() && !aiFile) return;
+    if (!aiText.trim() && aiFiles.length === 0) return;
     setAiLoading(true);
     setAiError('');
     setFdcChips([]);
@@ -660,7 +660,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         // usuario elija densidad (ver normalizeTo100).
         applyPrefillWithBasis(off, 'off', off.name, null, off.per, null);
       } else {
-        const gemini = await estimateFood(aiText, aiFile);
+        const gemini = await estimateFood(aiText, aiFiles);
         const eanFromGemini = gemini.ean && eanChecksumValid(gemini.ean) ? gemini.ean : null;
         const [off, fdcMatches] = await Promise.all([
           eanFromGemini ? fetchOFF(eanFromGemini) : Promise.resolve(null),
@@ -746,8 +746,8 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         <AiDataCard
           text={aiText}
           onText={setAiText}
-          file={aiFile}
-          onFile={setAiFile}
+          files={aiFiles}
+          onFiles={setAiFiles}
           loading={aiLoading}
           error={aiError}
           onSubmit={handleFetchData}

@@ -423,7 +423,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   const [userId, setUserId] = useState(null);
 
   const [aiText, setAiText] = useState('');
-  const [aiFile, setAiFile] = useState(null);
+  const [aiFiles, setAiFiles] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiResult, setAiResult] = useState(null); // { confidence, kcalTotalEstimate }
@@ -473,7 +473,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   // --- Datos con IA: descomposición en ingredientes ---
 
   async function handleAiSubmit() {
-    if (!aiText.trim() && !aiFile) return;
+    if (!aiText.trim() && aiFiles.length === 0) return;
     setAiError('');
     setDupMatches([]);
     setAiResult(null);
@@ -499,7 +499,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       const catalogFoods = (foods || []).filter((f) => !isWaterSentinel(f));
       const aliases = prefsRow?.data?.ingredient_aliases || {};
       const catalogNames = catalogFoods.map((f) => f.name);
-      const result = await estimateRecipe(aiText, aiFile, catalogNames);
+      const result = await estimateRecipe(aiText, aiFiles, catalogNames);
       applyEstimate(result, catalogFoods, aliases);
     } catch (e) {
       setAiError(e.message || t('No se pudo obtener datos. Revisa la conexión o intenta con otra descripción/foto.'));
@@ -723,8 +723,8 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
         <AiDataCard
           text={aiText}
           onText={setAiText}
-          file={aiFile}
-          onFile={setAiFile}
+          files={aiFiles}
+          onFiles={setAiFiles}
           loading={aiLoading}
           error={aiError}
           onSubmit={handleAiSubmit}

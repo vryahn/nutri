@@ -111,6 +111,62 @@ input, textarea, select, [contenteditable] {
   .glass { background: var(--surface); }
 }
 
+/* Vasos de agua (Hoy): líquido translúcido con superficie ondulada y brillo
+   especular. Al llenarse un vaso (.water-liquid-rise) el líquido sube y la ola
+   gira ~1.3 s; en reposo la ola queda congelada (sin animación infinita).
+   Decorativo: el dato (ml) vive en el encabezado de la card, nunca aquí.
+   prefers-reduced-motion lo anula vía el override global de animation-duration. */
+@keyframes water-rise {
+  from { transform: translateY(100%); }
+}
+@keyframes water-wave {
+  to { transform: rotate(2turn); }
+}
+@keyframes water-pop {
+  30% { transform: scale(1.14); }
+}
+.water-liquid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 68%;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--d-carb) 40%, transparent),
+    color-mix(in srgb, var(--d-carb) 20%, transparent)
+  );
+}
+.water-liquid::before {
+  /* ola: cuadrado redondeado girando centrado en la superficie del líquido */
+  content: '';
+  position: absolute;
+  top: -44px;
+  left: -50%;
+  width: 200%;
+  aspect-ratio: 1;
+  border-radius: 42%;
+  background: color-mix(in srgb, var(--d-carb) 28%, transparent);
+}
+.water-liquid::after {
+  /* brillo especular estilo liquid glass */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, color-mix(in srgb, white 20%, transparent), transparent 45%);
+}
+.water-liquid-rise {
+  animation: water-rise 0.5s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.water-liquid-rise::before {
+  animation: water-wave 1.3s linear;
+}
+.water-celebrate button {
+  animation: water-pop 0.45s ease-out;
+  animation-delay: calc(var(--wi, 0) * 55ms);
+}
+
 @media (prefers-reduced-transparency: reduce) {
   .glass {
     background: var(--surface);

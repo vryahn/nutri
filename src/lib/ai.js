@@ -53,8 +53,10 @@ export async function toJpegBase64(file, maxSide = 1024) {
 // Jerarquía: etiqueta transcrita > EAN legible > estimación tipo USDA priorizando México.
 function geminiPrompt() {
   const units = MICROS.map((m) => `${m.key} (${m.unit})`).join(', ');
-  return `Eres un asistente de nutrición para México. Devuelve SIEMPRE los valores por 100 unidades de porción comestible (100 g, o 100 ml si el alimento es líquido y la etiqueta declara por ml). Sigue esta jerarquía, en orden:
-1. Si la imagen contiene una etiqueta nutrimental (NOM-051 o similar) legible: TRANSCRIBE los valores declarados, NO estimes. Si la etiqueta declara por gramos, normaliza a 100 g con el tamaño de porción declarado (p. ej. porción de 30 g → multiplica cada valor por 100/30) y basis = "100g". Si la etiqueta declara por mililitros (p. ej. "por 100 ml" o "por porción de 240 ml"), normaliza a 100 ml de la MISMA forma pero sin convertir a gramos — nunca inventes una densidad — y basis = "100ml". mode = "etiqueta".
+  return `Eres un asistente de nutrición para México. Devuelve SIEMPRE los valores por 100 unidades de porción comestible (100 g, o 100 ml si el alimento es líquido y la etiqueta declara por ml).
+Puedes recibir hasta dos imágenes del MISMO producto (p. ej. frente del empaque con nombre/marca/código de barras y tabla nutrimental): combínalas como una sola fuente. Si ambas muestran etiqueta nutrimental, transcribe solo la más legible — nunca promedies valores entre imágenes.
+Sigue esta jerarquía, en orden:
+1. Si alguna imagen contiene una etiqueta nutrimental (NOM-051 o similar) legible: TRANSCRIBE los valores declarados, NO estimes. Si la etiqueta declara por gramos, normaliza a 100 g con el tamaño de porción declarado (p. ej. porción de 30 g → multiplica cada valor por 100/30) y basis = "100g". Si la etiqueta declara por mililitros (p. ej. "por 100 ml" o "por porción de 240 ml"), normaliza a 100 ml de la MISMA forma pero sin convertir a gramos — nunca inventes una densidad — y basis = "100ml". mode = "etiqueta".
 2. Si hay un código de barras con dígitos impresos legibles, devuélvelos en "ean" (solo dígitos, 8-14 caracteres). Si no se leen completos y sin ambigüedad, ean = null — nunca adivines dígitos.
 3. Si no hay etiqueta legible: estima con base tipo USDA FoodData Central, priorizando productos y preparaciones comunes en México, siempre por 100 g (basis = "100g"). mode = "estimacion".
 Unidades: kcal en kcal; protein_g, carbs_g y fat_g en gramos; micros: ${units}.
@@ -102,7 +104,7 @@ const GEMINI_SCHEMA = {
 // editable con guardado individual). Prioridad de precisión en UI: catálogo > USDA > IA.
 function recipePrompt(catalogNames) {
   const units = MICROS.map((m) => `${m.key} (${m.unit})`).join(', ');
-  return `Eres un asistente de nutrición para México. El usuario describe un platillo, bebida o receta (texto y/o foto). Descompón en ingredientes con su cantidad en GRAMOS tal como van en la preparación.
+  return `Eres un asistente de nutrición para México. El usuario describe un platillo, bebida o receta (texto y/o hasta dos fotos; si hay dos, son del MISMO platillo — combínalas). Descompón en ingredientes con su cantidad en GRAMOS tal como van en la preparación.
 Prefiere pocos ingredientes compuestos ("leche entera", no "leche + grasa"). Máximo 15.
 Se te da la lista EXACTA de alimentos del catálogo del usuario. Para cada ingrediente, si uno de esos nombres corresponde claramente al ingrediente, devuelve ese nombre LITERAL en "db_match"; si no hay correspondencia clara, "db_match" = null. Nunca inventes nombres que no estén en la lista.
 Catálogo del usuario: ${catalogNames.length ? catalogNames.join(', ') : '(vacío)'}
@@ -209,10 +211,10 @@ async function callAI(systemPrompt, parts, schema) {
   throw lastErr || new Error('Sin proveedor de IA configurado');
 }
 
-export async function estimateRecipe(text, imageFile, catalogNames) {
-  const parts = [{ text: text.trim() || 'Analiza la imagen.' }];
-  if (imageFile) {
-    parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(imageFile) } });
+export async function estimateRecipe(text, imageFiles, catalogNames) {
+  const parts = [{ text: text.trim() || 'Analiza las imágenes.' }];
+  for (const f of imageFiles || []) {
+    parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(f) } });
   }
   const out = await callAI(recipePrompt(catalogNames), parts, RECIPE_SCHEMA);
   // grams fuera de rango físico razonable → gramos vacíos, no se descarta el ingrediente
@@ -259,10 +261,10 @@ export function parseAmount(text) {
   return { unit, value }; // 'ml' | 'g'
 }
 
-export async function estimateFood(text, imageFile) {
-  const parts = [{ text: text.trim() || 'Analiza la imagen.' }];
-  if (imageFile) {
-    parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(imageFile) } });
+export async function estimateFood(text, imageFiles) {
+  const parts = [{ text: text.trim() || 'Analiza las imágenes.' }];
+  for (const f of imageFiles || []) {
+    parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(f) } });
   }
   const out = await callAI(geminiPrompt(), parts, GEMINI_SCHEMA);
   const micros = {};

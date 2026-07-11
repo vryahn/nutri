@@ -1,11 +1,14 @@
 import { Sparkles, ImagePlus, X } from 'lucide-react';
 import { t, useLang } from '../lib/i18n.js';
 
-// Card "Datos con IA" compartida por FoodForm y RecipeForm: texto/foto → botón
-// "Obtener datos". `children` = líneas de resultado específicas de cada form
-// (badge, avisos), renderizadas entre el error y el hint de cierre.
+// Card "Datos con IA" compartida por FoodForm y RecipeForm: texto/fotos (máx. 2:
+// p. ej. frente del empaque + tabla nutrimental) → botón "Obtener datos".
+// `children` = líneas de resultado específicas de cada form (badge, avisos),
+// renderizadas entre el error y el hint de cierre.
+const MAX_PHOTOS = 2;
+
 export default function AiDataCard({
-  text, onText, file, onFile, loading, error, onSubmit, placeholder, hint, children,
+  text, onText, files, onFiles, loading, error, onSubmit, placeholder, hint, children,
 }) {
   useLang();
   return (
@@ -21,35 +24,56 @@ export default function AiDataCard({
         className="rounded-xl bg-surface-3 border border-border px-3 py-2 text-text focus:outline-none focus:ring-2 focus:ring-accent resize-none"
       />
       <div className="flex gap-2 items-center">
-        <label className="flex-1 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 flex items-center gap-2 text-sm text-text-2 cursor-pointer press">
-          <ImagePlus size={18} />
-          <span className="truncate">{file ? file.name : t('Foto (etiqueta o platillo)')}</span>
+        <label
+          className={`flex-1 min-w-0 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 flex items-center gap-2 text-sm text-text-2 ${
+            files.length >= MAX_PHOTOS ? 'opacity-40' : 'cursor-pointer press'
+          }`}
+        >
+          <ImagePlus size={18} className="shrink-0" />
+          <span className="min-w-0 truncate">
+            {files.length >= MAX_PHOTOS ? t('Máximo 2 fotos') : t('Fotos (etiqueta y/o producto, máx. 2)')}
+          </span>
           <input
             type="file"
             accept="image/*"
+            multiple
+            disabled={files.length >= MAX_PHOTOS}
             className="hidden"
-            onChange={(e) => onFile(e.target.files[0] || null)}
+            onChange={(e) => {
+              onFiles([...files, ...Array.from(e.target.files)].slice(0, MAX_PHOTOS));
+              e.target.value = ''; // permite re-elegir el mismo archivo tras quitarlo
+            }}
           />
         </label>
-        {file && (
-          <button
-            type="button"
-            onClick={() => onFile(null)}
-            className="min-w-[44px] min-h-[44px] rounded-xl bg-surface-3 border border-border flex items-center justify-center text-text-2"
-            aria-label={t('Quitar foto')}
-          >
-            <X size={18} />
-          </button>
-        )}
         <button
           type="button"
           onClick={onSubmit}
-          disabled={loading || (!text.trim() && !file)}
+          disabled={loading || (!text.trim() && files.length === 0)}
           className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium disabled:opacity-40 press"
         >
           {loading ? t('Obteniendo…') : t('Obtener datos')}
         </button>
       </div>
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {files.map((f, i) => (
+            <span
+              key={i}
+              className="flex items-center gap-1 min-h-[44px] max-w-full rounded-full bg-surface-3 border border-border pl-3 text-xs text-text-2"
+            >
+              <span className="truncate max-w-[200px]">{f.name}</span>
+              <button
+                type="button"
+                onClick={() => onFiles(files.filter((_, j) => j !== i))}
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center press"
+                aria-label={t('Quitar foto')}
+              >
+                <X size={16} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       {error && <p className="text-sm text-danger">{error}</p>}
       {children}
       {hint && <p className="text-xs text-text-3">{hint}</p>}

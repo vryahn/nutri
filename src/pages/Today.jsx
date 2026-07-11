@@ -220,6 +220,9 @@ export default function Today() {
   const [userId, setUserId] = useState(null);
   const [prefs, setPrefs] = useState({ water_glass_ml: 1000, water_food_id: null, today_view: 'estado' });
   const [waterSettingsOpen, setWaterSettingsOpen] = useState(false);
+  // Agua optimista: ml en vuelo (insert/delete pendiente) para pintar los vasos
+  // al instante sin esperar el round-trip a Supabase. Se descuenta al resolver.
+  const [pendingWaterMl, setPendingWaterMl] = useState(0);
   const [undoData, setUndoData] = useState(null); // { entry, timer } tras un borrado, para "Deshacer"
   const [activeEntry, setActiveEntry] = useState(null); // entry en arrastre (para el fantasma de DragOverlay)
   const [dragOverSection, setDragOverSection] = useState(null); // id de etiqueta (o 'none') bajo una card en arrastre
@@ -382,20 +385,28 @@ export default function Today() {
 
   async function addWater(ml) {
     if (!userId || !(ml > 0)) return;
-    const foodId = await getWaterFoodId();
-    const { error } = await supabase.from('entries').insert({ day: date, grams: ml, food_id: foodId });
-    if (error) {
+    setPendingWaterMl((p) => p + ml);
+    try {
+      const foodId = await getWaterFoodId();
+      const { error } = await supabase.from('entries').insert({ day: date, grams: ml, food_id: foodId });
+      if (error) throw error;
+      await loadDay(true);
+    } catch {
       showToast(t('Error al registrar agua.'));
-      return;
+    } finally {
+      setPendingWaterMl((p) => p - ml);
     }
-    loadDay(true);
   }
 
   async function undoWater() {
     const last = waterEntries[waterEntries.length - 1];
     if (!last) return;
-    await supabase.from('entries').delete().eq('id', last.id);
-    loadDay(true);
+    const ml = Number(last.grams);
+    setPendingWaterMl((p) => p - ml);
+    const { error } = await supabase.from('entries').delete().eq('id', last.id);
+    if (!error) await loadDay(true);
+    else showToast(t('Error al registrar agua.'));
+    setPendingWaterMl((p) => p + ml);
   }
 
   async function loadTargets() {
@@ -785,7 +796,7 @@ export default function Today() {
             )}
 
             <WaterCard
-              waterMl={waterMl}
+              waterMl={Math.max(0, waterMl + pendingWaterMl)}
               goalMl={Number(target?.micros?.agua_ml) || 0}
               glassMl={prefs.water_glass_ml}
               onGlass={() => addWater(prefs.water_glass_ml)}
@@ -1236,6 +1247,27 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
   const count = Math.min(Math.max(goalMl > 0 ? Math.ceil(goalMl / glassMl) : 3, filled + 1), 16);
   const pct = goalMl > 0 ? Math.min(100, (waterMl / goalMl) * 100) : 0;
 
+  // Al llenarse un vaso nuevo, su líquido sube con ola (splash = índice animado);
+  // al alcanzar el objetivo, toda la fila celebra con un pop escalonado.
+  const done = goalMl > 0 && waterMl >= goalMl;
+  const prevRef = useRef({ filled, done });
+  const [splash, setSplash] = useState(-1);
+  const [celebrate, setCelebrate] = useState(false);
+  useEffect(() => {
+    const prev = prevRef.current;
+    prevRef.current = { filled, done };
+    const timers = [];
+    if (filled > prev.filled) {
+      setSplash(filled - 1);
+      timers.push(setTimeout(() => setSplash(-1), 1400));
+    }
+    if (done && !prev.done) {
+      setCelebrate(true);
+      timers.push(setTimeout(() => setCelebrate(false), 1400));
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [filled, done]);
+
   return (
     <section className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
@@ -1254,19 +1286,21 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className={`flex flex-wrap gap-2 ${celebrate ? 'water-celebrate' : ''}`}>
         {Array.from({ length: count }, (_, i) => {
           const isFilled = i < filled;
           return (
             <button
               key={i}
               onClick={() => (isFilled ? onUndo() : onGlass())}
-              className={`relative w-11 h-11 rounded-xl border border-border flex items-center justify-center press ${
+              style={{ '--wi': i }}
+              className={`relative overflow-hidden w-11 h-11 rounded-xl border border-border flex items-center justify-center press ${
                 isFilled ? 'bg-surface-2 text-d-carb' : 'text-text-3'
               }`}
               aria-label={isFilled ? t('Quitar último registro de agua') : t('Añadir vaso de %n').replace('%n', fmtMl(glassMl))}
             >
-              <GlassWater size={22} />
+              {isFilled && <span aria-hidden="true" className={`water-liquid ${i === splash ? 'water-liquid-rise' : ''}`} />}
+              <GlassWater size={22} className="relative" />
               {i === filled && <Plus size={11} className="absolute top-1 right-1 text-text-2" />}
             </button>
           );
@@ -1275,7 +1309,7 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
 
       {goalMl > 0 && (
         <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
-          <div className="h-full bg-d-carb rounded-full" style={{ width: `${pct}%` }} />
+          <div className="h-full bg-d-carb rounded-full transition-[width] duration-500" style={{ width: `${pct}%` }} />
         </div>
       )}
 

@@ -447,7 +447,8 @@ const EN = {
 
   // AiDataCard.jsx
   'Datos con IA': 'AI data',
-  'Foto (etiqueta o platillo)': 'Photo (label or dish)',
+  'Fotos (etiqueta y/o producto, máx. 2)': 'Photos (label and/or product, max. 2)',
+  'Máximo 2 fotos': 'Maximum 2 photos',
   'Quitar foto': 'Remove photo',
   'Obteniendo…': 'Fetching…',
   'Obtener datos': 'Get data',
