@@ -112,7 +112,7 @@ function MoreOptions({ actions, placement = 'bottom', className, label }) {
 function Sidebar({ onLabels, menuActions }) {
   useLang();
   return (
-    <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:left-0 md:w-52 md:border-r md:border-border md:bg-surface md:py-4 md:px-3">
+    <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:left-0 md:w-52 md:z-40 md:border-r md:border-border md:bg-surface md:py-4 md:px-3">
       <span className="font-display text-lg px-2 pb-4">
         nutri<span className="text-accent">.</span>
       </span>
