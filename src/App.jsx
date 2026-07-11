@@ -1,6 +1,6 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
-import { CalendarDays, Apple, ChefHat, Target, BarChart3, LogOut, Tags, MoreHorizontal } from 'lucide-react';
+import { CalendarDays, Apple, ChefHat, Target, BarChart3, Ruler, LogOut, Tags, MoreHorizontal } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { cacheClear } from './lib/cache.js';
 import { subscribeSectionMenu } from './lib/sectionMenu.js';
@@ -20,6 +20,7 @@ const Foods = lazy(() => import('./pages/Foods.jsx'));
 const Recipes = lazy(() => import('./pages/Recipes.jsx'));
 const Targets = lazy(() => import('./pages/Targets.jsx'));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const Body = lazy(() => import('./pages/Body.jsx'));
 
 const PageFallback = <PageSkeleton />;
 
@@ -29,6 +30,7 @@ const TABS = [
   { to: '/recipes', label: 'Recetas', icon: ChefHat },
   { to: '/targets', label: 'Objetivos', icon: Target },
   { to: '/dashboard', label: 'Dashboard', icon: BarChart3 },
+  { to: '/body', label: 'Medidas', icon: Ruler },
 ];
 
 function useSession() {
@@ -276,6 +278,7 @@ export default function App() {
       import('./pages/Recipes.jsx');
       import('./pages/Targets.jsx');
       import('./pages/Dashboard.jsx');
+      import('./pages/Body.jsx');
     };
     if ('requestIdleCallback' in window) {
       const id = requestIdleCallback(warm);
@@ -335,6 +338,16 @@ export default function App() {
           <RequireAuth session={session}>
             <Suspense fallback={PageFallback}>
               <Dashboard />
+            </Suspense>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/body"
+        element={
+          <RequireAuth session={session}>
+            <Suspense fallback={PageFallback}>
+              <Body />
             </Suspense>
           </RequireAuth>
         }

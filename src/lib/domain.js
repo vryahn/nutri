@@ -201,6 +201,50 @@ export const MICRO_MAX = {
   oxalato_mg: 20000, fitato_mg: 20000,
 };
 
+// Claves EXACTAS del jsonb `body_metrics.metrics` (medidas corporales, migración 012).
+// Mismo contrato que MICROS: el orden es contrato de UI (los primeros
+// BODY_METRICS_DEFAULT visibles, el resto tras "más medidas"); las claves jamás se
+// renombran. Valores numéricos; `cat` agrupa la sección extendida.
+export const BODY_METRICS = [
+  { key: 'peso_kg', label: 'Peso', unit: 'kg', cat: 'Composición' },
+  { key: 'grasa_pct', label: 'Grasa corporal', unit: '%', cat: 'Composición' },
+  { key: 'musculo_kg', label: 'Masa muscular', unit: 'kg', cat: 'Composición' },
+  // — extendidas (ocultas tras "más medidas") —
+  { key: 'agua_pct', label: 'Agua corporal', unit: '%', cat: 'Composición' },
+  { key: 'hueso_kg', label: 'Masa ósea', unit: 'kg', cat: 'Composición' },
+  { key: 'grasa_visceral', label: 'Grasa visceral', unit: 'nivel', cat: 'Composición' },
+  { key: 'metabolismo_basal_kcal', label: 'Metabolismo basal', unit: 'kcal', cat: 'Composición' },
+  { key: 'cintura_cm', label: 'Cintura', unit: 'cm', cat: 'Circunferencias' },
+  { key: 'cadera_cm', label: 'Cadera', unit: 'cm', cat: 'Circunferencias' },
+  { key: 'pecho_cm', label: 'Pecho', unit: 'cm', cat: 'Circunferencias' },
+  { key: 'cuello_cm', label: 'Cuello', unit: 'cm', cat: 'Circunferencias' },
+  { key: 'brazo_cm', label: 'Brazo', unit: 'cm', cat: 'Circunferencias' },
+  { key: 'muslo_cm', label: 'Muslo', unit: 'cm', cat: 'Circunferencias' },
+  { key: 'pantorrilla_cm', label: 'Pantorrilla', unit: 'cm', cat: 'Circunferencias' },
+];
+export const BODY_METRICS_DEFAULT = 3; // peso, grasa, músculo siempre visibles
+
+// Limpia un mapa {clave: valor} a solo números finitos ≥ 0 (para persistir medidas
+// corporales): '' o basura se descartan — nunca se guarda un dato inventado.
+export function cleanNumericMap(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (v === '' || v == null) continue;
+    const n = Number(v);
+    if (Number.isFinite(n) && n >= 0) out[k] = n;
+  }
+  return out;
+}
+
+// Cotas fisiológicas máximas por medida: atrapan errores de dedo (kg↔g, punto
+// decimal), no valores altos legítimos. Clave ausente = sin cota. Al vuelo, no persistida.
+export const BODY_METRIC_MAX = {
+  peso_kg: 500, grasa_pct: 80, musculo_kg: 120, agua_pct: 90, hueso_kg: 12,
+  grasa_visceral: 60, metabolismo_basal_kcal: 6000,
+  cintura_cm: 300, cadera_cm: 300, pecho_cm: 300, cuello_cm: 120,
+  brazo_cm: 120, muslo_cm: 150, pantorrilla_cm: 100,
+};
+
 // Chequeo físico grueso por 100 g: proteína+carbs+grasa+alcohol+agua no pueden
 // superar ~105 g (100 g de porción + margen de redondeo/etiqueta); ningún macro
 // por separado puede superar 100 g; ningún micro puede superar su cota en MICRO_MAX.

@@ -5,6 +5,51 @@ import { supabase } from './supabase.js';
 // español (nunca rompe, nunca muestra "undefined"). Interpolación: la clave
 // lleva el marcador literal %n / %s y el caller hace .replace() tras t().
 const EN = {
+  // Medidas corporales (Body.jsx) + tab
+  Medidas: 'Body',
+  'Medidas del día': "Today's measurements",
+  'Más medidas ▾': 'More measurements ▾',
+  'Menos medidas ▴': 'Fewer measurements ▴',
+  Nota: 'Note',
+  'Contexto del día (opcional)': 'Day context (optional)',
+  'Registra esta medida en 2+ días para ver su tendencia.': 'Log this measurement on 2+ days to see its trend.',
+  'Valor fuera de rango — revísalo': 'Out-of-range value — double-check it',
+  'Medida a graficar': 'Measurement to chart',
+  Composición: 'Composition',
+  Circunferencias: 'Circumferences',
+  Peso: 'Weight',
+  'Grasa corporal': 'Body fat',
+  'Masa muscular': 'Muscle mass',
+  'Agua corporal': 'Body water',
+  'Masa ósea': 'Bone mass',
+  'Grasa visceral': 'Visceral fat',
+  'Metabolismo basal': 'Basal metabolism',
+  Cintura: 'Waist',
+  Cadera: 'Hip',
+  Pecho: 'Chest',
+  Cuello: 'Neck',
+  Brazo: 'Arm',
+  Muslo: 'Thigh',
+  Pantorrilla: 'Calf',
+  // Dashboard: tendencia por nutriente
+  'Tendencia por nutriente': 'Trend by nutrient',
+  'Elige cualquier nutriente y ve su valor día a día en el rango. La línea punteada es tu objetivo diario, si lo tienes en Metas.':
+    'Pick any nutrient and see its day-by-day value over the range. The dashed line is your daily target, if you set one in Targets.',
+  'Nutriente a graficar': 'Nutrient to chart',
+  Macros: 'Macros',
+  // Plantillas de comida (Today.jsx)
+  Plantillas: 'Templates',
+  'Plantillas de comida': 'Meal templates',
+  'Aún no tienes plantillas. Guarda el día actual como una para reutilizarla en cualquier fecha.':
+    "You don't have any templates yet. Save the current day as one to reuse it on any date.",
+  '%n alimentos': '%n foods',
+  'Nombre de la plantilla': 'Template name',
+  'Guardar el día actual como plantilla': 'Save current day as a template',
+  'Este día no tiene alimentos que guardar.': 'This day has no foods to save.',
+  'Plantilla guardada.': 'Template saved.',
+  'Las comidas de esta plantilla ya no existen.': 'The foods in this template no longer exist.',
+  '%n añadidos · %m omitidos': '%n added · %m skipped',
+  'Error al añadir.': 'Error adding.',
   // Import (ImportSheet, Foods, Today, Recipes)
   Importar: 'Import',
   'Importar alimentos': 'Import foods',

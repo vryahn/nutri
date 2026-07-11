@@ -22,12 +22,13 @@ supabase/migration.sql   # migración inicial 000 (YA aplicada en producción)
 supabase/migrations/     # migraciones incrementales, todas aplicadas: 001 prefs+targets.label · 002 foods.portions+density_g_ml ·
                           # 003 recetas from Cronometer + targets.description · 004 recetas saladas from Cronometer · 005 recipes.source ·
                           # 006 entries.sort_order · 007 catálogo privado por usuario (RLS) ·
-                          # 008 entry_nutrients.brand · 009 índice meal_labels · 010 targets.goal
+                          # 008 entry_nutrients.brand · 009 índice meal_labels · 010 targets.goal ·
+                          # 011 higiene advisors · 012 body_metrics (medidas corporales, override §11)
 src/lib/supabase.js      # createClient, schema 'nutri'
 src/lib/domain.js        # MICROS, resolución de targets, adherencia, fórmula de recetas, reorderLabels
 src/lib/sources.js       # clientes Open Food Facts y USDA FDC, por 100 g, mapeados a claves MICROS
 src/lib/theme.js         # modo claro/oscuro/sistema en localStorage + data-theme en <html>
-src/pages/               # Login, Today, Foods, Recipes, Targets, Dashboard (una por tab)
+src/pages/               # Login, Today, Foods, Recipes, Targets, Dashboard, Body (una por tab)
 src/components/          # LabelsModal, ThemeToggle
 src/App.jsx              # router, guard de sesión, tab bar
 brand/                   # manual de marca Nutrimetry (nutrimetry-brand.html)
@@ -117,4 +118,4 @@ Recordar: vistas con `security_invoker = true`; nuevas tablas necesitan RLS + po
 
 Peso corporal, sueño, entrenamiento (viven en Notion/Hevy). TypeScript, tests E2E, i18n, registro público de usuarios, recuperación de contraseña self-service, escáner de cámara, edge functions.
 
-(El spec §11 listaba el modo claro fuera de alcance; se construyó después — `ThemeToggle` + `src/lib/theme.js`. El resto de §11 sigue vigente.)
+(El spec §11 listaba el modo claro fuera de alcance; se construyó después — `ThemeToggle` + `src/lib/theme.js`. También las **medidas corporales** (peso/composición): §11 las excluía por vivir en Notion/Hevy, pero Bryan autorizó construirlas el 2026-07-11 — tab **Medidas** (`src/pages/Body.jsx`), tabla `nutri.body_metrics` (migración 012), claves en `BODY_METRICS` de `domain.js`. Sueño y entrenamiento SIGUEN fuera de alcance. El resto de §11 sigue vigente.)

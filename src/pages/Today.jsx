@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste, ArrowLeftRight, Upload } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste, ArrowLeftRight, Upload, Bookmark } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
@@ -373,6 +373,76 @@ function MiniSummary({ visible, top, cfg, totals, target, hasFood, onTap }) {
   );
 }
 
+// Sheet de plantillas de comida: lista las guardadas (añadir / borrar) y permite
+// guardar el día actual como una nueva. Glass + cierre al tocar el scrim (BIBLIA).
+function MealTemplatesSheet({ templates, canSave, onSave, onAdd, onDelete, onClose }) {
+  const [name, setName] = useState('');
+  return (
+    <div
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
+      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center backdrop-in"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="glass w-full sm:max-w-sm border border-border rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-3 sheet-in max-h-[80vh] overflow-y-auto"
+      >
+        <h2 className="font-display text-[19px]">{t('Plantillas de comida')}</h2>
+        {templates.length === 0 && (
+          <p className="text-sm text-text-2" style={{ margin: 0 }}>
+            {t('Aún no tienes plantillas. Guarda el día actual como una para reutilizarla en cualquier fecha.')}
+          </p>
+        )}
+        {templates.map((tp) => (
+          <div key={tp.id} className="flex items-center gap-2 rounded-xl border border-border p-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm truncate">{tp.name}</p>
+              <p className="text-xs text-text-3">{t('%n alimentos').replace('%n', tp.items.length)}</p>
+            </div>
+            <button
+              onClick={() => onAdd(tp)}
+              className="px-3 min-h-[40px] rounded-lg bg-accent-deep text-on-accent text-sm font-medium press"
+            >
+              {t('Añadir')}
+            </button>
+            <button onClick={() => onDelete(tp.id)} aria-label={t('Borrar')} className="p-2 min-h-[40px] text-text-3 press">
+              <Trash2 size={18} />
+            </button>
+          </div>
+        ))}
+        <div className="border-t border-border pt-3 flex flex-col gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t('Nombre de la plantilla')}
+            className="rounded-xl border border-border bg-surface-2 px-3 min-h-[44px] outline-none"
+          />
+          <button
+            disabled={!canSave || !name.trim()}
+            onClick={() => {
+              onSave(name);
+              setName('');
+            }}
+            className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60"
+          >
+            {t('Guardar el día actual como plantilla')}
+          </button>
+          {!canSave && (
+            <p className="text-xs text-text-3" style={{ margin: 0 }}>
+              {t('Este día no tiene alimentos que guardar.')}
+            </p>
+          )}
+        </div>
+        <button onClick={onClose} className="min-h-[44px] rounded-xl border border-border text-text-2 press">
+          {t('Cerrar')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Today() {
   const lang = useLang();
   useUnits();
@@ -409,6 +479,7 @@ export default function Today() {
   // Día copiado para "Pegar" (localStorage: sobrevive cambio de fecha y recarga).
   const [copiedDay, setCopiedDay] = useState(() => localStorage.getItem('nutri.today.copiedDay') || null);
   const [confirmingDeleteDay, setConfirmingDeleteDay] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   // Secciones contraídas: Set de claves (String(labelId) o 'none'), persistido en
   // localStorage — sobrevive reload sin escritura remota (ponytail: no DB).
   const [collapsed, setCollapsed] = useState(() => {
@@ -787,6 +858,71 @@ export default function Today() {
     showToast(t('Día copiado.'));
   }
 
+  // Plantillas de comida ("Meals" de MFP): un conjunto de alimentos guardado con
+  // nombre en prefs.data.meal_templates (sin migración) y reinsertable en cualquier
+  // fecha. El agua no entra (foodEntries ya la excluye).
+  async function saveTemplate(name) {
+    const nm = name.trim();
+    if (!nm) return;
+    const items = foodEntries.map((e) => ({
+      meal_label_id: e.meal_label_id ?? null,
+      food_id: e.food_id ?? null,
+      recipe_id: e.recipe_id ?? null,
+      grams: Number(e.grams),
+    }));
+    if (!items.length) {
+      showToast(t('Este día no tiene alimentos.'));
+      return;
+    }
+    const next = [...(prefs.meal_templates || []), { id: crypto.randomUUID(), name: nm, items }];
+    await savePrefs({ meal_templates: next });
+    showToast(t('Plantilla guardada.'));
+  }
+
+  async function deleteTemplate(id) {
+    const next = (prefs.meal_templates || []).filter((tp) => tp.id !== id);
+    await savePrefs({ meal_templates: next });
+  }
+
+  // Inserta la plantilla en la fecha actual. Filtra items cuyo alimento/receta ya
+  // no exista (una sola SELECT por tipo): un id borrado rompería el insert entero
+  // por la FK, así que se descartan y se avisa cuántos.
+  async function addTemplate(tpl) {
+    const foodIds = tpl.items.filter((i) => i.food_id).map((i) => i.food_id);
+    const recipeIds = tpl.items.filter((i) => i.recipe_id).map((i) => i.recipe_id);
+    const [{ data: fRows }, { data: rRows }] = await Promise.all([
+      foodIds.length ? supabase.from('foods').select('id').in('id', foodIds) : Promise.resolve({ data: [] }),
+      recipeIds.length ? supabase.from('recipes').select('id').in('id', recipeIds) : Promise.resolve({ data: [] }),
+    ]);
+    const okFoods = new Set((fRows || []).map((r) => r.id));
+    const okRecipes = new Set((rRows || []).map((r) => r.id));
+    const valid = tpl.items.filter((i) => (i.food_id ? okFoods.has(i.food_id) : okRecipes.has(i.recipe_id)));
+    if (!valid.length) {
+      showToast(t('Las comidas de esta plantilla ya no existen.'));
+      return;
+    }
+    const rows = valid.map((i) => ({
+      meal_label_id: i.meal_label_id ?? null,
+      food_id: i.food_id ?? null,
+      recipe_id: i.recipe_id ?? null,
+      grams: i.grams,
+      day: date,
+    }));
+    const { error } = await supabase.from('entries').insert(rows);
+    if (error) {
+      showToast(t('Error al añadir.'));
+      return;
+    }
+    const dropped = tpl.items.length - valid.length;
+    showToast(
+      dropped
+        ? t('%n añadidos · %m omitidos').replace('%n', rows.length).replace('%m', dropped)
+        : t('%n registros copiados.').replace('%n', rows.length),
+    );
+    setTemplatesOpen(false);
+    loadDay(true);
+  }
+
   // Borra los alimentos del día (no el agua, que se lleva por vasos). Destructivo
   // e irreversible: confirma antes con ConfirmSheet.
   function handleDeleteDay() {
@@ -826,6 +962,7 @@ export default function Today() {
         onClick: () => copyEntriesFrom(copiedDay),
       });
     }
+    actions.push({ key: 'plantillas', label: t('Plantillas'), icon: Bookmark, onClick: () => setTemplatesOpen(true) });
     actions.push({ key: 'importar', label: t('Importar'), icon: Upload, onClick: () => setImporting(true) });
     actions.push({ key: 'borrar', label: t('Borrar día'), icon: Trash2, onClick: handleDeleteDay });
     setSectionMenu(actions);
@@ -1082,6 +1219,17 @@ export default function Today() {
           confirmLabel={t('Borrar día')}
           onConfirm={doDeleteDay}
           onClose={() => setConfirmingDeleteDay(false)}
+        />
+      )}
+
+      {templatesOpen && (
+        <MealTemplatesSheet
+          templates={prefs.meal_templates || []}
+          canSave={foodEntries.length > 0}
+          onSave={saveTemplate}
+          onAdd={addTemplate}
+          onDelete={deleteTemplate}
+          onClose={() => setTemplatesOpen(false)}
         />
       )}
 

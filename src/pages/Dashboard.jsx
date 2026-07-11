@@ -478,6 +478,23 @@ function prevRangeOf(start, end) {
 // agua_ml se excluye porque tiene su propia sección y no entra al selector.
 const MICROS_ZERO = Object.fromEntries(MICROS.filter((m) => m.key !== 'agua_ml').map((m) => [m.key, 0]));
 
+// Nutrientes graficables en la card "Tendencia por nutriente" (macros + todos los
+// micros). `tgt(d)` extrae el objetivo diario del punto de chartData: los macros
+// viven en campos planos, los micros en targetMicros. `unit` incluye el espacio inicial.
+const TREND_NUTRIENTS = [
+  { key: 'kcal', label: 'Kcal', unit: '', dec: 0, tgt: (d) => d.targetKcal },
+  { key: 'protein_g', label: 'Proteína', unit: ' g', dec: 0, tgt: (d) => d.proteinFloor },
+  { key: 'carbs_g', label: 'Carbohidratos', unit: ' g', dec: 0, tgt: (d) => d.targetCarbs },
+  { key: 'fat_g', label: 'Grasa', unit: ' g', dec: 0, tgt: (d) => d.targetFat },
+  ...MICROS.filter((m) => m.key !== 'agua_ml').map((m) => ({
+    key: m.key,
+    label: m.label,
+    unit: ` ${m.unit}`,
+    dec: m.unit === 'g' ? 1 : 0,
+    tgt: (d) => d.targetMicros?.[m.key] ?? null,
+  })),
+];
+
 // Totales/promedios/serie diaria para un rango. Pura: se usa dos veces
 // (rango actual y rango previo para las deltas de las KPI).
 function computeStats(dates, dailyTotals, targets) {
@@ -679,6 +696,7 @@ export default function Dashboard() {
   const [toast, showToast] = useToast();
   const [loading, setLoading] = useState(true);
   const [calcMode, setCalcMode] = usePersistentState('nutri.dash.calcMode', 'promedio');
+  const [trendKey, setTrendKey] = usePersistentState('nutri.dash.trendKey', 'protein_g');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [printing, setPrinting] = useState(false); // monta #print-report y dispara window.print()
 
@@ -950,6 +968,20 @@ export default function Dashboard() {
   const showDelta = !unionMode && prevStats.diasRegistrados >= 1 && (calcMode === 'suma' || calcMode === 'promedio');
 
   const kcalChart = withMovingAverage(chartData);
+
+  // Card "Tendencia por nutriente": serie diaria de la métrica elegida + su
+  // objetivo diario (si existe). connectNulls salta los días sin registro.
+  const trendMeta = TREND_NUTRIENTS.find((n) => n.key === trendKey) || TREND_NUTRIENTS[1];
+  const trendData = chartData.map((d) => {
+    const tg = trendMeta.tgt(d);
+    return {
+      label: d.label,
+      val: d.registrado ? round(Number(d.values[trendMeta.key] ?? 0), trendMeta.dec) : null,
+      target: tg != null ? Number(tg) : null,
+    };
+  });
+  const trendHasData = trendData.some((d) => d.val != null);
+  const trendHasTarget = trendData.some((d) => d.target != null);
   const dayInfo = new Map(chartData.map((d) => [d.day, d]));
   const weeks = buildWeeks(start, end).filter((w) => w.some((d) => dateSet.has(d)));
   const proteinWeekly = weeklyProteinData(weeks, dateSet, dayInfo);
@@ -1602,6 +1634,56 @@ export default function Dashboard() {
             </ComposedChart>
           </ResponsiveContainer>
           </div>
+        </section>
+
+        <section className="md:col-span-2 lg:col-span-12 rounded-2xl bg-surface border border-border p-4">
+          <div className="flex justify-between items-center gap-2 mb-2">
+            <p className="text-sm text-text-3 flex items-center gap-1">
+              {t('Tendencia por nutriente')}
+              <Hint text={t('Elige cualquier nutriente y ve su valor día a día en el rango. La línea punteada es tu objetivo diario, si lo tienes en Metas.')}>ⓘ</Hint>
+            </p>
+            <select
+              value={trendKey}
+              onChange={(e) => setTrendKey(e.target.value)}
+              className="rounded-lg border border-border bg-surface-2 px-2 py-1 text-sm min-h-[36px] max-w-[55%]"
+              aria-label={t('Nutriente a graficar')}
+            >
+              <optgroup label={t('Macros')}>
+                {TREND_NUTRIENTS.slice(0, 4).map((n) => (
+                  <option key={n.key} value={n.key}>{t(n.label)}</option>
+                ))}
+              </optgroup>
+              {microGroups(MICROS.filter((m) => m.key !== 'agua_ml')).map((g) => (
+                <optgroup key={g.cat} label={t(g.cat)}>
+                  {g.items.map((m) => (
+                    <option key={m.key} value={m.key}>{t(m.label)}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+          {trendHasData ? (
+            <div className="h-[220px] lg:h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={trendData}>
+                  <CartesianGrid stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
+                  <YAxis tick={{ fill: 'var(--text-3)', fontSize: 10 }} width={40} domain={['auto', 'auto']} />
+                  <Tooltip
+                    contentStyle={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text)' }}
+                    formatter={(v) => [`${round(Number(v), trendMeta.dec)}${trendMeta.unit}`, t(trendMeta.label)]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11, color: 'var(--text-3)' }} />
+                  <Line type="monotone" dataKey="val" name={t(trendMeta.label)} stroke="var(--d-prot)" strokeWidth={2} dot={{ r: 2 }} connectNulls isAnimationActive={!reducedMotion} />
+                  {trendHasTarget && (
+                    <Line dataKey="target" name={t('Objetivo')} stroke="var(--accent)" strokeDasharray="4 3" dot={false} strokeWidth={2} connectNulls isAnimationActive={!reducedMotion} />
+                  )}
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p className="text-sm text-text-2 py-8 text-center">{t('Sin registros en el rango')}</p>
+          )}
         </section>
 
         <section className="md:col-span-2 lg:col-span-12 rounded-2xl bg-surface border border-border p-4">

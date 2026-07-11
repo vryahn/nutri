@@ -2,8 +2,19 @@ import { describe, it, expect } from 'vitest';
 import {
   computeRecipePer100g, resolveTarget, weekdayOf, kcalFromMacros, kcalSuspicious,
   macrosImplausible, componentsInconsistent, dayCompleteness, bayesAdherence,
-  reorderLabels, eanChecksumValid,
+  reorderLabels, eanChecksumValid, cleanNumericMap,
 } from './domain.js';
+
+describe('cleanNumericMap', () => {
+  it('conserva números finitos ≥ 0 y descarta vacíos, negativos y basura', () => {
+    expect(cleanNumericMap({ peso_kg: '80.5', grasa_pct: 22, vacio: '', nulo: null, neg: -3, txt: 'abc', nan: NaN }))
+      .toEqual({ peso_kg: 80.5, grasa_pct: 22 });
+  });
+  it('mapa vacío o nulo -> {}', () => {
+    expect(cleanNumericMap({})).toEqual({});
+    expect(cleanNumericMap(null)).toEqual({});
+  });
+});
 
 describe('computeRecipePer100g', () => {
   const A = { kcal: 100, protein_g: 10, carbs_g: 20, fat_g: 5, micros: { sodio_mg: 50 } };
