@@ -6,11 +6,40 @@ const FDC_KEY = import.meta.env.VITE_FDC_KEY;
 
 // --- Open Food Facts ---
 
+// E-números de edulcorantes (INS/Codex) → nombre ES. OFF los expone en additives_tags
+// aunque la etiqueta rara vez declara los mg: sirve para AVISAR de su presencia.
+const SWEETENER_ADDITIVES = {
+  e420: 'sorbitol', e421: 'manitol', e953: 'isomalt', e965: 'maltitol', e966: 'lactitol',
+  e967: 'xilitol', e968: 'eritritol', e964: 'poliglicitol',
+  e950: 'acesulfamo K', e951: 'aspartamo', e952: 'ciclamato', e954: 'sacarina',
+  e955: 'sucralosa', e956: 'alitamo', e957: 'taumatina', e959: 'neohesperidina DC',
+  e960: 'glucósidos de esteviol', e961: 'neotamo', e962: 'sal de aspartamo-acesulfamo',
+  e969: 'advantamo',
+};
+
+// Lista de edulcorantes detectados en un producto OFF, por su additives_tags
+// (p. ej. 'en:e955' o 'en:e960c'). Devuelve [{ code, name }] sin duplicados.
+export function sweetenerAdditives(product) {
+  const out = [];
+  const seen = new Set();
+  for (const tag of product.additives_tags || []) {
+    const m = /e(\d{3})/i.exec(tag);
+    if (!m) continue;
+    const code = 'e' + m[1];
+    const name = SWEETENER_ADDITIVES[code];
+    if (name && !seen.has(code)) {
+      seen.add(code);
+      out.push({ code: code.toUpperCase(), name });
+    }
+  }
+  return out;
+}
+
 export async function fetchOFF(ean) {
   let res;
   try {
     res = await fetch(
-      `https://world.openfoodfacts.org/api/v2/product/${ean}.json?fields=product_name,brands,nutriments,quantity,nutrition_data_per`
+      `https://world.openfoodfacts.org/api/v2/product/${ean}.json?fields=product_name,brands,nutriments,quantity,nutrition_data_per,additives_tags`
     );
   } catch {
     return null;
@@ -30,6 +59,8 @@ export function mapOFF(p) {
     // nutrition_data_per: base declarada por el producto ('100g' o '100ml'); OFF no
     // convierte, solo etiqueta — verificado en vivo con jugos franceses (100ml real).
     per: p.nutrition_data_per === '100ml' ? '100ml' : '100g',
+    // Edulcorantes detectados por aditivo (presencia, no cantidad): la UI avisa.
+    sweeteners: sweetenerAdditives(p),
   };
 
   if (n['energy-kcal_100g'] != null) out.kcal = round(n['energy-kcal_100g'], 1);
@@ -50,6 +81,21 @@ export function mapOFF(p) {
   if (n.magnesium_100g != null) m.magnesio_mg = round(n.magnesium_100g * 1000, 1);
   if (n.calcium_100g != null) m.calcio_mg = round(n.calcium_100g * 1000, 1);
   if (n.iron_100g != null) m.hierro_mg = round(n.iron_100g * 1000, 2);
+  // OFF da la cafeína en gramos (verificado en vivo: caffeine_unit "g"), como los minerales.
+  if (n.caffeine_100g != null) m.cafeina_mg = round(n.caffeine_100g * 1000, 1);
+  // Campos extendidos de OFF, ya en la unidad del dominio (gramos). Población dispersa:
+  // una clave ausente simplemente no se asigna (nunca guarda un dato equivocado).
+  if (n.polyols_100g != null) m.polioles_g = round(n.polyols_100g, 2);
+  if (n.starch_100g != null) m.almidon_g = round(n.starch_100g, 2);
+  if (n.fructose_100g != null) m.fructosa_g = round(n.fructose_100g, 2);
+  if (n.glucose_100g != null) m.glucosa_g = round(n.glucose_100g, 2);
+  if (n.sucrose_100g != null) m.sacarosa_g = round(n.sucrose_100g, 2);
+  if (n.maltose_100g != null) m.maltosa_g = round(n.maltose_100g, 2);
+  if (n.lactose_100g != null) m.lactosa_g = round(n.lactose_100g, 2);
+  if (n['monounsaturated-fat_100g'] != null) m.grasa_mono_g = round(n['monounsaturated-fat_100g'], 2);
+  if (n['polyunsaturated-fat_100g'] != null) m.grasa_poli_g = round(n['polyunsaturated-fat_100g'], 2);
+  if (n['omega-3-fat_100g'] != null) m.omega3_g = round(n['omega-3-fat_100g'], 3);
+  if (n['omega-6-fat_100g'] != null) m.omega6_g = round(n['omega-6-fat_100g'], 3);
 
   return out;
 }
@@ -66,8 +112,24 @@ const FDC_MAP = {
   1165: 'vit_b1_mg', 1166: 'vit_b2_mg', 1167: 'vit_b3_mg', 1170: 'vit_b5_mg', 1175: 'vit_b6_mg',
   1176: 'vit_b7_mcg', 1177: 'vit_b9_mcg', 1178: 'vit_b12_mcg', 1180: 'colina_mg',
   1095: 'zinc_mg', 1091: 'fosforo_mg', 1103: 'selenio_mcg', 1098: 'cobre_mg', 1101: 'manganeso_mg',
-  1100: 'yodo_mcg', 1096: 'cromo_mcg', 1102: 'molibdeno_mcg',
+  1100: 'yodo_mcg', 1096: 'cromo_mcg', 1102: 'molibdeno_mcg', 1099: 'fluoruro_mcg',
   1107: 'beta_caroteno_mcg', 1122: 'licopeno_mcg', 1123: 'luteina_zeaxantina_mcg',
+  // --- Ampliación (ids verificados en vivo contra la API de FDC) ---
+  1007: 'ceniza_g', 1009: 'almidon_g',
+  1010: 'sacarosa_g', 1011: 'glucosa_g', 1012: 'fructosa_g', 1075: 'galactosa_g', 1013: 'lactosa_g', 1014: 'maltosa_g',
+  1057: 'cafeina_mg', 1058: 'teobromina_mg',
+  1105: 'retinol_mcg', 1108: 'alfa_caroteno_mcg', 1120: 'beta_criptoxantina_mcg',
+  1125: 'tocoferol_beta_mg', 1126: 'tocoferol_gamma_mg', 1127: 'tocoferol_delta_mg',
+  1283: 'fitosteroles_mg',
+  1292: 'grasa_mono_g', 1293: 'grasa_poli_g',
+  1404: 'ala_g', 1278: 'epa_g', 1272: 'dha_g', 1269: 'la_g', 1271: 'aa_g',
+  // Aminoácidos (FDC ids 1210-1228)
+  1210: 'triptofano_g', 1211: 'treonina_g', 1212: 'isoleucina_g', 1213: 'leucina_g', 1214: 'lisina_g',
+  1215: 'metionina_g', 1216: 'cistina_g', 1217: 'fenilalanina_g', 1218: 'tirosina_g', 1219: 'valina_g',
+  1220: 'arginina_g', 1221: 'histidina_g', 1222: 'alanina_g', 1223: 'acido_aspartico_g', 1224: 'acido_glutamico_g',
+  1225: 'glicina_g', 1226: 'prolina_g', 1227: 'serina_g', 1228: 'hidroxiprolina_g',
+  // omega3_g/omega6_g totales y fibra soluble/insoluble: sin id único fiable en FDC →
+  // se dejan a etiqueta/Gemini/captura manual (no se mapean aquí para no adivinar).
 };
 // Los alimentos Foundation NO traen el id 1008 (Energy) que sí usa SR Legacy — solo
 // los factores Atwater 2047/2048. Se aceptan como kcal con prioridad: 1008 (directo)

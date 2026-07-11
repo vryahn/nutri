@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mapOFF, toDomainUnit } from './sources.js';
+import { mapOFF, toDomainUnit, sweetenerAdditives } from './sources.js';
 
 describe('mapOFF', () => {
   it('sodium_100g en gramos -> ×1000 a mg', () => {
@@ -32,6 +32,27 @@ describe('mapOFF', () => {
   it('nutrition_data_per ausente/distinto de 100ml -> per 100g', () => {
     const p = { product_name: 'X', brands: '', nutriments: {} };
     expect(mapOFF(p).per).toBe('100g');
+  });
+
+  it('caffeine_100g en gramos -> ×1000 a mg', () => {
+    const p = { product_name: 'Energética', brands: '', nutriments: { caffeine_100g: 0.032 }, nutrition_data_per: '100g' };
+    expect(mapOFF(p).micros.cafeina_mg).toBe(32);
+  });
+});
+
+describe('sweetenerAdditives', () => {
+  it('detecta edulcorantes por E-número (incluye sufijos como e960c)', () => {
+    const p = { additives_tags: ['en:e150d', 'en:e331', 'en:e951', 'en:e960c'] };
+    const out = sweetenerAdditives(p);
+    expect(out).toEqual([
+      { code: 'E951', name: 'aspartamo' },
+      { code: 'E960', name: 'glucósidos de esteviol' },
+    ]);
+  });
+
+  it('sin aditivos de edulcorante -> lista vacía', () => {
+    expect(sweetenerAdditives({ additives_tags: ['en:e322', 'en:e500'] })).toEqual([]);
+    expect(sweetenerAdditives({})).toEqual([]);
   });
 });
 

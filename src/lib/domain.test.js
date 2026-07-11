@@ -70,6 +70,17 @@ describe('kcalFromMacros / kcalSuspicious', () => {
     expect(kcalFromMacros(f)).toBe(70); // 7*10
   });
 
+  it('polialcoholes: total declarado corrige a 2.4 kcal/g (resta 1.6/g)', () => {
+    // carbs 20 los cuenta a 4 (=80); 10 g son polioles -> -16 -> 64
+    const f = { protein_g: 0, carbs_g: 20, fat_g: 0, micros: { polioles_g: 10 } };
+    expect(kcalFromMacros(f)).toBe(64);
+  });
+
+  it('polialcoholes: sin total usa la suma de individuales', () => {
+    const f = { protein_g: 0, carbs_g: 20, fat_g: 0, micros: { xilitol_g: 6, sorbitol_g: 4 } };
+    expect(kcalFromMacros(f)).toBe(64); // -1.6*(6+4)
+  });
+
   it('tolerancia max(20 kcal, 25%)', () => {
     // expected = 100 kcal -> tolerancia = max(20, 25) = 25
     const base = { protein_g: 25, carbs_g: 0, fat_g: 0, micros: {} }; // expected 100
@@ -110,6 +121,30 @@ describe('componentsInconsistent', () => {
 
   it('dato ausente no cuenta como 0 (fat_g ausente no dispara la desigualdad)', () => {
     const f = { fat_g: '', micros: { grasa_sat_g: 100 } };
+    expect(componentsInconsistent(f)).toBe(false);
+  });
+
+  it('true: polialcoholes > carbohidratos', () => {
+    expect(componentsInconsistent({ carbs_g: 10, micros: { polioles_g: 12 } })).toBe(true);
+  });
+
+  it('true: suma de azúcares individuales > azúcar total', () => {
+    const f = { micros: { azucar_g: 5, glucosa_g: 4, fructosa_g: 4 } };
+    expect(componentsInconsistent(f)).toBe(true);
+  });
+
+  it('true: ALA+EPA+DHA > omega-3 total', () => {
+    const f = { micros: { omega3_g: 1, ala_g: 0.8, epa_g: 0.5, dha_g: 0.5 } }; // 1.8 > 1+0.5
+    expect(componentsInconsistent(f)).toBe(true);
+  });
+
+  it('true: suma de aminoácidos > proteína', () => {
+    const f = { protein_g: 1, micros: { leucina_g: 0.8, lisina_g: 0.8 } };
+    expect(componentsInconsistent(f)).toBe(true);
+  });
+
+  it('false: suma parcial de aminoácidos bajo la proteína', () => {
+    const f = { protein_g: 10, micros: { leucina_g: 0.8, lisina_g: 0.8 } };
     expect(componentsInconsistent(f)).toBe(false);
   });
 });

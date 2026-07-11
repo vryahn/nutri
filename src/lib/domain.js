@@ -42,12 +42,103 @@ export const MICROS = [
   { key: 'beta_caroteno_mcg', label: 'β-caroteno', unit: 'µg', cat: 'Antioxidantes' },
   { key: 'licopeno_mcg', label: 'Licopeno', unit: 'µg', cat: 'Antioxidantes' },
   { key: 'luteina_zeaxantina_mcg', label: 'Luteína + Zeaxantina', unit: 'µg', cat: 'Antioxidantes' },
+
+  // --- Ampliación paridad Cronometer + seguimiento médico (todas ocultas por
+  // defecto, promovibles como favorito igual que el resto). Las vistas SQL suman
+  // el jsonb genéricamente (jsonb_each_text): claves nuevas NO requieren migración. ---
+
+  // Carbohidratos detallados
+  { key: 'fibra_soluble_g', label: 'Fibra soluble', unit: 'g', cat: 'Carbohidratos' },
+  { key: 'fibra_insoluble_g', label: 'Fibra insoluble', unit: 'g', cat: 'Carbohidratos' },
+  { key: 'almidon_g', label: 'Almidón', unit: 'g', cat: 'Carbohidratos' },
+  { key: 'sacarosa_g', label: 'Sacarosa', unit: 'g', cat: 'Carbohidratos' },
+  { key: 'glucosa_g', label: 'Glucosa', unit: 'g', cat: 'Carbohidratos' },
+  { key: 'fructosa_g', label: 'Fructosa', unit: 'g', cat: 'Carbohidratos' },
+  { key: 'galactosa_g', label: 'Galactosa', unit: 'g', cat: 'Carbohidratos' },
+  { key: 'lactosa_g', label: 'Lactosa', unit: 'g', cat: 'Carbohidratos' },
+  { key: 'maltosa_g', label: 'Maltosa', unit: 'g', cat: 'Carbohidratos' },
+  { key: 'alulosa_g', label: 'Alulosa', unit: 'g', cat: 'Carbohidratos' },
+
+  // Edulcorantes — polialcoholes (declarados en g en la etiqueta)
+  { key: 'polioles_g', label: 'Polialcoholes (total)', unit: 'g', cat: 'Edulcorantes' },
+  { key: 'eritritol_g', label: 'Eritritol', unit: 'g', cat: 'Edulcorantes' },
+  { key: 'xilitol_g', label: 'Xilitol', unit: 'g', cat: 'Edulcorantes' },
+  { key: 'sorbitol_g', label: 'Sorbitol', unit: 'g', cat: 'Edulcorantes' },
+  { key: 'maltitol_g', label: 'Maltitol', unit: 'g', cat: 'Edulcorantes' },
+  { key: 'manitol_g', label: 'Manitol', unit: 'g', cat: 'Edulcorantes' },
+  { key: 'isomalt_g', label: 'Isomalt', unit: 'g', cat: 'Edulcorantes' },
+  { key: 'lactitol_g', label: 'Lactitol', unit: 'g', cat: 'Edulcorantes' },
+  // Edulcorantes — alta intensidad (mg; solo con dato declarado/publicado, nunca estimado)
+  { key: 'aspartame_mg', label: 'Aspartamo', unit: 'mg', cat: 'Edulcorantes' },
+  { key: 'sucralosa_mg', label: 'Sucralosa', unit: 'mg', cat: 'Edulcorantes' },
+  { key: 'acesulfame_k_mg', label: 'Acesulfamo K', unit: 'mg', cat: 'Edulcorantes' },
+  { key: 'sacarina_mg', label: 'Sacarina', unit: 'mg', cat: 'Edulcorantes' },
+  { key: 'ciclamato_mg', label: 'Ciclamato', unit: 'mg', cat: 'Edulcorantes' },
+  { key: 'glucosidos_esteviol_mg', label: 'Glucósidos de esteviol', unit: 'mg', cat: 'Edulcorantes' },
+  { key: 'mogrosidos_mg', label: 'Mogrósidos (fruto del monje)', unit: 'mg', cat: 'Edulcorantes' },
+  { key: 'neotame_mg', label: 'Neotamo', unit: 'mg', cat: 'Edulcorantes' },
+  { key: 'advantame_mg', label: 'Advantamo', unit: 'mg', cat: 'Edulcorantes' },
+  { key: 'taumatina_mg', label: 'Taumatina', unit: 'mg', cat: 'Edulcorantes' },
+
+  // Lípidos detallados
+  { key: 'grasa_mono_g', label: 'Grasa monoinsaturada', unit: 'g', cat: 'Lípidos' },
+  { key: 'grasa_poli_g', label: 'Grasa poliinsaturada', unit: 'g', cat: 'Lípidos' },
+  { key: 'omega3_g', label: 'Omega-3', unit: 'g', cat: 'Lípidos' },
+  { key: 'ala_g', label: 'ALA (omega-3)', unit: 'g', cat: 'Lípidos' },
+  { key: 'epa_g', label: 'EPA (omega-3)', unit: 'g', cat: 'Lípidos' },
+  { key: 'dha_g', label: 'DHA (omega-3)', unit: 'g', cat: 'Lípidos' },
+  { key: 'omega6_g', label: 'Omega-6', unit: 'g', cat: 'Lípidos' },
+  { key: 'la_g', label: 'LA (omega-6)', unit: 'g', cat: 'Lípidos' },
+  { key: 'aa_g', label: 'AA (omega-6)', unit: 'g', cat: 'Lípidos' },
+  { key: 'fitosteroles_mg', label: 'Fitosteroles', unit: 'mg', cat: 'Lípidos' },
+
+  // Vitaminas detalladas
+  { key: 'retinol_mcg', label: 'Retinol', unit: 'µg', cat: 'Vitaminas' },
+  { key: 'tocoferol_beta_mg', label: 'β-tocoferol', unit: 'mg', cat: 'Vitaminas' },
+  { key: 'tocoferol_gamma_mg', label: 'γ-tocoferol', unit: 'mg', cat: 'Vitaminas' },
+  { key: 'tocoferol_delta_mg', label: 'δ-tocoferol', unit: 'mg', cat: 'Vitaminas' },
+
+  // Antioxidantes
+  { key: 'alfa_caroteno_mcg', label: 'α-caroteno', unit: 'µg', cat: 'Antioxidantes' },
+  { key: 'beta_criptoxantina_mcg', label: 'β-criptoxantina', unit: 'µg', cat: 'Antioxidantes' },
+
+  // Minerales
+  { key: 'fluoruro_mcg', label: 'Fluoruro', unit: 'µg', cat: 'Minerales' },
+
+  // Otros
+  { key: 'cafeina_mg', label: 'Cafeína', unit: 'mg', cat: 'Otros' },
+  { key: 'teobromina_mg', label: 'Teobromina', unit: 'mg', cat: 'Otros' },
+  { key: 'ceniza_g', label: 'Ceniza', unit: 'g', cat: 'Otros' },
+  { key: 'beta_hidroxibutirato_g', label: 'β-hidroxibutirato', unit: 'g', cat: 'Otros' },
+  { key: 'oxalato_mg', label: 'Oxalato', unit: 'mg', cat: 'Otros' },
+  { key: 'fitato_mg', label: 'Fitato', unit: 'mg', cat: 'Otros' },
+
+  // Aminoácidos
+  { key: 'triptofano_g', label: 'Triptófano', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'treonina_g', label: 'Treonina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'isoleucina_g', label: 'Isoleucina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'leucina_g', label: 'Leucina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'lisina_g', label: 'Lisina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'metionina_g', label: 'Metionina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'cistina_g', label: 'Cistina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'fenilalanina_g', label: 'Fenilalanina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'tirosina_g', label: 'Tirosina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'valina_g', label: 'Valina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'arginina_g', label: 'Arginina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'histidina_g', label: 'Histidina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'alanina_g', label: 'Alanina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'acido_aspartico_g', label: 'Ácido aspártico', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'acido_glutamico_g', label: 'Ácido glutámico', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'glicina_g', label: 'Glicina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'prolina_g', label: 'Prolina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'serina_g', label: 'Serina', unit: 'g', cat: 'Aminoácidos' },
+  { key: 'hidroxiprolina_g', label: 'Hidroxiprolina', unit: 'g', cat: 'Aminoácidos' },
 ];
 
 export const MICROS_DEFAULT = 8; // grasa sat/trans, azúcares, fibra, sodio, potasio, magnesio
 
 // Orden de despliegue de los grupos de micros ocultos.
-const CAT_ORDER = ['Lípidos', 'Carbohidratos', 'Vitaminas', 'Minerales', 'Antioxidantes', 'Otros'];
+const CAT_ORDER = ['Lípidos', 'Carbohidratos', 'Edulcorantes', 'Vitaminas', 'Minerales', 'Antioxidantes', 'Aminoácidos', 'Otros'];
 
 // Agrupa una lista de micros por categoría, en CAT_ORDER y sin grupos vacíos.
 // Devuelve [{ cat, items }]. Usada por FoodForm y la tabla del Dashboard.
@@ -62,12 +153,25 @@ export function microGroups(list) {
 // a 2 kcal/g (NOM-051/UE): carbs_g es TOTAL (incluye fibra), así que se resta
 // 2 kcal por gramo de fibra. Placeholder y default del campo kcal en FoodForm.
 export function kcalFromMacros(f) {
+  const m = f.micros || {};
+  // Polialcoholes aportan ~2.4 kcal/g, no 4: carbs_g (total) ya los cuenta a 4, así
+  // que se corrige la diferencia (1.6 kcal/g). Sin esto, un producto sin azúcar
+  // endulzado con polioles dispara un falso ⚠ de kcal. Usa el total declarado o,
+  // si falta, la suma de los polioles individuales.
+  // ponytail: eritritol real es ~0 kcal/g; se trata a 2.4 como el resto — la
+  // tolerancia de kcalSuspicious (25 %) absorbe la diferencia salvo en productos
+  // casi puros de eritritol, poco comunes; afinar a 0 si aparece el caso.
+  const polioles = Number(m.polioles_g || 0) ||
+    (Number(m.eritritol_g || 0) + Number(m.xilitol_g || 0) + Number(m.sorbitol_g || 0) +
+      Number(m.maltitol_g || 0) + Number(m.manitol_g || 0) + Number(m.isomalt_g || 0) +
+      Number(m.lactitol_g || 0));
   return Math.round(
     4 * Number(f.protein_g || 0) +
       4 * Number(f.carbs_g || 0) +
       9 * Number(f.fat_g || 0) +
-      7 * Number(f.micros?.alcohol_g || 0) -
-      2 * Number(f.micros?.fibra_g || 0)
+      7 * Number(m.alcohol_g || 0) -
+      2 * Number(m.fibra_g || 0) -
+      1.6 * polioles
   );
 }
 
@@ -89,6 +193,12 @@ export const MICRO_MAX = {
   colesterol_mg: 4700,
   vit_a_mcg: 15000, vit_c_mg: 3000, vit_d_mcg: 400, vit_e_mg: 250, vit_k_mcg: 2600,
   vit_b12_mcg: 160, vit_b9_mcg: 6000,
+  // Nunca se venden en forma pura como alimento: una cota generosa solo atrapa el
+  // error de unidades ×1000, sin marcar valores altos legítimos (espinaca ~1000 mg
+  // oxalato/100 g, salvado ~5000 mg fitato/100 g). Los edulcorantes y la cafeína SÍ
+  // pueden venir casi puros (endulzante de mesa, cafeína en polvo): se dejan sin
+  // cota adrede — un ⚠ falso sobre un dato médico es peor que no marcar.
+  oxalato_mg: 20000, fitato_mg: 20000,
 };
 
 // Chequeo físico grueso por 100 g: proteína+carbs+grasa+alcohol+agua no pueden
@@ -124,11 +234,41 @@ export function componentsInconsistent(f) {
   const azucar = num(m.azucar_g);
   const azucarAnadido = num(m.azucar_anadido_g);
   const fibra = num(m.fibra_g);
+  const protein = num(f.protein_g);
+
+  // Suma de las claves presentes (null si ninguna): un dato ausente no cuenta como 0,
+  // así una suma parcial siempre queda por debajo del total y nunca es falso positivo.
+  const sumPresent = (...ks) => {
+    const vals = ks.map((k) => num(m[k])).filter((v) => v != null);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+  };
+  const polioles = num(m.polioles_g);
+  const poliolPartes = sumPresent('eritritol_g', 'xilitol_g', 'sorbitol_g', 'maltitol_g', 'manitol_g', 'isomalt_g', 'lactitol_g');
+  const azucarPartes = sumPresent('glucosa_g', 'fructosa_g', 'galactosa_g', 'lactosa_g', 'maltosa_g', 'sacarosa_g');
+  const fibraPartes = sumPresent('fibra_soluble_g', 'fibra_insoluble_g');
+  const grasaPartes = sumPresent('grasa_sat_g', 'grasa_trans_g', 'grasa_mono_g', 'grasa_poli_g');
+  const omega3 = num(m.omega3_g);
+  const omega3Partes = sumPresent('ala_g', 'epa_g', 'dha_g');
+  const omega6 = num(m.omega6_g);
+  const omega6Partes = sumPresent('la_g', 'aa_g');
+  const aminoSuma = sumPresent(
+    'triptofano_g', 'treonina_g', 'isoleucina_g', 'leucina_g', 'lisina_g', 'metionina_g', 'cistina_g',
+    'fenilalanina_g', 'tirosina_g', 'valina_g', 'arginina_g', 'histidina_g', 'alanina_g',
+    'acido_aspartico_g', 'acido_glutamico_g', 'glicina_g', 'prolina_g', 'serina_g', 'hidroxiprolina_g'
+  );
 
   if (satTrans != null && fat != null && satTrans > fat + 0.5) return true;
   if (azucar != null && carbs != null && azucar > carbs + 0.5) return true;
   if (azucarAnadido != null && azucar != null && azucarAnadido > azucar + 0.5) return true;
   if (fibra != null && carbs != null && fibra > carbs + 0.5) return true;
+  if (polioles != null && carbs != null && polioles > carbs + 0.5) return true;
+  if (poliolPartes != null && polioles != null && poliolPartes > polioles + 0.5) return true;
+  if (azucarPartes != null && azucar != null && azucarPartes > azucar + 0.5) return true;
+  if (fibraPartes != null && fibra != null && fibraPartes > fibra + 0.5) return true;
+  if (grasaPartes != null && fat != null && grasaPartes > fat + 0.5) return true;
+  if (omega3Partes != null && omega3 != null && omega3Partes > omega3 + 0.5) return true;
+  if (omega6Partes != null && omega6 != null && omega6Partes > omega6 + 0.5) return true;
+  if (aminoSuma != null && protein != null && aminoSuma > protein + 0.5) return true;
   return false;
 }
 

@@ -46,6 +46,8 @@ const EN = {
     'Readable label → transcribed. EAN → Open Food Facts. Otherwise AI estimate with USDA chips for generic foods. Always per 100 g; review before saving.',
   'Sin dato fiable de:': 'No reliable data for:',
   'La etiqueta y Open Food Facts difieren en:': 'The label and Open Food Facts differ in:',
+  'Open Food Facts reporta edulcorantes:': 'Open Food Facts reports sweeteners:',
+  'La cantidad casi nunca se declara; captúrala en su micro si la conoces.': 'The amount is rarely declared; enter it in its micro field if you know it.',
   Marca: 'Brand',
   'Valores por': 'Values per',
   'Base de los valores capturados': 'Base of the captured values',

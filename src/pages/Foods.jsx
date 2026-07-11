@@ -589,6 +589,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const [usdaLoading, setUsdaLoading] = useState(false);
   const [usdaError, setUsdaError] = useState('');
   const [labelMismatch, setLabelMismatch] = useState([]); // labels donde etiqueta y OFF difieren >25%, solo UI
+  const [sweeteners, setSweeteners] = useState([]); // edulcorantes detectados por OFF (presencia, no cantidad), solo UI
 
   function setField(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -638,6 +639,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     setAiResult(null);
     setAiMissing([]);
     setLabelMismatch([]);
+    setSweeteners([]);
     try {
       const eanTyped = extractEan(aiText);
       if (eanTyped) {
@@ -646,6 +648,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         }
         const off = await fetchOFF(eanTyped);
         if (!off) throw new Error(t('EAN no encontrado en Open Food Facts.'));
+        setSweeteners(off.sweeteners || []);
         // EAN tecleado directo: sin Gemini no hay densidad conocida, así que un OFF
         // por 100 ml solo puede dejar el form en base ml a la espera de que el
         // usuario elija densidad (ver normalizeTo100).
@@ -658,6 +661,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           gemini.usda_query ? searchFDC(gemini.usda_query) : Promise.resolve([]),
         ]);
         setFdcChips(fdcMatches);
+        setSweeteners(off?.sweeteners || []);
         if (gemini.mode === 'etiqueta') {
           // Comparar etiqueta vs OFF solo si ambas están en la misma base; si no, se omite
           // (nunca se compara cruzado g vs ml).
@@ -751,6 +755,13 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           {labelMismatch.length > 0 && (
             <p className="text-xs text-warn" role="status">
               ⚠ {t('La etiqueta y Open Food Facts difieren en:')} {labelMismatch.join(', ')}.
+            </p>
+          )}
+          {sweeteners.length > 0 && (
+            <p className="text-xs text-text-2" role="status">
+              {t('Open Food Facts reporta edulcorantes:')}{' '}
+              {sweeteners.map((s) => `${s.name} (${s.code})`).join(', ')}.{' '}
+              {t('La cantidad casi nunca se declara; captúrala en su micro si la conoces.')}
             </p>
           )}
         </AiDataCard>
