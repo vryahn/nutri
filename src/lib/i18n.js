@@ -253,7 +253,13 @@ const EN = {
   Días: 'Days',
   Objetivo: 'Target',
   'Promedio 7 días': 'Average 7 days',
-  'Exportar CSV': 'Export CSV',
+  Exportar: 'Export',
+  'Registros día por día': 'Day-by-day entries',
+  'Cada alimento del rango con sus macros y micros. No aplica la operación seleccionada.':
+    'Every food in the range with its macros and micros. The selected operation does not apply.',
+  'Resumen del periodo': 'Period summary',
+  'Una fila por métrica con valor según la operación activa, objetivo y % de adherencia.':
+    'One row per metric with its value under the active operation, target, and adherence %.',
   Custom: 'Custom',
   Fases: 'Phases',
   'Fase actual': 'Current phase',

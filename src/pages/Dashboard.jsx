@@ -146,12 +146,52 @@ function computeMetricStats(registeredDays, advancedDays, key) {
 
 // Objetivo diario resuelto para `key` sobre los días del rango que tienen un
 // target con ese valor definido (Fix 1). n=0 ⇒ de verdad no hay objetivo.
-function computeObjectiveStats(chartData, key) {
-  const withKey = chartData.filter((d) => d.targetMicros != null && d.targetMicros[key] != null);
-  const vals = withKey.map((d) => Number(d.targetMicros[key]));
+function objectiveStatsOf(vals) {
   const n = vals.length;
   return { sum: sum(vals), avg: n ? sum(vals) / n : 0, median: n ? median(vals) : null, n };
 }
+function computeObjectiveStats(chartData, key) {
+  const withKey = chartData.filter((d) => d.targetMicros != null && d.targetMicros[key] != null);
+  return objectiveStatsOf(withKey.map((d) => Number(d.targetMicros[key])));
+}
+
+// [valor, detalle, objetivo, %] del CSV de resumen para una métrica, con los
+// MISMOS ms/objStats/bayes que pinta la pantalla — solo cambia el formato:
+// números pelones (la unidad va en su propia columna) para que el CSV sea
+// parseable en hoja de cálculo. Celda vacía = sin dato, igual que el '–' en UI.
+function summaryCells(calcMode, ms, objStats, b) {
+  const pct = (num, den) => (num != null && objStats.n && den > 0 ? `${Math.round((num / den) * 100)}%` : '');
+  const obj = (v) => (objStats.n && v != null ? round(v, 2) : '');
+  switch (calcMode) {
+    case 'suma':
+      return [round(ms.sum, 2), '', obj(objStats.sum), pct(ms.sum, objStats.sum)];
+    case 'promedio':
+      return [round(ms.avg, 2), '', obj(objStats.avg), pct(ms.avg, objStats.avg)];
+    case 'mediana':
+      return ms.median == null
+        ? ['', '', obj(objStats.median), '']
+        : [round(ms.median, 2), `P25–P75: ${round(ms.p25, 2)}–${round(ms.p75, 2)}`, obj(objStats.median), pct(ms.median, objStats.median)];
+    case 'stddev':
+      return ms.sd == null ? ['', '', '', ''] : [round(ms.sd, 2), ms.cv == null ? '' : `CV ${round(ms.cv, 0)}%`, '', ''];
+    case 'tendencia':
+      return ms.slope == null ? ['', '', '', ''] : [round(ms.slope, 2), '', '', ''];
+    case 'bayes':
+      return b == null
+        ? ['', '', obj(objStats.avg), '']
+        : [`${round(b.mean * 100, 0)}%`, `IC95: ${round(b.lower * 100, 0)}–${round(b.upper * 100, 0)}%`, obj(objStats.avg), ''];
+    default:
+      return ['', '', '', ''];
+  }
+}
+
+// Macros del CSV de resumen: su objetivo vive en campos planos de chartData
+// (no en targetMicros como los micros).
+const SUMMARY_MACROS = [
+  { key: 'kcal', label: 'Kcal', unit: 'kcal', field: 'targetKcal' },
+  { key: 'protein_g', label: 'Proteína', unit: 'g', field: 'proteinFloor' },
+  { key: 'carbs_g', label: 'Carbohidratos', unit: 'g', field: 'targetCarbs' },
+  { key: 'fat_g', label: 'Grasa', unit: 'g', field: 'targetFat' },
+];
 
 // Fix 3: ceros estructurales — un 0 exacto casi siempre significa "sin dato
 // de este micro en el alimento", no "consumo cero".
@@ -546,6 +586,18 @@ function csvCell(v) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+// Descarga `lines` como CSV (BOM para que Excel abra UTF-8 sin preguntar).
+function downloadCSV(lines, filename) {
+  const csv = '﻿' + lines.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function pctDelta(curr, prev) {
   if (!prev) return null;
   return ((curr - prev) / prev) * 100;
@@ -689,16 +741,38 @@ export default function Dashboard() {
       ];
       lines.push(cells.map(csvCell).join(','));
     }
-    const csv = '﻿' + lines.join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = phaseMode
-      ? `nutri_entries_fase_${phaseSel.kind === 'goal' ? phaseSel.goal : phaseSel.kind}.csv`
-      : `nutri_entries_${start}_${end}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCSV(lines, `nutri_entries_${rangeSlug()}.csv`);
+  }
+
+  // Sufijo de archivo compartido por ambos exports: fase seleccionada o rango.
+  function rangeSlug() {
+    return phaseMode ? `fase_${phaseSel.kind === 'goal' ? phaseSel.goal : phaseSel.kind}` : `${start}_${end}`;
+  }
+
+  // Resumen procesado del periodo: una fila por métrica con la operación
+  // ACTIVA del selector — los mismos números que pinta la pantalla (mismos
+  // ms/objStats vía computeMetricStats/computeObjectiveStats/bayesForMetric).
+  // Sin agua_ml: igual que la tabla de micros, el agua no va en esta lista.
+  function exportResumenCSV() {
+    setCsvNotice('');
+    if (!registeredDays.length) {
+      setCsvNotice(t('Sin registros en el rango'));
+      return;
+    }
+    const header = ['nutriente', 'clave', 'unidad', calcTitle(calcMode), 'detalle', 'objetivo', '%_objetivo'];
+    const lines = [header.map(csvCell).join(',')];
+    const pushRow = (label, key, unit, objStats) => {
+      const ms = computeMetricStats(registeredDays, advancedDays, key);
+      const b = calcMode === 'bayes' ? bayesForMetric(completeDaysFull, key) : null;
+      lines.push([label, key, unit, ...summaryCells(calcMode, ms, objStats, b)].map(csvCell).join(','));
+    };
+    for (const m of SUMMARY_MACROS) {
+      pushRow(t(m.label), m.key, m.unit, objectiveStatsOf(chartData.filter((d) => d[m.field] != null).map((d) => Number(d[m.field]))));
+    }
+    for (const m of MICROS.filter((m) => m.key !== 'agua_ml')) {
+      pushRow(t(m.label), m.key, m.unit, computeObjectiveStats(chartData, m.key));
+    }
+    downloadCSV(lines, `nutri_resumen_${calcMode}_${rangeSlug()}.csv`);
   }
 
   // En modo fase `dates` puede ser no contiguo (unión de fases con la misma
@@ -838,12 +912,7 @@ export default function Dashboard() {
     <div className="px-4 py-4 flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-xl">{t('Dashboard')}</h1>
-        <button
-          onClick={exportCSV}
-          className="px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap bg-surface-2 border border-border text-text-2 press"
-        >
-          {t('Exportar CSV')}
-        </button>
+        <ExportMenu calcLabel={calcHeader(calcMode)} onRaw={exportCSV} onResumen={exportResumenCSV} />
       </div>
 
       {/* El botón de fases vive FUERA del scroller: su popover no puede quedar
@@ -1313,6 +1382,57 @@ export default function Dashboard() {
 // todas las fases con esa meta). Flota sobre el contenido → `.glass`, y el
 // acento sobre glass es --accent-glass, nunca --accent. Toda opción sin datos
 // se deshabilita con su causa concreta, nunca desaparece.
+// Menú de exportación: dos alcances (registros crudos vs resumen procesado).
+// El subtítulo de cada opción declara si la operación del selector participa
+// — siempre visible, no detrás de hover (mobile-first) — y el título del
+// resumen la nombra ("Resumen del periodo — Promedio").
+function ExportMenu({ calcLabel, onRaw, onResumen }) {
+  const [open, setOpen] = useState(false);
+  const ref = useOutsideClose(open, setOpen);
+  const items = [
+    {
+      key: 'raw',
+      label: `${t('Registros día por día')} (CSV)`,
+      sub: t('Cada alimento del rango con sus macros y micros. No aplica la operación seleccionada.'),
+      run: onRaw,
+    },
+    {
+      key: 'resumen',
+      label: `${t('Resumen del periodo')} — ${calcLabel} (CSV)`,
+      sub: t('Una fila por métrica con valor según la operación activa, objetivo y % de adherencia.'),
+      run: onResumen,
+    },
+  ];
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap bg-surface-2 border border-border text-text-2 press"
+      >
+        {t('Exportar')} {open ? '▴' : '▾'}
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full right-0 mt-1 w-72 rounded-xl border border-border p-1 shadow-lg glass">
+          {items.map((it) => (
+            <button
+              key={it.key}
+              onClick={() => {
+                setOpen(false);
+                it.run();
+              }}
+              className="w-full text-left rounded-lg px-3 py-2 min-h-[44px] hover:bg-surface-2 press text-text-2"
+            >
+              <span className="block text-sm">{it.label}</span>
+              <span className="block text-xs text-text-3 mt-0.5">{it.sub}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PhaseMenu({ phases, selection, active, label, onSelect }) {
   const [open, setOpen] = useState(false);
   const ref = useOutsideClose(open, setOpen);
