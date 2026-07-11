@@ -154,19 +154,10 @@ function GoalSummary({ totals, target, kcalStatus, kcalPct, kcalArc, proteinStat
 }
 
 // Mini-resumen fijo (<lg): visible solo cuando la card de resumen sale del
-// viewport. Orden fijo = el de la card (memoria espacial del usuario); la
-// atención se comunica con escala tipográfica + punto de estado de 4px, sin
-// fondos de color. Cumplido colapsa a ✓ + etiqueta mínima (kcal/prot/Na/K).
-function MiniStat({ status, delta, label, doneLabel }) {
-  if (status == null) return null;
-  if (status === 'ok') {
-    return (
-      <span className="flex items-center gap-1 text-[11px] text-text-3">
-        <Check size={12} />{doneLabel}
-      </span>
-    );
-  }
-  const critical = status === 'danger';
+// viewport. Muestra SOLO lo pendiente — delta + etiqueta corta (P/C/G/Na/K,
+// misma convención que los headers de sección) y punto de estado de 4px; lo
+// cumplido no ocupa slot. Todo en meta colapsa a un único ✓.
+function MiniStat({ critical, delta, label }) {
   return (
     <span className="flex items-baseline gap-1.5">
       <span className={`w-1 h-1 rounded-full self-center flex-none ${critical ? 'bg-danger' : 'bg-warn'}`} />
@@ -179,8 +170,16 @@ function MiniStat({ status, delta, label, doneLabel }) {
 }
 
 function MiniSummary({ visible, top, totals, target, kcalStatus, proteinStatus, sodiumLow, hasFood, potassiumPct, onTap }) {
-  const potassiumOk = potassiumPct != null && totals.potasio_mg >= target.micros.potasio_mg;
-  // Sin metas y sin registros no hay nada que resumir: ningún slot renderiza.
+  // Pendientes con el mismo criterio que la card: kcal diana ±5% (classifyKcal),
+  // prot/carbs/grasa/K metas a alcanzar (como RailStat), Na piso médico.
+  const pending = [];
+  if (kcalStatus != null && kcalStatus !== 'ok') pending.push({ critical: kcalStatus === 'danger', delta: totals.kcal - target.kcal, label: 'kcal' });
+  if (proteinStatus === 'danger') pending.push({ critical: true, delta: totals.protein_g - target.protein_g, label: 'P' });
+  if (target?.carbs_g > 0 && totals.carbs_g < target.carbs_g) pending.push({ critical: false, delta: totals.carbs_g - target.carbs_g, label: 'C' });
+  if (target?.fat_g > 0 && totals.fat_g < target.fat_g) pending.push({ critical: false, delta: totals.fat_g - target.fat_g, label: t('G') });
+  if (hasFood && sodiumLow) pending.push({ critical: true, delta: totals.sodio_mg - SODIUM_FLOOR_MG, label: 'Na' });
+  if (potassiumPct != null && totals.potasio_mg < target.micros.potasio_mg) pending.push({ critical: false, delta: totals.potasio_mg - target.micros.potasio_mg, label: 'K' });
+  // Sin metas y sin registros no hay nada que resumir.
   if (kcalStatus == null && proteinStatus == null && !hasFood && potassiumPct == null) return null;
   return (
     <button
@@ -190,12 +189,13 @@ function MiniSummary({ visible, top, totals, target, kcalStatus, proteinStatus, 
       aria-hidden={!visible}
       tabIndex={visible ? 0 : -1}
       style={{ top }}
-      className={`lg:hidden fixed left-0 right-0 md:left-52 z-20 flex items-center justify-between gap-3 px-4 py-2 min-h-[44px] bg-bg border-b border-border transition-opacity motion-reduce:transition-none ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      className={`lg:hidden fixed left-0 right-0 md:left-52 z-20 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 py-2 min-h-[44px] bg-bg border-b border-border transition-opacity motion-reduce:transition-none ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
     >
-      <MiniStat status={kcalStatus} delta={totals.kcal - (target?.kcal || 0)} label="kcal" doneLabel="kcal" />
-      <MiniStat status={proteinStatus} delta={totals.protein_g - (target?.protein_g || 0)} label={t('Prot').toLowerCase()} doneLabel={t('Prot').toLowerCase()} />
-      <MiniStat status={hasFood ? (sodiumLow ? 'danger' : 'ok') : null} delta={totals.sodio_mg - SODIUM_FLOOR_MG} label={t('Sodio').toLowerCase()} doneLabel="Na" />
-      <MiniStat status={potassiumPct == null ? null : potassiumOk ? 'ok' : 'warn'} delta={totals.potasio_mg - (target?.micros?.potasio_mg || 0)} label={t('Potasio').toLowerCase()} doneLabel="K" />
+      {pending.length === 0 ? (
+        <span className="flex items-center gap-1 text-[11px] text-ok"><Check size={12} />{t('en meta')}</span>
+      ) : (
+        pending.map((s) => <MiniStat key={s.label} critical={s.critical} delta={s.delta} label={s.label} />)
+      )}
     </button>
   );
 }
