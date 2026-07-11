@@ -617,31 +617,14 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     setAiResult({ source, name: resultName, confidence });
   }
 
-  // Valores declarados por 100 ml (etiqueta o OFF) → por 100 g, dividiendo entre la
-  // densidad ya conocida en ese momento. Nunca se llama sin densidad > 0.
-  function convertPer100MlToPer100g(obj, density) {
-    const conv = (v, d) => (v === '' || v == null ? v : round(Number(v) / density, d));
-    return {
-      ...obj,
-      kcal: conv(obj.kcal, 1),
-      protein_g: conv(obj.protein_g, 2),
-      carbs_g: conv(obj.carbs_g, 2),
-      fat_g: conv(obj.fat_g, 2),
-      micros: Object.fromEntries(Object.entries(obj.micros || {}).map(([k, v]) => [k, conv(v, 3)])),
-    };
-  }
-
-  // Si la base es 100 ml: con densidad ya conocida (de Gemini) convierte a 100 g y
-  // prefija el select de líquido; sin densidad, deja el form en base ml y bloquea
-  // el guardado hasta que el usuario elija densidad (ver normalizeTo100).
+  // Si la base es 100 ml: el form se queda en base ml con los números declarados tal
+  // cual (verificables contra el envase); la densidad de Gemini solo prefija el select.
+  // La conversión a 100 g ocurre al guardar (normalizeTo100); sin densidad el guardado
+  // queda bloqueado hasta que el usuario elija una.
   function applyPrefillWithBasis(merged, source, resultName, confidence, basisStr, densityHint) {
     if (basisStr === '100ml') {
       const density = Number(densityHint) > 0 ? Number(densityHint) : 0;
-      if (density > 0) {
-        applyPrefill({ ...convertPer100MlToPer100g(merged, density), density_g_ml: density }, source, resultName, confidence);
-      } else {
-        applyPrefill(merged, source, resultName, confidence, 'ml');
-      }
+      applyPrefill(density > 0 ? { ...merged, density_g_ml: density } : merged, source, resultName, confidence, 'ml');
     } else {
       applyPrefill(merged, source, resultName, confidence);
     }
@@ -731,8 +714,11 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const kcalCalc = kcalFromMacros(form);
   const hasMacros = form.protein_g !== '' || form.carbs_g !== '' || form.fat_g !== '';
   const suspicious = form.kcal !== '' && hasMacros && kcalSuspicious(form);
-  const implausible = macrosImplausible(form);
-  const inconsistent = componentsInconsistent(form);
+  // Plausibilidad SIEMPRE sobre valores normalizados a 100 g: con base ≠ 100 g
+  // (p. ej. "por 30 g" o por 100 ml) los umbrales absolutos quedarían mal escalados.
+  const normForCheck = normalizeTo100(form) ?? form;
+  const implausible = macrosImplausible(normForCheck);
+  const inconsistent = componentsInconsistent(normForCheck);
   const hiddenMicros = MICROS.slice(MICROS_DEFAULT);
   const basisDensity = Number(form.density_g_ml) || 0;
   const basisBlocked = basisUnit === 'ml' && !(basisDensity > 0);
