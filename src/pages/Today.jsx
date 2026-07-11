@@ -935,7 +935,7 @@ export default function Today() {
           del rail (hueco en col-1). La fila 1fr absorbe el excedente del rail por abajo. */}
       <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-1 lg:[grid-row:1/-1] lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto">
         {isLg && editing ? (
-          <div className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-4">
+          <div key={editing.id} className="reveal-in rounded-2xl bg-surface border border-border p-4 flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <h2 className="font-display text-lg">{editing.item}{editing.brand && <span className="text-text-3 text-sm font-normal ml-1.5">{editing.brand}</span>}</h2>
               <button onClick={() => setEditing(null)} className="p-2 -mr-2 press" aria-label={t('Cerrar')}>

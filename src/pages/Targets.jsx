@@ -397,8 +397,8 @@ export default function Targets() {
 
                   if (lgUp && expandedVf === vf) {
                     return (
+                      <div key={vf} className="reveal-in">
                       <PhaseCard
-                        key={vf}
                         variant="programada"
                         validFrom={vf}
                         label={labelOf(vf)}
@@ -415,6 +415,7 @@ export default function Targets() {
                         }}
                         onCancel={() => collapseProgramada(vf)}
                       />
+                      </div>
                     );
                   }
 
@@ -482,6 +483,7 @@ export default function Targets() {
           </div>
 
           {lgUp && newOverrideInline && (
+            <div className="reveal-in">
             <OverrideCard
               variant="newOverride"
               override={null}
@@ -495,6 +497,7 @@ export default function Targets() {
               }}
               onCancel={collapseNewOverride}
             />
+            </div>
           )}
 
           {overrides.length === 0 ? (
@@ -507,8 +510,8 @@ export default function Targets() {
 
                 if (lgUp && expandedOverrideId === ov.id) {
                   return (
+                    <div key={ov.id} className="reveal-in">
                     <OverrideCard
-                      key={ov.id}
                       variant="override"
                       override={ov}
                       faseFor={faseFor}
@@ -521,6 +524,7 @@ export default function Targets() {
                       }}
                       onCancel={() => collapseOverride(ov.id)}
                     />
+                    </div>
                   );
                 }
 

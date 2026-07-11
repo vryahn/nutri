@@ -86,11 +86,17 @@ input, textarea, select, [contenteditable] {
 @keyframes sheet-in {
   from { opacity: 0; transform: translateY(16px); }
 }
+/* Card que se despliega en su sitio (editor inline lg+): mismo lenguaje que el
+   sheet-in de móvil, pero sutil (no sube 16 px, solo se asienta). */
+@keyframes reveal-in {
+  from { opacity: 0; transform: translateY(-6px); }
+}
 
 @layer components {
   .press { @apply active:scale-[0.98] transition-transform duration-150; }
   .backdrop-in { animation: fade-in 0.15s ease-out; }
   .sheet-in { animation: sheet-in 0.2s ease-out; }
+  .reveal-in { animation: reveal-in 0.2s ease-out; }
   .input { @apply min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent; }
 
   /* Material del cromo que el contenido cruza por debajo (header y tab bar móviles).
