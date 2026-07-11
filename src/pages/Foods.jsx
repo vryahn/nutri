@@ -746,7 +746,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         <h1 className="font-display text-xl">{form.id ? t('Editar alimento') : t('Nuevo alimento')}</h1>
       </div>
 
-      {!form.id && GEMINI_KEY && (
+      {GEMINI_KEY && (
         <AiDataCard
           text={aiText}
           onText={setAiText}
