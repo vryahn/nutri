@@ -278,6 +278,8 @@ const EN = {
   'Fase previa': 'Previous phase',
   'La fase seleccionada ya no tiene días registrados — mostrando la última semana.':
     'The selected phase no longer has logged days — showing the last week.',
+  'El día en curso no se incluye: el Dashboard analiza días terminados. Para hoy usa el rango "Hoy".':
+    'The current day is not included: the Dashboard analyzes finished days. For today use the "Today" range.',
   '%n fases de %s · %d días.': '%n phases of %s · %d days.',
   'No hay periodo anterior con qué comparar: los días antes del %n eran de otra fase, con otros objetivos.':
     'There\'s no previous period to compare: the days before %n belonged to another phase, with different targets.',

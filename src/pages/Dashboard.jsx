@@ -650,13 +650,17 @@ export default function Dashboard() {
   const [printing, setPrinting] = useState(false); // monta #print-report y dispara window.print()
 
   const today = todayISO();
+  // El Dashboard analiza días TERMINADOS: el día en curso (a medias hasta la
+  // cena) contaminaría promedios, completitud y la card Días. Solo el preset
+  // 'hoy' lee el día actual; todo lo demás ancla en ayer.
+  const lastClosed = addDaysISO(today, -1);
   const presetDef = PRESETS.find((p) => p.key === preset) || PRESETS[1]; // 'custom'/'fase' caen a semana
 
-  // Fases ya iniciadas, con el fin recortado a hoy. Las programadas (vf > hoy)
-  // no tienen días registrados, así que no entran al selector.
+  // Fases con al menos un día cerrado, con el fin recortado a ayer. Las
+  // programadas o iniciadas hoy no tienen días cerrados: no entran al selector.
   const phases = phaseList(targets)
-    .filter((p) => p.vf <= today)
-    .map((p) => ({ ...p, end: p.end && p.end < today ? p.end : today }));
+    .filter((p) => p.vf <= lastClosed)
+    .map((p) => ({ ...p, ongoing: !p.end || p.end >= today, end: p.end && p.end < lastClosed ? p.end : lastClosed }));
 
   // Selección de fase → conjunto de días. 'actual'/'previa' son un intervalo
   // contiguo; una meta es la UNIÓN de todas sus fases (no contigua).
@@ -679,8 +683,13 @@ export default function Dashboard() {
         ? t('Fase actual')
         : t('Fase previa');
 
-  const start = phaseMode ? phaseDays[0] : preset === 'custom' ? customStart : addDaysISO(today, -(presetDef.days - 1));
-  const end = phaseMode ? phaseDays[phaseDays.length - 1] : preset === 'custom' ? customEnd : today;
+  const anchor = preset === 'hoy' ? today : lastClosed;
+  const clampedCustomEnd = customEnd > lastClosed ? lastClosed : customEnd;
+  const start = phaseMode ? phaseDays[0] : preset === 'custom' ? customStart : addDaysISO(anchor, -(presetDef.days - 1));
+  const end = phaseMode ? phaseDays[phaseDays.length - 1] : preset === 'custom' ? clampedCustomEnd : anchor;
+  // Recorte explícito de una selección del usuario → se declara la causa.
+  const excludesToday =
+    preset === 'custom' ? customEnd >= today : phaseMode ? selectedPhases.some((p) => p.ongoing) : false;
 
   useEffect(() => {
     // SWR: si este rango ya se vio en la sesión, pinta el cache al instante
@@ -705,11 +714,12 @@ export default function Dashboard() {
     if (!cacheGet(`dash:${start}:${end}`)) setLoading(true);
     setCsvNotice('');
     const { prevStart, prevEnd } = prevRangeOf(start, end);
-    const historyStart = addDaysISO(todayISO(), -89);
+    const historyEnd = addDaysISO(todayISO(), -1); // hoy a medias no entra a la mediana de completitud
+    const historyStart = addDaysISO(historyEnd, -89);
     const results = await Promise.all([
       supabase.from('daily_totals').select('*').gte('day', start).lte('day', end),
       supabase.from('daily_totals').select('*').gte('day', prevStart).lte('day', prevEnd),
-      supabase.from('daily_totals').select('day,kcal').gte('day', historyStart).lte('day', todayISO()),
+      supabase.from('daily_totals').select('day,kcal').gte('day', historyStart).lte('day', historyEnd),
       supabase.from('targets').select('*'),
       supabase.from('prefs').select('data').maybeSingle(),
       supabase.from('entry_nutrients').select('day,meal,food_id,recipe_id,item,kcal,protein_g').gte('day', start).lte('day', end),
@@ -1182,6 +1192,12 @@ export default function Dashboard() {
 
       {preset === 'fase' && !phaseMode && (
         <p className="text-sm text-warn">{t('La fase seleccionada ya no tiene días registrados — mostrando la última semana.')}</p>
+      )}
+
+      {excludesToday && (
+        <p className="text-xs text-text-3">
+          {t('El día en curso no se incluye: el Dashboard analiza días terminados. Para hoy usa el rango "Hoy".')}
+        </p>
       )}
 
       {unionMode && (
