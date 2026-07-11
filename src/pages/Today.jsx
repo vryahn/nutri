@@ -153,6 +153,53 @@ function GoalSummary({ totals, target, kcalStatus, kcalPct, kcalArc, proteinStat
   );
 }
 
+// Mini-resumen fijo (<lg): visible solo cuando la card de resumen sale del
+// viewport. Orden fijo = el de la card (memoria espacial del usuario); la
+// atención se comunica con escala tipográfica + punto de estado de 4px, sin
+// fondos de color. Cumplido colapsa a ✓ + etiqueta mínima (kcal/prot/Na/K).
+function MiniStat({ status, delta, label, doneLabel }) {
+  if (status == null) return null;
+  if (status === 'ok') {
+    return (
+      <span className="flex items-center gap-1 text-[11px] text-text-3">
+        <Check size={12} />{doneLabel}
+      </span>
+    );
+  }
+  const critical = status === 'danger';
+  return (
+    <span className="flex items-baseline gap-1.5">
+      <span className={`w-1 h-1 rounded-full self-center flex-none ${critical ? 'bg-danger' : 'bg-warn'}`} />
+      <span className={`font-mono tabular-nums font-medium ${critical ? 'text-lg leading-none text-text' : 'text-sm text-text-2'}`}>
+        {delta < 0 ? '−' : '+'}{Math.abs(round(delta, 0))}
+      </span>
+      <span className="text-[11px] text-text-3">{label}</span>
+    </span>
+  );
+}
+
+function MiniSummary({ visible, top, totals, target, kcalStatus, proteinStatus, sodiumLow, hasFood, potassiumPct, onTap }) {
+  const potassiumOk = potassiumPct != null && totals.potasio_mg >= target.micros.potasio_mg;
+  // Sin metas y sin registros no hay nada que resumir: ningún slot renderiza.
+  if (kcalStatus == null && proteinStatus == null && !hasFood && potassiumPct == null) return null;
+  return (
+    <button
+      type="button"
+      onClick={onTap}
+      aria-label={t('Ver resumen del día')}
+      aria-hidden={!visible}
+      tabIndex={visible ? 0 : -1}
+      style={{ top }}
+      className={`lg:hidden fixed left-0 right-0 md:left-52 z-20 flex items-center justify-between gap-3 px-4 py-2 min-h-[44px] bg-bg border-b border-border transition-opacity motion-reduce:transition-none ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+    >
+      <MiniStat status={kcalStatus} delta={totals.kcal - (target?.kcal || 0)} label="kcal" doneLabel="kcal" />
+      <MiniStat status={proteinStatus} delta={totals.protein_g - (target?.protein_g || 0)} label={t('Prot').toLowerCase()} doneLabel={t('Prot').toLowerCase()} />
+      <MiniStat status={hasFood ? (sodiumLow ? 'danger' : 'ok') : null} delta={totals.sodio_mg - SODIUM_FLOOR_MG} label={t('Sodio').toLowerCase()} doneLabel="Na" />
+      <MiniStat status={potassiumPct == null ? null : potassiumOk ? 'ok' : 'warn'} delta={totals.potasio_mg - (target?.micros?.potasio_mg || 0)} label={t('Potasio').toLowerCase()} doneLabel="K" />
+    </button>
+  );
+}
+
 export default function Today() {
   useLang();
   useUnits();
@@ -175,6 +222,10 @@ export default function Today() {
   const [quickAddInitialLabel, setQuickAddInitialLabel] = useState(null);
   const quickAddInputRef = useRef(null);
   const isLg = useIsLgUp();
+  // Mini-resumen (<lg): visible cuando la card de resumen sale del viewport.
+  const summaryCardRef = useRef(null);
+  const [miniVisible, setMiniVisible] = useState(false);
+  const [miniTop, setMiniTop] = useState(0);
   // Día copiado para "Pegar" (localStorage: sobrevive cambio de fecha y recarga).
   const [copiedDay, setCopiedDay] = useState(() => localStorage.getItem('nutri.today.copiedDay') || null);
   const [confirmingDeleteDay, setConfirmingDeleteDay] = useState(false);
@@ -210,6 +261,23 @@ export default function Today() {
   useEffect(() => {
     loadDay();
   }, [date]);
+
+  useEffect(() => {
+    const el = summaryCardRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const obs = new IntersectionObserver(([entry]) => {
+      // El header móvil es sticky: el mini-resumen se ancla justo debajo.
+      setMiniTop(document.querySelector('header')?.offsetHeight || 0);
+      setMiniVisible(!entry.isIntersecting);
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  function scrollToSummary() {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+  }
 
   useEffect(() => {
     loadLabels();
@@ -294,14 +362,14 @@ export default function Today() {
       showToast(t('Error al registrar agua.'));
       return;
     }
-    loadDay();
+    loadDay(true);
   }
 
   async function undoWater() {
     const last = waterEntries[waterEntries.length - 1];
     if (!last) return;
     await supabase.from('entries').delete().eq('id', last.id);
-    loadDay();
+    loadDay(true);
   }
 
   async function loadTargets() {
@@ -310,8 +378,10 @@ export default function Today() {
     setTargets(data || []);
   }
 
-  async function loadDay() {
-    setLoading(true);
+  // silent: refetch tras una mutación sin pasar por el skeleton — desmontar la
+  // lista colapsa la altura de la página y el navegador recorta el scroll a top.
+  async function loadDay(silent = false) {
+    if (!silent) setLoading(true);
     const { data, error } = await supabase
       .from('entry_nutrients')
       .select('*')
@@ -407,7 +477,7 @@ export default function Today() {
     const results = await Promise.all(
       updates.map((u) => supabase.from('entries').update({ meal_label_id: u.meal_label_id, sort_order: u.sort_order }).eq('id', u.id))
     );
-    if (results.some((r) => r.error)) loadDay();
+    if (results.some((r) => r.error)) loadDay(true);
   }
 
   function handleDragCancel() {
@@ -423,7 +493,7 @@ export default function Today() {
     setEntries((es) => es.filter((x) => x.id !== entry.id));
     const { error } = await supabase.from('entries').delete().eq('id', entry.id);
     if (error) {
-      loadDay();
+      loadDay(true);
       showToast(t('Error al borrar.'));
       return;
     }
@@ -440,7 +510,7 @@ export default function Today() {
     const { day, grams, meal_label_id, food_id, recipe_id } = undoData.entry;
     setUndoData(null);
     const { error } = await supabase.from('entries').insert({ day, grams, meal_label_id, food_id, recipe_id });
-    if (!error) loadDay();
+    if (!error) loadDay(true);
   }
 
   // Inserta en la fecha actual los registros de `sourceDay`. Reusado por "Ayer"
@@ -463,7 +533,7 @@ export default function Today() {
       return;
     }
     showToast(t('%n registros copiados.').replace('%n', rows.length));
-    loadDay();
+    loadDay(true);
   }
 
   function handleCopyDay() {
@@ -492,7 +562,7 @@ export default function Today() {
       return;
     }
     showToast(t('%n registros borrados.').replace('%n', foods.length));
-    loadDay();
+    loadDay(true);
   }
 
   // Publica Ayer/Copiar/Pegar en el botón "Más opciones" del layout (App.jsx).
@@ -596,13 +666,26 @@ export default function Today() {
             onAdded={() => {
               setQuickAddKey((k) => k + 1);
               setQuickAddInitialLabel(null);
-              loadDay();
+              loadDay(true);
             }}
           />
         </div>
       </div>
 
-      <div className="lg:hidden">
+      <MiniSummary
+        visible={miniVisible}
+        top={miniTop}
+        totals={totals}
+        target={target}
+        kcalStatus={kcalStatus}
+        proteinStatus={proteinStatus}
+        sodiumLow={sodiumLow}
+        hasFood={foodEntries.length > 0}
+        potassiumPct={potassiumPct}
+        onTap={scrollToSummary}
+      />
+
+      <div className="lg:hidden" ref={summaryCardRef}>
         <SummaryCard
           view={prefs.today_view || 'estado'}
           onToggleView={toggleTodayView}
@@ -640,7 +723,7 @@ export default function Today() {
               }}
               onSaved={() => {
                 setEditing(null);
-                loadDay();
+                loadDay(true);
               }}
             />
           </div>
@@ -786,7 +869,7 @@ export default function Today() {
           onClose={() => setAdding(null)}
           onAdded={() => {
             setAdding(null);
-            loadDay();
+            loadDay(true);
           }}
         />
       )}
@@ -803,7 +886,7 @@ export default function Today() {
           }}
           onSaved={() => {
             setEditing(null);
-            loadDay();
+            loadDay(true);
           }}
         />
       )}
