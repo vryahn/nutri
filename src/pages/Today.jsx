@@ -350,11 +350,12 @@ function MiniStat({ mode, pending, label }) {
   );
 }
 
-function MiniSummary({ visible, top, pending, mode, hasTargets, hasFood, onTap }) {
+// El mini-resumen fijo comparte el diseño 'mini' con la card: reusa MiniGrid
+// para que TODO cambio de config (modo meta incluido, no solo pendientes) se
+// refleje idéntico al hacer scroll. Un renderizador propio divergía en 'meta'.
+function MiniSummary({ visible, top, cfg, totals, target, hasFood, onTap }) {
   // Sin metas y sin registros no hay nada que resumir.
-  if (!hasTargets && !hasFood) return null;
-  // La barra solo condensa pendientes: en modo 'meta' cae a deltas absolutos.
-  const barMode = mode === 'pct' ? 'pct' : 'delta';
+  if (target == null && !hasFood) return null;
   return (
     <button
       id="mini-summary"
@@ -366,11 +367,7 @@ function MiniSummary({ visible, top, pending, mode, hasTargets, hasFood, onTap }
       style={{ top }}
       className={`lg:hidden fixed left-0 right-0 md:left-52 z-20 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 py-2 min-h-[44px] bg-bg border-b border-border transition-opacity motion-reduce:transition-none ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
     >
-      {pending.length === 0 ? (
-        <span className="flex items-center gap-1 text-[11px] text-ok"><Check size={12} />{t('en meta')}</span>
-      ) : (
-        pending.map((s) => <MiniStat key={s.key} mode={barMode} pending={s} label={shortLabel(s.key)} />)
-      )}
+      <MiniGrid cfg={cfg} totals={totals} target={target} hasFood={hasFood} />
     </button>
   );
 }
@@ -862,7 +859,6 @@ export default function Today() {
 
   const target = resolveTarget(targets, date);
   const sodiumLow = sodiumIsLow(totals.sodio_mg, foodEntries.length > 0);
-  const miniPending = pendingFor(miniCfg.items, totals, target, foodEntries.length > 0);
 
   const groups = groupByLabel(foodEntries, labels, activeEntry != null);
 
@@ -915,9 +911,9 @@ export default function Today() {
       <MiniSummary
         visible={miniVisible}
         top={miniTop}
-        pending={miniPending}
-        mode={miniCfg.mode}
-        hasTargets={target != null}
+        cfg={miniCfg}
+        totals={totals}
+        target={target}
         hasFood={foodEntries.length > 0}
         onTap={scrollToSummary}
       />
