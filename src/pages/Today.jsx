@@ -1623,27 +1623,22 @@ function RailStat({ state, mode }) {
 // Valores por 100 g (kcal, macros, micros) + porciones/densidad (solo foods,
 // para chips y toggle g/ml) del food o receta seleccionado.
 function useFoodMeta(foodId, recipeId) {
-  const [meta, setMeta] = useState(null);
+  const key = foodId ? `foodmeta:${foodId}` : recipeId ? `recipemeta:${recipeId}` : null;
+  // Semilla del caché SWR: reabrir una card del mismo alimento pinta al instante
+  // (chips de porciones incluidos); el refetch de fondo corrige si cambió.
+  const [meta, setMeta] = useState(() => (key && cacheGet(key)) || null);
   useEffect(() => {
-    if (!foodId && !recipeId) {
-      setMeta(null);
-      return;
-    }
-    if (foodId) {
-      supabase
-        .from('foods')
-        .select('kcal, protein_g, carbs_g, fat_g, micros, portions, density_g_ml')
-        .eq('id', foodId)
-        .maybeSingle()
-        .then(({ data }) => setMeta(data));
-    } else {
-      supabase
-        .from('recipe_per_100g')
-        .select('kcal, protein_g, carbs_g, fat_g, micros')
-        .eq('recipe_id', recipeId)
-        .maybeSingle()
-        .then(({ data }) => setMeta(data));
-    }
+    setMeta((key && cacheGet(key)) || null);
+    if (!key) return;
+    let alive = true;
+    const query = foodId
+      ? supabase.from('foods').select('kcal, protein_g, carbs_g, fat_g, micros, portions, density_g_ml').eq('id', foodId)
+      : supabase.from('recipe_per_100g').select('kcal, protein_g, carbs_g, fat_g, micros').eq('recipe_id', recipeId);
+    query.maybeSingle().then(({ data }) => {
+      if (data) cacheSet(key, data);
+      if (alive && data) setMeta(data);
+    });
+    return () => { alive = false; };
   }, [foodId, recipeId]);
   return meta;
 }
@@ -1901,7 +1896,7 @@ function EditEntryForm({ entry, labels, favMicros, onDelete, onSaved }) {
         </button>
       </form>
 
-      <AportaPanel grams={grams || entry.grams} meta={foodMeta} favMicros={favMicros} />
+      <AportaPanel grams={grams || entry.grams} meta={foodMeta} favMicros={favMicros} fallback={entry} />
     </>
   );
 }
@@ -1916,16 +1911,23 @@ function EditEntrySheet({ entry, labels, favMicros, onClose, onDelete, onSaved }
 
 // Panel read-only: kcal/macros/micros que aporta la cantidad actual (grams),
 // escalando los valores por 100 g del food/receta. Nunca se persiste.
-function AportaPanel({ grams, meta, favMicros }) {
-  if (!meta) return null;
-  const factor = (Number(grams) || 0) / 100;
+function AportaPanel({ grams, meta, favMicros, fallback }) {
+  // Sin meta per-100g aún (fetch en vuelo): `fallback` es la fila de
+  // entry_nutrients, con valores EXACTOS para los gramos originales del registro
+  // (los calculó la vista SQL) — se muestran tal cual con factor 1, sin derivar.
+  // Si el usuario ya editó gramos antes de que llegue meta, esos valores quedan
+  // desfasados: pulse discreto hasta poder re-escalar.
+  const src = meta || fallback;
+  if (!src) return null;
+  const stale = !meta && Number(grams) !== Number(fallback?.grams);
+  const factor = meta ? (Number(grams) || 0) / 100 : 1;
   const scale = (v, decimals) => round(Number(v || 0) * factor, decimals);
 
   const visible = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favMicros.includes(m.key)) && m.key !== 'agua_ml');
   const hidden = MICROS.filter((m, i) => i >= MICROS_DEFAULT && !favMicros.includes(m.key) && m.key !== 'agua_ml');
 
   const microRow = (m) => {
-    const v = scale(meta.micros?.[m.key], 2);
+    const v = scale(src.micros?.[m.key], 2);
     return (
       <div key={m.key} className="flex justify-between py-1.5 border-t border-border text-sm">
         <span className="text-text-2">{t(m.label)}</span>
@@ -1937,13 +1939,13 @@ function AportaPanel({ grams, meta, favMicros }) {
   };
 
   return (
-    <section className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col">
+    <section className={`rounded-xl bg-surface-2 border border-border p-3 flex flex-col${stale ? ' animate-pulse' : ''}`}>
       <p className="text-sm text-text-3 mb-2">{t('Aporta')}</p>
       <div className="grid grid-cols-4 gap-2 text-center pb-3 border-b border-border">
-        <AportaStat label={t('Kcal')} value={scale(meta.kcal, 1)} color="text-d-kcal" />
-        <AportaStat label={t('Prot')} value={scale(meta.protein_g, 1)} color="text-d-prot" unit="g" />
-        <AportaStat label={t('Carbs')} value={scale(meta.carbs_g, 1)} color="text-d-carb" unit="g" />
-        <AportaStat label={t('Grasa')} value={scale(meta.fat_g, 1)} color="text-d-fat" unit="g" />
+        <AportaStat label={t('Kcal')} value={scale(src.kcal, 1)} color="text-d-kcal" />
+        <AportaStat label={t('Prot')} value={scale(src.protein_g, 1)} color="text-d-prot" unit="g" />
+        <AportaStat label={t('Carbs')} value={scale(src.carbs_g, 1)} color="text-d-carb" unit="g" />
+        <AportaStat label={t('Grasa')} value={scale(src.fat_g, 1)} color="text-d-fat" unit="g" />
       </div>
       {visible.map(microRow)}
       {hidden.length > 0 && (
