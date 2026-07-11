@@ -375,7 +375,7 @@ function MiniSummary({ visible, top, pending, mode, hasTargets, hasFood, onTap }
 }
 
 export default function Today() {
-  useLang();
+  const lang = useLang();
   useUnits();
   const [date, setDate] = useState(todayISO());
   // SWR: pinta el cache de sesión al instante y el refetch de fondo actualiza.
@@ -825,7 +825,7 @@ export default function Today() {
     actions.push({ key: 'borrar', label: t('Borrar día'), icon: Trash2, onClick: handleDeleteDay });
     setSectionMenu(actions);
     return () => setSectionMenu([]);
-  }, [date, copiedDay, prefs.water_food_id, entries]);
+  }, [date, copiedDay, prefs.water_food_id, entries, lang]);
 
   // Sección "+": en lg+ no abre el sheet (reemplazado por el quick-add inline),
   // solo prellena su etiqueta y remonta el form (foco vía autoFocus); en <lg
