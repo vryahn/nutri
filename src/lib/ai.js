@@ -84,9 +84,16 @@ const GEMINI_SCHEMA = {
     micros: {
       type: 'OBJECT',
       properties: Object.fromEntries(MICROS.map((m) => [m.key, { type: 'NUMBER', nullable: true }])),
+      // Sin required, Gemini omite keys (decodificación restringida) y los flash
+      // devuelven micros vacío aun con etiqueta legible; required + nullable fuerza
+      // cada key (null cuando no hay dato). 'micros' también va en el required de
+      // nivel superior: sin eso el modelo omite el objeto entero y el required
+      // interno nunca aplica (verificado en vivo). RECIPE_SCHEMA queda sin required
+      // a propósito: 108 keys × 15 ingredientes inflaría la salida y ahí son respaldo.
+      required: MICROS.map((m) => m.key),
     },
   },
-  required: ['mode', 'name'],
+  required: ['mode', 'name', 'micros'],
 };
 
 // Prompt de descomposición en ingredientes: además de nombres/gramos/db_match/usda_query,
