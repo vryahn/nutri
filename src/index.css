@@ -111,16 +111,18 @@ input, textarea, select, [contenteditable] {
   .glass { background: var(--surface); }
 }
 
-/* Vasos de agua (Hoy): líquido translúcido con brillo especular y ola en
-   movimiento continuo (la superficie ondula siempre en los vasos llenos; al
-   llenarse uno, .water-liquid-rise solo añade la subida del nivel).
+/* Vasos de agua (Hoy): líquido translúcido con brillo especular. TODO el
+   efecto vive en el llenado (.water-liquid-rise, 0.5 s): el nivel sube y la
+   ola gira mientras tanto, desvaneciéndose al final. Después, nada — en
+   reposo la ola queda oculta (opacity 0 en ::before) y la superficie plana.
    Decorativo: el dato (ml) vive en el encabezado de la card, nunca aquí.
    prefers-reduced-motion lo anula vía el override global de animation-*. */
 @keyframes water-rise {
   from { transform: translateY(100%); }
 }
 @keyframes water-wave {
-  to { transform: rotate(1turn); }
+  0%, 70% { opacity: 1; }
+  100% { transform: rotate(2turn); opacity: 0; }
 }
 .water-liquid {
   position: absolute;
@@ -146,7 +148,7 @@ input, textarea, select, [contenteditable] {
   aspect-ratio: 1;
   border-radius: 42%;
   background: color-mix(in srgb, var(--d-carb) 28%, transparent);
-  animation: water-wave 3.2s linear infinite;
+  opacity: 0; /* solo visible durante el llenado */
 }
 .water-liquid::after {
   /* brillo especular estilo liquid glass */
@@ -157,6 +159,9 @@ input, textarea, select, [contenteditable] {
 }
 .water-liquid-rise {
   animation: water-rise 0.5s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.water-liquid-rise::before {
+  animation: water-wave 0.5s linear; /* misma duración que la subida: terminan juntas */
 }
 
 @media (prefers-reduced-transparency: reduce) {
