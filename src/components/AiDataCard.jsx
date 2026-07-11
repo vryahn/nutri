@@ -1,8 +1,12 @@
+import { useEffect, useMemo } from 'react';
 import { Sparkles, ImagePlus, X } from 'lucide-react';
 import { t, useLang } from '../lib/i18n.js';
 
-// Card "Datos con IA" compartida por FoodForm y RecipeForm: texto/fotos (máx. 2:
+// Card "Datos con IA" compartida por FoodForm y RecipeForm: texto/fotos (hasta 2:
 // p. ej. frente del empaque + tabla nutrimental) → botón "Obtener datos".
+// La fila de fotos se parte en mitades: cada foto tomada es una miniatura
+// (tap = quitarla) y, mientras quepa otra, la mitad restante es el botón de
+// añadir; con el cupo lleno el botón desaparece — el límite se ve, no se dice.
 // `children` = líneas de resultado específicas de cada form (badge, avisos),
 // renderizadas entre el error y el hint de cierre.
 const MAX_PHOTOS = 2;
@@ -11,6 +15,8 @@ export default function AiDataCard({
   text, onText, files, onFiles, loading, error, onSubmit, placeholder, hint, children,
 }) {
   useLang();
+  const thumbs = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
+  useEffect(() => () => thumbs.forEach((u) => URL.revokeObjectURL(u)), [thumbs]);
   return (
     <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
       <p className="text-sm text-text-2 flex items-center gap-2">
@@ -24,27 +30,43 @@ export default function AiDataCard({
         className="rounded-xl bg-surface-3 border border-border px-3 py-2 text-text focus:outline-none focus:ring-2 focus:ring-accent resize-none"
       />
       <div className="flex gap-2 items-center">
-        <label
-          className={`flex-1 min-w-0 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 flex items-center gap-2 text-sm text-text-2 ${
-            files.length >= MAX_PHOTOS ? 'opacity-40' : 'cursor-pointer press'
-          }`}
-        >
-          <ImagePlus size={18} className="shrink-0" />
-          <span className="min-w-0 truncate">
-            {files.length >= MAX_PHOTOS ? t('Máximo 2 fotos') : t('Fotos (etiqueta y/o producto, máx. 2)')}
-          </span>
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            disabled={files.length >= MAX_PHOTOS}
-            className="hidden"
-            onChange={(e) => {
-              onFiles([...files, ...Array.from(e.target.files)].slice(0, MAX_PHOTOS));
-              e.target.value = ''; // permite re-elegir el mismo archivo tras quitarlo
-            }}
-          />
-        </label>
+        <div className="flex-1 min-w-0 flex gap-2">
+          {files.map((f, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onFiles(files.filter((_, j) => j !== i))}
+              className="relative flex-1 min-w-0 min-h-[44px] rounded-xl border border-border overflow-hidden press"
+              aria-label={t('Quitar foto')}
+            >
+              <img src={thumbs[i]} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-white">
+                <X size={16} />
+              </span>
+            </button>
+          ))}
+          {files.length < MAX_PHOTOS && (
+            <label
+              className="flex-1 min-w-0 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 flex items-center justify-center gap-2 text-sm text-text-2 cursor-pointer press"
+              aria-label={files.length === 0 ? undefined : t('Otra foto')}
+            >
+              <ImagePlus size={18} className="shrink-0" />
+              {files.length === 0 && (
+                <span className="min-w-0 truncate">{t('Foto (etiqueta o platillo)')}</span>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  onFiles([...files, ...Array.from(e.target.files)].slice(0, MAX_PHOTOS));
+                  e.target.value = ''; // permite re-elegir el mismo archivo tras quitarlo
+                }}
+              />
+            </label>
+          )}
+        </div>
         <button
           type="button"
           onClick={onSubmit}
@@ -54,26 +76,6 @@ export default function AiDataCard({
           {loading ? t('Obteniendo…') : t('Obtener datos')}
         </button>
       </div>
-      {files.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {files.map((f, i) => (
-            <span
-              key={i}
-              className="flex items-center gap-1 min-h-[44px] max-w-full rounded-full bg-surface-3 border border-border pl-3 text-xs text-text-2"
-            >
-              <span className="truncate max-w-[200px]">{f.name}</span>
-              <button
-                type="button"
-                onClick={() => onFiles(files.filter((_, j) => j !== i))}
-                className="min-w-[44px] min-h-[44px] flex items-center justify-center press"
-                aria-label={t('Quitar foto')}
-              >
-                <X size={16} />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
       {error && <p className="text-sm text-danger">{error}</p>}
       {children}
       {hint && <p className="text-xs text-text-3">{hint}</p>}
