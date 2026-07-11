@@ -179,6 +179,9 @@ function MiniSummary({ visible, top, totals, target, kcalStatus, proteinStatus, 
   if (target?.fat_g > 0 && totals.fat_g < target.fat_g) pending.push({ critical: false, delta: totals.fat_g - target.fat_g, label: t('G') });
   if (hasFood && sodiumLow) pending.push({ critical: true, delta: totals.sodio_mg - SODIUM_FLOOR_MG, label: 'Na' });
   if (potassiumPct != null && totals.potasio_mg < target.micros.potasio_mg) pending.push({ critical: false, delta: totals.potasio_mg - target.micros.potasio_mg, label: 'K' });
+  // Un delta que redondea a 0 se considera cumplido: "−0" como pendiente
+  // (peor aún, crítico) contradice al dato mostrado.
+  const shown = pending.filter((s) => Math.abs(round(s.delta, 0)) >= 1);
   // Sin metas y sin registros no hay nada que resumir.
   if (kcalStatus == null && proteinStatus == null && !hasFood && potassiumPct == null) return null;
   return (
@@ -191,10 +194,10 @@ function MiniSummary({ visible, top, totals, target, kcalStatus, proteinStatus, 
       style={{ top }}
       className={`lg:hidden fixed left-0 right-0 md:left-52 z-20 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 py-2 min-h-[44px] bg-bg border-b border-border transition-opacity motion-reduce:transition-none ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
     >
-      {pending.length === 0 ? (
+      {shown.length === 0 ? (
         <span className="flex items-center gap-1 text-[11px] text-ok"><Check size={12} />{t('en meta')}</span>
       ) : (
-        pending.map((s) => <MiniStat key={s.label} critical={s.critical} delta={s.delta} label={s.label} />)
+        shown.map((s) => <MiniStat key={s.label} critical={s.critical} delta={s.delta} label={s.label} />)
       )}
     </button>
   );
