@@ -806,9 +806,10 @@ export default function Dashboard() {
     setPrinting(true);
   }
 
-  // Con el informe montado (portal #print-report, fuera de pantalla para que
-  // los charts midan layout real): forzar tema claro (papel), poner el nombre
-  // del archivo en document.title e imprimir. afterprint restaura todo.
+  // Mientras la vista previa del informe está abierta: tema claro (papel) y
+  // nombre del archivo en document.title (el diálogo lo usa al guardar el
+  // PDF). El overlay tapa la app, así que el flip de tema no se ve. La
+  // impresión NO es automática: el usuario revisa y toca "Guardar PDF".
   useEffect(() => {
     if (!printing) return;
     const html = document.documentElement;
@@ -816,18 +817,10 @@ export default function Dashboard() {
     const prevTitle = document.title;
     html.setAttribute('data-theme', 'light');
     document.title = `nutri_informe_${calcMode}_${rangeSlug()}`;
-    const done = () => {
+    return () => {
       if (prevTheme) html.setAttribute('data-theme', prevTheme);
       else html.removeAttribute('data-theme');
       document.title = prevTitle;
-      setPrinting(false);
-    };
-    window.addEventListener('afterprint', done, { once: true });
-    // Doble rAF: el informe debe estar pintado antes de que el diálogo lo capture.
-    const id = requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
-    return () => {
-      cancelAnimationFrame(id);
-      window.removeEventListener('afterprint', done);
     };
   }, [printing]);
 
@@ -1003,15 +996,47 @@ export default function Dashboard() {
   );
 
   // Informe PDF (portal a <body>, hermano de #root: en @media print se oculta
-  // la app entera sin ocultar el informe). Los Hints de pantalla no existen en
-  // papel: sus causas van como notas al pie. Sin hint en los Stat por lo mismo.
+  // la app entera sin ocultar el informe). Se abre como vista previa en
+  // pantalla — el usuario revisa el papel ANTES de guardar; "Guardar PDF"
+  // llama window.print(). Los Hints de pantalla no existen en papel: sus
+  // causas van como notas al pie. Sin hint en los Stat por lo mismo.
   const noHint = (d) => ({ ...d, hint: null });
   function renderInforme() {
     const visibles = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favs.includes(m.key)) && m.key !== 'agua_ml');
     const anyZeroWarn = visibles.some((m) => structuralZeroInfo(registeredDays, m.key).warn);
     const sodiumLow = sodiumIsLow(stats.avgSodio, stats.diasRegistrados > 0);
     return (
-      <div id="print-report" className="text-text">
+      // Sin backdrop-blur en el scrim: backdrop-filter convertiría al overlay
+      // en containing block de la barra fixed y la barra panearía con el papel.
+      <div
+        id="print-overlay"
+        onClick={() => setPrinting(false)}
+        className="fixed inset-0 z-50 overflow-auto bg-black/50 backdrop-in"
+      >
+        {/* Barra de acciones anclada al viewport (fixed dentro del overlay, que
+            cubre toda la pantalla): visible aunque el papel panee en móvil. */}
+        <div
+          id="print-actions"
+          onClick={(e) => e.stopPropagation()}
+          className="fixed top-0 inset-x-0 z-10 flex justify-end gap-2 p-3"
+        >
+          <button
+            onClick={() => setPrinting(false)}
+            className="px-4 py-2 min-h-[44px] rounded-full text-sm bg-surface-2 border border-border text-text-2 press"
+          >
+            {t('Cerrar')}
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="px-4 py-2 min-h-[44px] rounded-full text-sm bg-accent-deep text-on-accent font-medium press"
+          >
+            {t('Guardar PDF')}
+          </button>
+        </div>
+        {/* w-fit + mx-auto: centrado en desktop; en móvil (papel 720px > viewport)
+            el overlay panea horizontal — es un documento, no una página de la app. */}
+        <div onClick={(e) => e.stopPropagation()} className="w-fit mx-auto mt-16 mb-4 px-4">
+          <div id="print-report" className="text-text">
         <header className="flex items-center gap-3 pb-3 border-b-2 border-accent">
           <img src="/icon.svg" alt="" className="w-10 h-10 rounded-xl" />
           <div className="flex-1">
@@ -1100,6 +1125,8 @@ export default function Dashboard() {
           )}
           <p className="font-mono mt-1">nutrimetry · nutri.vryahn.com</p>
         </footer>
+          </div>
+        </div>
       </div>
     );
   }

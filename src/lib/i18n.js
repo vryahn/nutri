@@ -264,6 +264,7 @@ const EN = {
   'Resumen ejecutivo con gráfica y tablas, listo para guardar como PDF.':
     'Executive summary with chart and tables, ready to save as PDF.',
   'Generado el %n': 'Generated on %n',
+  'Guardar PDF': 'Save PDF',
   '%a de %b días registrados · %c completos': '%a of %b days logged · %c complete',
   Detalle: 'Detail',
   Macronutrientes: 'Macronutrients',

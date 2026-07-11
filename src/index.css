@@ -178,26 +178,40 @@ input, textarea, select, [contenteditable] {
   }
 }
 
-/* Informe PDF (Dashboard → Exportar → Informe del periodo). El informe se
-   monta solo mientras se imprime, vía portal como hermano de #root (así en
-   print se oculta la app entera sin ocultar el informe) y FUERA de pantalla,
-   no display:none: los charts necesitan layout real para medirse. El JS
-   fuerza data-theme='light' (papel) antes de window.print() y lo restaura. */
+/* Informe PDF (Dashboard → Exportar → Informe del periodo). Vista previa en
+   pantalla (overlay + papel) para que el usuario revise ANTES de guardar;
+   "Guardar PDF" llama window.print(). Portal como hermano de #root: en print
+   se oculta la app entera (y el cromo del overlay) sin ocultar el informe.
+   El JS fuerza data-theme='light' (papel) mientras la vista previa está
+   abierta y lo restaura al cerrarla. */
 #print-report {
-  position: fixed;
-  left: -10000px;
-  top: 0;
   width: 720px;
   background: #fff;
+  padding: 28px;
+  border-radius: 8px;
+  box-shadow: 0 8px 40px rgb(0 0 0 / 0.4);
 }
 
 @media print {
   @page { size: letter; margin: 14mm; }
   html, body { background: #fff; }
   #root { display: none; }
-  #print-report {
+  #print-actions { display: none; }
+  /* overflow visible: si el overlay conserva su scroll, la impresión solo
+     captura el primer viewport y recorta el resto del informe. */
+  #print-overlay {
     position: static;
+    overflow: visible;
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  #print-overlay > div { margin: 0; padding: 0; width: auto; }
+  #print-report {
     width: auto;
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
