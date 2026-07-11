@@ -1090,23 +1090,40 @@ export default function Dashboard() {
           </div>
         </section>
 
-        <section className="mt-4">
-          <p className="text-sm text-text-3 mb-1">{t('Kcal por día')}</p>
-          <ComposedChart width={660} height={230} data={kcalChart}>
-            <CartesianGrid stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="label" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
-            <YAxis tick={{ fill: 'var(--text-3)', fontSize: 10 }} width={36} />
-            <Legend wrapperStyle={{ fontSize: 11, color: 'var(--text-3)' }} />
-            {avgTargetKcal != null && (
-              <ReferenceArea y1={avgTargetKcal * 0.9} y2={avgTargetKcal * 1.1} fill="var(--accent)" fillOpacity={0.08} strokeOpacity={0} />
-            )}
-            <Area type="monotone" dataKey="kcal" name={t('Kcal')} stroke="var(--d-kcal)" strokeWidth={2} fill="var(--d-kcal)" fillOpacity={0.15} isAnimationActive={false} />
-            {stats.objetivo.kcal > 0 && (
-              <Line dataKey="targetKcal" name={t('Objetivo')} stroke="var(--accent)" dot={false} strokeWidth={2} isAnimationActive={false} />
-            )}
-            <Line dataKey="ma7" name={t('Promedio 7 días')} stroke="var(--d-carb)" strokeDasharray="4 3" dot={false} strokeWidth={2} isAnimationActive={false} />
-          </ComposedChart>
-        </section>
+        {/* Mediana/Bayes son estadísticos de distribución/adherencia: el heatmap
+            (adherencia por día, mismo componente que la pantalla) los cuenta
+            mejor que la línea de magnitud. Suma/Promedio/σ/tendencia son
+            magnitud/dispersión/dirección del valor crudo → línea. */}
+        {calcMode === 'mediana' || calcMode === 'bayes' ? (
+          <section className="mt-4">
+            <p className="text-sm text-text-3 mb-2">{t('Adherencia (kcal por día)')}</p>
+            <AdherenceHeatmap weeks={weeks} dateSet={dateSet} dayInfo={dayInfo} />
+            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-text-3">
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-ok" />{t('en meta (±5%)')}</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-warn" />{t('cerca (±15%)')}</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-danger" />{t('lejos (>15%)')}</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-surface-2 border border-border" />{t('sin registro')}</span>
+            </div>
+          </section>
+        ) : (
+          <section className="mt-4">
+            <p className="text-sm text-text-3 mb-1">{t('Kcal por día')}</p>
+            <ComposedChart width={660} height={230} data={kcalChart}>
+              <CartesianGrid stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
+              <YAxis tick={{ fill: 'var(--text-3)', fontSize: 10 }} width={36} />
+              <Legend wrapperStyle={{ fontSize: 11, color: 'var(--text-3)' }} />
+              {avgTargetKcal != null && (
+                <ReferenceArea y1={avgTargetKcal * 0.9} y2={avgTargetKcal * 1.1} fill="var(--accent)" fillOpacity={0.08} strokeOpacity={0} />
+              )}
+              <Area type="monotone" dataKey="kcal" name={t('Kcal')} stroke="var(--d-kcal)" strokeWidth={2} fill="var(--d-kcal)" fillOpacity={0.15} isAnimationActive={false} />
+              {stats.objetivo.kcal > 0 && (
+                <Line dataKey="targetKcal" name={t('Objetivo')} stroke="var(--accent)" dot={false} strokeWidth={2} isAnimationActive={false} />
+              )}
+              <Line dataKey="ma7" name={t('Promedio 7 días')} stroke="var(--d-carb)" strokeDasharray="4 3" dot={false} strokeWidth={2} isAnimationActive={false} />
+            </ComposedChart>
+          </section>
+        )}
 
         <section className="mt-4">
           <p className="text-sm text-text-3">{t('Macronutrientes')}</p>
