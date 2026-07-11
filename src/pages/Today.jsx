@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
+import { prefetchFrequent, refreshFrequent, getFrequent } from '../lib/frequent.js';
 import { useToast } from '../lib/useToast.js';
 import { t, useLang, locale, useUnits, fmtG, fmtMl, mlToFlOz, flOzToMl } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
@@ -214,6 +215,9 @@ export default function Today() {
     loadLabels();
     loadTargets();
     loadPrefs();
+    // Con internet lento la query de frecuentes tarda: se dispara aquí (post-login)
+    // para que abrir el sheet de añadir sea instantáneo (lee del caché).
+    prefetchFrequent();
     // LabelsModal vive en App.jsx encima de esta página: sin remount, avisa por evento.
     window.addEventListener('labels-changed', loadLabels);
     return () => window.removeEventListener('labels-changed', loadLabels);
@@ -1321,40 +1325,12 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
     setActiveIndex(-1);
   }, [results]);
 
-  // Top 8 más registrados (dedup food/receta, gramos default = moda), filtrando
-  // agua; si hay etiqueta activa, acota el historial a esa etiqueta.
-  async function loadFrequent() {
-    let q = supabase
-      .from('entry_nutrients')
-      .select('food_id, recipe_id, item, brand, grams, meal_label_id')
-      .order('created_at', { ascending: false })
-      .limit(1000);
-    if (initialLabelId) q = q.eq('meal_label_id', initialLabelId);
-    const { data } = await q;
-    if (!data) return;
-    const byKey = new Map();
-    for (const e of data) {
-      const key = e.food_id || e.recipe_id;
-      let rec = byKey.get(key);
-      if (!rec) { rec = { food_id: e.food_id, recipe_id: e.recipe_id, item: e.item, brand: e.brand, freq: 0, counts: new Map() }; byKey.set(key, rec); }
-      rec.freq++;
-      const g = Number(e.grams);
-      rec.counts.set(g, (rec.counts.get(g) || 0) + 1);
-    }
-    const uniques = [...byKey.values()]
-      .filter((r) => !(r.food_id && r.food_id === waterFoodId))
-      .sort((a, b) => b.freq - a.freq)
-      .slice(0, 8)
-      .map((r) => {
-        let best = null, bestCount = 0;
-        for (const [g, c] of r.counts) if (c > bestCount) { best = g; bestCount = c; }
-        return { food_id: r.food_id, recipe_id: r.recipe_id, item: r.item, brand: r.brand, grams: best };
-      });
-    setFrequent(uniques);
-  }
-
+  // Frecuentes desde el caché de src/lib/frequent.js (prefetch al montar Hoy):
+  // abrir el sheet no espera red, solo deriva la lista de la etiqueta activa.
   useEffect(() => {
-    loadFrequent();
+    let alive = true;
+    getFrequent(initialLabelId, waterFoodId).then((list) => { if (alive) setFrequent(list); });
+    return () => { alive = false; };
   }, [initialLabelId, waterFoodId]);
 
   useEffect(() => {
@@ -1422,7 +1398,11 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
     const { error } = await supabase.from('entries').insert(payload);
     if (!error) {
       onAdded();
-      loadFrequent();
+      // Recarga en background; actualiza la lista si el form sigue montado (rail lg+).
+      refreshFrequent()
+        .then(() => getFrequent(initialLabelId, waterFoodId))
+        .then(setFrequent)
+        .catch(() => {});
     }
   }
 
@@ -1657,8 +1637,8 @@ function Sheet({ title, onClose, children }) {
   // redundante aquí, así que se omite — la del editor inline (riel lg+, sin
   // backdrop) sí se conserva porque ahí no hay tap-fuera.
   return (
-    <div onClick={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50">
-      <div onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-sm bg-surface-3 rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-4 max-h-[85dvh] overflow-y-auto">
+    <div onClick={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 backdrop-in">
+      <div onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-sm bg-surface-3 rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-4 max-h-[85dvh] overflow-y-auto sheet-in">
         <h2 className="font-display text-lg">{title}</h2>
         {children}
       </div>

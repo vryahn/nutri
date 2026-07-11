@@ -1174,8 +1174,8 @@ function DateField({ label, value, onChange }) {
 // Bottom sheet (scrim ~72 %, borde superior 20 px, handle 36×4, cierre por tap en el scrim).
 function Sheet({ children, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ background: 'rgba(0,0,0,0.72)' }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-md bg-bg rounded-t-[20px] sm:rounded-[20px] max-h-[88dvh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center backdrop-in" style={{ background: 'rgba(0,0,0,0.72)' }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-md bg-bg rounded-t-[20px] sm:rounded-[20px] max-h-[88dvh] overflow-y-auto sheet-in">
         <div className="flex justify-center pt-2.5 pb-1">
           <div className="h-1 w-9 rounded-full bg-surface-3" />
         </div>

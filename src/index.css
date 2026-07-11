@@ -78,8 +78,19 @@ input, textarea, select, [contenteditable] {
   font-variant-numeric: tabular-nums;
 }
 
+/* Apertura de modales/sheets: backdrop con fade y card subiendo desde abajo.
+   prefers-reduced-motion las anula vía el override global de animation-duration. */
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(16px); }
+}
+
 @layer components {
   .press { @apply active:scale-[0.98] transition-transform duration-150; }
+  .backdrop-in { animation: fade-in 0.15s ease-out; }
+  .sheet-in { animation: sheet-in 0.2s ease-out; }
   .input { @apply min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent; }
 
   /* Material del cromo que el contenido cruza por debajo (header y tab bar móviles).

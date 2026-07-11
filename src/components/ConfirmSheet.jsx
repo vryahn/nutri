@@ -15,9 +15,9 @@ export default function ConfirmSheet({ title, body, confirmLabel, danger = true,
         e.stopPropagation();
         onClose();
       }}
-      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center"
+      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center backdrop-in"
     >
-      <div onClick={(e) => e.stopPropagation()} className="glass w-full sm:max-w-sm border border-border rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-3">
+      <div onClick={(e) => e.stopPropagation()} className="glass w-full sm:max-w-sm border border-border rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-3 sheet-in">
         <h2 className="font-display text-[19px]">{title}</h2>
         {body && <p className="text-sm text-text-2" style={{ margin: 0 }}>{body}</p>}
         <button
