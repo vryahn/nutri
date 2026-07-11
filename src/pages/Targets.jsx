@@ -3,7 +3,7 @@ import { History, ChevronLeft, ChevronDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { useToast } from '../lib/useToast.js';
-import { MICROS, PHASE_GOALS, goalLabel, todayISO, addDaysISO, resolveTarget } from '../lib/domain.js';
+import { MICROS, microGroups, PHASE_GOALS, goalLabel, todayISO, addDaysISO, resolveTarget } from '../lib/domain.js';
 import { t, useLang, getLang, locale } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import ConfirmSheet from '../components/ConfirmSheet.jsx';
@@ -1040,11 +1040,16 @@ function MicrosEditor({ micros, onMicro }) {
   return (
     <details>
       <summary className="cursor-pointer text-xs text-text-3 min-h-[44px] flex items-center">{t('Micros')}</summary>
-      <div className="grid grid-cols-4 gap-2 pt-2">
-        {MICROS.map((m) => (
-          <MiniNumberField key={m.key} label={t(m.label)} value={micros[m.key] ?? ''} onChange={(v) => onMicro(m.key, v)} />
-        ))}
-      </div>
+      {microGroups(MICROS).map(({ cat, items }) => (
+        <div key={cat}>
+          <p className="text-xs uppercase tracking-wide text-text-3 pt-4 pb-1">{t(cat)}</p>
+          <div className="grid grid-cols-4 gap-2">
+            {items.map((m) => (
+              <MiniNumberField key={m.key} label={t(m.label)} value={micros[m.key] ?? ''} onChange={(v) => onMicro(m.key, v)} />
+            ))}
+          </div>
+        </div>
+      ))}
     </details>
   );
 }
