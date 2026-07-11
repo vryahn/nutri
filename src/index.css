@@ -139,10 +139,11 @@ input, textarea, select, [contenteditable] {
   );
 }
 .water-liquid::before {
-  /* ola: cuadrado redondeado girando centrado en la superficie del líquido */
+  /* ola: cuadrado redondeado girando casi sumergido — al rotar, sus esquinas
+     asoman ~6px sobre la superficie y la hacen ondular */
   content: '';
   position: absolute;
-  top: -44px;
+  top: -8px;
   left: -50%;
   width: 200%;
   aspect-ratio: 1;
