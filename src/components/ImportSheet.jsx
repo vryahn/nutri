@@ -1,0 +1,161 @@
+import { useState, useEffect } from 'react';
+import { AlertTriangle, Upload, FileDown } from 'lucide-react';
+import { supabase } from '../lib/supabase.js';
+import { t } from '../lib/i18n.js';
+import {
+  parseCSV, foodsFromCSV, entriesFromCSV, fetchFoodsForImport, FOODS_TEMPLATE_HEADERS,
+} from '../lib/importer.js';
+
+// Carga en bloque desde CSV pegado o archivo. kind='foods'|'entries'. Vista previa
+// con ⚠ por fila antes de commitear (regla de precisión: nada se guarda en silencio).
+// Cierra al tocar fuera (scrim onClose + stopPropagation en la card), como ConfirmSheet.
+const PLACEHOLDER = {
+  foods: 'name,kcal,protein_g,carbs_g,fat_g,sodio_mg\nAvena,389,17,66,7,2',
+  entries: 'day,meal,food,grams\n2026-07-07,Desayuno,Avena,60',
+};
+
+export default function ImportSheet({ kind, onClose, onDone }) {
+  const [text, setText] = useState('');
+  const [foods, setFoods] = useState([]);
+  const [labels, setLabels] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  // Registros necesitan el catálogo + etiquetas para emparejar por nombre.
+  useEffect(() => {
+    if (kind !== 'entries') return;
+    let alive = true;
+    (async () => {
+      const [f, { data: l }] = await Promise.all([
+        fetchFoodsForImport(),
+        supabase.from('meal_labels').select('id, name').order('sort_order'),
+      ]);
+      if (!alive) return;
+      setFoods(f);
+      setLabels(l || []);
+    })();
+    return () => { alive = false; };
+  }, [kind]);
+
+  const { rows } = text.trim() ? parseCSV(text) : { rows: [] };
+  const parsed = kind === 'foods' ? foodsFromCSV(rows) : entriesFromCSV(rows, foods, labels);
+  const importable = parsed.filter((p) => p.valid);
+  const warned = parsed.filter((p) => p.warnings.length);
+
+  function onFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setText(String(reader.result || ''));
+    reader.readAsText(file);
+  }
+
+  function downloadTemplate() {
+    const blob = new Blob([FOODS_TEMPLATE_HEADERS.join(',') + '\n'], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'nutri_alimentos_plantilla.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function doImport() {
+    if (!importable.length) return;
+    setBusy(true);
+    setError('');
+    const table = kind === 'foods' ? 'foods' : 'entries';
+    const payloads = kind === 'foods' ? importable.map((p) => p.payload) : importable.map((p) => p.insert);
+    const { error: err } = await supabase.from(table).insert(payloads);
+    if (err) {
+      setError(err.message || t('Error al importar.'));
+      setBusy(false);
+      return;
+    }
+    onDone(payloads.length);
+  }
+
+  return (
+    <div
+      onClick={(e) => { e.stopPropagation(); onClose(); }}
+      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center backdrop-in"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="glass w-full sm:max-w-lg border border-border rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-3 sheet-in max-h-[90vh]"
+      >
+        <h2 className="font-display text-[19px]">
+          {kind === 'foods' ? t('Importar alimentos') : t('Importar registros')}
+        </h2>
+        <p className="text-sm text-text-2" style={{ margin: 0 }}>
+          {kind === 'foods'
+            ? t('Pega o sube un CSV: una fila por alimento, valores por 100 g. Columnas: name, kcal, protein_g, carbs_g, fat_g y una por cada micro (p. ej. sodio_mg).')
+            : t('Pega o sube un CSV: una fila por registro. Columnas: day (AAAA-MM-DD), meal, food, grams. El alimento se empareja por nombre con tu catálogo.')}
+        </p>
+
+        <div className="flex flex-wrap gap-2">
+          <label className="inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-xl border border-border text-sm text-text-2 press cursor-pointer">
+            <Upload size={15} /> {t('Subir archivo')}
+            <input type="file" accept=".csv,.txt,text/csv" onChange={onFile} className="hidden" />
+          </label>
+          {kind === 'foods' && (
+            <button onClick={downloadTemplate} className="inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-xl border border-border text-sm text-text-2 press">
+              <FileDown size={15} /> {t('Descargar plantilla')}
+            </button>
+          )}
+        </div>
+
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={PLACEHOLDER[kind]}
+          rows={5}
+          className="w-full rounded-xl bg-surface-2 border border-border p-3 text-sm font-mono resize-y"
+        />
+
+        {parsed.length > 0 && (
+          <>
+            <div className="text-xs text-text-3">
+              {t('%n filas · %v se importarán').replace('%n', parsed.length).replace('%v', importable.length)}
+              {warned.length > 0 && ` · ${t('%w con ⚠').replace('%w', warned.length)}`}
+            </div>
+            <div className="flex flex-col gap-1 overflow-y-auto" style={{ maxHeight: '38vh' }}>
+              {parsed.map((p, i) => (
+                <div
+                  key={i}
+                  className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-sm border ${
+                    p.valid ? 'border-border' : 'border-danger/40 opacity-60'
+                  }`}
+                >
+                  <span className="truncate">
+                    {kind === 'foods'
+                      ? `${p.payload.name || t('(sin nombre)')} · ${p.payload.kcal} kcal`
+                      : `${p.display.day || '—'} · ${p.display.meal || '—'} · ${p.display.food || '—'} · ${p.display.grams || 0} g`}
+                  </span>
+                  {p.warnings.length > 0 && (
+                    <span className="inline-flex items-center gap-1 text-xs text-warn shrink-0">
+                      <AlertTriangle size={13} /> {p.warnings.map((w) => t(w)).join(', ')}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {error && <p className="text-sm text-danger" style={{ margin: 0 }}>{error}</p>}
+
+        <button
+          onClick={doImport}
+          disabled={busy || importable.length === 0}
+          className="min-h-[44px] rounded-xl font-medium press disabled:opacity-60 bg-accent-deep text-on-accent"
+        >
+          {t('Importar %n').replace('%n', importable.length)}
+        </button>
+        <button onClick={onClose} disabled={busy} className="min-h-[44px] rounded-xl border border-border text-text-2 press">
+          {t('Cancelar')}
+        </button>
+      </div>
+    </div>
+  );
+}

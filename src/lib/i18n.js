@@ -5,6 +5,31 @@ import { supabase } from './supabase.js';
 // español (nunca rompe, nunca muestra "undefined"). Interpolación: la clave
 // lleva el marcador literal %n / %s y el caller hace .replace() tras t().
 const EN = {
+  // Import (ImportSheet, Foods, Today, Recipes)
+  Importar: 'Import',
+  'Importar alimentos': 'Import foods',
+  'Importar registros': 'Import entries',
+  'Subir archivo': 'Upload file',
+  'Descargar plantilla': 'Download template',
+  'Pega o sube un CSV: una fila por alimento, valores por 100 g. Columnas: name, kcal, protein_g, carbs_g, fat_g y una por cada micro (p. ej. sodio_mg).':
+    'Paste or upload a CSV: one row per food, values per 100 g. Columns: name, kcal, protein_g, carbs_g, fat_g and one per micro (e.g. sodio_mg).',
+  'Pega o sube un CSV: una fila por registro. Columnas: day (AAAA-MM-DD), meal, food, grams. El alimento se empareja por nombre con tu catálogo.':
+    'Paste or upload a CSV: one row per entry. Columns: day (YYYY-MM-DD), meal, food, grams. Foods are matched by name against your catalog.',
+  '%n filas · %v se importarán': '%n rows · %v will import',
+  '%w con ⚠': '%w with ⚠',
+  '(sin nombre)': '(no name)',
+  'Importar %n': 'Import %n',
+  'Error al importar.': 'Import failed.',
+  '%n alimentos importados.': '%n foods imported.',
+  '%n registros importados.': '%n entries imported.',
+  'Pegar lista de ingredientes': 'Paste ingredient list',
+  'Añadir del texto': 'Add from text',
+  '%n añadidos · %m sin coincidencia (agrégalos arriba)': '%n added · %m unmatched (add them above)',
+  '%n añadidos': '%n added',
+  'sin alimento': 'no food',
+  gramos: 'grams',
+  fecha: 'date',
+  componentes: 'components',
   // Nav (App.jsx)
   Hoy: 'Today',
   Alimentos: 'Foods',

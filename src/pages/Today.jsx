@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste, ArrowLeftRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste, ArrowLeftRight, Upload } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
@@ -10,6 +10,7 @@ import { t, useLang, locale, useUnits, fmtG, fmtMl, mlToFlOz, flOzToMl } from '.
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import ConfirmSheet from '../components/ConfirmSheet.jsx';
 import AmountField from '../components/AmountField.jsx';
+import ImportSheet from '../components/ImportSheet.jsx';
 import {
   todayISO,
   addDaysISO,
@@ -383,6 +384,7 @@ export default function Today() {
   const [targets, setTargets] = useState(() => cacheGet('targets') || []);
   const [loading, setLoading] = useState(() => !cacheGet(`entries:${todayISO()}`));
   const [adding, setAdding] = useState(null); // { labelId } | null
+  const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState(null); // entry being edited
   const [toast, showToast] = useToast();
   const [userId, setUserId] = useState(null);
@@ -824,6 +826,7 @@ export default function Today() {
         onClick: () => copyEntriesFrom(copiedDay),
       });
     }
+    actions.push({ key: 'importar', label: t('Importar'), icon: Upload, onClick: () => setImporting(true) });
     actions.push({ key: 'borrar', label: t('Borrar día'), icon: Trash2, onClick: handleDeleteDay });
     setSectionMenu(actions);
     return () => setSectionMenu([]);
@@ -864,6 +867,13 @@ export default function Today() {
 
   return (
     <div className="px-4 pt-4 pb-20 grid grid-cols-1 gap-4 lg:gap-x-6 lg:grid-cols-[1fr_320px] lg:grid-rows-[auto_auto_auto_1fr] lg:items-start">
+      {importing && (
+        <ImportSheet
+          kind="entries"
+          onClose={() => setImporting(false)}
+          onDone={(n) => { setImporting(false); showToast(t('%n registros importados.').replace('%n', n)); loadDay(true); }}
+        />
+      )}
       <div className="flex items-center justify-between lg:col-start-1">
         <button onClick={() => setDate(addDaysISO(date, -1))} className="p-2 press" aria-label={t('Día anterior')}>
           <ChevronLeft size={22} />

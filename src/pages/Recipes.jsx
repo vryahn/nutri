@@ -12,6 +12,7 @@ import AmountField from '../components/AmountField.jsx';
 import SortTh from '../components/SortTh.jsx';
 import AiDataCard from '../components/AiDataCard.jsx';
 import { t, useLang, useUnits, fmtG, gToOz, ozToG } from '../lib/i18n.js';
+import { fetchFoodsForImport, parseIngredientLines } from '../lib/importer.js';
 
 const FDC_KEY = import.meta.env.VITE_FDC_KEY;
 const SOURCE_LABELS = { manual: 'Manual', gemini: 'IA' };
@@ -430,6 +431,8 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   const [dupMatches, setDupMatches] = useState([]);
   const [confirmNew, setConfirmNew] = useState(false); // gate de guardado: confirmar alta de alimentos staged
   const [saveError, setSaveError] = useState('');
+  const [pasteText, setPasteText] = useState('');
+  const [pasteMsg, setPasteMsg] = useState('');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -468,6 +471,24 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
 
   function removeIngredient(index) {
     setForm((f) => ({ ...f, ingredients: f.ingredients.filter((_, i) => i !== index) }));
+  }
+
+  // Pega varias líneas ("200 g arroz") y añade en bloque las que emparejan con el
+  // catálogo; las sin coincidencia se reportan para agregarlas a mano arriba.
+  async function addPastedIngredients() {
+    const catalog = (await fetchFoodsForImport()).filter((f) => !isWaterSentinel(f));
+    const parsed = parseIngredientLines(pasteText, catalog);
+    const ok = parsed.filter((p) => p.valid);
+    if (ok.length) {
+      setForm((f) => ({ ...f, ingredients: [...f.ingredients, ...ok.map((p) => ({ food: p.food, grams: p.grams }))] }));
+    }
+    const missed = parsed.length - ok.length;
+    setPasteText('');
+    setPasteMsg(
+      missed > 0
+        ? t('%n añadidos · %m sin coincidencia (agrégalos arriba)').replace('%n', ok.length).replace('%m', missed)
+        : t('%n añadidos').replace('%n', ok.length)
+    );
   }
 
   // --- Datos con IA: descomposición en ingredientes ---
@@ -828,6 +849,28 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
                 ))}
               </div>
             )}
+
+            <details className="rounded-xl border border-border">
+              <summary className="px-3 py-2 text-sm text-text-2 cursor-pointer select-none">{t('Pegar lista de ingredientes')}</summary>
+              <div className="p-3 flex flex-col gap-2">
+                <textarea
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  placeholder={'200 g arroz\n15 ml aceite de oliva\npechuga de pollo, 120'}
+                  rows={4}
+                  className="w-full rounded-xl bg-surface-2 border border-border p-2 text-sm font-mono resize-y"
+                />
+                <button
+                  type="button"
+                  onClick={addPastedIngredients}
+                  disabled={!pasteText.trim()}
+                  className="min-h-[40px] rounded-xl border border-border text-text-2 press disabled:opacity-60"
+                >
+                  {t('Añadir del texto')}
+                </button>
+                {pasteMsg && <p className="text-xs text-text-3" style={{ margin: 0 }}>{pasteMsg}</p>}
+              </div>
+            </details>
           </div>
 
           <div className="flex flex-col gap-1">

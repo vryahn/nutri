@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
-  Plus, ChevronLeft, Search, X, Star, AlertTriangle, Trash2,
+  Plus, ChevronLeft, Search, X, Star, AlertTriangle, Trash2, Upload,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
@@ -17,6 +17,7 @@ import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import UndoToast from '../components/UndoToast.jsx';
 import SortTh from '../components/SortTh.jsx';
 import AiDataCard from '../components/AiDataCard.jsx';
+import ImportSheet from '../components/ImportSheet.jsx';
 
 const FDC_KEY = import.meta.env.VITE_FDC_KEY;
 
@@ -53,6 +54,7 @@ export default function Foods() {
   const [foods, setFoods] = useState(() => cacheGet('foods') || []);
   const [loading, setLoading] = useState(() => !cacheGet('foods'));
   const [query, setQuery] = useState('');
+  const [importing, setImporting] = useState(false);
   const location = useLocation();
   // alta desde Hoy: /foods con state.newFood abre el form ya prellenado
   const [editing, setEditing] = useState(() =>
@@ -234,6 +236,13 @@ export default function Foods() {
 
   return (
     <div className="px-4 py-4 flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-6 lg:items-start">
+      {importing && (
+        <ImportSheet
+          kind="foods"
+          onClose={() => setImporting(false)}
+          onDone={(n) => { setImporting(false); showToast(t('%n alimentos importados.').replace('%n', n)); load(); }}
+        />
+      )}
       <div className="flex flex-col gap-4 lg:col-start-1">
         {/* En lg+ el alta va por el panel derecho ("＋ Nuevo alimento" del estado vacío);
             en <lg por el FAB. Sin botón de cabecera para no duplicar. */}
@@ -250,6 +259,13 @@ export default function Foods() {
               className="w-full min-h-[44px] rounded-xl bg-surface-2 border border-border pl-10 pr-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setImporting(true)}
+            className="min-h-[44px] px-3 rounded-xl border border-border bg-surface-2 text-text-2 press whitespace-nowrap inline-flex items-center justify-center gap-1.5"
+          >
+            <Upload size={16} /> {t('Importar')}
+          </button>
           <div className="hidden lg:flex gap-2">
             <select
               value={filterSource}
