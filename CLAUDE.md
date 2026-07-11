@@ -79,6 +79,18 @@ Recordar: vistas con `security_invoker = true`; nuevas tablas necesitan RLS + po
   - `keepalive.yml` — lunes 06:00 UTC, evita la pausa del free tier.
   - `backup.yml` — día 1 de cada mes, `pg_dump` como artefacto (retención 90 días).
 
+### Git hooks (locales, no versionados — re-crear en clone nuevo)
+
+- **`.git/hooks/pre-commit`** rechaza commits directos a `main` (exit 1 si `HEAD == main`). Sesiones paralelas de Claude Code comparten UN solo working tree = UN solo HEAD: un `checkout -b` de otra sesión mueve el HEAD compartido bajo tus pies y un `git commit` cae en `main` (incidente real 2026-07-11, dos veces). El hook cierra la ventana de carrera en el instante del commit, donde el chequeo manual de rama no alcanza. NO estorba el flujo: `merge --ff-only` no crea commit, así que no dispara el hook. Contenido a re-crear (y `chmod +x`):
+  ```sh
+  #!/bin/sh
+  branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+  if [ "$branch" = "main" ]; then
+    echo "pre-commit: no se permite commit directo a main. Usa una rama o worktree." >&2
+    exit 1
+  fi
+  ```
+
 ## Gotchas de plataforma (aprendidos construyéndolo — no re-descubrir)
 
 - La key del proyecto es la **publishable key** nueva de Supabase (`sb_publishable_...`), equivalente a la anon key. Con ella, `GET /rest/v1/` raíz devuelve 401 "secret key required" — por eso el keepalive NO exige status 2xx (cualquier respuesta cuenta como actividad).
