@@ -178,6 +178,32 @@ input, textarea, select, [contenteditable] {
   }
 }
 
+/* Informe PDF (Dashboard → Exportar → Informe del periodo). El informe se
+   monta solo mientras se imprime, vía portal como hermano de #root (así en
+   print se oculta la app entera sin ocultar el informe) y FUERA de pantalla,
+   no display:none: los charts necesitan layout real para medirse. El JS
+   fuerza data-theme='light' (papel) antes de window.print() y lo restaura. */
+#print-report {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 720px;
+  background: #fff;
+}
+
+@media print {
+  @page { size: letter; margin: 14mm; }
+  html, body { background: #fff; }
+  #root { display: none; }
+  #print-report {
+    position: static;
+    width: auto;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  #print-report section, #print-report tr { break-inside: avoid; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

@@ -260,6 +260,17 @@ const EN = {
   'Resumen del periodo': 'Period summary',
   'Una fila por métrica con valor según la operación activa, objetivo y % de adherencia.':
     'One row per metric with its value under the active operation, target, and adherence %.',
+  'Informe del periodo': 'Period report',
+  'Resumen ejecutivo con gráfica y tablas, listo para guardar como PDF.':
+    'Executive summary with chart and tables, ready to save as PDF.',
+  'Generado el %n': 'Generated on %n',
+  '%a de %b días registrados · %c completos': '%a of %b days logged · %c complete',
+  Detalle: 'Detail',
+  Macronutrientes: 'Macronutrients',
+  'Micronutrientes visibles': 'Visible micronutrients',
+  '— = sin dato o sin objetivo en el rango.': '— = no data or no target in the range.',
+  '⚠ = micro en 0 la mayoría de los días: puede significar "no anotado", no "no consumido".':
+    '⚠ = micro at 0 most days: it can mean "not logged", not "not eaten".',
   Custom: 'Custom',
   Fases: 'Phases',
   'Fase actual': 'Current phase',

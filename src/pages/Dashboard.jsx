@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ComposedChart,
   AreaChart,
@@ -646,6 +647,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [calcMode, setCalcMode] = usePersistentState('nutri.dash.calcMode', 'promedio');
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [printing, setPrinting] = useState(false); // monta #print-report y dispara window.print()
 
   const today = todayISO();
   const presetDef = PRESETS.find((p) => p.key === preset) || PRESETS[1]; // 'custom'/'fase' caen a semana
@@ -793,6 +795,42 @@ export default function Dashboard() {
     downloadCSV(lines, `nutri_resumen_${calcMode}_${rangeSlug()}.csv`);
   }
 
+  // Informe PDF: mismo guard que los CSV; el PDF lo genera el navegador
+  // ("Guardar como PDF" del diálogo de impresión) — cero dependencias.
+  function exportInforme() {
+    setCsvNotice('');
+    if (!registeredDays.length) {
+      setCsvNotice(t('Sin registros en el rango'));
+      return;
+    }
+    setPrinting(true);
+  }
+
+  // Con el informe montado (portal #print-report, fuera de pantalla para que
+  // los charts midan layout real): forzar tema claro (papel), poner el nombre
+  // del archivo en document.title e imprimir. afterprint restaura todo.
+  useEffect(() => {
+    if (!printing) return;
+    const html = document.documentElement;
+    const prevTheme = html.getAttribute('data-theme');
+    const prevTitle = document.title;
+    html.setAttribute('data-theme', 'light');
+    document.title = `nutri_informe_${calcMode}_${rangeSlug()}`;
+    const done = () => {
+      if (prevTheme) html.setAttribute('data-theme', prevTheme);
+      else html.removeAttribute('data-theme');
+      document.title = prevTitle;
+      setPrinting(false);
+    };
+    window.addEventListener('afterprint', done, { once: true });
+    // Doble rAF: el informe debe estar pintado antes de que el diálogo lo capture.
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
+    return () => {
+      cancelAnimationFrame(id);
+      window.removeEventListener('afterprint', done);
+    };
+  }, [printing]);
+
   // En modo fase `dates` puede ser no contiguo (unión de fases con la misma
   // meta): las queries siguen siendo por [start, end] y `dateSet` recorta en
   // cliente todo lo que se indexa por día suelto (items, semanas, heatmap).
@@ -926,11 +964,151 @@ export default function Dashboard() {
   const targetDays = chartData.filter((d) => d.targetKcal != null);
   const avgTargetKcal = targetDays.length ? targetDays.reduce((s, d) => s + d.targetKcal, 0) / targetDays.length : null;
 
+  // Fila del informe PDF: mismos ms/objStats/bayes que pantalla y CSV de
+  // resumen (summaryCells), solo cambia el formato. Celda vacía → '—' con su
+  // causa declarada en el pie del informe, nunca un guion mudo.
+  function informeRow(m) {
+    const ms = computeMetricStats(registeredDays, advancedDays, m.key);
+    const objStats = m.field
+      ? objectiveStatsOf(chartData.filter((d) => d[m.field] != null).map((d) => Number(d[m.field])))
+      : computeObjectiveStats(chartData, m.key);
+    const b = calcMode === 'bayes' ? bayesForMetric(completeDaysFull, m.key) : null;
+    const [val, det, obj, pct] = summaryCells(calcMode, ms, objStats, b);
+    const zero = structuralZeroInfo(registeredDays, m.key);
+    const danger = m.key === 'sodio_mg' && sodiumIsLow(stats.avgSodio, stats.diasRegistrados > 0);
+    const unit = calcMode === 'bayes' ? '' : ` ${m.unit}`;
+    return (
+      <tr key={m.key} className="border-t border-border">
+        <td className="py-1">{t(m.label)}{zero.warn ? ' ⚠' : ''}</td>
+        <td className={`py-1 text-right font-mono tabular-nums ${danger ? 'text-danger' : ''}`}>
+          {val === '' ? '—' : `${val}${unit}`}
+        </td>
+        <td className="py-1 text-right font-mono tabular-nums text-text-2">{det}</td>
+        <td className="py-1 text-right font-mono tabular-nums text-text-2">{obj === '' ? '—' : `${obj} ${m.unit}`}</td>
+        <td className="py-1 text-right font-mono tabular-nums text-text-2">{pct === '' ? '—' : pct}</td>
+      </tr>
+    );
+  }
+
+  const informeHead = (
+    <thead>
+      <tr className="text-text-3 text-left">
+        <th className="font-normal py-1">{t('Nutriente')}</th>
+        <th className="font-normal py-1 text-right">{calcHeader(calcMode)}</th>
+        <th className="font-normal py-1 text-right">{t('Detalle')}</th>
+        <th className="font-normal py-1 text-right">{t('Objetivo')}</th>
+        <th className="font-normal py-1 text-right">%</th>
+      </tr>
+    </thead>
+  );
+
+  // Informe PDF (portal a <body>, hermano de #root: en @media print se oculta
+  // la app entera sin ocultar el informe). Los Hints de pantalla no existen en
+  // papel: sus causas van como notas al pie. Sin hint en los Stat por lo mismo.
+  const noHint = (d) => ({ ...d, hint: null });
+  function renderInforme() {
+    const visibles = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favs.includes(m.key)) && m.key !== 'agua_ml');
+    const anyZeroWarn = visibles.some((m) => structuralZeroInfo(registeredDays, m.key).warn);
+    const sodiumLow = sodiumIsLow(stats.avgSodio, stats.diasRegistrados > 0);
+    return (
+      <div id="print-report" className="text-text">
+        <header className="flex items-center gap-3 pb-3 border-b-2 border-accent">
+          <img src="/icon.svg" alt="" className="w-10 h-10 rounded-xl" />
+          <div className="flex-1">
+            <p className="font-display text-2xl leading-tight">nutrimetry</p>
+            <p className="text-sm text-text-2">
+              {t('Informe del periodo')} — {calcTitle(calcMode)}
+            </p>
+          </div>
+          <div className="text-right text-xs text-text-3">
+            <p className="font-mono">{start} → {end}</p>
+            {phaseMode && (
+              <p>{selectionLabel}{selectedPhases.length > 1 ? ` · ${selectedPhases.length} ${t('fases')}` : ''}</p>
+            )}
+            <p>{t('Generado el %n').replace('%n', todayISO())}</p>
+          </div>
+        </header>
+
+        <section className="mt-4">
+          <p className="text-sm text-text-2">
+            {t('%a de %b días registrados · %c completos')
+              .replace('%a', stats.diasRegistrados)
+              .replace('%b', dates.length)
+              .replace('%c', completeDaysFull.length)}
+            {diasParcialesFull > 0 ? ` (+${diasParcialesFull}p)` : ''}
+          </p>
+          {plainKcalPhrase && <p className="text-sm text-text-2 mt-1">{plainKcalPhrase}</p>}
+          {(stats.microsConsumido.agua_ml > 0 || stats.microsObjetivo.agua_ml > 0) && (
+            <p className="text-sm text-text-2 mt-1">
+              {t('Agua')}: {fmtMl(stats.microsConsumido.agua_ml || 0)}
+              {stats.microsObjetivo.agua_ml > 0 ? ` / ${fmtMl(stats.microsObjetivo.agua_ml)}` : ''}
+            </p>
+          )}
+          {sodiumLow && (
+            <p className="text-sm text-danger mt-1">⚠ {t('sodio promedio')} &lt; {SODIUM_FLOOR_MG} mg</p>
+          )}
+          <div className="grid grid-cols-4 gap-2 text-center mt-3 rounded-xl border border-border p-3">
+            <Stat label={t('Kcal')} display={noHint(metricDisplay(calcMode, msKcal, bKcal, '', 1))} color="text-d-kcal" />
+            <Stat label={t('Prot')} display={noHint(metricDisplay(calcMode, msProtein, bProtein, ' g', 1))} color="text-d-prot" />
+            <Stat label={t('Carbs')} display={noHint(metricDisplay(calcMode, msCarbs, bCarbs, ' g', 1))} color="text-d-carb" />
+            <Stat label={t('Grasa')} display={noHint(metricDisplay(calcMode, msFat, bFat, ' g', 1))} color="text-d-fat" />
+          </div>
+        </section>
+
+        <section className="mt-4">
+          <p className="text-sm text-text-3 mb-1">{t('Kcal por día')}</p>
+          <ComposedChart width={660} height={230} data={kcalChart}>
+            <CartesianGrid stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="label" tick={{ fill: 'var(--text-3)', fontSize: 10 }} />
+            <YAxis tick={{ fill: 'var(--text-3)', fontSize: 10 }} width={36} />
+            <Legend wrapperStyle={{ fontSize: 11, color: 'var(--text-3)' }} />
+            {avgTargetKcal != null && (
+              <ReferenceArea y1={avgTargetKcal * 0.9} y2={avgTargetKcal * 1.1} fill="var(--accent)" fillOpacity={0.08} strokeOpacity={0} />
+            )}
+            <Area type="monotone" dataKey="kcal" name={t('Kcal')} stroke="var(--d-kcal)" strokeWidth={2} fill="var(--d-kcal)" fillOpacity={0.15} isAnimationActive={false} />
+            {stats.objetivo.kcal > 0 && (
+              <Line dataKey="targetKcal" name={t('Objetivo')} stroke="var(--accent)" dot={false} strokeWidth={2} isAnimationActive={false} />
+            )}
+            <Line dataKey="ma7" name={t('Promedio 7 días')} stroke="var(--d-carb)" strokeDasharray="4 3" dot={false} strokeWidth={2} isAnimationActive={false} />
+          </ComposedChart>
+        </section>
+
+        <section className="mt-4">
+          <p className="text-sm text-text-3">{t('Macronutrientes')}</p>
+          <table className="w-full text-sm">
+            {informeHead}
+            <tbody>{SUMMARY_MACROS.map(informeRow)}</tbody>
+          </table>
+        </section>
+
+        <section className="mt-4">
+          <p className="text-sm text-text-3">{t('Micronutrientes visibles')}</p>
+          <table className="w-full text-sm">
+            {informeHead}
+            <tbody>{visibles.map(informeRow)}</tbody>
+          </table>
+        </section>
+
+        <footer className="mt-4 pt-2 border-t border-border text-xs text-text-3">
+          <p>{t('— = sin dato o sin objetivo en el rango.')}</p>
+          {anyZeroWarn && <p>{t('⚠ = micro en 0 la mayoría de los días: puede significar "no anotado", no "no consumido".')}</p>}
+          {isPhaseScopedMode && phaseHintText && <p>{phaseHintText}</p>}
+          {calcMode === 'bayes' && (
+            <p>
+              {t('Kcal')}/{t('Carbs')}/{t('Grasa')}: {bayesCriterionHint('kcal')} · {t('Proteína')}/micros: {bayesCriterionHint('protein_g')}
+            </p>
+          )}
+          <p className="font-mono mt-1">nutrimetry · nutri.vryahn.com</p>
+        </footer>
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 py-4 flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-xl">{t('Dashboard')}</h1>
-        <ExportMenu calcLabel={calcHeader(calcMode)} onRaw={exportCSV} onResumen={exportResumenCSV} />
+        <ExportMenu calcLabel={calcHeader(calcMode)} onRaw={exportCSV} onResumen={exportResumenCSV} onInforme={exportInforme} />
       </div>
 
       {/* El botón de fases vive FUERA del scroller: su popover no puede quedar
@@ -1392,6 +1570,8 @@ export default function Dashboard() {
           {toast}
         </div>
       )}
+
+      {printing && createPortal(renderInforme(), document.body)}
     </div>
   );
 }
@@ -1404,7 +1584,7 @@ export default function Dashboard() {
 // El subtítulo de cada opción declara si la operación del selector participa
 // — siempre visible, no detrás de hover (mobile-first) — y el título del
 // resumen la nombra ("Resumen del periodo — Promedio").
-function ExportMenu({ calcLabel, onRaw, onResumen }) {
+function ExportMenu({ calcLabel, onRaw, onResumen, onInforme }) {
   const [open, setOpen] = useState(false);
   const ref = useOutsideClose(open, setOpen);
   const items = [
@@ -1419,6 +1599,12 @@ function ExportMenu({ calcLabel, onRaw, onResumen }) {
       label: `${t('Resumen del periodo')} — ${calcLabel} (CSV)`,
       sub: t('Una fila por métrica con valor según la operación activa, objetivo y % de adherencia.'),
       run: onResumen,
+    },
+    {
+      key: 'informe',
+      label: `${t('Informe del periodo')} — ${calcLabel} (PDF)`,
+      sub: t('Resumen ejecutivo con gráfica y tablas, listo para guardar como PDF.'),
+      run: onInforme,
     },
   ];
   return (
