@@ -297,7 +297,7 @@ function formatMetric(calcMode, ms, unit, decimals) {
     case 'tendencia':
       return ms.slope == null
         ? { primary: '–', secondary: null }
-        : { primary: `${ms.slope >= 0 ? '+' : ''}${round(ms.slope, decimals)}${unit}/día`, secondary: null };
+        : { primary: `${ms.slope >= 0 ? '+' : ''}${round(ms.slope, decimals)}${unit}/${t('día')}`, secondary: null };
     default:
       return { primary: '', secondary: null };
   }
