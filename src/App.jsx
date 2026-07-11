@@ -2,11 +2,13 @@ import { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
 import { CalendarDays, Apple, ChefHat, Target, BarChart3, LogOut, Tags, MoreHorizontal } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
+import { cacheClear } from './lib/cache.js';
 import { subscribeSectionMenu } from './lib/sectionMenu.js';
 import { useOutsideClose } from './lib/useOutsideClose.js';
 import { watchSystem } from './lib/theme.js';
 import { t, useLang, registerLangUser, useUnits, setUnits, registerUnitsUser } from './lib/i18n.js';
 import ThemeToggle from './components/ThemeToggle.jsx';
+import PageSkeleton from './components/PageSkeleton.jsx';
 import LangToggle from './components/LangToggle.jsx';
 import UnitsToggle from './components/UnitsToggle.jsx';
 import Login from './pages/Login.jsx';
@@ -19,7 +21,7 @@ const Recipes = lazy(() => import('./pages/Recipes.jsx'));
 const Targets = lazy(() => import('./pages/Targets.jsx'));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 
-const PageFallback = <div className="px-4 py-8 text-center text-text-2">Cargando…</div>;
+const PageFallback = <PageSkeleton />;
 
 const TABS = [
   { to: '/', label: 'Hoy', icon: CalendarDays, end: true },
@@ -34,7 +36,10 @@ function useSession() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      if (!s) cacheClear(); // el cache de sesión no debe sobrevivir un signout
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -261,6 +266,24 @@ export default function App() {
   const session = useSession();
 
   useEffect(watchSystem, []);
+
+  // Precarga en idle los chunks lazy de las demás tabs: el primer cambio de
+  // sección no espera la descarga del bundle (solo el fetch de sus datos).
+  useEffect(() => {
+    if (!session) return;
+    const warm = () => {
+      import('./pages/Foods.jsx');
+      import('./pages/Recipes.jsx');
+      import('./pages/Targets.jsx');
+      import('./pages/Dashboard.jsx');
+    };
+    if ('requestIdleCallback' in window) {
+      const id = requestIdleCallback(warm);
+      return () => cancelIdleCallback(id);
+    }
+    const id = setTimeout(warm, 1500);
+    return () => clearTimeout(id);
+  }, [session]);
 
   return (
     <Routes>

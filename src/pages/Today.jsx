@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
+import { cacheGet, cacheSet } from '../lib/cache.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
 import { prefetchFrequent, refreshFrequent, getFrequent } from '../lib/frequent.js';
 import { useToast } from '../lib/useToast.js';
@@ -207,10 +208,12 @@ export default function Today() {
   useLang();
   useUnits();
   const [date, setDate] = useState(todayISO());
-  const [entries, setEntries] = useState([]);
-  const [labels, setLabels] = useState([]);
-  const [targets, setTargets] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // SWR: pinta el cache de sesión al instante y el refetch de fondo actualiza.
+  // Entries cacheados por fecha; 'targets' se comparte con la página Metas.
+  const [entries, setEntries] = useState(() => cacheGet(`entries:${todayISO()}`) || []);
+  const [labels, setLabels] = useState(() => cacheGet('labels') || []);
+  const [targets, setTargets] = useState(() => cacheGet('targets') || []);
+  const [loading, setLoading] = useState(() => !cacheGet(`entries:${todayISO()}`));
   const [adding, setAdding] = useState(null); // { labelId } | null
   const [editing, setEditing] = useState(null); // entry being edited
   const [toast, showToast] = useToast();
@@ -262,6 +265,10 @@ export default function Today() {
   );
 
   useEffect(() => {
+    // Al cambiar de fecha, pinta el cache del nuevo día ANTES del refetch —
+    // sin esto se verían los entries del día anterior mientras carga.
+    const cached = cacheGet(`entries:${date}`);
+    if (cached) setEntries(cached);
     loadDay();
   }, [date]);
 
@@ -394,13 +401,13 @@ export default function Today() {
   async function loadTargets() {
     const { data, error } = await supabase.from('targets').select('*');
     if (error) { showToast(t('No se pudieron cargar los objetivos — revisa tu conexión.')); return; }
-    setTargets(data || []);
+    setTargets(cacheSet('targets', data || []));
   }
 
   // silent: refetch tras una mutación sin pasar por el skeleton — desmontar la
   // lista colapsa la altura de la página y el navegador recorta el scroll a top.
   async function loadDay(silent = false) {
-    if (!silent) setLoading(true);
+    if (!silent && !cacheGet(`entries:${date}`)) setLoading(true);
     const { data, error } = await supabase
       .from('entry_nutrients')
       .select('*')
@@ -408,14 +415,14 @@ export default function Today() {
       .order('sort_order')
       .order('created_at');
     if (error) { showToast(t('No se pudo cargar el día — revisa tu conexión.')); setLoading(false); return; }
-    setEntries(data || []);
+    setEntries(cacheSet(`entries:${date}`, data || []));
     setLoading(false);
   }
 
   async function loadLabels() {
     const { data, error } = await supabase.from('meal_labels').select('*').order('sort_order');
     if (error) { showToast(t('No se pudieron cargar las etiquetas — revisa tu conexión.')); return; }
-    setLabels(data || []);
+    setLabels(cacheSet('labels', data || []));
   }
 
   async function persistLabelOrder(reordered) {

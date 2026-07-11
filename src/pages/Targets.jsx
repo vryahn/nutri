@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { History, ChevronLeft, ChevronDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
+import { cacheGet, cacheSet } from '../lib/cache.js';
 import { useToast } from '../lib/useToast.js';
 import { MICROS, PHASE_GOALS, goalLabel, todayISO, addDaysISO, resolveTarget } from '../lib/domain.js';
 import { t, useLang, getLang, locale } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import ConfirmSheet from '../components/ConfirmSheet.jsx';
+import PageSkeleton from '../components/PageSkeleton.jsx';
 
 // ===== Helpers puros (agrupación §2.1, fechas §5) =====
 // dow 0=domingo (contrato de la columna). Orden visual de despliegue Lun→Dom.
@@ -185,8 +187,10 @@ function useLgUp() {
 // ===== Página =====
 export default function Targets() {
   useLang();
-  const [targets, setTargets] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // SWR: pinta el cache de sesión al instante y el load() de fondo refresca.
+  // La clave 'targets' se comparte con Hoy (misma query select('*')).
+  const [targets, setTargets] = useState(() => cacheGet('targets') || []);
+  const [loading, setLoading] = useState(() => !cacheGet('targets'));
   const [userId, setUserId] = useState(null);
   const [toast, showToast] = useToast();
   const [sheet, setSheet] = useState(null); // unión discriminada por .type
@@ -229,12 +233,12 @@ export default function Targets() {
   }, [expandedVf, expandedOverrideId, newOverrideInline]);
 
   async function load() {
-    setLoading(true);
+    if (!cacheGet('targets')) setLoading(true);
     const { data: { session } } = await supabase.auth.getSession();
     setUserId(session?.user?.id || null);
     const { data, error } = await supabase.from('targets').select('*');
     if (error) { showToast(t('No se pudieron cargar los objetivos — revisa tu conexión.')); setLoading(false); return; }
-    setTargets(data || []);
+    setTargets(cacheSet('targets', data || []));
     setLoading(false);
   }
 
@@ -334,7 +338,7 @@ export default function Targets() {
     if (error) load();
   }
 
-  if (loading) return <div className="px-4 py-4 text-text-2">{t('Cargando…')}</div>;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="px-4 py-4 flex flex-col gap-6">

@@ -21,9 +21,11 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { supabase } from '../lib/supabase.js';
+import { cacheGet, cacheSet } from '../lib/cache.js';
 import { useOutsideClose } from '../lib/useOutsideClose.js';
 import { useToast } from '../lib/useToast.js';
 import Hint from '../components/Hint.jsx';
+import PageSkeleton from '../components/PageSkeleton.jsx';
 import {
   MICROS,
   MICROS_DEFAULT,
@@ -679,11 +681,26 @@ export default function Dashboard() {
   const end = phaseMode ? phaseDays[phaseDays.length - 1] : preset === 'custom' ? customEnd : today;
 
   useEffect(() => {
+    // SWR: si este rango ya se vio en la sesión, pinta el cache al instante
+    // (sin skeleton) y el load() de fondo actualiza al llegar.
+    const cached = cacheGet(`dash:${start}:${end}`);
+    if (cached) applyData(cached);
     load();
   }, [start, end]);
 
+  function applyData(d) {
+    setDailyTotals(d.dt);
+    setPrevDailyTotals(d.prevDt);
+    setHistoryTotals(d.hist);
+    setTargets(d.tg);
+    setFavs(d.favs);
+    setWaterFoodId(d.waterFoodId);
+    setItemRows(d.items);
+    setLoading(false);
+  }
+
   async function load() {
-    setLoading(true);
+    if (!cacheGet(`dash:${start}:${end}`)) setLoading(true);
     setCsvNotice('');
     const { prevStart, prevEnd } = prevRangeOf(start, end);
     const historyStart = addDaysISO(todayISO(), -89);
@@ -701,14 +718,15 @@ export default function Dashboard() {
       return;
     }
     const [{ data: dt }, { data: prevDt }, { data: hist }, { data: tg }, { data: pf }, { data: items }] = results;
-    setDailyTotals(dt || []);
-    setPrevDailyTotals(prevDt || []);
-    setHistoryTotals(hist || []);
-    setTargets(tg || []);
-    setFavs(pf?.data?.fav_micros || []);
-    setWaterFoodId(pf?.data?.water_food_id || null);
-    setItemRows(items || []);
-    setLoading(false);
+    applyData(cacheSet(`dash:${start}:${end}`, {
+      dt: dt || [],
+      prevDt: prevDt || [],
+      hist: hist || [],
+      tg: tg || [],
+      favs: pf?.data?.fav_micros || [],
+      waterFoodId: pf?.data?.water_food_id || null,
+      items: items || [],
+    }));
   }
 
   async function exportCSV() {
@@ -848,7 +866,7 @@ export default function Dashboard() {
     }
   }, [loading, calcMode, calcCtx.diasRegistrados, calcCtx.diasConObjetivo, calcCtx.diasCompletosFull, calcCtx.diasCompletosPhase]);
 
-  if (loading) return <div className="px-4 py-4 text-text-2">Cargando…</div>;
+  if (loading) return <PageSkeleton blocks={4} />;
 
   const { prevStart, prevEnd } = prevRangeOf(start, end);
   const prevStats = computeStats(datesInRange(prevStart, prevEnd), prevDailyTotals, targets);

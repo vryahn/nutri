@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Plus, ChevronLeft, Trash2, Search, X, Save } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
+import { cacheGet, cacheSet } from '../lib/cache.js';
 import { computeRecipePer100g, MICROS, MICROS_DEFAULT, round, isWaterSentinel } from '../lib/domain.js';
 import { useToast } from '../lib/useToast.js';
 import { GEMINI_KEY, estimateRecipe, parseAmount, snapDensity } from '../lib/ai.js';
@@ -29,8 +30,9 @@ function useIsLgUp() {
 
 export default function Recipes() {
   useLang();
-  const [recipes, setRecipes] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // SWR: pinta el cache de sesión al instante y el load() de fondo refresca.
+  const [recipes, setRecipes] = useState(() => cacheGet('recipes') || []);
+  const [loading, setLoading] = useState(() => !cacheGet('recipes'));
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState(null); // null | {} | recipe
   const [toast, showToast] = useToast();
@@ -75,9 +77,12 @@ export default function Recipes() {
   }
 
   async function load() {
-    setLoading(true);
+    // Solo se cachea la lista base (sin búsqueda): es la vista con la que se
+    // llega al tab. El skeleton solo aparece si no hay nada que pintar.
+    const isBase = !query.trim();
+    if (!(isBase && cacheGet('recipes'))) setLoading(true);
     let req = supabase.from('recipes').select('*').order('name');
-    if (query.trim()) req = req.ilike('name', `%${query.trim()}%`);
+    if (!isBase) req = req.ilike('name', `%${query.trim()}%`);
     const [{ data: rs, error: rsError }, { data: per100, error: per100Error }] = await Promise.all([
       req,
       supabase.from('recipe_per_100g').select('recipe_id, kcal'),
@@ -88,7 +93,8 @@ export default function Recipes() {
       return;
     }
     const kcalById = new Map((per100 || []).map((p) => [p.recipe_id, p.kcal]));
-    setRecipes((rs || []).map((r) => ({ ...r, kcal100: kcalById.get(r.id) })));
+    const list = (rs || []).map((r) => ({ ...r, kcal100: kcalById.get(r.id) }));
+    setRecipes(isBase ? cacheSet('recipes', list) : list);
     setLoading(false);
   }
 

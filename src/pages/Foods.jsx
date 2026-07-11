@@ -4,6 +4,7 @@ import {
   Plus, ChevronLeft, Search, X, Star, AlertTriangle, Trash2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
+import { cacheGet, cacheSet } from '../lib/cache.js';
 import { useToast } from '../lib/useToast.js';
 import {
   MICROS, MICROS_DEFAULT, microGroups, round, kcalFromMacros, kcalSuspicious, macrosImplausible,
@@ -48,8 +49,9 @@ const EMPTY_FOOD = {
 
 export default function Foods() {
   useLang();
-  const [foods, setFoods] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // SWR: pinta el cache de sesión al instante y el load() de fondo refresca.
+  const [foods, setFoods] = useState(() => cacheGet('foods') || []);
+  const [loading, setLoading] = useState(() => !cacheGet('foods'));
   const [query, setQuery] = useState('');
   const location = useLocation();
   // alta desde Hoy: /foods con state.newFood abre el form ya prellenado
@@ -116,12 +118,16 @@ export default function Foods() {
   }
 
   async function load() {
-    setLoading(true);
+    // Solo se cachea la lista base (sin búsqueda): es la vista con la que se
+    // llega al tab. El skeleton solo aparece si no hay nada que pintar.
+    const isBase = !query.trim();
+    if (!(isBase && cacheGet('foods'))) setLoading(true);
     let req = supabase.from('foods').select('*').order('name');
-    if (query.trim()) req = req.ilike('name', `%${query.trim()}%`);
+    if (!isBase) req = req.ilike('name', `%${query.trim()}%`);
     const { data, error } = await req;
     if (error) { showToast(t('No se pudieron cargar los alimentos — revisa tu conexión.')); setLoading(false); return; }
-    setFoods(data.filter((f) => !isWaterSentinel(f)));
+    const list = data.filter((f) => !isWaterSentinel(f));
+    setFoods(isBase ? cacheSet('foods', list) : list);
     setLoading(false);
   }
 
