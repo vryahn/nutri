@@ -1245,28 +1245,18 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
   const filled = glassMl > 0 ? Math.floor(waterMl / glassMl) : 0;
   // ponytail: tope de 16 vasos por si el objetivo/vaso da un número absurdo
   const count = Math.min(Math.max(goalMl > 0 ? Math.ceil(goalMl / glassMl) : 3, filled + 1), 16);
-  const pct = goalMl > 0 ? Math.min(100, (waterMl / goalMl) * 100) : 0;
 
-  // Al llenarse un vaso nuevo, su líquido sube con ola (splash = índice animado);
-  // al alcanzar el objetivo, toda la fila celebra con un pop escalonado.
-  const done = goalMl > 0 && waterMl >= goalMl;
-  const prevRef = useRef({ filled, done });
+  // Al llenarse un vaso nuevo, su líquido sube con ola (splash = índice animado).
+  const prevFilledRef = useRef(filled);
   const [splash, setSplash] = useState(-1);
-  const [celebrate, setCelebrate] = useState(false);
   useEffect(() => {
-    const prev = prevRef.current;
-    prevRef.current = { filled, done };
-    const timers = [];
-    if (filled > prev.filled) {
-      setSplash(filled - 1);
-      timers.push(setTimeout(() => setSplash(-1), 1400));
-    }
-    if (done && !prev.done) {
-      setCelebrate(true);
-      timers.push(setTimeout(() => setCelebrate(false), 1400));
-    }
-    return () => timers.forEach(clearTimeout);
-  }, [filled, done]);
+    const prev = prevFilledRef.current;
+    prevFilledRef.current = filled;
+    if (filled <= prev) return undefined;
+    setSplash(filled - 1);
+    const timer = setTimeout(() => setSplash(-1), 1400);
+    return () => clearTimeout(timer);
+  }, [filled]);
 
   return (
     <section className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
@@ -1286,14 +1276,13 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
         </button>
       </div>
 
-      <div className={`flex flex-wrap gap-2 ${celebrate ? 'water-celebrate' : ''}`}>
+      <div className="flex flex-wrap gap-2">
         {Array.from({ length: count }, (_, i) => {
           const isFilled = i < filled;
           return (
             <button
               key={i}
               onClick={() => (isFilled ? onUndo() : onGlass())}
-              style={{ '--wi': i }}
               className={`relative overflow-hidden w-11 h-11 rounded-xl border border-border flex items-center justify-center press ${
                 isFilled ? 'bg-surface-2 text-d-carb' : 'text-text-3'
               }`}
@@ -1306,12 +1295,6 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
           );
         })}
       </div>
-
-      {goalMl > 0 && (
-        <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
-          <div className="h-full bg-d-carb rounded-full transition-[width] duration-500" style={{ width: `${pct}%` }} />
-        </div>
-      )}
 
       <form
         onSubmit={(e) => {
