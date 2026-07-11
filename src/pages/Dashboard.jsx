@@ -818,8 +818,9 @@ export default function Dashboard() {
 
   // Mientras la vista previa del informe está abierta: tema claro (papel) y
   // nombre del archivo en document.title (el diálogo lo usa al guardar el
-  // PDF). El overlay tapa la app, así que el flip de tema no se ve. La
-  // impresión NO es automática: el usuario revisa y toca "Guardar PDF".
+  // PDF). El flip es en <html> entero; el scrim opaco (bg-black) oculta la app
+  // de fondo volteada a claro. La impresión NO es automática: el usuario revisa
+  // y toca "Guardar PDF".
   useEffect(() => {
     if (!printing) return;
     const html = document.documentElement;
@@ -1018,10 +1019,14 @@ export default function Dashboard() {
     return (
       // Sin backdrop-blur en el scrim: backdrop-filter convertiría al overlay
       // en containing block de la barra fixed y la barra panearía con el papel.
+      // Scrim opaco (bg-black): el JS voltea data-theme='light' en <html> entero
+      // para que el informe salga en claro (papel); un scrim translúcido dejaba
+      // asomar la app de fondo volteada a claro. Opaco = preview de impresión
+      // limpio, sin filtración.
       <div
         id="print-overlay"
         onClick={() => setPrinting(false)}
-        className="fixed inset-0 z-50 overflow-auto bg-black/50 backdrop-in"
+        className="fixed inset-0 z-50 overflow-auto bg-black backdrop-in"
       >
         {/* Barra de acciones anclada al viewport (fixed dentro del overlay, que
             cubre toda la pantalla): visible aunque el papel panee en móvil. */}
