@@ -357,6 +357,7 @@ function MiniSummary({ visible, top, pending, mode, hasTargets, hasFood, onTap }
   const barMode = mode === 'pct' ? 'pct' : 'delta';
   return (
     <button
+      id="mini-summary"
       type="button"
       onClick={onTap}
       aria-label={t('Ver resumen del día')}
@@ -471,9 +472,13 @@ export default function Today() {
       const el = document.getElementById(labelId ? `sec-${labelId}` : 'sec-none');
       if (!el) return;
       const header = document.querySelector('header')?.offsetHeight || 0;
+      // El mini-resumen es fixed bajo el header (z-20) y puede envolver a 2
+      // filas: su altura real también tapa la barra de sección. En lg+ está
+      // display:none (offsetHeight 0), no desplaza nada.
+      const mini = document.getElementById('mini-summary')?.offsetHeight || 0;
       const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       window.scrollTo({
-        top: el.getBoundingClientRect().top + window.scrollY - header - 8,
+        top: el.getBoundingClientRect().top + window.scrollY - header - mini - 8,
         behavior: reduce ? 'auto' : 'smooth',
       });
     }, 0);
