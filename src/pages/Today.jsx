@@ -459,6 +459,14 @@ export default function Today() {
     } else {
       idx = others.findIndex((e) => `card-${e.id}` === overId);
       if (idx === -1) idx = others.length;
+      else {
+        // Semántica arrayMove: al arrastrar hacia abajo, la card destino ya se corrió
+        // un índice arriba dentro de `others` — insertar DESPUÉS de ella, no antes
+        // (si no, un swap adyacente hacia abajo queda igual que el orden original).
+        const movingIdx = entries.findIndex((e) => e.id === moving.id);
+        const overIdx = entries.findIndex((e) => `card-${e.id}` === overId);
+        if (movingIdx < overIdx) idx += 1;
+      }
     }
     const movedEntry = { ...moving, meal_label_id: overLabel };
     const next = [...others.slice(0, idx), movedEntry, ...others.slice(idx)];
