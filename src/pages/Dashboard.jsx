@@ -314,6 +314,39 @@ function metricDisplay(calcMode, ms, bayesInfo, unit, decimals) {
   return { ...formatMetric(calcMode, ms, unit, decimals), hint: null, degraded: false };
 }
 
+// Agua para la tarjeta/informe del Dashboard: mismo cálculo por modo que
+// macros/micros (computeMetricStats/bayesCell), pero formateado con fmtMl
+// (respeta unidades US) y conservando su barra de progreso. Devuelve
+// { primary, secondary, targetStr, barWidth }. Los modos de nivel
+// (suma/promedio/mediana) traen objetivo comparable y barra; σ/tendencia son
+// dispersión (sin objetivo ni barra); bayes ya es un % (barra = adherencia).
+function waterView(calcMode, ms, objStats, b) {
+  const mk = (primary, secondary, targetStr, barWidth) => ({ primary, secondary, targetStr, barWidth });
+  const tgtStr = (tgt) => (objStats.n > 0 && tgt != null ? fmtMl(tgt) : null);
+  const bar = (cons, tgt) => (objStats.n > 0 && tgt > 0 && cons != null ? Math.min(100, (cons / tgt) * 100) : null);
+  switch (calcMode) {
+    case 'suma':
+      return mk(fmtMl(ms.sum), null, tgtStr(objStats.sum), bar(ms.sum, objStats.sum));
+    case 'promedio':
+      return mk(fmtMl(ms.avg), null, tgtStr(objStats.avg), bar(ms.avg, objStats.avg));
+    case 'mediana':
+      return ms.median == null
+        ? mk('–', null, tgtStr(objStats.median), null)
+        : mk(fmtMl(ms.median), `P25–P75: ${fmtMl(ms.p25)}–${fmtMl(ms.p75)}`, tgtStr(objStats.median), bar(ms.median, objStats.median));
+    case 'stddev':
+      return ms.sd == null ? mk('–', null, null, null) : mk(`σ ${fmtMl(ms.sd)}`, ms.cv == null ? null : `CV ${round(ms.cv, 0)}%`, null, null);
+    case 'tendencia':
+      return ms.slope == null ? mk('–', null, null, null) : mk(`${ms.slope >= 0 ? '+' : ''}${fmtMl(ms.slope)}/${t('día')}`, null, null, null);
+    case 'bayes': {
+      if (!b) return mk('–', null, null, null);
+      const w = parseFloat(b.primary);
+      return mk(b.primary, b.secondary, null, Number.isFinite(w) ? Math.max(0, Math.min(100, w)) : null);
+    }
+    default:
+      return mk('', null, null, null);
+  }
+}
+
 // Frase interpretativa en lenguaje llano para la card de resumen, basada en
 // kcal (representativa de las 4 métricas mostradas ahí). null = no renderizar
 // nada (stat sin dato todavía, o modo sin lectura propia como suma/promedio).
@@ -933,6 +966,12 @@ export default function Dashboard() {
   const bCarbs = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'carbs_g') : null;
   const bFat = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'fat_g') : null;
   const bSodio = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'sodio_mg') : null;
+  const aguaView = waterView(
+    calcMode,
+    computeMetricStats(registeredDays, advancedDays, 'agua_ml'),
+    computeObjectiveStats(chartData, 'agua_ml'),
+    calcMode === 'bayes' ? bayesCell(completeDaysFull, 'agua_ml') : null
+  );
   const phaseHintText = unionMode
     ? `Estás viendo ${selectedPhases.length} fases de ${selectionLabel}, cada una con sus propios objetivos. El cálculo usa sus ${advancedDays.length} días completos.`
     : crossesPhases
@@ -1080,8 +1119,9 @@ export default function Dashboard() {
           {plainKcalPhrase && <p className="text-sm text-text-2 mt-1">{plainKcalPhrase}</p>}
           {(stats.microsConsumido.agua_ml > 0 || stats.microsObjetivo.agua_ml > 0) && (
             <p className="text-sm text-text-2 mt-1">
-              {t('Agua')}: {fmtMl(stats.microsConsumido.agua_ml || 0)}
-              {stats.microsObjetivo.agua_ml > 0 ? ` / ${fmtMl(stats.microsObjetivo.agua_ml)}` : ''}
+              {t('Agua')}: {aguaView.primary}
+              {aguaView.targetStr ? ` / ${aguaView.targetStr}` : ''}
+              {aguaView.secondary ? ` (${aguaView.secondary})` : ''}
             </p>
           )}
           {sodiumLow && (
@@ -1311,16 +1351,14 @@ export default function Dashboard() {
           <div className="flex justify-between items-baseline mb-2">
             <p className="text-sm text-text-3">{t('Agua')}</p>
             <p className="font-mono tabular-nums text-sm text-d-carb">
-              {fmtMl(stats.microsConsumido.agua_ml || 0)}
-              {stats.microsObjetivo.agua_ml > 0 ? ` / ${fmtMl(stats.microsObjetivo.agua_ml)}` : ''}
+              {aguaView.primary}
+              {aguaView.targetStr ? ` / ${aguaView.targetStr}` : ''}
+              {aguaView.secondary ? <span className="text-text-3"> ({aguaView.secondary})</span> : ''}
             </p>
           </div>
-          {stats.microsObjetivo.agua_ml > 0 && (
+          {aguaView.barWidth != null && (
             <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
-              <div
-                className="h-full bg-d-carb rounded-full"
-                style={{ width: `${Math.min(100, ((stats.microsConsumido.agua_ml || 0) / stats.microsObjetivo.agua_ml) * 100)}%` }}
-              />
+              <div className="h-full bg-d-carb rounded-full" style={{ width: `${aguaView.barWidth}%` }} />
             </div>
           )}
         </section>
