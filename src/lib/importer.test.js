@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCSV, matchFood, foodsFromCSV, entriesFromCSV, parseIngredientLines } from './importer.js';
+import { parseCSV, matchFood, foodsFromCSV, entriesFromCSV, parseIngredientLines, bodyMetricsFromCSV } from './importer.js';
 
 describe('parseCSV', () => {
   it('parsea comillas, comas internas, comillas escapadas y CRLF', () => {
@@ -67,6 +67,31 @@ describe('entriesFromCSV', () => {
     expect(e.valid).toBe(false);
     expect(e.insert).toBeNull();
     expect(e.warnings).toEqual(expect.arrayContaining(['sin alimento', 'fecha']));
+  });
+});
+
+describe('bodyMetricsFromCSV', () => {
+  it('mapea día + medidas (clave canónica y coma decimal), arma el row', () => {
+    const { rows } = parseCSV('day,peso_kg,grasa_pct\n2026-07-07,"80,5",22');
+    const [b] = bodyMetricsFromCSV(rows);
+    expect(b.valid).toBe(true);
+    expect(b.row).toEqual({ day: '2026-07-07', metrics: { peso_kg: 80.5, grasa_pct: 22 }, note: null });
+    expect(b.display.count).toBe(2);
+  });
+  it('acepta alias de apps de báscula (weight, body_fat, waist)', () => {
+    const { rows } = parseCSV('date,weight,body_fat,waist\n2026-07-07,80,22,86');
+    const [b] = bodyMetricsFromCSV(rows);
+    expect(b.row.metrics).toEqual({ peso_kg: 80, grasa_pct: 22, cintura_cm: 86 });
+  });
+  it('marca ⚠ fuera de rango pero no descarta la fila', () => {
+    const { rows } = parseCSV('day,peso_kg\n2026-07-07,900');
+    const [b] = bodyMetricsFromCSV(rows);
+    expect(b.valid).toBe(true);
+    expect(b.warnings).toContain('fuera de rango');
+  });
+  it('fecha inválida o sin medidas = fila descartable', () => {
+    expect(bodyMetricsFromCSV(parseCSV('day,peso_kg\n07/07/2026,80').rows)[0]).toMatchObject({ valid: false, warnings: expect.arrayContaining(['fecha']) });
+    expect(bodyMetricsFromCSV(parseCSV('day,peso_kg\n2026-07-07,').rows)[0]).toMatchObject({ valid: false, warnings: expect.arrayContaining(['sin medidas']) });
   });
 });
 

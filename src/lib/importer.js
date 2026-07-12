@@ -4,13 +4,20 @@
 // importado herede los mismos ⚠ que la captura manual: la precisión gana, nada
 // se guarda en silencio.
 import { supabase } from './supabase.js';
-import { MICROS, kcalFromMacros, kcalSuspicious, macrosImplausible, componentsInconsistent } from './domain.js';
+import {
+  MICROS, BODY_METRICS, BODY_METRIC_MAX,
+  kcalFromMacros, kcalSuspicious, macrosImplausible, componentsInconsistent,
+} from './domain.js';
 
 export const MICRO_KEYS = MICROS.map((m) => m.key);
 // Cabeceras canónicas del CSV de alimentos (base + una columna por micro).
 export const FOODS_TEMPLATE_HEADERS = [
   'name', 'brand', 'kcal', 'protein_g', 'carbs_g', 'fat_g', 'density_g_ml', 'source', ...MICRO_KEYS,
 ];
+
+export const BODY_METRIC_KEYS = BODY_METRICS.map((m) => m.key);
+// Cabeceras del CSV de medidas (día + una columna por medida + nota).
+export const BODY_TEMPLATE_HEADERS = ['day', ...BODY_METRIC_KEYS, 'note'];
 
 // --- CSV (RFC 4180 mínimo: comillas, comas y saltos escapados) ------------
 // ponytail: parser propio de ~30 líneas en vez de sumar papaparse al stack cerrado.
@@ -125,6 +132,53 @@ export function entriesFromCSV(rows, foods, labels) {
     return {
       display: { day: day || (r.day || r.date || ''), food: rawName, grams, meal: label?.name || r.meal || r.group || '' },
       insert: valid ? { day, grams, food_id: food.id, meal_label_id: label?.id ?? null } : null,
+      warnings, valid,
+    };
+  });
+}
+
+// --- Medidas corporales desde CSV ------------------------------------------
+// Alias de columnas de apps de báscula/trackers (inglés) → clave canónica de
+// BODY_METRICS, para que un export de Renpho/Withings/Cronometer entre sin editar.
+const BODY_ALIASES = {
+  weight: 'peso_kg', peso: 'peso_kg',
+  body_fat: 'grasa_pct', bodyfat: 'grasa_pct', body_fat_pct: 'grasa_pct', fat: 'grasa_pct', grasa: 'grasa_pct',
+  muscle: 'musculo_kg', muscle_mass: 'musculo_kg', musculo: 'musculo_kg',
+  water: 'agua_pct', body_water: 'agua_pct',
+  bone: 'hueso_kg', bone_mass: 'hueso_kg',
+  visceral: 'grasa_visceral', visceral_fat: 'grasa_visceral',
+  bmr: 'metabolismo_basal_kcal',
+  waist: 'cintura_cm', hip: 'cadera_cm', hips: 'cadera_cm', chest: 'pecho_cm', neck: 'cuello_cm',
+  arm: 'brazo_cm', thigh: 'muslo_cm', calf: 'pantorrilla_cm',
+};
+
+// Una fila = un día. Mapea columnas (clave canónica o alias) a `metrics`, hereda
+// el ⚠ "fuera de rango" de BODY_METRIC_MAX (misma política de precisión que la
+// captura manual). `valid` = día ISO + al menos una medida numérica ≥ 0.
+export function bodyMetricsFromCSV(rows) {
+  return rows.map((r) => {
+    const day = normalizeDay(r.day || r.date || r.fecha || '');
+    const metrics = {};
+    const warnings = [];
+    for (const [col, val] of Object.entries(r)) {
+      const lc = col.toLowerCase();
+      const key = BODY_METRIC_KEYS.includes(lc) ? lc : BODY_ALIASES[lc];
+      if (!key || val === '' || val == null) continue;
+      const x = Number(String(val).replace(',', '.'));
+      if (!Number.isFinite(x) || x < 0) continue;
+      metrics[key] = x;
+      if (BODY_METRIC_MAX[key] != null && x > BODY_METRIC_MAX[key] && !warnings.includes('fuera de rango')) {
+        warnings.push('fuera de rango');
+      }
+    }
+    const note = (r.note || r.nota || '').trim() || null;
+    const hasData = Object.keys(metrics).length > 0;
+    if (!day) warnings.push('fecha');
+    else if (!hasData) warnings.push('sin medidas');
+    const valid = !!(day && hasData);
+    return {
+      display: { day: day || (r.day || r.date || r.fecha || ''), count: Object.keys(metrics).length },
+      row: valid ? { day, metrics, note } : null,
       warnings, valid,
     };
   });

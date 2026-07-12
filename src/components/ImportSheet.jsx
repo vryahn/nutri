@@ -3,21 +3,29 @@ import { AlertTriangle, Upload, FileDown } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { t } from '../lib/i18n.js';
 import {
-  parseCSV, foodsFromCSV, entriesFromCSV, fetchFoodsForImport, FOODS_TEMPLATE_HEADERS,
+  parseCSV, foodsFromCSV, entriesFromCSV, bodyMetricsFromCSV, fetchFoodsForImport,
+  FOODS_TEMPLATE_HEADERS, BODY_TEMPLATE_HEADERS,
 } from '../lib/importer.js';
 
-// Carga en bloque desde CSV pegado o archivo. kind='foods'|'entries'. Vista previa
-// con ⚠ por fila antes de commitear (regla de precisión: nada se guarda en silencio).
-// Cierra al tocar fuera (scrim onClose + stopPropagation en la card), como ConfirmSheet.
+// Carga en bloque desde CSV pegado o archivo. kind='foods'|'entries'|'body'. Vista
+// previa con ⚠ por fila antes de commitear (regla de precisión: nada se guarda en
+// silencio). Cierra al tocar fuera (scrim onClose + stopPropagation en la card).
 const PLACEHOLDER = {
   foods: 'name,kcal,protein_g,carbs_g,fat_g,sodio_mg\nAvena,389,17,66,7,2',
   entries: 'day,meal,food,grams\n2026-07-07,Desayuno,Avena,60',
+  body: 'day,peso_kg,grasa_pct,cintura_cm\n2026-07-07,80.5,22,86',
+};
+const TEMPLATE = {
+  foods: { headers: FOODS_TEMPLATE_HEADERS, file: 'nutri_alimentos_plantilla.csv' },
+  body: { headers: BODY_TEMPLATE_HEADERS, file: 'nutri_medidas_plantilla.csv' },
 };
 
 export default function ImportSheet({ kind, onClose, onDone }) {
   const [text, setText] = useState('');
   const [foods, setFoods] = useState([]);
   const [labels, setLabels] = useState([]);
+  const [existingDays, setExistingDays] = useState(new Set());
+  const [bodyReplace, setBodyReplace] = useState(false); // false = complementar (default)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -37,10 +45,24 @@ export default function ImportSheet({ kind, onClose, onDone }) {
     return () => { alive = false; };
   }, [kind]);
 
+  // Medidas: días ya registrados, para avisar coincidencias en la vista previa.
+  useEffect(() => {
+    if (kind !== 'body') return;
+    let alive = true;
+    supabase.from('body_metrics').select('day').then(({ data }) => {
+      if (alive) setExistingDays(new Set((data || []).map((r) => r.day)));
+    });
+    return () => { alive = false; };
+  }, [kind]);
+
   const { rows } = text.trim() ? parseCSV(text) : { rows: [] };
-  const parsed = kind === 'foods' ? foodsFromCSV(rows) : entriesFromCSV(rows, foods, labels);
+  const parsed =
+    kind === 'foods' ? foodsFromCSV(rows)
+      : kind === 'body' ? bodyMetricsFromCSV(rows)
+        : entriesFromCSV(rows, foods, labels);
   const importable = parsed.filter((p) => p.valid);
   const warned = parsed.filter((p) => p.warnings.length);
+  const collisions = kind === 'body' ? importable.filter((p) => existingDays.has(p.row.day)) : [];
 
   function onFile(e) {
     const file = e.target.files?.[0];
@@ -51,11 +73,13 @@ export default function ImportSheet({ kind, onClose, onDone }) {
   }
 
   function downloadTemplate() {
-    const blob = new Blob([FOODS_TEMPLATE_HEADERS.join(',') + '\n'], { type: 'text/csv;charset=utf-8' });
+    const tpl = TEMPLATE[kind];
+    if (!tpl) return;
+    const blob = new Blob([tpl.headers.join(',') + '\n'], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'nutri_alimentos_plantilla.csv';
+    a.download = tpl.file;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -64,6 +88,34 @@ export default function ImportSheet({ kind, onClose, onDone }) {
     if (!importable.length) return;
     setBusy(true);
     setError('');
+
+    if (kind === 'body') {
+      const { data: { user } } = await supabase.auth.getUser();
+      let toWrite = importable.map((p) => ({ owner: user?.id, ...p.row }));
+      // Complementar: mezcla las medidas existentes de los días en conflicto (el CSV
+      // gana por clave). Una sola lectura de los días afectados; en Reemplazar el
+      // upsert sustituye la fila entera.
+      if (!bodyReplace && collisions.length) {
+        const days = collisions.map((p) => p.row.day);
+        const { data: existing } = await supabase.from('body_metrics').select('day, metrics, note').in('day', days);
+        const byDay = new Map((existing || []).map((e) => [e.day, e]));
+        toWrite = toWrite.map((row) => {
+          const prev = byDay.get(row.day);
+          return prev
+            ? { ...row, metrics: { ...(prev.metrics || {}), ...row.metrics }, note: row.note ?? prev.note }
+            : row;
+        });
+      }
+      const { error: err } = await supabase.from('body_metrics').upsert(toWrite, { onConflict: 'owner,day' });
+      if (err) {
+        setError(err.message || t('Error al importar.'));
+        setBusy(false);
+        return;
+      }
+      onDone(toWrite.length);
+      return;
+    }
+
     const table = kind === 'foods' ? 'foods' : 'entries';
     const payloads = kind === 'foods' ? importable.map((p) => p.payload) : importable.map((p) => p.insert);
     const { error: err } = await supabase.from(table).insert(payloads);
@@ -75,6 +127,17 @@ export default function ImportSheet({ kind, onClose, onDone }) {
     onDone(payloads.length);
   }
 
+  const seg = (on) =>
+    `flex-1 min-h-[36px] rounded-lg text-sm press ${on ? 'bg-accent-deep text-on-accent font-medium' : 'bg-surface-2 text-text-2'}`;
+
+  const title = kind === 'foods' ? t('Importar alimentos') : kind === 'body' ? t('Importar medidas') : t('Importar registros');
+  const desc =
+    kind === 'foods'
+      ? t('Pega o sube un CSV: una fila por alimento, valores por 100 g. Columnas: name, kcal, protein_g, carbs_g, fat_g y una por cada micro (p. ej. sodio_mg).')
+      : kind === 'body'
+        ? t('Pega o sube un CSV: una fila por día. Columna day (AAAA-MM-DD) + una por medida (peso_kg, grasa_pct, cintura_cm…) o su alias en inglés (weight, body_fat, waist). Descarga la plantilla para ver todas.')
+        : t('Pega o sube un CSV: una fila por registro. Columnas: day (AAAA-MM-DD), meal, food, grams. El alimento se empareja por nombre con tu catálogo.');
+
   return (
     <div
       onClick={(e) => { e.stopPropagation(); onClose(); }}
@@ -84,21 +147,15 @@ export default function ImportSheet({ kind, onClose, onDone }) {
         onClick={(e) => e.stopPropagation()}
         className="glass w-full sm:max-w-lg border border-border rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-3 sheet-in max-h-[90vh]"
       >
-        <h2 className="font-display text-[19px]">
-          {kind === 'foods' ? t('Importar alimentos') : t('Importar registros')}
-        </h2>
-        <p className="text-sm text-text-2" style={{ margin: 0 }}>
-          {kind === 'foods'
-            ? t('Pega o sube un CSV: una fila por alimento, valores por 100 g. Columnas: name, kcal, protein_g, carbs_g, fat_g y una por cada micro (p. ej. sodio_mg).')
-            : t('Pega o sube un CSV: una fila por registro. Columnas: day (AAAA-MM-DD), meal, food, grams. El alimento se empareja por nombre con tu catálogo.')}
-        </p>
+        <h2 className="font-display text-[19px]">{title}</h2>
+        <p className="text-sm text-text-2" style={{ margin: 0 }}>{desc}</p>
 
         <div className="flex flex-wrap gap-2">
           <label className="inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-xl border border-border text-sm text-text-2 press cursor-pointer">
             <Upload size={15} /> {t('Subir archivo')}
             <input type="file" accept=".csv,.txt,text/csv" onChange={onFile} className="hidden" />
           </label>
-          {kind === 'foods' && (
+          {TEMPLATE[kind] && (
             <button onClick={downloadTemplate} className="inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-xl border border-border text-sm text-text-2 press">
               <FileDown size={15} /> {t('Descargar plantilla')}
             </button>
@@ -112,6 +169,24 @@ export default function ImportSheet({ kind, onClose, onDone }) {
           rows={5}
           className="w-full rounded-xl bg-surface-2 border border-border p-3 text-sm font-mono resize-y"
         />
+
+        {kind === 'body' && collisions.length > 0 && (
+          <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface-2 p-2.5">
+            <p className="text-xs text-text-2 flex items-center gap-1" style={{ margin: 0 }}>
+              <AlertTriangle size={13} className="text-warn shrink-0" />
+              {t('%n días del CSV ya tienen medidas registradas.').replace('%n', collisions.length)}
+            </p>
+            <div className="flex gap-1">
+              <button onClick={() => setBodyReplace(false)} className={seg(!bodyReplace)}>{t('Complementar')}</button>
+              <button onClick={() => setBodyReplace(true)} className={seg(bodyReplace)}>{t('Reemplazar')}</button>
+            </div>
+            <p className="text-[11px] text-text-3" style={{ margin: 0 }}>
+              {bodyReplace
+                ? t('Reemplazar: el CSV sustituye por completo las medidas de esos días.')
+                : t('Complementar: conserva tus medidas y solo agrega o actualiza las del CSV.')}
+            </p>
+          </div>
+        )}
 
         {parsed.length > 0 && (
           <>
@@ -130,7 +205,9 @@ export default function ImportSheet({ kind, onClose, onDone }) {
                   <span className="truncate">
                     {kind === 'foods'
                       ? `${p.payload.name || t('(sin nombre)')} · ${p.payload.kcal} kcal`
-                      : `${p.display.day || '—'} · ${p.display.meal || '—'} · ${p.display.food || '—'} · ${p.display.grams || 0} g`}
+                      : kind === 'body'
+                        ? `${p.display.day || '—'} · ${t('%n medidas').replace('%n', p.display.count)}`
+                        : `${p.display.day || '—'} · ${p.display.meal || '—'} · ${p.display.food || '—'} · ${p.display.grams || 0} g`}
                   </span>
                   {p.warnings.length > 0 && (
                     <span className="inline-flex items-center gap-1 text-xs text-warn shrink-0">

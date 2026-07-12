@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../lib/supabase.js';
+import { setSectionMenu } from '../lib/sectionMenu.js';
+import { useToast } from '../lib/useToast.js';
+import ImportSheet from '../components/ImportSheet.jsx';
 import { t, useLang, locale } from '../lib/i18n.js';
 import {
   todayISO,
@@ -45,12 +48,21 @@ export default function Body() {
   const [showMore, setShowMore] = useState(false);
   const [trendKey, setTrendKey] = usePersistentState('nutri.body.trendKey', 'peso_kg');
   const [savedFlash, setSavedFlash] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [toast, showToast] = useToast();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
   }, []);
 
-  // Carga la fila del día seleccionado.
+  // Publica "Importar" en el menú "Más opciones" del layout (mismo patrón que Hoy).
+  useEffect(() => {
+    setSectionMenu([{ key: 'importar', label: t('Importar'), icon: Upload, onClick: () => setImporting(true) }]);
+    return () => setSectionMenu([]);
+  }, []);
+
+  // Carga la fila del día seleccionado (reloadKey la refresca tras importar).
   useEffect(() => {
     let alive = true;
     supabase
@@ -67,7 +79,7 @@ export default function Body() {
     return () => {
       alive = false;
     };
-  }, [date]);
+  }, [date, reloadKey]);
 
   function loadHistory() {
     const start = addDaysISO(todayISO(), -(HISTORY_DAYS - 1));
@@ -257,6 +269,20 @@ export default function Body() {
           </p>
         )}
       </section>
+
+      {importing && (
+        <ImportSheet
+          kind="body"
+          onClose={() => setImporting(false)}
+          onDone={(n) => {
+            setImporting(false);
+            showToast(t('%n días importados.').replace('%n', n));
+            loadHistory();
+            setReloadKey((k) => k + 1);
+          }}
+        />
+      )}
+      {toast}
     </div>
   );
 }

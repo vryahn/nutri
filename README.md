@@ -153,6 +153,37 @@ curl -X POST "$SUPABASE_URL/rest/v1/foods" \
   ]'
 ```
 
+### Importar medidas corporales en lote
+
+`POST /rest/v1/body_metrics` acepta un array; una fila por día. `metrics` es un jsonb con las claves de `BODY_METRICS` en `src/lib/domain.js` (`peso_kg, grasa_pct, musculo_kg, agua_pct, hueso_kg, grasa_visceral, metabolismo_basal_kcal, cintura_cm, cadera_cm, pecho_cm, cuello_cm, brazo_cm, muslo_cm, pantorrilla_cm`). El `owner` lo pone RLS solo.
+
+```bash
+curl -X POST "$SUPABASE_URL/rest/v1/body_metrics" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" \
+  -H "Content-Profile: nutri" -H "Content-Type: application/json" \
+  -d '[
+    {"day":"2026-07-07","metrics":{"peso_kg":80.5,"grasa_pct":22,"cintura_cm":86}},
+    {"day":"2026-07-08","metrics":{"peso_kg":80.2},"note":"post-entreno"}
+  ]'
+```
+
+**El modo se indica en la llamada** vía el header `Prefer` (hay un `unique(owner, day)`):
+
+- **Reemplazar un día que ya existe:** `-H "Prefer: resolution=merge-duplicates"` con `?on_conflict=owner,day` — sustituye la fila entera (el `metrics` del día se reemplaza por el del payload).
+- **Solo días nuevos (no tocar los existentes):** `-H "Prefer: resolution=ignore-duplicates"` con `?on_conflict=owner,day`.
+- **Sin `Prefer`:** inserta; un día ya existente devuelve 409.
+
+```bash
+# Reemplazar los días que colisionen
+curl -X POST "$SUPABASE_URL/rest/v1/body_metrics?on_conflict=owner,day" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $JWT" \
+  -H "Content-Profile: nutri" -H "Content-Type: application/json" \
+  -H "Prefer: resolution=merge-duplicates" \
+  -d '[{"day":"2026-07-07","metrics":{"peso_kg":80.4}}]'
+```
+
+Nota: el upsert de PostgREST reemplaza el `metrics` del día completo. El "complementar" por-medida (conservar las claves previas y solo agregar/pisar las nuevas) es una comodidad de la UI (tab **Medidas** → Importar); por API, para complementar, lee el día (`GET`), mezcla el jsonb y reenvíalo con `merge-duplicates`.
+
 ### Exportar alimentos (o cualquier tabla)
 
 ```bash
