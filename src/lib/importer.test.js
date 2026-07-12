@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCSV, matchFood, foodsFromCSV, entriesFromCSV, parseIngredientLines, bodyMetricsFromCSV } from './importer.js';
+import { parseCSV, matchFood, foodsFromCSV, entriesFromCSV, parseIngredientLines, bodyMetricsFromCSV, BODY_TEMPLATE_HEADERS_EN } from './importer.js';
 
 describe('parseCSV', () => {
   it('parsea comillas, comas internas, comillas escapadas y CRLF', () => {
@@ -88,6 +88,14 @@ describe('bodyMetricsFromCSV', () => {
     const [b] = bodyMetricsFromCSV(rows);
     expect(b.valid).toBe(true);
     expect(b.warnings).toContain('fuera de rango');
+  });
+  it('la plantilla EN hace round-trip: cada encabezado inglés entra por alias', () => {
+    const headers = BODY_TEMPLATE_HEADERS_EN;
+    const values = headers.map((h) => (h === 'day' ? '2026-07-07' : h === 'note' ? 'x' : '1'));
+    const { rows } = parseCSV(headers.join(',') + '\n' + values.join(','));
+    const [b] = bodyMetricsFromCSV(rows);
+    const metricCols = headers.filter((h) => h !== 'day' && h !== 'note');
+    expect(Object.keys(b.row.metrics)).toHaveLength(metricCols.length); // ninguna columna se pierde
   });
   it('fecha inválida o sin medidas = fila descartable', () => {
     expect(bodyMetricsFromCSV(parseCSV('day,peso_kg\n07/07/2026,80').rows)[0]).toMatchObject({ valid: false, warnings: expect.arrayContaining(['fecha']) });

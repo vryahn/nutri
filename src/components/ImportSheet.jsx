@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { AlertTriangle, Upload, FileDown } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { t } from '../lib/i18n.js';
+import { t, getLang } from '../lib/i18n.js';
 import {
   parseCSV, foodsFromCSV, entriesFromCSV, bodyMetricsFromCSV, fetchFoodsForImport,
-  FOODS_TEMPLATE_HEADERS, BODY_TEMPLATE_HEADERS,
+  FOODS_TEMPLATE_HEADERS, BODY_TEMPLATE_HEADERS, BODY_TEMPLATE_HEADERS_EN,
 } from '../lib/importer.js';
 
 // Carga en bloque desde CSV pegado o archivo. kind='foods'|'entries'|'body'. Vista
@@ -75,7 +75,10 @@ export default function ImportSheet({ kind, onClose, onDone }) {
   function downloadTemplate() {
     const tpl = TEMPLATE[kind];
     if (!tpl) return;
-    const blob = new Blob([tpl.headers.join(',') + '\n'], { type: 'text/csv;charset=utf-8' });
+    // Plantilla en inglés para el lector EN: sus encabezados (weight, body_fat…)
+    // vuelven a entrar por los alias del importer, así el round-trip es natural.
+    const headers = kind === 'body' && getLang() === 'en' ? BODY_TEMPLATE_HEADERS_EN : tpl.headers;
+    const blob = new Blob([headers.join(',') + '\n'], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -135,8 +138,14 @@ export default function ImportSheet({ kind, onClose, onDone }) {
     kind === 'foods'
       ? t('Pega o sube un CSV: una fila por alimento, valores por 100 g. Columnas: name, kcal, protein_g, carbs_g, fat_g y una por cada micro (p. ej. sodio_mg).')
       : kind === 'body'
-        ? t('Sube o pega un CSV con una fila por día. Incluye una columna day (AAAA-MM-DD) y una columna por medida, con las claves del sistema (peso_kg, grasa_pct, cintura_cm…) o sus alias en inglés (weight, body_fat, waist). Descarga la plantilla para verlas todas.')
+        ? t('Sube o pega un CSV con una fila por día: una columna day (AAAA-MM-DD) y una columna por cada medida (peso_kg, grasa_pct, cintura_cm…). Descarga la plantilla para ver los nombres exactos de las columnas.')
         : t('Pega o sube un CSV: una fila por registro. Columnas: day (AAAA-MM-DD), meal, food, grams. El alimento se empareja por nombre con tu catálogo.');
+
+  // Ejemplo del textarea: en EN, con encabezados en inglés (entran por los alias).
+  const placeholder =
+    kind === 'body' && getLang() === 'en'
+      ? 'day,weight,body_fat,waist\n2026-07-07,80.5,22,86'
+      : PLACEHOLDER[kind];
 
   return (
     <div
@@ -165,7 +174,7 @@ export default function ImportSheet({ kind, onClose, onDone }) {
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={PLACEHOLDER[kind]}
+          placeholder={placeholder}
           rows={5}
           className="w-full rounded-xl bg-surface-2 border border-border p-3 text-sm font-mono resize-y"
         />

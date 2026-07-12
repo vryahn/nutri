@@ -149,9 +149,27 @@ const BODY_ALIASES = {
   visceral: 'grasa_visceral', visceral_fat: 'grasa_visceral',
   bmr: 'metabolismo_basal_kcal',
   waist: 'cintura_cm', hip: 'cadera_cm', hips: 'cadera_cm', chest: 'pecho_cm', neck: 'cuello_cm',
-  // bíceps/pierna/pantorrilla son izq/der: sin alias de una sola palabra (ambiguo);
-  // se capturan por su clave canónica (biceps_der_cm, pierna_izq_cm, …).
+  // Laterales por lado: alias en inglés left_/right_ (una sola palabra sería ambigua).
+  right_biceps: 'biceps_der_cm', left_biceps: 'biceps_izq_cm',
+  right_arm: 'biceps_der_cm', left_arm: 'biceps_izq_cm',
+  left_leg: 'pierna_izq_cm', right_leg: 'pierna_der_cm',
+  left_thigh: 'pierna_izq_cm', right_thigh: 'pierna_der_cm',
+  left_calf: 'pantorrilla_izq_cm', right_calf: 'pantorrilla_der_cm',
 };
+
+// Encabezado en inglés preferido por clave canónica, para la plantilla y el ejemplo
+// en modo EN. Cada clave tiene forma inglesa, así que la plantilla EN vuelve a
+// entrar por los alias de arriba. Fallback a la clave si faltara alguna.
+export const BODY_HEADERS_EN = {
+  day: 'day', note: 'note',
+  peso_kg: 'weight', grasa_pct: 'body_fat', musculo_kg: 'muscle', agua_pct: 'body_water',
+  hueso_kg: 'bone_mass', grasa_visceral: 'visceral_fat', metabolismo_basal_kcal: 'bmr',
+  cintura_cm: 'waist', cadera_cm: 'hip', pecho_cm: 'chest', cuello_cm: 'neck',
+  biceps_der_cm: 'right_biceps', biceps_izq_cm: 'left_biceps',
+  pierna_izq_cm: 'left_leg', pierna_der_cm: 'right_leg',
+  pantorrilla_izq_cm: 'left_calf', pantorrilla_der_cm: 'right_calf',
+};
+export const BODY_TEMPLATE_HEADERS_EN = BODY_TEMPLATE_HEADERS.map((h) => BODY_HEADERS_EN[h] || h);
 
 // Una fila = un día. Mapea columnas (clave canónica o alias) a `metrics`, hereda
 // el ⚠ "fuera de rango" de BODY_METRIC_MAX (misma política de precisión que la
