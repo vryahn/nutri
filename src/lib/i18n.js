@@ -723,6 +723,66 @@ const EN = {
   'Holgura sobre el techo antes del aviso': 'Slack above the ceiling before warning',
   'Piso médico fijo, no configurable.': 'Fixed medical floor, not configurable.',
   'Secciones de comida': 'Meal sections',
+
+  // CustomChart.jsx ("Mis gráficas") — faltaban por completo
+  'Mis gráficas': 'My charts',
+  Nueva: 'New',
+  'Nueva gráfica': 'New chart',
+  'Editar gráfica': 'Edit chart',
+  'Guardar gráfica': 'Save chart',
+  'Opciones de la gráfica': 'Chart options',
+  Eliminar: 'Delete',
+  'Sin datos en el rango': 'No data in range',
+  Título: 'Title',
+  Opcional: 'Optional',
+  Tipo: 'Type',
+  Línea: 'Line',
+  Barras: 'Bars',
+  Granularidad: 'Granularity',
+  Día: 'Day',
+  Semana: 'Week',
+  Mes: 'Month',
+  Mediana: 'Median',
+  'Reductor por bucket': 'Bucket reducer',
+  'Eje izq: %l · Eje der: %r': 'Left axis: %l · Right axis: %r',
+  'Máximo %n variables': 'Max %n variables',
+  'Máximo %n unidades por gráfica': 'Max %n units per chart',
+  'Cómo se agrupan los días en el tiempo. Auto lo decide por el rango: hasta ~mes → día, hasta ~medio año → semana, más → mes. Así un año no pinta 365 puntos.':
+    "How days are grouped over time. Auto decides by range: up to ~a month → day, up to ~half a year → week, more → month. That way a year doesn't plot 365 points.",
+  'Elige de 1 a %v variables. Con 2 unidades distintas se usan 2 ejes (izquierda y derecha), como Peso (kg) + Cintura (cm). Para una 3ª unidad, crea otra gráfica.':
+    'Pick 1 to %v variables. With 2 different units, 2 axes are used (left and right), like Weight (kg) + Waist (cm). For a 3rd unit, create another chart.',
+  'En granularidad Día el reductor no aplica (un punto por día).':
+    "At Day granularity the reducer doesn't apply (one point per day).",
+  'Suma deshabilitada: la gráfica incluye una medida (peso/circunferencia/derivada). Usa Promedio o Mediana.':
+    'Sum disabled: the chart includes a measurement (weight/circumference/derived). Use Average or Median.',
+  'Sumar medidas no tiene sentido; usa Promedio o Mediana': 'Summing measurements makes no sense; use Average or Median',
+  'Crea una gráfica para cruzar cualquier variable en el tiempo': 'Create a chart to cross any variable over time',
+  'peso, medidas, macros, micros o derivadas — línea o barras': 'weight, measurements, macros, micros or derived — line or bars',
+
+  // Dashboard.jsx — cabecera del análisis estándar
+  'Análisis estándar': 'Standard analysis',
+  'radar micros · adherencia · sodio · Bayes': 'micros radar · adherence · sodium · Bayes',
+  'Mostrar ▾': 'Show ▾',
+  'Ocultar ▴': 'Hide ▴',
+
+  // Body.jsx — derivadas de solo lectura
+  Derivadas: 'Derived',
+  'Ver fórmula': 'View formula',
+  altura: 'height',
+  grasa: 'fat',
+  y: 'and',
+  'Se calculan con tu peso del día y tu última %s registrada.': 'Calculated from your weight that day and your last recorded %s.',
+
+  // Today.jsx
+  'Ver resumen del día': 'View day summary',
+
+  // Toasts de error de carga (showToast) — antes solo en español
+  'No se pudieron cargar los objetivos — revisa tu conexión.': 'Could not load targets — check your connection.',
+  'No se pudieron cargar las recetas — revisa tu conexión.': 'Could not load recipes — check your connection.',
+  'No se pudieron cargar los alimentos — revisa tu conexión.': 'Could not load foods — check your connection.',
+  'No se pudieron cargar las etiquetas — revisa tu conexión.': 'Could not load labels — check your connection.',
+  'No se pudo cargar el Dashboard — revisa tu conexión.': 'Could not load the Dashboard — check your connection.',
+  'No se pudo cargar el día — revisa tu conexión.': 'Could not load the day — check your connection.',
 };
 
 const LANG_KEY = 'nutri-lang';
