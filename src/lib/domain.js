@@ -211,9 +211,11 @@ export const BODY_METRICS = [
   { key: 'musculo_kg', label: 'Masa muscular', unit: 'kg', cat: 'Composición' },
   // — extendidas (ocultas tras "más medidas") —
   { key: 'agua_pct', label: 'Agua corporal', unit: '%', cat: 'Composición' },
+  { key: 'agua_l', label: 'Agua corporal (L)', unit: 'L', cat: 'Composición' },
   { key: 'hueso_kg', label: 'Masa ósea', unit: 'kg', cat: 'Composición' },
   { key: 'grasa_visceral', label: 'Grasa visceral', unit: 'nivel', cat: 'Composición' },
   { key: 'metabolismo_basal_kcal', label: 'Metabolismo basal', unit: 'kcal', cat: 'Composición' },
+  { key: 'altura_cm', label: 'Altura', unit: 'cm', cat: 'Composición' },
   { key: 'cintura_cm', label: 'Cintura', unit: 'cm', cat: 'Circunferencias' },
   { key: 'cadera_cm', label: 'Cadera', unit: 'cm', cat: 'Circunferencias' },
   { key: 'pecho_cm', label: 'Pecho', unit: 'cm', cat: 'Circunferencias' },
@@ -254,7 +256,7 @@ export function cleanNumericMap(obj) {
 // decimal), no valores altos legítimos. Clave ausente = sin cota. Al vuelo, no persistida.
 export const BODY_METRIC_MAX = {
   peso_kg: 500, grasa_pct: 80, musculo_kg: 120, agua_pct: 90, hueso_kg: 12,
-  grasa_visceral: 60, metabolismo_basal_kcal: 6000,
+  grasa_visceral: 60, metabolismo_basal_kcal: 6000, agua_l: 80, altura_cm: 250,
   cintura_cm: 300, cadera_cm: 300, pecho_cm: 300, cuello_cm: 120,
   biceps_der_cm: 120, biceps_izq_cm: 120, pierna_izq_cm: 150, pierna_der_cm: 150,
   pantorrilla_izq_cm: 100, pantorrilla_der_cm: 100,
