@@ -765,6 +765,22 @@ const EN = {
   'Mostrar ▾': 'Show ▾',
   'Ocultar ▴': 'Hide ▴',
 
+  // Body.jsx — labels de BODY_METRICS (domain.js) que faltaban
+  Altura: 'Height',
+  IMC: 'BMI',
+  'Masa libre de grasa': 'Fat-free mass',
+  'Agua corporal (L)': 'Body water (L)',
+  'Magra tronco': 'Trunk lean',
+  'Magra brazo izq.': 'Left arm lean',
+  'Magra brazo der.': 'Right arm lean',
+  'Magra pierna izq.': 'Left leg lean',
+  'Magra pierna der.': 'Right leg lean',
+  'Grasa tronco': 'Trunk fat',
+  'Grasa brazo izq.': 'Left arm fat',
+  'Grasa brazo der.': 'Right arm fat',
+  'Grasa pierna izq.': 'Left leg fat',
+  'Grasa pierna der.': 'Right leg fat',
+
   // Body.jsx — derivadas de solo lectura
   Derivadas: 'Derived',
   'Ver fórmula': 'View formula',
