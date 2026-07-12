@@ -27,6 +27,7 @@ import { useOutsideClose } from '../lib/useOutsideClose.js';
 import { useToast } from '../lib/useToast.js';
 import Hint from '../components/Hint.jsx';
 import PageSkeleton from '../components/PageSkeleton.jsx';
+import CustomCharts from '../components/CustomChart.jsx';
 import {
   MICROS,
   MICROS_DEFAULT,
@@ -709,8 +710,12 @@ export default function Dashboard() {
   const [dailyTotals, setDailyTotals] = useState([]);
   const [prevDailyTotals, setPrevDailyTotals] = useState([]);
   const [historyTotals, setHistoryTotals] = useState([]); // daily_totals(day,kcal) últimos 90 días, para completitud
+  const [bodyRows, setBodyRows] = useState([]); // body_metrics(day,metrics) del rango, para "Mis gráficas"
   const [targets, setTargets] = useState([]);
   const [favs, setFavs] = useState([]); // prefs.data.fav_micros
+  const [dashboards, setDashboards] = useState([]); // prefs.data.dashboards: gráficas personalizadas
+  const [userId, setUserId] = useState(null);
+  const [stdOpen, setStdOpen] = usePersistentState('nutri.dash.stdOpen', true); // plegar el análisis estándar
   const [waterFoodId, setWaterFoodId] = useState(null);
   const [itemRows, setItemRows] = useState([]); // entry_nutrients del rango, para "Top alimentos"
   const [topMetric, setTopMetric] = useState('kcal');
@@ -765,6 +770,10 @@ export default function Dashboard() {
     preset === 'custom' ? customEnd >= today : phaseMode ? selectedPhases.some((p) => p.ongoing) : false;
 
   useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+  }, []);
+
+  useEffect(() => {
     // SWR: si este rango ya se vio en la sesión, pinta el cache al instante
     // (sin skeleton) y el load() de fondo actualiza al llegar.
     const cached = cacheGet(`dash:${start}:${end}`);
@@ -776,11 +785,23 @@ export default function Dashboard() {
     setDailyTotals(d.dt);
     setPrevDailyTotals(d.prevDt);
     setHistoryTotals(d.hist);
+    setBodyRows(d.body);
     setTargets(d.tg);
     setFavs(d.favs);
+    setDashboards(d.dashboards);
     setWaterFoodId(d.waterFoodId);
     setItemRows(d.items);
     setLoading(false);
+  }
+
+  // Persiste las gráficas personalizadas en prefs.data.dashboards. Merge sobre
+  // data existente para no pisar el resto de prefs (patrón fav_micros/fav_body).
+  async function saveDashboards(next) {
+    setDashboards(next);
+    cacheSet(`dash:${start}:${end}`, { ...(cacheGet(`dash:${start}:${end}`) || {}), dashboards: next });
+    if (!userId) return;
+    const { data } = await supabase.from('prefs').select('data').maybeSingle();
+    await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), dashboards: next } });
   }
 
   async function load() {
@@ -796,19 +817,22 @@ export default function Dashboard() {
       supabase.from('targets').select('*'),
       supabase.from('prefs').select('data').maybeSingle(),
       supabase.from('entry_nutrients').select('day,meal,food_id,recipe_id,item,kcal,protein_g').gte('day', start).lte('day', end),
+      supabase.from('body_metrics').select('day,metrics').gte('day', start).lte('day', end),
     ]);
     if (results.some((r) => r.error)) {
       showToast(t('No se pudo cargar el Dashboard — revisa tu conexión.'));
       setLoading(false);
       return;
     }
-    const [{ data: dt }, { data: prevDt }, { data: hist }, { data: tg }, { data: pf }, { data: items }] = results;
+    const [{ data: dt }, { data: prevDt }, { data: hist }, { data: tg }, { data: pf }, { data: items }, { data: body }] = results;
     applyData(cacheSet(`dash:${start}:${end}`, {
       dt: dt || [],
       prevDt: prevDt || [],
       hist: hist || [],
+      body: body || [],
       tg: tg || [],
       favs: pf?.data?.fav_micros || [],
+      dashboards: pf?.data?.dashboards || [],
       waterFoodId: pf?.data?.water_food_id || null,
       items: items || [],
     }));
@@ -913,6 +937,9 @@ export default function Dashboard() {
   // cliente todo lo que se indexa por día suelto (items, semanas, heatmap).
   const dates = phaseMode ? phaseDays : datesInRange(start, end);
   const dateSet = new Set(dates);
+  // Mapas day→fila para las gráficas personalizadas (nutrición densa, medidas dispersas).
+  const nutByDay = new Map(dailyTotals.map((d) => [d.day, d]));
+  const bodyByDay = new Map(bodyRows.map((d) => [d.day, d]));
   const rangeItems = phaseMode ? itemRows.filter((r) => dateSet.has(r.day)) : itemRows;
   const stats = computeStats(dates, dailyTotals, targets);
   const diasConObjetivo = dates.filter((d) => resolveTarget(targets, d)).length;
@@ -1407,6 +1434,27 @@ export default function Dashboard() {
 
       {csvNotice && <p className="text-sm text-warn">{csvNotice}</p>}
 
+      <CustomCharts
+        dashboards={dashboards}
+        onChange={saveDashboards}
+        dates={dates}
+        nutByDay={nutByDay}
+        bodyByDay={bodyByDay}
+        targets={targets}
+      />
+
+      <button
+        onClick={() => setStdOpen((v) => !v)}
+        className="flex items-center justify-between w-full rounded-xl bg-surface border border-border px-4 py-3 text-sm text-text-2 press"
+      >
+        <span>
+          {t('Análisis estándar')}{' '}
+          <span className="text-text-3">— {t('radar micros · adherencia · sodio · Bayes')}</span>
+        </span>
+        <span className="text-accent">{stdOpen ? t('Ocultar ▴') : t('Mostrar ▾')}</span>
+      </button>
+
+      {stdOpen && (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 grid-flow-dense">
         <section className="md:col-span-2 lg:col-span-12 rounded-2xl bg-surface border border-border p-4">
           <div className="flex justify-between items-baseline mb-2">
@@ -1777,6 +1825,7 @@ export default function Dashboard() {
           />
         </div>
       </div>
+      )}
 
       {toast && (
         <div

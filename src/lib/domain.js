@@ -291,6 +291,73 @@ export function derivedBodyMetrics(m) {
   };
 }
 
+// ── Gráficas personalizadas del Dashboard ────────────────────────────────────
+// Catálogo unificado de variables graficables en el tiempo: nutrición
+// (daily_totals: macros como columna + micros en el jsonb `micros`), medidas
+// corporales (body_metrics.metrics jsonb) y derivadas (IMC/FFM/FFMI, al vuelo).
+// `source` dice de dónde sale la serie; `unit` agrupa en ejes. NO requiere
+// migración: reúsa MICROS/BODY_METRICS/DERIVED_BODY. El sueño (type:'check') no
+// es una serie numérica → se excluye. Todas las claves son únicas entre fuentes.
+export const DASH_VAR_MACROS = [
+  { key: 'kcal', label: 'Kcal', unit: 'kcal', source: 'nut', cat: 'Macros' },
+  { key: 'protein_g', label: 'Proteína', unit: 'g', source: 'nut', cat: 'Macros' },
+  { key: 'carbs_g', label: 'Carbohidratos', unit: 'g', source: 'nut', cat: 'Macros' },
+  { key: 'fat_g', label: 'Grasa', unit: 'g', source: 'nut', cat: 'Macros' },
+];
+export const DASH_VARS = [
+  ...DASH_VAR_MACROS,
+  ...MICROS.filter((m) => m.key !== 'agua_ml').map((m) => ({ ...m, source: 'nutMicro' })),
+  ...BODY_METRICS.filter((m) => m.type !== 'check').map((m) => ({ ...m, source: 'body' })),
+  ...DERIVED_BODY.map((m) => ({ key: m.key, label: m.label, unit: m.unit, source: 'derived', cat: 'Derivadas' })),
+];
+export const DASH_VARS_BY_KEY = Object.fromEntries(DASH_VARS.map((v) => [v.key, v]));
+
+export const DASH_MAX_VARS = 4; // legibilidad: más de 4 series se vuelven ruido
+export const DASH_MAX_UNITS = 2; // 2 ejes (izq/der), como Cronometer (Peso kg + Cintura cm)
+
+// Unidades distintas de un conjunto de variables, en orden de aparición y
+// recortadas a DASH_MAX_UNITS: [unidadIzq, unidadDer?]. El constructor bloquea
+// una 3ª unidad; aquí, por robustez, la extra cae al eje izquierdo.
+export function axisUnits(vars) {
+  const units = [];
+  for (const v of vars) if (v && !units.includes(v.unit)) units.push(v.unit);
+  return units.slice(0, DASH_MAX_UNITS);
+}
+
+// Valor de una variable para un día. Nutrición: null si el día no se registró
+// (kcal ≤ 0) — no se grafica un 0 falso; un 0 real de un día registrado sí vale.
+// Medidas: null si ese día no hubo medición (serie dispersa → connectNulls).
+export function dashVarValue(v, nut, registered, body, derived) {
+  if (!v) return null;
+  if (v.source === 'nut') return registered ? Number(nut?.[v.key] || 0) : null;
+  if (v.source === 'nutMicro') return registered ? Number(nut?.micros?.[v.key] || 0) : null;
+  if (v.source === 'body') { const x = body?.metrics?.[v.key]; return x == null ? null : Number(x); }
+  if (v.source === 'derived') return derived?.[v.key] ?? null;
+  return null;
+}
+
+// Objetivo del día para una variable (solo nutrición lo tiene). Body/derived → null.
+export function dashVarTarget(v, target) {
+  if (!v || !target) return null;
+  if (v.source === 'nut') return target[v.key] ?? null;
+  if (v.source === 'nutMicro') return target.micros?.[v.key] ?? null;
+  return null;
+}
+
+// Serie diaria alineada para una gráfica custom: un objeto por día del rango con
+// {day, label, [key]:valor|null} por variable. nutByDay/bodyByDay son Map(day→fila).
+export function buildDashSeries(dates, vars, nutByDay, bodyByDay) {
+  return dates.map((day) => {
+    const nut = nutByDay.get(day);
+    const registered = Number(nut?.kcal || 0) > 0;
+    const body = bodyByDay.get(day);
+    const derived = body ? derivedBodyMetrics(body.metrics) : null;
+    const row = { day, label: day.slice(5) };
+    for (const v of vars) row[v.key] = dashVarValue(v, nut, registered, body, derived);
+    return row;
+  });
+}
+
 // Chequeo físico grueso por 100 g: proteína+carbs+grasa+alcohol+agua no pueden
 // superar ~105 g (100 g de porción + margen de redondeo/etiqueta); ningún macro
 // por separado puede superar 100 g; ningún micro puede superar su cota en MICRO_MAX.

@@ -6,7 +6,49 @@ import {
   nutrientKind, classifyDiana, classifyKcal, classifyFloor, classifyBand,
   classifyCeiling, classifySodium, sodiumIsLow, sodiumIsHigh,
   SODIUM_FLOOR_MG, SODIUM_CEILING_MG,
+  DASH_VARS_BY_KEY, axisUnits, buildDashSeries, dashVarTarget,
 } from './domain.js';
+
+describe('gráficas personalizadas del Dashboard', () => {
+  const nutByDay = new Map([
+    ['2026-07-01', { day: '2026-07-01', kcal: 2000, protein_g: 150, micros: { sodio_mg: 1800 } }],
+    // 07-02 no registrado (sin fila) → nutrición debe dar null, no 0
+  ]);
+  const bodyByDay = new Map([
+    ['2026-07-01', { day: '2026-07-01', metrics: { peso_kg: 57.5, grasa_pct: 20, altura_cm: 175, cintura_cm: 82 } }],
+    // 07-02 sin medición → body null (serie dispersa)
+  ]);
+  const dates = ['2026-07-01', '2026-07-02'];
+
+  it('agrupa unidades en ≤2 ejes por orden de aparición', () => {
+    const vars = [DASH_VARS_BY_KEY.peso_kg, DASH_VARS_BY_KEY.cintura_cm];
+    expect(axisUnits(vars)).toEqual(['kg', 'cm']);
+    // 3ª unidad distinta se recorta a 2
+    expect(axisUnits([DASH_VARS_BY_KEY.peso_kg, DASH_VARS_BY_KEY.cintura_cm, DASH_VARS_BY_KEY.grasa_pct])).toEqual(['kg', 'cm']);
+  });
+
+  it('alinea nutrición (densa, 0 real) y medidas (dispersas, null) por día', () => {
+    const vars = [DASH_VARS_BY_KEY.protein_g, DASH_VARS_BY_KEY.peso_kg, DASH_VARS_BY_KEY.sodio_mg];
+    const s = buildDashSeries(dates, vars, nutByDay, bodyByDay);
+    expect(s[0]).toMatchObject({ protein_g: 150, peso_kg: 57.5, sodio_mg: 1800 });
+    // día no registrado → nutrición null (no 0 falso); sin medición → body null
+    expect(s[1]).toMatchObject({ protein_g: null, peso_kg: null, sodio_mg: null });
+  });
+
+  it('resuelve derivadas (IMC) desde las medidas del día', () => {
+    const s = buildDashSeries(dates, [DASH_VARS_BY_KEY.imc], nutByDay, bodyByDay);
+    expect(s[0].imc).toBeCloseTo(57.5 / (1.75 * 1.75), 1);
+    expect(s[1].imc).toBeNull();
+  });
+
+  it('objetivo solo aplica a nutrición; body/derived no lo tienen', () => {
+    const target = { kcal: 1800, protein_g: 155, micros: { sodio_mg: 2000 } };
+    expect(dashVarTarget(DASH_VARS_BY_KEY.protein_g, target)).toBe(155);
+    expect(dashVarTarget(DASH_VARS_BY_KEY.sodio_mg, target)).toBe(2000);
+    expect(dashVarTarget(DASH_VARS_BY_KEY.peso_kg, target)).toBeNull();
+    expect(dashVarTarget(DASH_VARS_BY_KEY.imc, target)).toBeNull();
+  });
+});
 
 describe('cleanNumericMap', () => {
   it('conserva números finitos ≥ 0 y descarta vacíos, negativos y basura', () => {
