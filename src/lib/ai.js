@@ -50,6 +50,17 @@ async function toJpegCanvas(file, maxSide) {
   return canvas;
 }
 
+// Decodifica una URL (p. ej. objectURL) a HTMLImageElement listo, con naturalWidth/Height.
+// Lo usa el recortador de avatar (ProfileSheet): necesita el elemento para previsualizar y para drawImage.
+export function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
 // base64 inline para los prompts de IA (Gemini/Mistral).
 export async function toJpegBase64(file, maxSide = 1024) {
   const canvas = await toJpegCanvas(file, maxSide);

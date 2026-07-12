@@ -662,6 +662,8 @@ const EN = {
   'Foto (etiqueta o platillo)': 'Photo (label or dish)',
   'Otra foto': 'Another photo',
   'Quitar foto': 'Remove photo',
+  'Arrastra para reposicionar': 'Drag to reposition',
+  Acercar: 'Zoom',
   'Obteniendo…': 'Fetching…',
   'Obtener datos': 'Get data',
 
