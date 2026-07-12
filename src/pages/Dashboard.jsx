@@ -39,6 +39,7 @@ import {
   classifyDiana,
   classifyFloor,
   classifyBand,
+  classifyCeiling,
   classifySodium,
   sodiumIsLow,
   sodiumIsHigh,
@@ -2001,10 +2002,21 @@ function MicrosTable({
     const consumidoDisplay = metricDisplay(calcMode, ms, bayesInfo, ` ${m.unit}`, 1);
     const sodiumDanger = m.key === 'sodio_mg' && (sodiumIsLow(avgSodio, diasRegistrados > 0) || sodiumIsHigh(avgSodio, diasRegistrados > 0));
     const degraded = consumidoDisplay.degraded;
+    // Semáforo de fila: techo (no rebasar) y piso (alcanzar), solo en modos con
+    // par consumido/objetivo comparable. Sodio va por su ruta dual (sodiumDanger);
+    // el resto de micros ('meta') queda neutro — tabla de datos, no todo semáforo.
+    const kind = nutrientKind(m.key);
+    const cmpPair = { suma: [ms.sum, objStats.sum], promedio: [ms.avg, objStats.avg], mediana: [ms.median, objStats.median] }[calcMode];
+    let rowStatus = null;
+    if (!degraded && !sodiumDanger && objStats.n && cmpPair && (kind === 'techo' || kind === 'piso')) {
+      const [val, tgt] = cmpPair;
+      if (val != null && tgt > 0) rowStatus = kind === 'techo' ? classifyCeiling(val, tgt) : classifyFloor(val, tgt);
+    }
+    const statusText = rowStatus ? { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' }[rowStatus] : '';
     return (
       <tr key={m.key} className="border-t border-border">
         <td className="py-2">{t(m.label)}</td>
-        <td className={`py-2 text-right whitespace-normal font-mono tabular-nums ${sodiumDanger ? 'text-danger' : ''} ${degraded ? 'text-text-3' : ''}`}>
+        <td className={`py-2 text-right whitespace-normal font-mono tabular-nums ${sodiumDanger ? 'text-danger' : statusText} ${degraded ? 'text-text-3' : ''}`}>
           <MetricCellText display={consumidoDisplay} />
           {zero.warn && (
             <Hint text={t('En %a de %b días no registraste este nutriente. El 0 puede significar \'no lo anotaste\', no \'no lo comiste\'.').replace('%a', zero.n).replace('%b', zero.m)}>
