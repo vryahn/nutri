@@ -5,8 +5,8 @@ App personal de registro nutricional (tipo Cronometer, simple) para 2 usuarios. 
 ## Reglas duras (siguen vigentes, no las relajes)
 
 - **Prioridad núcleo del proyecto: precisión y fiabilidad de los datos almacenados.** Ante cualquier trade-off (UX, velocidad, alcance), gana la exactitud de los valores nutricionales. Datos dudosos se marcan (⚠), nunca se guardan en silencio.
-- **Stack cerrado:** react, react-dom, react-router-dom, @supabase/supabase-js, recharts, tailwindcss, lucide-react, vite-plugin-pwa. Ninguna dependencia nueva sin justificarla en una línea en el commit.
-- **JavaScript (JSX), no TypeScript.** Estructura plana, objetivo ≤20 archivos en `src/`. Un archivo por página; lógica compartida SOLO en `src/lib/`; componentes extraídos solo si se usan ≥2 veces.
+- **Stack cerrado:** react, react-dom, react-router-dom, @supabase/supabase-js, recharts, tailwindcss, lucide-react, vite-plugin-pwa, @dnd-kit/core + @dnd-kit/sortable (reordenar por arrastre). Ninguna dependencia nueva sin justificarla en una línea en el commit.
+- **JavaScript (JSX), no TypeScript.** Estructura plana (~42 archivos en `src/` a 2026-07; el objetivo original de ≤20 quedó superado por el crecimiento aprobado — el principio vigente es no fragmentar). Un archivo por página; lógica compartida SOLO en `src/lib/`; componentes extraídos solo si se usan ≥2 veces.
 - **Estilo:** Tailwind en el JSX; colores/fuentes SOLO vía los tokens CSS de `src/index.css` + `tailwind.config.js`. Dos temas: `:root` = oscuro (default) y `:root[data-theme='light']` = claro; todo token nuevo se declara en AMBOS y ningún par texto/fondo baja de 4.5:1. Mobile-first (375 px sin scroll horizontal, touch ≥44 px, `prefers-reduced-motion` respetado).
 - **Cierre al tocar fuera:** todo elemento que se abra FLOTANDO sobre el contenido (menú desplegable, popover, tooltip, sheet, modal) y que no cubra toda la pantalla se cierra al tocar el fondo. Modales/sheets: `onClick={onClose}` en el scrim + `stopPropagation` en la card. Menús anclados a un botón: hook `useOutsideClose` (`src/lib/useOutsideClose.js`), NUNCA un backdrop `fixed inset-0` — dentro de un ancestro con `backdrop-filter` (todo `.glass`) el `fixed` se ancla a ese ancestro y el backdrop solo cubre el header, no la pantalla. No aplica a acordeones en flujo (secciones de Hoy, micros avanzados del Dashboard, años en Metas): ahí un tap fuera no cierra nada.
 - **Regla de seguridad médica:** el badge rojo de sodio < 1,500 mg (constante `SODIUM_FLOOR_MG` en `src/lib/domain.js`) no se quita ni se hace configurable.
@@ -29,18 +29,28 @@ src/lib/supabase.js      # createClient, schema 'nutri'
 src/lib/domain.js        # MICROS, resolución de targets, adherencia, fórmula de recetas, reorderLabels
 src/lib/sources.js       # clientes Open Food Facts y USDA FDC, por 100 g, mapeados a claves MICROS
 src/lib/theme.js         # modo claro/oscuro/sistema en localStorage + data-theme en <html>
+src/lib/ai.js            # cascada Gemini→Mistral ("Datos con IA"), schema estructurado por 100 g
+src/lib/i18n.js          # es/en: string español ES la clave, fallback a español; idioma+unidades en RegionSheet
+src/lib/importer.js      # carga en bloque (foods/entries/ingredientes) — funciones puras, hereda validadores ⚠
+src/lib/cache.js         # cache de sesión en memoria (stale-while-revalidate casero), se vacía al cerrar sesión
+src/lib/frequent.js      # frecuentes de Hoy: ventana 30 d, top 8, gramos = moda (elegido por backtest)
+src/lib/sectionMenu.js   # store módulo-nivel para el menú de sección de la página activa
+src/lib/useOutsideClose.js · useToast.js   # hooks compartidos
+src/lib/*.test.js        # vitest: domain, sources, ai, importer, derivedBody (99 tests)
 src/pages/               # Login, Today, Foods, Recipes, Targets, Dashboard, Body (una por tab)
-src/components/          # LabelsModal, ThemeToggle
+src/components/          # 17 extraídos: Sheet/ConfirmSheet/ImportSheet/ProfileSheet/RegionSheet/SettingsSheet,
+                          # LabelsModal, UserMenu (tema+idioma+perfil), AmountField, AiDataCard, CustomChart,
+                          # Hint, SwipeToDelete, UndoToast, SortTh, PageSkeleton, ErrorBoundary
 src/App.jsx              # router, guard de sesión, tab bar
 brand/                   # manual de marca Nutrimetry (nutrimetry-brand.html)
-.github/workflows/       # keepalive.yml (semanal), backup.yml (mensual)
+.github/workflows/       # ci.yml (lint+test+build en cada push), keepalive.yml (semanal), backup.yml (mensual)
 ```
 
 **Identidad visual:** marca PROPIA de Nutrimetry (no la personal de Bryan). Paleta **"Petróleo"**: base tinta verdeazulada `#071010` + acento turquesa `#069C92` (`--accent-deep #028078` para botones AA con `--on-accent`); display **Space Grotesk**, cuerpo Inter, datos JetBrains Mono; logo "medidor n." (n geométrica como path en `public/icon.svg`, punto turquesa = punto de lectura). Todo el color de la app sale de los tokens de `src/index.css` — recolorear = editar tokens, no JSX. ⚠ `brand/nutrimetry-brand.html` todavía documenta la paleta lima anterior (`#A3E635`): está desactualizado.
 
 **Regla de la paleta (no la relajes):** el acento nunca ocupa el hue de un dato. Si lo hace, "botón primario", "proteína" y "ok" pasan a significar el mismo color — que es lo que hundía la paleta lima. Con acento turquesa, los carbohidratos viven en índigo (`--d-carb #6389E2`) y no en azul. Toda luminosidad se resolvió en OKLCH contra `--surface-2` (el fondo más adverso de cada tema): ningún par texto/fondo baja de 4.5:1. Al tocar tokens, mide el contraste antes de commitear.
 
-**Temas:** `ThemeToggle` (header móvil + pie del sidebar) cicla Auto → Claro → Oscuro; el modo vive en `localStorage['nutri-theme']` (NO en `prefs`: debe aplicarse antes del primer paint). El script inline de `index.html` resuelve `system` a un `data-theme` explícito en `<html>` antes de pintar, así el CSS solo necesita el bloque `[data-theme='light']` y no hay flash. En claro el turquesa brillante pierde contraste sobre blanco: `--accent` baja a `#047972` y los colores de datos conservan el hue con menos luminancia. `--on-accent` es el texto sobre `--accent-deep` (near-white en ambos temas) — los botones primarios NO usan `text-text`, que se invierte. `theme-color` de `<meta>` sí sigue al tema; el del manifest PWA no puede.
+**Temas:** el selector vive en `UserMenu` (`MODES`/`getMode`/`setMode` de `theme.js`) y cicla Auto → Claro → Oscuro; el modo vive en `localStorage['nutri-theme']` (NO en `prefs`: debe aplicarse antes del primer paint). El script inline de `index.html` resuelve `system` a un `data-theme` explícito en `<html>` antes de pintar, así el CSS solo necesita el bloque `[data-theme='light']` y no hay flash. En claro el turquesa brillante pierde contraste sobre blanco: `--accent` baja a `#047972` y los colores de datos conservan el hue con menos luminancia. `--on-accent` es el texto sobre `--accent-deep` (near-white en ambos temas) — los botones primarios NO usan `text-text`, que se invierte. `theme-color` de `<meta>` sí sigue al tema; el del manifest PWA no puede.
 
 **Glass (`.glass` en `src/index.css`):** material translúcido SOLO para el cromo que el contenido cruza por debajo — header y tab bar móviles, y el menú "Más opciones" (`MENU_PLACEMENT` en `App.jsx`) en sus dos posiciones. Nunca sobre datos: el fondo que se cuela baja el contraste del número. El sidebar NO lo usa (`main` empieza justo en su borde derecho: nada le pasa por detrás, el blur no compraría nada); por eso su menú abre como flyout a la derecha (`left-full`) y no hacia arriba, que lo dejaba dentro del sidebar sin backdrop. En desktop ese flyout y los backdrops de los modales son las únicas superficies glass — el layout no tiene más cromo flotando sobre el contenido. Sobre `.glass` el acento normal NO es legible: el Dashboard pinta barras sólidas (`<Cell fill="var(--d-prot)">`) que cruzan bajo el tab bar y hunden `--accent` a 3.3:1. Por eso todo acento sobre glass usa **`--accent-glass`** (mismo hue, ±L en OKLCH: `#3CB8AE` oscuro / `#076F69` claro; 4.64:1 contra cualquier color de dato detrás). Subir la opacidad en vez de mover el acento exigiría alfa 0.91 y mataría el efecto. Escapes obligatorios, ya puestos: `@supports not (backdrop-filter)` y `prefers-reduced-transparency`.
 
@@ -63,6 +73,7 @@ Invariantes de dominio:
 ## Comandos
 
 - `npm run dev` — dev server (hay `.claude/launch.json` para el preview integrado).
+- `npm run lint` y `npm test` (vitest) — ambos limpios antes de cualquier commit; CI (`ci.yml`) los corre en cada push junto al build.
 - `npm run build` — debe salir limpio antes de cualquier commit (el warning de chunk >500 kB por Recharts es conocido y aceptado).
 - `.env` local (gitignoreado): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, opcional `VITE_GEMINI_KEY` (habilita "Datos con IA" en Alimentos; sin key el módulo se oculta) y opcional `VITE_FDC_KEY` (habilita los chips de coincidencias USDA; sin key, mismo patrón, los chips simplemente no aparecen). Si la carpeta es un clone nuevo, copiar de `.env.example` y rellenar.
 
@@ -78,6 +89,7 @@ Recordar: vistas con `security_invoker = true`; nuevas tablas necesitan RLS + po
 
 - **Push a `main` = deploy automático a producción** en Vercel → https://nutri.vryahn.com (proyecto `nutri`, team `vryahns-projects`). No hay entorno de staging; verificar localmente antes de pushear.
 - GitHub Actions (secrets ya configurados: `SUPABASE_URL`, `ANON_KEY`, `SUPABASE_DB_URL`):
+  - `ci.yml` — lint + test + build en cada push a main.
   - `keepalive.yml` — lunes 06:00 UTC, evita la pausa del free tier.
   - `backup.yml` — día 1 de cada mes, `pg_dump` como artefacto (retención 90 días). ⚠ Solo respalda Postgres: el bucket de Storage `body-photos` (fotos de progreso, migración 013) NO entra en el `pg_dump`; si esas fotos importan, respaldarlas aparte.
 
@@ -95,6 +107,7 @@ Recordar: vistas con `security_invoker = true`; nuevas tablas necesitan RLS + po
 
 ## Gotchas de plataforma (aprendidos construyéndolo — no re-descubrir)
 
+- El advisor de Supabase marca WARN "Function Search Path Mutable" en `nutri.jsonb_sum`: **falso positivo inarreglable** — es un AGREGADO y Postgres no admite `SET search_path` en agregados (`ALTER FUNCTION`/`ALTER ROUTINE` fallan con "is an aggregate function"). Las funciones que sí ejecutan código (`jsonb_add`, `jsonb_scale`, `log_entry`) ya tienen `search_path=""` desde la migración 011. No intentar "arreglarlo" de nuevo.
 - La key del proyecto es la **publishable key** nueva de Supabase (`sb_publishable_...`), equivalente a la anon key. Con ella, `GET /rest/v1/` raíz devuelve 401 "secret key required" — por eso el keepalive NO exige status 2xx (cualquier respuesta cuenta como actividad).
 - La conexión directa a Postgres (`db.<ref>.supabase.co`) resuelve **solo a IPv6**; GitHub Actions no tiene salida IPv6. Para `pg_dump`/conexiones desde CI usar el **session pooler** (`aws-1-us-east-2.pooler.supabase.com:5432`, user `postgres.<ref>`).
 - El servidor corre **Postgres 17**; Ubuntu trae pg_dump 16 → backup.yml instala `postgresql-client-17` vía repo PGDG.
@@ -119,4 +132,4 @@ Recordar: vistas con `security_invoker = true`; nuevas tablas necesitan RLS + po
 
 Peso corporal, sueño, entrenamiento (viven en Notion/Hevy). TypeScript, tests E2E, i18n, registro público de usuarios, recuperación de contraseña self-service, escáner de cámara, edge functions.
 
-(El spec §11 listaba el modo claro fuera de alcance; se construyó después — `ThemeToggle` + `src/lib/theme.js`. También las **medidas corporales** (peso/composición): §11 las excluía por vivir en Notion/Hevy, pero Bryan autorizó construirlas el 2026-07-11 — tab **Medidas** (`src/pages/Body.jsx`), tabla `nutri.body_metrics` (migración 012), claves en `BODY_METRICS` de `domain.js`. Sueño y entrenamiento SIGUEN fuera de alcance. El resto de §11 sigue vigente.)
+(Excepciones a §11 ya construidas con autorización de Bryan: **modo claro** (`src/lib/theme.js`, selector en `UserMenu`); **medidas corporales** (peso/composición) autorizadas el 2026-07-11 — tab **Medidas** (`src/pages/Body.jsx`), tabla `nutri.body_metrics` (migración 012), claves en `BODY_METRICS` de `domain.js`; e **i18n es/en** (`src/lib/i18n.js`, selector de idioma+unidades en `RegionSheet` — el string en español es la clave, así una traducción faltante cae al español). Sueño y entrenamiento SIGUEN fuera de alcance. El resto de §11 sigue vigente.)
