@@ -155,6 +155,11 @@ const BODY_ALIASES = {
   left_leg: 'pierna_izq_cm', right_leg: 'pierna_der_cm',
   left_thigh: 'pierna_izq_cm', right_thigh: 'pierna_der_cm',
   left_calf: 'pantorrilla_izq_cm', right_calf: 'pantorrilla_der_cm',
+  // Segmental de bioimpedancia (columnas típicas de exports BIA): magra = FFM.
+  ffm_trunk: 'magra_tronco_kg', ffm_arm_l: 'magra_brazo_izq_kg', ffm_arm_r: 'magra_brazo_der_kg',
+  ffm_leg_l: 'magra_pierna_izq_kg', ffm_leg_r: 'magra_pierna_der_kg',
+  fat_trunk: 'grasa_tronco_kg', fat_arm_l: 'grasa_brazo_izq_kg', fat_arm_r: 'grasa_brazo_der_kg',
+  fat_leg_l: 'grasa_pierna_izq_kg', fat_leg_r: 'grasa_pierna_der_kg',
 };
 
 // Encabezado en inglés preferido por clave canónica, para la plantilla y el ejemplo
@@ -168,6 +173,10 @@ export const BODY_HEADERS_EN = {
   biceps_der_cm: 'right_biceps', biceps_izq_cm: 'left_biceps',
   pierna_izq_cm: 'left_leg', pierna_der_cm: 'right_leg',
   pantorrilla_izq_cm: 'left_calf', pantorrilla_der_cm: 'right_calf',
+  magra_tronco_kg: 'ffm_trunk', magra_brazo_izq_kg: 'ffm_arm_l', magra_brazo_der_kg: 'ffm_arm_r',
+  magra_pierna_izq_kg: 'ffm_leg_l', magra_pierna_der_kg: 'ffm_leg_r',
+  grasa_tronco_kg: 'fat_trunk', grasa_brazo_izq_kg: 'fat_arm_l', grasa_brazo_der_kg: 'fat_arm_r',
+  grasa_pierna_izq_kg: 'fat_leg_l', grasa_pierna_der_kg: 'fat_leg_r',
 };
 export const BODY_TEMPLATE_HEADERS_EN = BODY_TEMPLATE_HEADERS.map((h) => BODY_HEADERS_EN[h] || h);
 

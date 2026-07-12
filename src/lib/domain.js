@@ -224,6 +224,17 @@ export const BODY_METRICS = [
   { key: 'pierna_der_cm', label: 'Pierna derecha', unit: 'cm', cat: 'Circunferencias' },
   { key: 'pantorrilla_izq_cm', label: 'Pantorrilla izquierda', unit: 'cm', cat: 'Circunferencias' },
   { key: 'pantorrilla_der_cm', label: 'Pantorrilla derecha', unit: 'cm', cat: 'Circunferencias' },
+  // — segmental (bioimpedancia): masa magra y grasa por segmento, no derivable —
+  { key: 'magra_tronco_kg', label: 'Magra tronco', unit: 'kg', cat: 'Segmental' },
+  { key: 'magra_brazo_izq_kg', label: 'Magra brazo izq.', unit: 'kg', cat: 'Segmental' },
+  { key: 'magra_brazo_der_kg', label: 'Magra brazo der.', unit: 'kg', cat: 'Segmental' },
+  { key: 'magra_pierna_izq_kg', label: 'Magra pierna izq.', unit: 'kg', cat: 'Segmental' },
+  { key: 'magra_pierna_der_kg', label: 'Magra pierna der.', unit: 'kg', cat: 'Segmental' },
+  { key: 'grasa_tronco_kg', label: 'Grasa tronco', unit: 'kg', cat: 'Segmental' },
+  { key: 'grasa_brazo_izq_kg', label: 'Grasa brazo izq.', unit: 'kg', cat: 'Segmental' },
+  { key: 'grasa_brazo_der_kg', label: 'Grasa brazo der.', unit: 'kg', cat: 'Segmental' },
+  { key: 'grasa_pierna_izq_kg', label: 'Grasa pierna izq.', unit: 'kg', cat: 'Segmental' },
+  { key: 'grasa_pierna_der_kg', label: 'Grasa pierna der.', unit: 'kg', cat: 'Segmental' },
 ];
 export const BODY_METRICS_DEFAULT = 3; // peso, grasa, músculo siempre visibles
 
@@ -247,6 +258,10 @@ export const BODY_METRIC_MAX = {
   cintura_cm: 300, cadera_cm: 300, pecho_cm: 300, cuello_cm: 120,
   biceps_der_cm: 120, biceps_izq_cm: 120, pierna_izq_cm: 150, pierna_der_cm: 150,
   pantorrilla_izq_cm: 100, pantorrilla_der_cm: 100,
+  magra_tronco_kg: 60, magra_brazo_izq_kg: 30, magra_brazo_der_kg: 30,
+  magra_pierna_izq_kg: 30, magra_pierna_der_kg: 30,
+  grasa_tronco_kg: 40, grasa_brazo_izq_kg: 20, grasa_brazo_der_kg: 20,
+  grasa_pierna_izq_kg: 20, grasa_pierna_der_kg: 20,
 };
 
 // Chequeo físico grueso por 100 g: proteína+carbs+grasa+alcohol+agua no pueden

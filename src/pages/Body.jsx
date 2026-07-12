@@ -37,7 +37,7 @@ function usePersistentState(key, initial) {
   return [value, setValue];
 }
 
-const GROUPS = ['Composición', 'Circunferencias'];
+const GROUPS = ['Composición', 'Circunferencias', 'Segmental'];
 
 export default function Body() {
   useLang();
