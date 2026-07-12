@@ -282,13 +282,17 @@ export default function Body() {
   const defaults = BODY_METRICS.slice(0, BODY_METRICS_DEFAULT);
   const extra = BODY_METRICS.slice(BODY_METRICS_DEFAULT);
   const favMetrics = extra.filter((m) => favs.includes(m.key));
-  // Altura es casi constante y solo se captura en días de bioimpedancia; para que
-  // IMC/FFMI salgan en cualquier día pesado, se arrastra la última altura conocida
-  // del historial cuando el día no la trae (no se persiste, solo alimenta el cálculo).
-  const lastAltura = [...history].reverse().find((r) => r.metrics?.altura_cm != null)?.metrics.altura_cm ?? null;
-  const alturaHoy = (values.altura_cm ?? '') !== '' ? values.altura_cm : lastAltura;
-  const derived = derivedBodyMetrics({ ...values, altura_cm: alturaHoy });
-  const alturaHeredada = (values.altura_cm ?? '') === '' && lastAltura != null;
+  // Altura y grasa% solo se capturan en días de bioimpedancia; para que las
+  // derivadas salgan en cualquier día pesado, se arrastra la última lectura
+  // conocida del historial cuando el día no la trae (no se persiste, solo alimenta
+  // el cálculo con el peso del día). El caption declara qué insumos se heredaron.
+  const lastOf = (key) => [...history].reverse().find((r) => r.metrics?.[key] != null)?.metrics[key] ?? null;
+  const inherit = (key) => ((values[key] ?? '') !== '' ? values[key] : lastOf(key));
+  const derived = derivedBodyMetrics({ ...values, altura_cm: inherit('altura_cm'), grasa_pct: inherit('grasa_pct') });
+  const heredadas = [
+    (values.grasa_pct ?? '') === '' && lastOf('grasa_pct') != null ? `${t('grasa')} ${lastOf('grasa_pct')} %` : null,
+    (values.altura_cm ?? '') === '' && lastOf('altura_cm') != null ? `${t('altura')} ${lastOf('altura_cm')} cm` : null,
+  ].filter(Boolean);
   const showDerived = (values.peso_kg ?? '') !== '';
 
   return (
@@ -349,9 +353,9 @@ export default function Body() {
                 </div>
               ))}
             </div>
-            {alturaHeredada && (
+            {heredadas.length > 0 && (
               <p className="text-[11px] text-text-3" style={{ margin: 0 }}>
-                {t('IMC y FFMI usan tu última altura registrada (%n cm).').replace('%n', lastAltura)}
+                {t('Se calculan con tu peso del día y tu última %s registrada.').replace('%s', heredadas.join(` ${t('y')} `))}
               </p>
             )}
           </div>
