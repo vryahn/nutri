@@ -894,15 +894,10 @@ export function useProfile() {
   return profile;
 }
 
-// Nombre para mostrar e iniciales del avatar, derivados del perfil.
+// Nombre para mostrar, derivado del perfil.
 export function displayName() {
   const parts = [profile.first_name, profile.last_name].filter(Boolean);
   return parts.join(' ').trim() || t('Tu perfil');
-}
-export function initialsOf() {
-  const a = (profile.first_name || '').trim()[0] || '';
-  const b = (profile.last_name || '').trim()[0] || '';
-  return (a + b).toUpperCase() || '·';
 }
 
 // --- Umbral de sueño (menú de usuario → Configuración) -----------------

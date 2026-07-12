@@ -4,22 +4,19 @@ import { Monitor, Sun, Moon, User, Globe, SlidersHorizontal, LogOut } from 'luci
 import { supabase } from '../lib/supabase.js';
 import { useOutsideClose } from '../lib/useOutsideClose.js';
 import { MODES, getMode, setMode } from '../lib/theme.js';
-import { t, useLang, useProfile, displayName, initialsOf } from '../lib/i18n.js';
+import { t, useLang, useProfile, displayName } from '../lib/i18n.js';
 import ProfileSheet from './ProfileSheet.jsx';
 import RegionSheet from './RegionSheet.jsx';
 import SettingsSheet from './SettingsSheet.jsx';
 
 const THEME_META = { system: { icon: Monitor, label: 'Auto' }, light: { icon: Sun, label: 'Claro' }, dark: { icon: Moon, label: 'Oscuro' } };
 
-// Avatar del perfil: foto firmada del bucket privado o iniciales. `size` en px.
+// Avatar del perfil: foto firmada del bucket privado o, si no hay, el logo de la app.
+// El icono ya trae su propio fondo (#071010) a sangre, así que llena el círculo. `size` en px.
 export function Avatar({ url, size = 34, className = '' }) {
-  const initials = initialsOf();
   return (
-    <span
-      className={`flex-none rounded-full flex items-center justify-center overflow-hidden font-display font-semibold text-on-accent ${className}`}
-      style={{ width: size, height: size, fontSize: size * 0.4, background: 'linear-gradient(135deg,var(--accent-deep),var(--accent))' }}
-    >
-      {url ? <img src={url} alt="" className="w-full h-full object-cover" /> : initials}
+    <span className={`flex-none rounded-full overflow-hidden block ${className}`} style={{ width: size, height: size }}>
+      <img src={url || '/icon.svg'} alt="" className="w-full h-full object-cover" />
     </span>
   );
 }
