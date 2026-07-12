@@ -1,19 +1,16 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
-import { CalendarDays, Apple, ChefHat, Target, BarChart3, Ruler, LogOut, Tags, MoreHorizontal } from 'lucide-react';
+import { CalendarDays, Apple, ChefHat, Target, BarChart3, Ruler, MoreHorizontal } from 'lucide-react';
 import { supabase } from './lib/supabase.js';
 import { cacheClear } from './lib/cache.js';
 import { subscribeSectionMenu } from './lib/sectionMenu.js';
 import { useOutsideClose } from './lib/useOutsideClose.js';
 import { watchSystem } from './lib/theme.js';
-import { t, useLang, registerLangUser, useUnits, setUnits, registerUnitsUser } from './lib/i18n.js';
-import ThemeToggle from './components/ThemeToggle.jsx';
+import { t, useLang, registerLangUser, registerUnitsUser, registerProfile, registerAdherenceBands } from './lib/i18n.js';
 import PageSkeleton from './components/PageSkeleton.jsx';
-import LangToggle from './components/LangToggle.jsx';
-import UnitsToggle from './components/UnitsToggle.jsx';
+import UserMenu from './components/UserMenu.jsx';
 import Login from './pages/Login.jsx';
 import Today from './pages/Today.jsx';
-import LabelsModal from './components/LabelsModal.jsx';
 
 // Today queda eager (ruta principal); el resto solo se descarga al abrir su tab.
 const Foods = lazy(() => import('./pages/Foods.jsx'));
@@ -52,6 +49,8 @@ function useSession() {
     supabase.from('prefs').select('data').maybeSingle().then(({ data }) => {
       registerLangUser(session.user.id, data?.data?.lang);
       registerUnitsUser(data?.data?.units);
+      registerProfile(data?.data?.profile);
+      registerAdherenceBands(data?.data?.adherence_bands);
     });
   }, [session]);
 
@@ -111,7 +110,7 @@ function MoreOptions({ actions, placement = 'bottom', className, label }) {
 }
 
 // Sidebar fija en md+ (reemplaza header + tab bar inferior de móvil).
-function Sidebar({ onLabels, menuActions }) {
+function Sidebar({ menuActions }) {
   useLang();
   return (
     <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:left-0 md:w-52 md:z-40 md:border-r md:border-border md:bg-surface md:py-4 md:px-3">
@@ -144,32 +143,11 @@ function Sidebar({ onLabels, menuActions }) {
           label={t('Más opciones')}
           className="flex items-center gap-3 min-h-[44px] w-full px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
         />
-        <button
-          onClick={onLabels}
-          className="flex items-center gap-3 min-h-[44px] px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
-        >
-          <Tags size={20} />
-          <span className="text-sm">{t('Etiquetas')}</span>
-        </button>
-        <ThemeToggle
+        <UserMenu
+          placement="right"
           showLabel
           className="flex items-center gap-3 min-h-[44px] w-full px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
         />
-        <LangToggle
-          showLabel
-          className="flex items-center gap-3 min-h-[44px] w-full px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
-        />
-        <UnitsToggle
-          showLabel
-          className="flex items-center gap-3 min-h-[44px] w-full px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
-        />
-        <button
-          onClick={() => supabase.auth.signOut()}
-          className="flex items-center gap-3 min-h-[44px] px-3 rounded-lg text-text-2 transition-colors duration-150 hover:bg-surface-2"
-        >
-          <LogOut size={20} />
-          <span className="text-sm">{t('Cerrar sesión')}</span>
-        </button>
       </div>
     </aside>
   );
@@ -177,7 +155,6 @@ function Sidebar({ onLabels, menuActions }) {
 
 function Layout({ children }) {
   useLang();
-  const [labelsOpen, setLabelsOpen] = useState(false);
   const [menuActions, setMenuActions] = useState([]);
   const location = useLocation();
   const isDashboard = location.pathname === '/dashboard';
@@ -186,7 +163,7 @@ function Layout({ children }) {
 
   return (
     <div className="min-h-dvh flex flex-col md:flex-row">
-      <Sidebar onLabels={() => setLabelsOpen(true)} menuActions={menuActions} />
+      <Sidebar menuActions={menuActions} />
 
       <div className="flex-1 flex flex-col min-w-0 md:ml-52">
         <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-border glass">
@@ -199,23 +176,7 @@ function Layout({ children }) {
               placement="bottom"
               className="p-2 rounded-lg press text-text-2"
             />
-            <ThemeToggle className="p-2 rounded-lg press text-text-2" />
-            <LangToggle className="p-2 rounded-lg press text-text-2" />
-            <UnitsToggle className="p-2 rounded-lg press text-text-2" />
-            <button
-              onClick={() => setLabelsOpen(true)}
-              className="p-2 rounded-lg press text-text-2"
-              aria-label={t('Etiquetas')}
-            >
-              <Tags size={20} />
-            </button>
-            <button
-              onClick={() => supabase.auth.signOut()}
-              className="p-2 rounded-lg press text-text-2"
-              aria-label={t('Cerrar sesión')}
-            >
-              <LogOut size={20} />
-            </button>
+            <UserMenu placement="bottom" className="p-1 rounded-full press" />
           </div>
         </header>
 
@@ -252,8 +213,6 @@ function Layout({ children }) {
           ))}
         </nav>
       </div>
-
-      {labelsOpen && <LabelsModal onClose={() => setLabelsOpen(false)} />}
     </div>
   );
 }

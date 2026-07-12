@@ -65,7 +65,7 @@ import {
   PHASE_GOALS,
   goalLabel,
 } from '../lib/domain.js';
-import { t, useLang, getLang, useUnits, fmtMl } from '../lib/i18n.js';
+import { t, useLang, getLang, useUnits, fmtMl, useAdherenceBands } from '../lib/i18n.js';
 
 // Calculo homologado del selector (Parte A). 'suma'/'promedio' siempre
 // disponibles con ≥1 día registrado; los avanzados requieren más días.
@@ -701,6 +701,7 @@ const presetLabel = (p) => (getLang() === 'en' ? PRESET_LABELS_EN[p.key] : p.lab
 export default function Dashboard() {
   useLang();
   useUnits();
+  useAdherenceBands(); // re-pinta al cambiar las bandas en Configuración
   const [preset, setPreset] = usePersistentState('nutri.dash.preset', 'semana'); // 'hoy'|…|'año'|'custom'|'fase'
   const [phaseSel, setPhaseSel] = usePersistentState('nutri.dash.phaseSel', { kind: 'actual' }); // {kind:'actual'|'previa'} | {kind:'goal', goal}
   const [customStart, setCustomStart] = usePersistentState('nutri.dash.customStart', addDaysISO(todayISO(), -6));

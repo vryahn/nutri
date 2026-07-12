@@ -432,10 +432,42 @@ export const ADHERENCE_BANDS = {
   techo: { warn: 0.10 },
 };
 
+// Bandas activas: los DEFAULT de arriba, o los del usuario si tiene override
+// (menú Configuración → prefs.data.adherence_bands). Estado de módulo puro (sin
+// React ni supabase, para no contaminar domain.js): la capa de UI persiste y
+// notifica. Los clasificadores leen SIEMPRE `activeBands`, así editar en
+// Configuración recolorea Hoy y Dashboard sin tocar cada llamada.
+let activeBands = ADHERENCE_BANDS;
+const bandSubs = new Set();
+
+function mergeDeep(base, ov) {
+  if (ov == null || typeof ov !== 'object') return base;
+  const out = { ...base };
+  for (const k of Object.keys(ov)) {
+    out[k] = base[k] && typeof base[k] === 'object' && ov[k] && typeof ov[k] === 'object'
+      ? mergeDeep(base[k], ov[k])
+      : ov[k];
+  }
+  return out;
+}
+
+// Aplica overrides parciales sobre los DEFAULT (null/vacío = vuelve a default).
+export function setActiveBands(overrides) {
+  activeBands = overrides && Object.keys(overrides).length ? mergeDeep(ADHERENCE_BANDS, overrides) : ADHERENCE_BANDS;
+  bandSubs.forEach((fn) => fn());
+}
+export function getActiveBands() {
+  return activeBands;
+}
+export function subscribeBands(fn) {
+  bandSubs.add(fn);
+  return () => bandSubs.delete(fn);
+}
+
 // diana: objetivo con banda de gracia asimétrica según el régimen de la fase.
 export function classifyDiana(consumed, target, goal) {
   if (!target) return null;
-  const b = ADHERENCE_BANDS.diana[goal] || ADHERENCE_BANDS.diana.default;
+  const b = activeBands.diana[goal] || activeBands.diana.default;
   const diff = (consumed - target) / target; // firmado: + = exceso, − = defecto
   if (diff >= -b.okUnder && diff <= b.okOver) return 'ok';
   if (diff >= -b.warnUnder && diff <= b.warnOver) return 'warn';
@@ -457,8 +489,8 @@ export function classifyFloor(consumed, target) {
 export function classifyBand(consumed, target) {
   if (!target) return null;
   const diff = Math.abs(consumed - target) / target;
-  if (diff <= ADHERENCE_BANDS.rango.ok) return 'ok';
-  if (diff <= ADHERENCE_BANDS.rango.warn) return 'warn';
+  if (diff <= activeBands.rango.ok) return 'ok';
+  if (diff <= activeBands.rango.warn) return 'warn';
   return 'danger';
 }
 
@@ -467,7 +499,7 @@ export function classifyBand(consumed, target) {
 export function classifyCeiling(consumed, ceiling) {
   if (!ceiling) return null;
   if (consumed <= ceiling) return 'ok';
-  if (consumed <= ceiling * (1 + ADHERENCE_BANDS.techo.warn)) return 'warn';
+  if (consumed <= ceiling * (1 + activeBands.techo.warn)) return 'warn';
   return 'danger';
 }
 

@@ -6,7 +6,7 @@ import { cacheGet, cacheSet } from '../lib/cache.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
 import { prefetchFrequent, refreshFrequent, getFrequent } from '../lib/frequent.js';
 import { useToast } from '../lib/useToast.js';
-import { t, useLang, locale, useUnits, fmtG, fmtMl, mlToFlOz, flOzToMl } from '../lib/i18n.js';
+import { t, useLang, locale, useUnits, fmtG, fmtMl, mlToFlOz, flOzToMl, useAdherenceBands } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import ConfirmSheet from '../components/ConfirmSheet.jsx';
 import AmountField from '../components/AmountField.jsx';
@@ -481,6 +481,7 @@ function MealTemplatesSheet({ templates, canSave, onSave, onAdd, onDelete, onClo
 export default function Today() {
   const lang = useLang();
   useUnits();
+  useAdherenceBands(); // re-pinta al cambiar las bandas en Configuración
   const [date, setDate] = useState(todayISO());
   // SWR: pinta el cache de sesión al instante y el refetch de fondo actualiza.
   // Entries cacheados por fecha; 'targets' se comparte con la página Metas.

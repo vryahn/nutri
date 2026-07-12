@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './supabase.js';
+import { subscribeBands, getActiveBands, setActiveBands } from './domain.js';
 
 // El string en español ES la clave — así una traducción faltante cae al
 // español (nunca rompe, nunca muestra "undefined"). Interpolación: la clave
@@ -673,6 +674,48 @@ const EN = {
   Minerales: 'Minerals',
   Antioxidantes: 'Antioxidants',
   Otros: 'Other',
+
+  // Menú de usuario (UserMenu, Profile/Region/Settings sheets)
+  'Menú de usuario': 'User menu',
+  Perfil: 'Profile',
+  'Idioma y unidades': 'Language and units',
+  Configuración: 'Settings',
+  'Tu perfil': 'Your profile',
+  'Guardar perfil': 'Save profile',
+  'Foto de perfil': 'Profile photo',
+  'Se usa como avatar del menú.': 'Used as your menu avatar.',
+  'Segundo nombre': 'Middle name',
+  Apellidos: 'Last name',
+  Nacimiento: 'Date of birth',
+  'Altura (cm)': 'Height (cm)',
+  Sexo: 'Sex',
+  Masculino: 'Male',
+  Femenino: 'Female',
+  'Prefiero no decir': 'Prefer not to say',
+  Listo: 'Done',
+  'Sistema de unidades': 'Unit system',
+  'Métrico · g · ml': 'Metric · g · ml',
+  'Imperial · oz · fl oz': 'Imperial · oz · fl oz',
+  métrico: 'metric',
+  imperial: 'imperial',
+  Restaurar: 'Restore',
+  'Rango de gracia por arquetipo. Afecta los colores de Hoy y Dashboard.': 'Grace range per archetype. Affects Today and Dashboard colors.',
+  diana: 'target',
+  rango: 'range',
+  'Sin régimen': 'No regimen',
+  'Mant.': 'Maint.',
+  'Recomp.': 'Recomp.',
+  'En meta · defecto': 'On target · under',
+  'En meta · exceso': 'On target · over',
+  'Aviso · defecto': 'Warning · under',
+  'Aviso · exceso': 'Warning · over',
+  'En meta': 'On target',
+  Aviso: 'Warning',
+  'Carbs · Grasa': 'Carbs · Fat',
+  'Límites (grasa sat., azúcar añadido…)': 'Limits (sat. fat, added sugar…)',
+  'Holgura sobre el techo antes del aviso': 'Slack above the ceiling before warning',
+  'Piso médico fijo, no configurable.': 'Fixed medical floor, not configurable.',
+  'Secciones de comida': 'Meal sections',
 };
 
 const LANG_KEY = 'nutri-lang';
@@ -695,7 +738,7 @@ export function getLang() {
 // patch-merge sobre prefs.data: es un jsonb compartido con otras prefs
 // (water_glass_ml, today_view, …), así que un upsert directo con solo
 // { lang } las borraría.
-async function persistPrefsKey(key, value) {
+export async function persistPrefsKey(key, value) {
   if (!userId) return;
   const { data } = await supabase.from('prefs').select('data').maybeSingle();
   await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), [key]: value } });
@@ -813,4 +856,60 @@ export function useLang() {
     return () => subs.delete(fn);
   }, []);
   return lang;
+}
+
+// --- Perfil del usuario (menú de usuario → Perfil) ---------------------
+// Datos personales en prefs.data.profile (jsonb, sin migración). Solo display:
+// altura/sexo/nacimiento alimentan cálculos futuros (TMB/IMC), no afectan aún la
+// exactitud de los nutrientes almacenados. La foto vive en el bucket body-photos
+// bajo {uid}/avatar/…; aquí solo se guarda su ruta (profile.avatar_path).
+let profile = {};
+const profileSubs = new Set();
+
+export function getProfile() {
+  return profile;
+}
+export function setProfile(next, { persist = true } = {}) {
+  profile = next || {};
+  profileSubs.forEach((fn) => fn(profile));
+  if (persist) persistPrefsKey('profile', profile);
+}
+export function registerProfile(p) {
+  if (p && typeof p === 'object') setProfile(p, { persist: false });
+}
+export function useProfile() {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const fn = () => force((n) => n + 1);
+    profileSubs.add(fn);
+    return () => profileSubs.delete(fn);
+  }, []);
+  return profile;
+}
+
+// Nombre para mostrar e iniciales del avatar, derivados del perfil.
+export function displayName() {
+  const parts = [profile.first_name, profile.last_name].filter(Boolean);
+  return parts.join(' ').trim() || t('Tu perfil');
+}
+export function initialsOf() {
+  const a = (profile.first_name || '').trim()[0] || '';
+  const b = (profile.last_name || '').trim()[0] || '';
+  return (a + b).toUpperCase() || '·';
+}
+
+// --- Bandas de adherencia (menú de usuario → Configuración) ------------
+// El estado y la matemática viven en domain.js (puro); aquí van la persistencia
+// (prefs.data.adherence_bands), la carga y el hook de re-render para Hoy/Dashboard.
+export function saveAdherenceBands(overrides) {
+  setActiveBands(overrides);
+  persistPrefsKey('adherence_bands', overrides || {});
+}
+export function registerAdherenceBands(overrides) {
+  if (overrides && typeof overrides === 'object') setActiveBands(overrides);
+}
+export function useAdherenceBands() {
+  const [, force] = useState(0);
+  useEffect(() => subscribeBands(() => force((n) => n + 1)), []);
+  return getActiveBands();
 }
