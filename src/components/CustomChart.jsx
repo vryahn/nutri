@@ -20,6 +20,8 @@ import {
   DASH_MAX_UNITS,
   axisUnits,
   buildDashSeries,
+  bucketRows,
+  resolveAgg,
   dashVarTarget,
   resolveTarget,
   round,
@@ -29,6 +31,9 @@ import { t } from '../lib/i18n.js';
 // Rotación de colores de datos (nunca --accent: reservado para la línea de
 // objetivo). 4 tokens = DASH_MAX_VARS, así ninguna serie repite color.
 const SERIES_COLORS = ['var(--d-prot)', 'var(--d-carb)', 'var(--d-kcal)', 'var(--d-fat)'];
+
+const AGG_LABELS = { dia: 'Día', semana: 'Semana', mes: 'Mes' };
+const RED_LABELS = { promedio: 'Promedio', suma: 'Suma', mediana: 'Mediana' };
 
 const reduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -55,15 +60,24 @@ function CustomChart({ def, dates, nutByDay, bodyByDay, targets, onEdit, onRemov
   const units = axisUnits(vars);
   const leftUnit = units[0];
   const rightUnit = units[1];
-  const series = buildDashSeries(dates, vars, nutByDay, bodyByDay);
 
-  // Objetivo solo con UNA variable de nutrición que lo tenga en el rango.
+  const agg = resolveAgg(def.agg, dates.length); // 'auto' → día/semana/mes según rango
+  const hasStock = vars.some((v) => v.kind === 'stock');
+  // Suma sin sentido en medidas: si hay stock cae a promedio (el constructor ya
+  // la deshabilita; esto blinda defs viejos o editados a mano).
+  const reducer = def.reducer === 'suma' && hasStock ? 'promedio' : def.reducer || 'promedio';
+  const series = buildDashSeries(dates, vars, nutByDay, bodyByDay, agg, reducer);
+
+  // Objetivo solo con UNA variable de nutrición que lo tenga. Se agrega con el
+  // MISMO bucket/reductor que los datos para que línea y objetivo sean comparables.
   const single = vars.length === 1 ? vars[0] : null;
   let withTarget = series;
   let hasTarget = false;
   if (single) {
+    const dailyT = dates.map((day) => ({ day, __target: dashVarTarget(single, resolveTarget(targets, day)) }));
+    const tByKey = new Map(bucketRows(dailyT, ['__target'], agg, reducer).map((r) => [r.day, r.__target]));
     withTarget = series.map((row) => {
-      const tg = dashVarTarget(single, resolveTarget(targets, row.day));
+      const tg = tByKey.get(row.day) ?? null;
       if (tg != null) hasTarget = true;
       return { ...row, __target: tg };
     });
@@ -143,9 +157,10 @@ function CustomChart({ def, dates, nutByDay, bodyByDay, targets, onEdit, onRemov
           </ResponsiveContainer>
         </div>
       )}
-      {rightUnit && (
+      {(agg !== 'dia' || rightUnit) && (
         <p className="text-[11px] text-text-3 mt-2">
-          {t('Eje izq: %l · Eje der: %r').replace('%l', leftUnit).replace('%r', rightUnit)}
+          {agg === 'dia' ? t('Día') : `${t(AGG_LABELS[agg])} · ${t(RED_LABELS[reducer])}`}
+          {rightUnit ? ` · ${t('Eje izq: %l · Eje der: %r').replace('%l', leftUnit).replace('%r', rightUnit)}` : ''}
         </p>
       )}
     </section>
@@ -157,9 +172,15 @@ function CustomChartSheet({ initial, onSave, onClose }) {
   const [title, setTitle] = useState(initial?.title || '');
   const [type, setType] = useState(initial?.type || 'line');
   const [keys, setKeys] = useState(initial?.vars || []);
+  const [agg, setAgg] = useState(initial?.agg || 'auto');
+  const [reducer, setReducer] = useState(initial?.reducer || 'promedio');
 
   const selected = varsOf(keys);
   const units = [...new Set(selected.map((v) => v.unit))];
+  const hasStock = selected.some((v) => v.kind === 'stock');
+  // Suma solo en flow-puro. Con stock presente, el reductor efectivo es promedio
+  // (conserva la intención 'suma' en el estado por si el usuario quita la medida).
+  const effReducer = reducer === 'suma' && hasStock ? 'promedio' : reducer;
   const groups = groupByCat(DASH_VARS);
 
   function toggle(v) {
@@ -188,6 +209,8 @@ function CustomChartSheet({ initial, onSave, onClose }) {
       title: title.trim() || defaultTitle(keys),
       type,
       vars: keys,
+      agg,
+      reducer: effReducer,
     });
   }
 
@@ -225,6 +248,52 @@ function CustomChartSheet({ initial, onSave, onClose }) {
           </button>
         ))}
       </div>
+
+      <div className="flex items-center gap-1 mt-1">
+        <label className="text-xs text-text-3">{t('Granularidad')}</label>
+        <Hint text={t('Cómo se agrupan los días en el tiempo. Auto lo decide por el rango: hasta ~mes → día, hasta ~medio año → semana, más → mes. Así un año no pinta 365 puntos.')}>
+          ⓘ
+        </Hint>
+      </div>
+      <div className="flex bg-surface-2 border border-border rounded-xl p-1 gap-1">
+        {[['auto', 'Auto'], ['dia', 'Día'], ['semana', 'Semana'], ['mes', 'Mes']].map(([k, lbl]) => (
+          <button
+            key={k}
+            onClick={() => setAgg(k)}
+            className={`flex-1 py-2 rounded-lg text-xs press ${agg === k ? 'bg-accent text-bg font-medium' : 'text-text-2'}`}
+          >
+            {t(lbl)}
+          </button>
+        ))}
+      </div>
+
+      <label className="text-xs text-text-3 mt-1">{t('Reductor por bucket')}</label>
+      <div className="flex bg-surface-2 border border-border rounded-xl p-1 gap-1">
+        {[['promedio', 'Promedio'], ['suma', 'Suma'], ['mediana', 'Mediana']].map(([k, lbl]) => {
+          const disabled = k === 'suma' && hasStock;
+          return (
+            <button
+              key={k}
+              onClick={() => setReducer(k)}
+              disabled={disabled}
+              title={disabled ? t('Sumar medidas no tiene sentido; usa Promedio o Mediana') : ''}
+              className={`flex-1 py-2 rounded-lg text-xs press ${
+                disabled ? 'text-text-3 opacity-45 cursor-not-allowed' : effReducer === k ? 'bg-accent text-bg font-medium' : 'text-text-2'
+              }`}
+            >
+              {t(lbl)}
+            </button>
+          );
+        })}
+      </div>
+      {hasStock && (
+        <p className="text-[11px] text-text-3">
+          {t('Suma deshabilitada: la gráfica incluye una medida (peso/circunferencia/derivada). Usa Promedio o Mediana.')}
+        </p>
+      )}
+      {agg === 'dia' && (
+        <p className="text-[11px] text-text-3">{t('En granularidad Día el reductor no aplica (un punto por día).')}</p>
+      )}
 
       <div className="flex items-center gap-1 mt-1">
         <label className="text-xs text-text-3">

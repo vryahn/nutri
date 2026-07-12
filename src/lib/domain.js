@@ -298,17 +298,20 @@ export function derivedBodyMetrics(m) {
 // `source` dice de dónde sale la serie; `unit` agrupa en ejes. NO requiere
 // migración: reúsa MICROS/BODY_METRICS/DERIVED_BODY. El sueño (type:'check') no
 // es una serie numérica → se excluye. Todas las claves son únicas entre fuentes.
+// kind: 'flow' = ingesta acumulable (nutrición: sumar tiene sentido) · 'stock' =
+// nivel/estado (medidas y derivadas: sumar peso/cintura no significa nada). Rige
+// qué reductores ofrece el constructor (Suma solo en flow-puro).
 export const DASH_VAR_MACROS = [
-  { key: 'kcal', label: 'Kcal', unit: 'kcal', source: 'nut', cat: 'Macros' },
-  { key: 'protein_g', label: 'Proteína', unit: 'g', source: 'nut', cat: 'Macros' },
-  { key: 'carbs_g', label: 'Carbohidratos', unit: 'g', source: 'nut', cat: 'Macros' },
-  { key: 'fat_g', label: 'Grasa', unit: 'g', source: 'nut', cat: 'Macros' },
+  { key: 'kcal', label: 'Kcal', unit: 'kcal', source: 'nut', cat: 'Macros', kind: 'flow' },
+  { key: 'protein_g', label: 'Proteína', unit: 'g', source: 'nut', cat: 'Macros', kind: 'flow' },
+  { key: 'carbs_g', label: 'Carbohidratos', unit: 'g', source: 'nut', cat: 'Macros', kind: 'flow' },
+  { key: 'fat_g', label: 'Grasa', unit: 'g', source: 'nut', cat: 'Macros', kind: 'flow' },
 ];
 export const DASH_VARS = [
   ...DASH_VAR_MACROS,
-  ...MICROS.filter((m) => m.key !== 'agua_ml').map((m) => ({ ...m, source: 'nutMicro' })),
-  ...BODY_METRICS.filter((m) => m.type !== 'check').map((m) => ({ ...m, source: 'body' })),
-  ...DERIVED_BODY.map((m) => ({ key: m.key, label: m.label, unit: m.unit, source: 'derived', cat: 'Derivadas' })),
+  ...MICROS.filter((m) => m.key !== 'agua_ml').map((m) => ({ ...m, source: 'nutMicro', kind: 'flow' })),
+  ...BODY_METRICS.filter((m) => m.type !== 'check').map((m) => ({ ...m, source: 'body', kind: 'stock' })),
+  ...DERIVED_BODY.map((m) => ({ key: m.key, label: m.label, unit: m.unit, source: 'derived', cat: 'Derivadas', kind: 'stock' })),
 ];
 export const DASH_VARS_BY_KEY = Object.fromEntries(DASH_VARS.map((v) => [v.key, v]));
 
@@ -344,18 +347,80 @@ export function dashVarTarget(v, target) {
   return null;
 }
 
-// Serie diaria alineada para una gráfica custom: un objeto por día del rango con
-// {day, label, [key]:valor|null} por variable. nutByDay/bodyByDay son Map(day→fila).
-export function buildDashSeries(dates, vars, nutByDay, bodyByDay) {
-  return dates.map((day) => {
+// ── Agregación temporal de las gráficas custom ───────────────────────────────
+// Los modos globales (Suma/Promedio/…) resumen el rango a UN escalar y gobiernan
+// el análisis estándar. Una serie temporal se agrega por BUCKET (día, semana ISO
+// o mes), reduciendo cada bucket. 'auto' deriva el bucket del largo del rango
+// para que un año no pinte 365 puntos de ruido.
+export const DASH_AGGS = ['auto', 'dia', 'semana', 'mes'];
+export const DASH_REDUCERS = ['promedio', 'suma', 'mediana'];
+
+export function autoAgg(rangeLen) {
+  if (rangeLen <= 45) return 'dia';
+  if (rangeLen <= 182) return 'semana';
+  return 'mes';
+}
+export function resolveAgg(agg, rangeLen) {
+  return !agg || agg === 'auto' ? autoAgg(rangeLen) : agg;
+}
+
+// Lunes ISO de la semana de `iso` (weekdayOf: 0=domingo).
+function mondayOf(iso) {
+  const d = weekdayOf(iso);
+  return addDaysISO(iso, d === 0 ? -6 : 1 - d);
+}
+function bucketKey(day, agg) {
+  if (agg === 'mes') return day.slice(0, 7); // YYYY-MM
+  if (agg === 'semana') return mondayOf(day); // lunes ISO (YYYY-MM-DD)
+  return day;
+}
+function bucketLabel(key, agg) {
+  return agg === 'mes' ? key : key.slice(5); // YYYY-MM o MM-DD
+}
+
+// Reduce los valores no nulos de un bucket. Bucket sin datos → null (connectNulls).
+export function reduceBucket(vals, reducer) {
+  const xs = vals.filter((v) => v != null).map(Number);
+  if (xs.length === 0) return null;
+  if (reducer === 'suma') return round(sum(xs), 2);
+  if (reducer === 'mediana') return round(median(xs), 2);
+  return round(sum(xs) / xs.length, 2); // promedio
+}
+
+// Agrupa filas diarias [{day, [key]}] en buckets y las reduce. agg='dia' pasa
+// derecho (solo re-etiqueta). Todas las claves de bucket ordenan lexicográfico.
+// Se usa para las series de datos y para la del objetivo (mismo bucketing).
+export function bucketRows(dailyRows, keys, agg, reducer) {
+  if (agg === 'dia') return dailyRows.map((r) => ({ ...r, label: r.day.slice(5) }));
+  const buckets = new Map();
+  for (const r of dailyRows) {
+    const k = bucketKey(r.day, agg);
+    if (!buckets.has(k)) buckets.set(k, []);
+    buckets.get(k).push(r);
+  }
+  return [...buckets.keys()].sort().map((k) => {
+    const rows = buckets.get(k);
+    const out = { day: k, label: bucketLabel(k, agg) };
+    for (const kk of keys) out[kk] = reduceBucket(rows.map((r) => r[kk]), reducer);
+    return out;
+  });
+}
+
+// Serie temporal para una gráfica custom, ya agregada: filas {day, label,
+// [key]:valor|null} por variable. agg='dia' = una fila por día del rango (default,
+// preserva la semántica previa); semana/mes agrupan y reducen. nutByDay/bodyByDay
+// son Map(day→fila).
+export function buildDashSeries(dates, vars, nutByDay, bodyByDay, agg = 'dia', reducer = 'promedio') {
+  const daily = dates.map((day) => {
     const nut = nutByDay.get(day);
     const registered = Number(nut?.kcal || 0) > 0;
     const body = bodyByDay.get(day);
     const derived = body ? derivedBodyMetrics(body.metrics) : null;
-    const row = { day, label: day.slice(5) };
+    const row = { day };
     for (const v of vars) row[v.key] = dashVarValue(v, nut, registered, body, derived);
     return row;
   });
+  return bucketRows(daily, vars.map((v) => v.key), agg, reducer);
 }
 
 // Chequeo físico grueso por 100 g: proteína+carbs+grasa+alcohol+agua no pueden

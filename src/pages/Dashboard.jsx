@@ -1376,6 +1376,31 @@ export default function Dashboard() {
         </div>
       )}
 
+      <CustomCharts
+        dashboards={dashboards}
+        onChange={saveDashboards}
+        dates={dates}
+        nutByDay={nutByDay}
+        bodyByDay={bodyByDay}
+        targets={targets}
+      />
+
+      <button
+        onClick={() => setStdOpen((v) => !v)}
+        className="flex items-center justify-between w-full rounded-xl bg-surface border border-border px-4 py-3 text-sm text-text-2 press"
+      >
+        <span>
+          {t('Análisis estándar')}{' '}
+          <span className="text-text-3">— {t('radar micros · adherencia · sodio · Bayes')}</span>
+        </span>
+        <span className="text-accent">{stdOpen ? t('Ocultar ▴') : t('Mostrar ▾')}</span>
+      </button>
+
+      {stdOpen && (
+      <>
+      {/* Fila de cálculo: gobierna SOLO el análisis estándar (KPIs, resumen,
+          micros, export) — por eso vive dentro de esta sección, no arriba de las
+          gráficas custom (que tienen su propia agregación por gráfica). */}
       <div className="flex gap-2 overflow-x-auto pb-1">
         {CALC_BASIC.map((opt) => {
           const reason = calcDisabledReason(opt, calcCtx);
@@ -1434,27 +1459,6 @@ export default function Dashboard() {
 
       {csvNotice && <p className="text-sm text-warn">{csvNotice}</p>}
 
-      <CustomCharts
-        dashboards={dashboards}
-        onChange={saveDashboards}
-        dates={dates}
-        nutByDay={nutByDay}
-        bodyByDay={bodyByDay}
-        targets={targets}
-      />
-
-      <button
-        onClick={() => setStdOpen((v) => !v)}
-        className="flex items-center justify-between w-full rounded-xl bg-surface border border-border px-4 py-3 text-sm text-text-2 press"
-      >
-        <span>
-          {t('Análisis estándar')}{' '}
-          <span className="text-text-3">— {t('radar micros · adherencia · sodio · Bayes')}</span>
-        </span>
-        <span className="text-accent">{stdOpen ? t('Ocultar ▴') : t('Mostrar ▾')}</span>
-      </button>
-
-      {stdOpen && (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 grid-flow-dense">
         <section className="md:col-span-2 lg:col-span-12 rounded-2xl bg-surface border border-border p-4">
           <div className="flex justify-between items-baseline mb-2">
@@ -1825,6 +1829,7 @@ export default function Dashboard() {
           />
         </div>
       </div>
+      </>
       )}
 
       {toast && (

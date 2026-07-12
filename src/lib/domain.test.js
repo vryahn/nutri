@@ -7,7 +7,69 @@ import {
   classifyCeiling, classifySodium, sodiumIsLow, sodiumIsHigh,
   SODIUM_FLOOR_MG, SODIUM_CEILING_MG,
   DASH_VARS_BY_KEY, axisUnits, buildDashSeries, dashVarTarget,
+  autoAgg, resolveAgg, reduceBucket, bucketRows,
 } from './domain.js';
+
+describe('agregación temporal de gráficas custom', () => {
+  it('autoAgg deriva el bucket del largo del rango', () => {
+    expect(autoAgg(7)).toBe('dia');
+    expect(autoAgg(45)).toBe('dia');
+    expect(autoAgg(46)).toBe('semana');
+    expect(autoAgg(182)).toBe('semana');
+    expect(autoAgg(183)).toBe('mes');
+    expect(autoAgg(365)).toBe('mes');
+  });
+
+  it('resolveAgg: auto/undefined → autoAgg; explícito manda', () => {
+    expect(resolveAgg('auto', 7)).toBe('dia');
+    expect(resolveAgg(undefined, 200)).toBe('mes');
+    expect(resolveAgg('mes', 7)).toBe('mes');
+  });
+
+  it('reduceBucket ignora nulls; bucket vacío → null', () => {
+    expect(reduceBucket([1, 2, 3, null], 'suma')).toBe(6);
+    expect(reduceBucket([1, 2, 3, 4], 'promedio')).toBe(2.5);
+    expect(reduceBucket([1, 2, 3, 4], 'mediana')).toBe(2.5);
+    expect(reduceBucket([null, null], 'promedio')).toBeNull();
+    expect(reduceBucket([], 'suma')).toBeNull();
+  });
+
+  it('bucketRows agrupa por semana ISO (lunes) y reduce', () => {
+    // 2026-07-06 = lunes; 06..12 = una semana; 13 = semana siguiente
+    const daily = ['2026-07-06', '2026-07-08', '2026-07-12', '2026-07-13'].map((day, i) => ({ day, x: i + 1 }));
+    const suma = bucketRows(daily, ['x'], 'semana', 'suma');
+    expect(suma.map((r) => r.day)).toEqual(['2026-07-06', '2026-07-13']);
+    expect(suma[0].x).toBe(1 + 2 + 3); // 06,08,12 caen en la semana del 06
+    expect(suma[1].x).toBe(4); // 13
+    expect(suma[0].label).toBe('07-06');
+    const prom = bucketRows(daily, ['x'], 'semana', 'promedio');
+    expect(prom[0].x).toBe(2); // (1+2+3)/3
+  });
+
+  it('bucketRows mensual etiqueta YYYY-MM', () => {
+    const daily = ['2026-06-30', '2026-07-01', '2026-07-15'].map((day, i) => ({ day, x: i + 1 }));
+    const s = bucketRows(daily, ['x'], 'mes', 'suma');
+    expect(s.map((r) => r.label)).toEqual(['2026-06', '2026-07']);
+    expect(s[1].x).toBe(2 + 3);
+  });
+
+  it('buildDashSeries agrega nutrición por semana con Suma', () => {
+    const nutByDay = new Map([
+      ['2026-07-06', { day: '2026-07-06', kcal: 2000 }],
+      ['2026-07-08', { day: '2026-07-08', kcal: 1800 }],
+    ]);
+    const s = buildDashSeries(['2026-07-06', '2026-07-07', '2026-07-08'], [DASH_VARS_BY_KEY.kcal], nutByDay, new Map(), 'semana', 'suma');
+    expect(s).toHaveLength(1);
+    expect(s[0].kcal).toBe(3800); // 07-07 no registrado → null, ignorado
+  });
+
+  it('kind: nutrición flow, medidas/derivadas stock', () => {
+    expect(DASH_VARS_BY_KEY.kcal.kind).toBe('flow');
+    expect(DASH_VARS_BY_KEY.sodio_mg.kind).toBe('flow');
+    expect(DASH_VARS_BY_KEY.peso_kg.kind).toBe('stock');
+    expect(DASH_VARS_BY_KEY.imc.kind).toBe('stock');
+  });
+});
 
 describe('gráficas personalizadas del Dashboard', () => {
   const nutByDay = new Map([
