@@ -35,10 +35,15 @@ import {
   addDaysISO,
   weekdayOf,
   resolveTarget,
-  classifyKcal,
+  nutrientKind,
+  classifyDiana,
   classifyFloor,
+  classifyBand,
+  classifySodium,
   sodiumIsLow,
+  sodiumIsHigh,
   SODIUM_FLOOR_MG,
+  SODIUM_CEILING_MG,
   round,
   sum,
   median,
@@ -225,11 +230,19 @@ function bayesForMetric(days, key) {
     applicable = withTarget.map((d) => d.values.protein_g >= d.proteinFloor);
   } else if (key === 'sodio_mg') {
     if (!days.length) return null;
-    applicable = days.map((d) => d.values.sodio_mg >= SODIUM_FLOOR_MG);
+    // Dual: cumple el día si el sodio cae en el rango médico [piso, techo].
+    applicable = days.map((d) => d.values.sodio_mg >= SODIUM_FLOOR_MG && d.values.sodio_mg <= SODIUM_CEILING_MG);
   } else {
     const withTarget = days.filter((d) => d.targetMicros != null && d.targetMicros[key] != null);
     if (!withTarget.length) return null;
-    applicable = withTarget.map((d) => Number(d.values[key] || 0) >= Number(d.targetMicros[key]));
+    // techo (grasa sat., trans, azúcar añadido, alcohol, colesterol): cumple si NO
+    // rebasa el objetivo; el resto de micros es piso (llegar o pasar).
+    const isCeiling = nutrientKind(key) === 'techo';
+    applicable = withTarget.map((d) => {
+      const v = Number(d.values[key] || 0);
+      const tgt = Number(d.targetMicros[key]);
+      return isCeiling ? v <= tgt : v >= tgt;
+    });
   }
   return bayesAdherence(applicable.filter(Boolean).length, applicable.length);
 }
@@ -253,10 +266,16 @@ function bayesUnavailableReason(days, key) {
 // Criterio de éxito de un día, declarado para que el % de adherencia sea auditable.
 function bayesCriterionHint(key) {
   if (key === 'sodio_mg') {
-    return t('Cuenta como día cumplido si comiste al menos %n mg de sodio.').replace('%n', SODIUM_FLOOR_MG.toLocaleString(getLang() === 'en' ? 'en-US' : 'es-MX'));
+    const loc = getLang() === 'en' ? 'en-US' : 'es-MX';
+    return t('Cuenta como día cumplido si el sodio quedó entre %a y %b mg.')
+      .replace('%a', SODIUM_FLOOR_MG.toLocaleString(loc))
+      .replace('%b', SODIUM_CEILING_MG.toLocaleString(loc));
   }
   if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') {
     return t('Cuenta como día cumplido si quedaste a ±%n% de tu objetivo.').replace('%n', round(BAYES_KCAL_TOL * 100, 0));
+  }
+  if (nutrientKind(key) === 'techo') {
+    return t('Cuenta como día cumplido si te quedaste en o bajo tu objetivo.');
   }
   return t('Cuenta como día cumplido si llegaste a tu objetivo o lo pasaste.');
 }
@@ -546,6 +565,7 @@ function computeStats(dates, dailyTotals, targets) {
       targetCarbs: target?.carbs_g ?? null,
       targetFat: target?.fat_g ?? null,
       targetMicros: target?.micros ?? null,
+      goal: target?.goal ?? null, // régimen del día: sesga la banda de kcal (diana)
       protein: registrado ? protein_g : null,
       proteinFloor: target?.protein_g ?? null,
       sodio: registrado ? sodio : null,
@@ -983,6 +1003,9 @@ export default function Dashboard() {
   const trendHasData = trendData.some((d) => d.val != null);
   const trendHasTarget = trendData.some((d) => d.target != null);
   const dayInfo = new Map(chartData.map((d) => [d.day, d]));
+  // Régimen del periodo para sesgar la banda de kcal (diana): el del último día
+  // del rango seleccionado (la fase/meta vigente en él). null = banda estricta.
+  const periodGoal = chartData.length ? chartData[chartData.length - 1].goal : null;
   const weeks = buildWeeks(start, end).filter((w) => w.some((d) => dateSet.has(d)));
   const proteinWeekly = weeklyProteinData(weeks, dateSet, dayInfo);
   const top = topItems(rangeItems, waterFoodId, topMetric);
@@ -1050,7 +1073,7 @@ export default function Dashboard() {
     const b = calcMode === 'bayes' ? bayesForMetric(completeDaysFull, m.key) : null;
     const [val, det, obj, pct] = summaryCells(calcMode, ms, objStats, b);
     const zero = structuralZeroInfo(registeredDays, m.key);
-    const danger = m.key === 'sodio_mg' && sodiumIsLow(stats.avgSodio, stats.diasRegistrados > 0);
+    const danger = m.key === 'sodio_mg' && (sodiumIsLow(stats.avgSodio, stats.diasRegistrados > 0) || sodiumIsHigh(stats.avgSodio, stats.diasRegistrados > 0));
     const unit = calcMode === 'bayes' ? '' : ` ${m.unit}`;
     return (
       <tr key={m.key} className="border-t border-border">
@@ -1087,6 +1110,7 @@ export default function Dashboard() {
     const visibles = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favs.includes(m.key)) && m.key !== 'agua_ml');
     const anyZeroWarn = visibles.some((m) => structuralZeroInfo(registeredDays, m.key).warn);
     const sodiumLow = sodiumIsLow(stats.avgSodio, stats.diasRegistrados > 0);
+    const sodiumHigh = sodiumIsHigh(stats.avgSodio, stats.diasRegistrados > 0);
     return (
       // Sin backdrop-blur en el scrim: backdrop-filter convertiría al overlay
       // en containing block de la barra fixed y la barra panearía con el papel.
@@ -1158,6 +1182,9 @@ export default function Dashboard() {
           )}
           {sodiumLow && (
             <p className="text-sm text-danger mt-1">⚠ {t('sodio promedio')} &lt; {SODIUM_FLOOR_MG} mg</p>
+          )}
+          {sodiumHigh && (
+            <p className="text-sm text-danger mt-1">⚠ {t('sodio promedio')} &gt; {SODIUM_CEILING_MG} mg</p>
           )}
           <div className="grid grid-cols-4 gap-2 text-center mt-3 rounded-xl border border-border p-3">
             <Stat label={t('Kcal')} display={noHint(metricDisplay(calcMode, msKcal, bKcal, '', 1))} color="text-d-kcal" />
@@ -1400,7 +1427,7 @@ export default function Dashboard() {
             label={t("Kcal")}
             display={metricDisplay(calcMode, msKcal, bKcal, '', 1)}
             delta={showDelta ? pctDelta(stats.promedio.kcal, prevStats.promedio.kcal) : null}
-            status={classifyKcal(stats.consumido.kcal, stats.objetivo.kcal)}
+            status={classifyDiana(stats.consumido.kcal, stats.objetivo.kcal, periodGoal)}
             sparkline={chartData.map((d) => d.kcal)}
             sparkColor="var(--d-kcal)"
           />
@@ -1416,6 +1443,7 @@ export default function Dashboard() {
             label={t("Carbs")}
             display={metricDisplay(calcMode, msCarbs, bCarbs, ' g', 1)}
             delta={showDelta ? pctDelta(stats.promedio.carbs_g, prevStats.promedio.carbs_g) : null}
+            status={classifyBand(stats.consumido.carbs_g, stats.objetivo.carbs_g)}
             sparkline={chartData.map((d) => (d.values ? d.values.carbs_g : null))}
             sparkColor="var(--d-carb)"
           />
@@ -1423,6 +1451,7 @@ export default function Dashboard() {
             label={t("Grasa")}
             display={metricDisplay(calcMode, msFat, bFat, ' g', 1)}
             delta={showDelta ? pctDelta(stats.promedio.fat_g, prevStats.promedio.fat_g) : null}
+            status={classifyBand(stats.consumido.fat_g, stats.objetivo.fat_g)}
             sparkline={chartData.map((d) => (d.values ? d.values.fat_g : null))}
             sparkColor="var(--d-fat)"
           />
@@ -1430,7 +1459,7 @@ export default function Dashboard() {
             label={t("Sodio")}
             display={metricDisplay(calcMode, msSodio, bSodio, ' mg', 0)}
             delta={showDelta ? pctDelta(stats.avgSodio, prevStats.avgSodio) : null}
-            status={sodiumIsLow(stats.avgSodio, stats.diasRegistrados > 0) ? 'danger' : null}
+            status={classifySodium(stats.avgSodio, stats.diasRegistrados > 0)}
             sparkline={chartData.map((d) => d.sodio)}
             sparkColor="var(--d-carb)"
           />
@@ -1599,7 +1628,7 @@ export default function Dashboard() {
         </section>
 
         <section className="lg:col-span-6 rounded-2xl bg-surface border border-border p-4">
-          <p className="text-sm text-text-3 mb-2">{t('Sodio diario vs piso')}</p>
+          <p className="text-sm text-text-3 mb-2">{t('Sodio diario vs piso y techo')}</p>
           <div className="h-[200px] lg:h-80">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData}>
@@ -1616,6 +1645,7 @@ export default function Dashboard() {
               <YAxis tick={{ fill: 'var(--text-3)', fontSize: 10 }} width={40} />
               <Tooltip contentStyle={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text)' }} />
               <ReferenceLine y={SODIUM_FLOOR_MG} stroke="var(--danger)" strokeDasharray="4 3" />
+              <ReferenceLine y={SODIUM_CEILING_MG} stroke="var(--danger)" strokeDasharray="4 3" />
               <Area
                 type="monotone"
                 dataKey="sodio"
@@ -1626,7 +1656,7 @@ export default function Dashboard() {
                 dot={(props) => {
                   const { cx, cy, payload, index } = props;
                   if (payload.sodio == null) return <g key={`dot-${index}`} />;
-                  const danger = payload.sodio < SODIUM_FLOOR_MG;
+                  const danger = payload.sodio < SODIUM_FLOOR_MG || payload.sodio > SODIUM_CEILING_MG;
                   return <circle key={`dot-${index}`} cx={cx} cy={cy} r={3} fill={danger ? 'var(--danger)' : 'var(--d-carb)'} />;
                 }}
                 isAnimationActive={!reducedMotion}
@@ -1919,7 +1949,7 @@ function AdherenceHeatmap({ weeks, dateSet, dayInfo }) {
             const info = dayInfo.get(day);
             let cls = 'bg-surface-2';
             if (info?.registrado) {
-              const status = classifyKcal(info.kcal, info.targetKcal);
+              const status = classifyDiana(info.kcal, info.targetKcal, info.goal);
               cls = status ? STATUS_BG[status] : 'bg-surface-3';
             }
             const parcial = info?.completeness === 'parcial';
@@ -1969,7 +1999,7 @@ function MicrosTable({
     const zero = structuralZeroInfo(registeredDays, m.key);
     const bayesInfo = calcMode === 'bayes' ? bayesCell(completeDaysFull, m.key) : null;
     const consumidoDisplay = metricDisplay(calcMode, ms, bayesInfo, ` ${m.unit}`, 1);
-    const sodiumDanger = m.key === 'sodio_mg' && sodiumIsLow(avgSodio, diasRegistrados > 0);
+    const sodiumDanger = m.key === 'sodio_mg' && (sodiumIsLow(avgSodio, diasRegistrados > 0) || sodiumIsHigh(avgSodio, diasRegistrados > 0));
     const degraded = consumidoDisplay.degraded;
     return (
       <tr key={m.key} className="border-t border-border">
@@ -2027,6 +2057,9 @@ function MicrosTable({
       )}
       {sodiumIsLow(avgSodio, diasRegistrados > 0) && (
         <p className="mt-3 text-sm text-danger">⚠ {t('sodio promedio')} &lt; {SODIUM_FLOOR_MG} mg</p>
+      )}
+      {sodiumIsHigh(avgSodio, diasRegistrados > 0) && (
+        <p className="mt-3 text-sm text-danger">⚠ {t('sodio promedio')} &gt; {SODIUM_CEILING_MG} mg</p>
       )}
     </section>
   );

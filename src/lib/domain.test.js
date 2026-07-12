@@ -3,6 +3,9 @@ import {
   computeRecipePer100g, resolveTarget, weekdayOf, kcalFromMacros, kcalSuspicious,
   macrosImplausible, componentsInconsistent, dayCompleteness, bayesAdherence,
   reorderLabels, eanChecksumValid, cleanNumericMap,
+  nutrientKind, classifyDiana, classifyKcal, classifyFloor, classifyBand,
+  classifyCeiling, classifySodium, sodiumIsLow, sodiumIsHigh,
+  SODIUM_FLOOR_MG, SODIUM_CEILING_MG,
 } from './domain.js';
 
 describe('cleanNumericMap', () => {
@@ -224,5 +227,82 @@ describe('eanChecksumValid', () => {
 
   it('mismo EAN con un dígito alterado -> inválido', () => {
     expect(eanChecksumValid('4006381333932')).toBe(false);
+  });
+});
+
+describe('nutrientKind', () => {
+  it('mapea cada arquetipo y default = meta', () => {
+    expect(nutrientKind('kcal')).toBe('diana');
+    expect(nutrientKind('protein_g')).toBe('piso');
+    expect(nutrientKind('carbs_g')).toBe('rango');
+    expect(nutrientKind('fat_g')).toBe('rango');
+    expect(nutrientKind('grasa_sat_g')).toBe('techo');
+    expect(nutrientKind('azucar_anadido_g')).toBe('techo');
+    expect(nutrientKind('alcohol_g')).toBe('techo');
+    expect(nutrientKind('sodio_mg')).toBe('sodio');
+    expect(nutrientKind('vit_c_mg')).toBe('meta'); // default
+  });
+});
+
+describe('classifyDiana (banda asimétrica por régimen)', () => {
+  it('sin régimen conserva la banda estricta histórica ±5 / ±15', () => {
+    expect(classifyDiana(2000, 2000, null)).toBe('ok');
+    expect(classifyDiana(2000 * 1.05, 2000, null)).toBe('ok');
+    expect(classifyDiana(2000 * 1.10, 2000, null)).toBe('warn');
+    expect(classifyDiana(2000 * 1.20, 2000, null)).toBe('danger');
+    expect(classifyKcal(2000 * 1.20, 2000)).toBe('danger'); // compat wrapper
+  });
+  it('déficit: el exceso pesa más que el defecto', () => {
+    // −12% en déficit sigue en ok (defecto tolerado hasta −15%)
+    expect(classifyDiana(2000 * 0.88, 2000, 'deficit')).toBe('ok');
+    // +12% en déficit ya es warn (exceso ok solo hasta +8%)
+    expect(classifyDiana(2000 * 1.12, 2000, 'deficit')).toBe('warn');
+    // +20% en déficit es danger (warn de exceso hasta +18%)
+    expect(classifyDiana(2000 * 1.20, 2000, 'deficit')).toBe('danger');
+  });
+  it('volumen: el defecto pesa más que el exceso (espejo)', () => {
+    expect(classifyDiana(2000 * 1.12, 2000, 'volumen')).toBe('ok');
+    expect(classifyDiana(2000 * 0.88, 2000, 'volumen')).toBe('warn');
+  });
+  it('sin objetivo -> null', () => {
+    expect(classifyDiana(2000, 0, 'deficit')).toBe(null);
+  });
+});
+
+describe('classifyFloor / classifyBand / classifyCeiling', () => {
+  it('piso: alcanzar o pasar = ok, quedarse corto = danger', () => {
+    expect(classifyFloor(120, 100)).toBe('ok');
+    expect(classifyFloor(90, 100)).toBe('danger');
+  });
+  it('rango: banda simétrica ±15 ok / ±30 warn / fuera danger', () => {
+    expect(classifyBand(150, 150)).toBe('ok');
+    expect(classifyBand(150 * 1.15, 150)).toBe('ok');
+    expect(classifyBand(150 * 1.30, 150)).toBe('warn');
+    expect(classifyBand(150 * 1.5, 150)).toBe('danger'); // carbs 220 vs 150 ≈ +47%
+  });
+  it('techo: en/bajo el límite ok, +10% warn, más danger', () => {
+    expect(classifyCeiling(20, 25)).toBe('ok');
+    expect(classifyCeiling(25, 25)).toBe('ok');
+    expect(classifyCeiling(30, 25)).toBe('danger'); // azúcar añadido 30 vs 25 = +20%
+    expect(classifyCeiling(27, 25)).toBe('warn'); // +8%
+  });
+});
+
+describe('sodio dual (piso 1500 + techo 2300)', () => {
+  it('constantes médicas', () => {
+    expect(SODIUM_FLOOR_MG).toBe(1500);
+    expect(SODIUM_CEILING_MG).toBe(2300);
+  });
+  it('classifySodium: danger fuera de [piso, techo], ok dentro', () => {
+    expect(classifySodium(2000, true)).toBe('ok');
+    expect(classifySodium(1200, true)).toBe('danger'); // bajo piso
+    expect(classifySodium(2600, true)).toBe('danger'); // sobre techo
+    expect(classifySodium(2000, false)).toBe(null); // sin registros
+  });
+  it('sodiumIsLow / sodiumIsHigh respetan hasEntries', () => {
+    expect(sodiumIsLow(1200, true)).toBe(true);
+    expect(sodiumIsLow(1200, false)).toBe(false);
+    expect(sodiumIsHigh(2600, true)).toBe(true);
+    expect(sodiumIsHigh(2000, true)).toBe(false);
   });
 });

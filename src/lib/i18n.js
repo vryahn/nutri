@@ -332,8 +332,10 @@ const EN = {
   'Aún no tienes objetivo para este nutriente. Ponlo en la pestaña Metas.':
     'You don\'t have a target for this nutrient yet. Set it in the Targets tab.',
   'Cuenta como día cumplido si comiste al menos %n mg de sodio.': 'Counts as a met day if you ate at least %n mg of sodium.',
+  'Cuenta como día cumplido si el sodio quedó entre %a y %b mg.': 'Counts as a met day if sodium stayed between %a and %b mg.',
   'Cuenta como día cumplido si quedaste a ±%n% de tu objetivo.': 'Counts as a met day if you landed within ±%n% of your target.',
   'Cuenta como día cumplido si llegaste a tu objetivo o lo pasaste.': 'Counts as a met day if you reached or exceeded your target.',
+  'Cuenta como día cumplido si te quedaste en o bajo tu objetivo.': 'Counts as a met day if you stayed at or below your target.',
   'probablemente entre %a y %b%': 'likely between %a and %b%',
   'Sin objetivo': 'No target',
   'Tu día típico: %n kcal (la mitad de tus días cae entre %a y %b)':
@@ -409,6 +411,7 @@ const EN = {
   'Proteína semanal vs piso': 'Weekly protein vs floor',
   Piso: 'Floor',
   'Sodio diario vs piso': 'Daily sodium vs floor',
+  'Sodio diario vs piso y techo': 'Daily sodium vs floor and ceiling',
   'Top alimentos': 'Top foods',
   'Nutriente': 'Nutrient',
   'En %a de %b días no registraste este nutriente. El 0 puede significar \'no lo anotaste\', no \'no lo comiste\'.':
@@ -478,7 +481,9 @@ const EN = {
   'en meta': 'on target',
   'sin meta de kcal': 'no kcal target',
   'al piso': 'to floor',
+  'sobre el techo': 'over ceiling',
   piso: 'floor',
+  techo: 'ceiling',
   meta: 'target',
   de: 'of',
 
@@ -495,6 +500,7 @@ const EN = {
 
   // Sodium warning
   '⚠ sodio < %n mg': '⚠ sodium < %n mg',
+  '⚠ sodio > %n mg': '⚠ sodium > %n mg',
   'Sin registros este día': 'No entries this day',
 
   // Entry sections / cards

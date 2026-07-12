@@ -15,10 +15,16 @@ import {
   todayISO,
   addDaysISO,
   resolveTarget,
-  classifyKcal,
+  nutrientKind,
+  classifyDiana,
   classifyFloor,
+  classifyBand,
+  classifyCeiling,
+  classifySodium,
   sodiumIsLow,
+  sodiumIsHigh,
   SODIUM_FLOOR_MG,
+  SODIUM_CEILING_MG,
   SODIUM_HIGH_MG,
   POTASSIUM_HIGH_MG,
   round,
@@ -67,24 +73,27 @@ function cardCfg(prefs, view) {
   return { ...CARD_DEFAULTS[view], ...(prefs.today_card?.[view] || {}) };
 }
 
-// Metadatos de macros (los micros salen de MICROS). kind gobierna semántica y
-// color: kcal = diana ±5% (classifyKcal), floor = piso (proteína),
-// sodium = piso médico fijo (SODIUM_FLOOR_MG), goal = meta a alcanzar.
+// Metadatos de macros (los micros salen de MICROS). El arquetipo de adherencia
+// (diana/piso/rango/techo/sodio/meta) NO se declara aquí: lo resuelve
+// nutrientKind(key) en domain.js — única fuente, para que Hoy y Dashboard no
+// diverjan. nutrientMeta lo adjunta como `kind`.
 const MACRO_META = {
-  kcal: { key: 'kcal', label: 'Kcal', unit: 'kcal', decimals: 0, color: 'text-d-kcal', kind: 'kcal' },
-  protein_g: { key: 'protein_g', label: 'Prot', unit: 'g', decimals: 1, color: 'text-d-prot', kind: 'floor' },
-  carbs_g: { key: 'carbs_g', label: 'Carbs', unit: 'g', decimals: 1, color: 'text-d-carb', kind: 'goal' },
-  fat_g: { key: 'fat_g', label: 'Grasa', unit: 'g', decimals: 1, color: 'text-d-fat', kind: 'goal' },
+  kcal: { key: 'kcal', label: 'Kcal', unit: 'kcal', decimals: 0, color: 'text-d-kcal' },
+  protein_g: { key: 'protein_g', label: 'Prot', unit: 'g', decimals: 1, color: 'text-d-prot' },
+  carbs_g: { key: 'carbs_g', label: 'Carbs', unit: 'g', decimals: 1, color: 'text-d-carb' },
+  fat_g: { key: 'fat_g', label: 'Grasa', unit: 'g', decimals: 1, color: 'text-d-fat' },
 };
 // Etiqueta corta para chips del mini (símbolo químico donde es inequívoco;
 // P/C/G = convención de los headers de sección). Resto: label completo.
 const SHORT_LABEL = { kcal: 'kcal', protein_g: 'P', carbs_g: 'C', fat_g: 'G', sodio_mg: 'Na', potasio_mg: 'K', magnesio_mg: 'Mg', calcio_mg: 'Ca', hierro_mg: 'Fe', zinc_mg: 'Zn' };
 
 function nutrientMeta(key) {
-  if (MACRO_META[key]) return MACRO_META[key];
-  const m = MICROS.find((x) => x.key === key);
-  if (!m) return null; // clave vieja/desconocida en prefs: se ignora, no rompe
-  return { key, label: m.label, unit: m.unit, decimals: m.unit === 'g' ? 1 : 0, color: null, kind: key === 'sodio_mg' ? 'sodium' : 'goal' };
+  const base = MACRO_META[key] || (() => {
+    const m = MICROS.find((x) => x.key === key);
+    if (!m) return null; // clave vieja/desconocida en prefs: se ignora, no rompe
+    return { key, label: m.label, unit: m.unit, decimals: m.unit === 'g' ? 1 : 0, color: null };
+  })();
+  return base && { ...base, kind: nutrientKind(key) };
 }
 
 function shortLabel(key) {
@@ -97,26 +106,35 @@ function targetFor(key, target) {
   return v > 0 ? Number(v) : null;
 }
 
-// Estado pintable de un nutriente: valor, meta, % y color según su semántica.
-function itemState(key, totals, target) {
+// Estado pintable de un nutriente: valor, meta, % y color según su arquetipo.
+// El régimen (target.goal) sesga la banda de kcal; hasFood evita marcar el sodio
+// en un día vacío.
+function itemState(key, totals, target, hasFood) {
   const meta = nutrientMeta(key);
   if (!meta) return null;
+  const goal = target?.goal ?? null;
   const value = Number(totals[key] || 0);
   const tgt = targetFor(key, target);
   const pct = tgt ? Math.round((value / tgt) * 100) : null;
   let color;
-  if (meta.kind === 'kcal') color = statusColor[classifyKcal(value, tgt)] || meta.color;
-  else if (meta.kind === 'floor') color = statusColor[classifyFloor(value, tgt)] || meta.color;
-  else if (meta.kind === 'sodium') color = 'text-danger';
+  if (meta.kind === 'diana') color = statusColor[classifyDiana(value, tgt, goal)] || meta.color;
+  else if (meta.kind === 'piso') color = statusColor[classifyFloor(value, tgt)] || meta.color;
+  else if (meta.kind === 'rango') color = statusColor[classifyBand(value, tgt)] || meta.color;
+  else if (meta.kind === 'techo') color = statusColor[classifyCeiling(value, tgt)] || meta.color;
+  else if (meta.kind === 'sodio') color = statusColor[classifySodium(value, hasFood)] || 'text-text';
   else if (meta.color) color = meta.color;
   else color = tgt != null && value >= tgt ? 'text-ok' : 'text-warn';
-  return { meta, value, tgt, pct, color };
+  return { meta, value, tgt, pct, color, goal };
 }
 
-// "En meta": diana ±5% para kcal, alcanzar/superar para el resto.
-function metFor(meta, value, tgt) {
+// "En meta" según el arquetipo: dentro de la banda (diana/rango), en o sobre el
+// piso (piso/meta), en o bajo el techo (techo). Sodio se pinta aparte (dual).
+function metFor(meta, value, tgt, goal) {
   if (tgt == null) return false;
-  return meta.kind === 'kcal' ? classifyKcal(value, tgt) === 'ok' : value >= tgt;
+  if (meta.kind === 'diana') return classifyDiana(value, tgt, goal) === 'ok';
+  if (meta.kind === 'rango') return classifyBand(value, tgt) === 'ok';
+  if (meta.kind === 'techo') return value <= tgt;
+  return value >= tgt; // piso, meta
 }
 
 // Delta a la meta formateado según el modo: absoluto (−318) o en % (−18%).
@@ -133,23 +151,35 @@ function deltaText(mode, delta, base, decimals) {
 function pendingFor(items, totals, target, hasFood) {
   const sodium = Number(totals.sodio_mg || 0);
   const sodLow = sodiumIsLow(sodium, hasFood);
+  const sodHigh = sodiumIsHigh(sodium, hasFood);
+  // Pendiente de sodio: piso (defecto) o techo (exceso), ambos críticos y médicos.
+  const sodPending = () =>
+    sodLow
+      ? { key: 'sodio_mg', critical: true, delta: sodium - SODIUM_FLOOR_MG, base: SODIUM_FLOOR_MG }
+      : { key: 'sodio_mg', critical: true, delta: sodium - SODIUM_CEILING_MG, base: SODIUM_CEILING_MG };
   const pending = [];
   for (const key of items) {
     const s = itemState(key, totals, target);
     if (!s) continue;
-    const { meta, value, tgt } = s;
-    if (meta.kind === 'kcal') {
-      const st = classifyKcal(value, tgt);
+    const { meta, value, tgt, goal } = s;
+    if (meta.kind === 'diana') {
+      const st = classifyDiana(value, tgt, goal);
       if (st && st !== 'ok') pending.push({ key, critical: st === 'danger', delta: value - tgt, base: tgt });
-    } else if (meta.kind === 'floor') {
+    } else if (meta.kind === 'rango') {
+      const st = classifyBand(value, tgt);
+      if (st && st !== 'ok') pending.push({ key, critical: st === 'danger', delta: value - tgt, base: tgt });
+    } else if (meta.kind === 'piso') {
       if (classifyFloor(value, tgt) === 'danger') pending.push({ key, critical: true, delta: value - tgt, base: tgt });
-    } else if (meta.kind === 'sodium') {
-      if (sodLow) pending.push({ key, critical: true, delta: sodium - SODIUM_FLOOR_MG, base: SODIUM_FLOOR_MG });
+    } else if (meta.kind === 'techo') {
+      const st = classifyCeiling(value, tgt);
+      if (st && st !== 'ok') pending.push({ key, critical: st === 'danger', delta: value - tgt, base: tgt });
+    } else if (meta.kind === 'sodio') {
+      if (sodLow || sodHigh) pending.push(sodPending());
     } else if (tgt != null && value < tgt) {
       pending.push({ key, critical: false, delta: value - tgt, base: tgt });
     }
   }
-  if (sodLow && !items.includes('sodio_mg')) pending.push({ key: 'sodio_mg', critical: true, delta: sodium - SODIUM_FLOOR_MG, base: SODIUM_FLOOR_MG });
+  if ((sodLow || sodHigh) && !items.includes('sodio_mg')) pending.push(sodPending());
   // Un delta que redondea a 0 se considera cumplido: "−0" como pendiente
   // (peor aún, crítico) contradice al dato mostrado.
   return pending.filter((s) => Math.abs(round(s.delta, 0)) >= 1);
@@ -186,11 +216,11 @@ function SummaryCard({ view, cfg, onToggleView, onConfig, ...props }) {
   );
 }
 
-function StateSummary({ cfg, totals, target }) {
+function StateSummary({ cfg, totals, target, hasFood }) {
   return (
     <div className="grid grid-cols-3 gap-2 text-center">
       {cfg.items.map((key) => {
-        const s = itemState(key, totals, target);
+        const s = itemState(key, totals, target, hasFood);
         return s && <Stat key={key} state={s} mode={cfg.mode} />;
       })}
     </div>
@@ -200,9 +230,9 @@ function StateSummary({ cfg, totals, target }) {
 // Diseño orientado a metas: hero con anillo (items[0]), barras (items[1..3])
 // y tarjetas (items[4..]). La posición en items asigna el slot.
 function GoalSummary({ cfg, totals, target, hasFood }) {
-  const hero = cfg.items[0] ? itemState(cfg.items[0], totals, target) : null;
-  const rails = cfg.items.slice(1, 4).map((k) => itemState(k, totals, target)).filter(Boolean);
-  const tiles = cfg.items.slice(4).map((k) => itemState(k, totals, target)).filter(Boolean);
+  const hero = cfg.items[0] ? itemState(cfg.items[0], totals, target, hasFood) : null;
+  const rails = cfg.items.slice(1, 4).map((k) => itemState(k, totals, target, hasFood)).filter(Boolean);
+  const tiles = cfg.items.slice(4).map((k) => itemState(k, totals, target, hasFood)).filter(Boolean);
   return (
     <div className="flex flex-col gap-4">
       {hero && <HeroRing state={hero} mode={cfg.mode} />}
@@ -227,9 +257,9 @@ function GoalSummary({ cfg, totals, target, hasFood }) {
 }
 
 function HeroRing({ state, mode }) {
-  const { meta, value, tgt, pct, color } = state;
+  const { meta, value, tgt, pct, color, goal } = state;
   const arc = pct != null ? 326.726 * (1 - Math.min(1, pct / 100)) : null;
-  const met = metFor(meta, value, tgt);
+  const met = metFor(meta, value, tgt, goal);
   return (
     <div className="flex items-center gap-4">
       <div className={`relative w-[104px] h-[104px] flex-none ${color}`}>
@@ -271,23 +301,28 @@ function HeroRing({ state, mode }) {
   );
 }
 
-// Tarjeta de mineral/micro. El sodio conserva su semántica de piso médico
-// (SODIUM_FLOOR_MG), no configurable; el resto son metas a alcanzar.
+// Tarjeta de mineral/micro. El sodio conserva su semántica médica dual (piso
+// SODIUM_FLOOR_MG + techo SODIUM_CEILING_MG), no configurable; el resto sigue su
+// arquetipo (techo = no rebasar, meta = alcanzar).
 function Tile({ state, mode, hasFood }) {
-  const { meta, value, tgt, color } = state;
+  const { meta, value, tgt, color, goal } = state;
   const d = meta.decimals;
-  const met = metFor(meta, value, tgt);
+  const met = metFor(meta, value, tgt, goal);
   return (
     <div className="rounded-xl bg-surface-2 p-3">
       <p className="text-[10px] uppercase tracking-wide text-text-3">{t(meta.label)}</p>
       <p className={`font-mono tabular-nums text-lg mt-1 ${color}`}>{round(value, d)}</p>
-      {meta.kind === 'sodium' ? (
+      {meta.kind === 'sodio' ? (
         sodiumIsLow(value, hasFood) ? (
           <p className="font-mono tabular-nums text-[11px] text-danger mt-0.5">
             {mode === 'pct' ? deltaText('pct', value - SODIUM_FLOOR_MG, SODIUM_FLOOR_MG, 0) : `−${round(SODIUM_FLOOR_MG - value, 0)}`} {t('al piso')}
           </p>
+        ) : sodiumIsHigh(value, hasFood) ? (
+          <p className="font-mono tabular-nums text-[11px] text-danger mt-0.5">
+            {mode === 'pct' ? deltaText('pct', value - SODIUM_CEILING_MG, SODIUM_CEILING_MG, 0) : `+${round(value - SODIUM_CEILING_MG, 0)}`} {t('sobre el techo')}
+          </p>
         ) : (
-          <p className="text-[10px] text-text-3 mt-0.5">{meta.unit} · {t('piso')} {SODIUM_FLOOR_MG}</p>
+          <p className="text-[10px] text-text-3 mt-0.5">{meta.unit} · {t('piso')} {SODIUM_FLOOR_MG} · {t('techo')} {SODIUM_CEILING_MG}</p>
         )
       ) : tgt == null ? (
         <p className="text-[10px] text-text-3 mt-0.5">{meta.unit}</p>
@@ -999,6 +1034,7 @@ export default function Today() {
 
   const target = resolveTarget(targets, date);
   const sodiumLow = sodiumIsLow(totals.sodio_mg, foodEntries.length > 0);
+  const sodiumHigh = sodiumIsHigh(totals.sodio_mg, foodEntries.length > 0);
 
   const groups = groupByLabel(foodEntries, labels, activeEntry != null);
 
@@ -1121,6 +1157,11 @@ export default function Today() {
             {sodiumLow && (
               <p className="text-sm text-danger" role="status" aria-live="polite">
                 {t('⚠ sodio < %n mg').replace('%n', SODIUM_FLOOR_MG)}
+              </p>
+            )}
+            {sodiumHigh && (
+              <p className="text-sm text-danger" role="status" aria-live="polite">
+                {t('⚠ sodio > %n mg').replace('%n', SODIUM_CEILING_MG)}
               </p>
             )}
 
@@ -1718,9 +1759,9 @@ function WaterSettingsForm({ glassMl, onSave }) {
 // valor actual (+ /meta), 'delta'/'pct' = faltante (✓ al cumplir); la línea
 // pequeña siempre ancla el contexto valor/meta.
 function Stat({ state, mode }) {
-  const { meta, value, tgt, color } = state;
+  const { meta, value, tgt, color, goal } = state;
   const d = meta.decimals;
-  const met = metFor(meta, value, tgt);
+  const met = metFor(meta, value, tgt, goal);
   const showDelta = mode !== 'meta' && tgt != null;
   return (
     <div>
@@ -1741,10 +1782,10 @@ function Stat({ state, mode }) {
 // −N% o valor/meta). Cumplida la meta → check + fila atenuada; el tramo
 // vacío de la barra va en el propio color del nutriente (tenue).
 function RailStat({ state, mode }) {
-  const { meta, value, tgt, pct, color } = state;
+  const { meta, value, tgt, pct, color, goal } = state;
   const d = meta.decimals;
   const has = tgt != null;
-  const met = metFor(meta, value, tgt);
+  const met = metFor(meta, value, tgt, goal);
   return (
     <div className={`${color}${met ? ' opacity-60' : ''}`}>
       <div className="flex items-baseline justify-between text-sm">

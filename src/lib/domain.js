@@ -383,24 +383,109 @@ export function resolveTarget(targets, dateISO) {
   return candidates.reduce((best, t) => (t.valid_from > best.valid_from ? t : best));
 }
 
-// Semántica de adherencia (§4.5): kcal = diana, proteína = piso.
-export function classifyKcal(consumed, target) {
+// —— Semántica de adherencia nutricional ——————————————————————————————
+// El rango de gracia NO es simétrico ni igual para todo nutriente. Cada uno cae
+// en un arquetipo (nutrientKind) que decide color y "cumplido":
+//   diana  — objetivo con banda de gracia; el régimen la sesga (déficit castiga el
+//            exceso, volumen el defecto). Solo kcal.
+//   piso   — mínimo a alcanzar; el exceso es inocuo, el defecto = danger. Proteína.
+//   rango  — banda simétrica a ambos lados del objetivo. Carbs y grasa (reparto,
+//            no diana calórica): más laxa que kcal.
+//   techo  — máximo a no rebasar; el defecto es inocuo, el exceso = danger. Grasa
+//            saturada/trans, azúcar añadido, alcohol, colesterol.
+//   sodio  — dual: piso médico fijo (SODIUM_FLOOR_MG) + techo (SODIUM_CEILING_MG).
+//   meta   — default (resto de micros): llegar al RDA; warn si <, exceso inocuo.
+export const NUTRIENT_KIND = {
+  kcal: 'diana',
+  protein_g: 'piso',
+  carbs_g: 'rango',
+  fat_g: 'rango',
+  grasa_sat_g: 'techo',
+  grasa_trans_g: 'techo',
+  azucar_anadido_g: 'techo',
+  alcohol_g: 'techo',
+  colesterol_mg: 'techo',
+  sodio_mg: 'sodio',
+};
+export function nutrientKind(key) {
+  return NUTRIENT_KIND[key] || 'meta';
+}
+
+// Anchos de banda de gracia, como fracción del objetivo. Valores por defecto
+// (clínicos); pensados para que un futuro menú de usuario los sobrescriba — por
+// eso viven como constante nombrada y no como números incrustados en cada
+// clasificador. Cambiar aquí recolorea toda la app (color se calcula al vuelo).
+export const ADHERENCE_BANDS = {
+  // diana (kcal): tolerancias firmadas [defecto, exceso] por régimen. Sin régimen
+  // conserva la banda estricta histórica (±5 ok / ±15 warn) para no cambiar el
+  // significado establecido cuando la fase no declara meta.
+  diana: {
+    default: { okUnder: 0.05, okOver: 0.05, warnUnder: 0.15, warnOver: 0.15 },
+    mantenimiento: { okUnder: 0.10, okOver: 0.10, warnUnder: 0.20, warnOver: 0.20 },
+    recomposicion: { okUnder: 0.10, okOver: 0.10, warnUnder: 0.20, warnOver: 0.20 },
+    deficit: { okUnder: 0.15, okOver: 0.08, warnUnder: 0.25, warnOver: 0.18 },
+    volumen: { okUnder: 0.08, okOver: 0.15, warnUnder: 0.18, warnOver: 0.25 },
+  },
+  // rango (carbs, grasa): banda simétrica alrededor del objetivo.
+  rango: { ok: 0.15, warn: 0.30 },
+  // techo: holgura por encima del límite antes de warn / danger.
+  techo: { warn: 0.10 },
+};
+
+// diana: objetivo con banda de gracia asimétrica según el régimen de la fase.
+export function classifyDiana(consumed, target, goal) {
   if (!target) return null;
-  const diff = Math.abs(consumed - target) / target;
-  if (diff <= 0.05) return 'ok';
-  if (diff <= 0.15) return 'warn';
+  const b = ADHERENCE_BANDS.diana[goal] || ADHERENCE_BANDS.diana.default;
+  const diff = (consumed - target) / target; // firmado: + = exceso, − = defecto
+  if (diff >= -b.okUnder && diff <= b.okOver) return 'ok';
+  if (diff >= -b.warnUnder && diff <= b.warnOver) return 'warn';
   return 'danger';
 }
 
+// Compat: kcal sin régimen conocido = banda estricta histórica (diana default).
+export function classifyKcal(consumed, target) {
+  return classifyDiana(consumed, target, null);
+}
+
+// piso: mínimo a alcanzar (proteína). Exceso inocuo, defecto = danger.
 export function classifyFloor(consumed, target) {
   if (!target) return null;
   return consumed >= target ? 'ok' : 'danger';
 }
 
+// rango: banda simétrica a ambos lados del objetivo (carbs, grasa).
+export function classifyBand(consumed, target) {
+  if (!target) return null;
+  const diff = Math.abs(consumed - target) / target;
+  if (diff <= ADHERENCE_BANDS.rango.ok) return 'ok';
+  if (diff <= ADHERENCE_BANDS.rango.warn) return 'warn';
+  return 'danger';
+}
+
+// techo: el objetivo es un máximo a no rebasar (grasa sat., trans, azúcar añadido,
+// alcohol, colesterol; y el techo de sodio). Bajo el techo = ok; el exceso pesa.
+export function classifyCeiling(consumed, ceiling) {
+  if (!ceiling) return null;
+  if (consumed <= ceiling) return 'ok';
+  if (consumed <= ceiling * (1 + ADHERENCE_BANDS.techo.warn)) return 'warn';
+  return 'danger';
+}
+
 export const SODIUM_FLOOR_MG = 1500;
+export const SODIUM_CEILING_MG = 2300; // UL / valor diario de referencia (FDA).
 
 export function sodiumIsLow(sodiumMg, hasEntries) {
   return hasEntries && sodiumMg < SODIUM_FLOOR_MG;
+}
+
+export function sodiumIsHigh(sodiumMg, hasEntries) {
+  return hasEntries && sodiumMg > SODIUM_CEILING_MG;
+}
+
+// Semáforo dual de sodio: danger fuera del rango [piso, techo], ok dentro.
+export function classifySodium(sodiumMg, hasEntries) {
+  if (!hasEntries) return null;
+  return sodiumMg < SODIUM_FLOOR_MG || sodiumMg > SODIUM_CEILING_MG ? 'danger' : 'ok';
 }
 
 // "Alto en" por registro (criterio FDA: ≥20% del valor diario de referencia).
