@@ -282,8 +282,14 @@ export default function Body() {
   const defaults = BODY_METRICS.slice(0, BODY_METRICS_DEFAULT);
   const extra = BODY_METRICS.slice(BODY_METRICS_DEFAULT);
   const favMetrics = extra.filter((m) => favs.includes(m.key));
-  const derived = derivedBodyMetrics(values);
-  const hasDerived = DERIVED_BODY.some((d) => derived[d.key] != null);
+  // Altura es casi constante y solo se captura en días de bioimpedancia; para que
+  // IMC/FFMI salgan en cualquier día pesado, se arrastra la última altura conocida
+  // del historial cuando el día no la trae (no se persiste, solo alimenta el cálculo).
+  const lastAltura = [...history].reverse().find((r) => r.metrics?.altura_cm != null)?.metrics.altura_cm ?? null;
+  const alturaHoy = (values.altura_cm ?? '') !== '' ? values.altura_cm : lastAltura;
+  const derived = derivedBodyMetrics({ ...values, altura_cm: alturaHoy });
+  const alturaHeredada = (values.altura_cm ?? '') === '' && lastAltura != null;
+  const showDerived = (values.peso_kg ?? '') !== '';
 
   return (
     <div className="px-4 pt-4 pb-20 flex flex-col gap-4 lg:max-w-3xl lg:mx-auto">
@@ -324,7 +330,7 @@ export default function Body() {
         </div>
 
         {/* Derivadas de solo lectura: se calculan de peso/grasa/altura, no se guardan. */}
-        {hasDerived && (
+        {showDerived && (
           <div className="flex flex-col gap-2">
             <p className="text-xs text-text-3 pt-1">{t('Derivadas')}</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -343,6 +349,11 @@ export default function Body() {
                 </div>
               ))}
             </div>
+            {alturaHeredada && (
+              <p className="text-[11px] text-text-3" style={{ margin: 0 }}>
+                {t('IMC y FFMI usan tu última altura registrada (%n cm).').replace('%n', lastAltura)}
+              </p>
+            )}
           </div>
         )}
 
