@@ -48,6 +48,7 @@ export default function Body() {
   const [photos, setPhotos] = useState([]); // rutas en el bucket body-photos del día
   const [photoUrls, setPhotoUrls] = useState({}); // ruta -> signed URL (efímera)
   const [uploading, setUploading] = useState(false);
+  const [photoDrag, setPhotoDrag] = useState(false);
   const [history, setHistory] = useState([]); // filas {day, metrics} últimos HISTORY_DAYS
   const [showMore, setShowMore] = useState(false);
   const [trendKey, setTrendKey] = usePersistentState('nutri.body.trendKey', 'peso_kg');
@@ -285,7 +286,12 @@ export default function Body() {
       </section>
 
       {/* Fotos de progreso */}
-      <section className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
+      <section
+        onDragOver={(e) => { e.preventDefault(); setPhotoDrag(true); }}
+        onDragLeave={(e) => { e.preventDefault(); setPhotoDrag(false); }}
+        onDrop={(e) => { e.preventDefault(); setPhotoDrag(false); uploadPhotos(e.dataTransfer.files); }}
+        className={`rounded-2xl bg-surface border p-4 flex flex-col gap-3 ${photoDrag ? 'border-accent-deep ring-1 ring-accent-deep' : 'border-border'}`}
+      >
         <div className="flex items-center justify-between">
           <p className="text-sm text-text-3">{t('Fotos de progreso')}</p>
           {uploading && <span className="text-xs text-accent">{t('Subiendo…')}</span>}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Sparkles, ImagePlus, X } from 'lucide-react';
 import { t, useLang } from '../lib/i18n.js';
 
@@ -15,10 +15,22 @@ export default function AiDataCard({
   text, onText, files, onFiles, loading, error, onSubmit, placeholder, hint, children,
 }) {
   useLang();
+  const [dragOver, setDragOver] = useState(false);
   const thumbs = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
   useEffect(() => () => thumbs.forEach((u) => URL.revokeObjectURL(u)), [thumbs]);
+  function onDrop(e) {
+    e.preventDefault();
+    setDragOver(false);
+    const imgs = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+    if (imgs.length) onFiles([...files, ...imgs].slice(0, MAX_PHOTOS));
+  }
   return (
-    <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+      onDrop={onDrop}
+      className={`rounded-xl bg-surface-2 border p-3 flex flex-col gap-2 ${dragOver ? 'border-accent-deep ring-1 ring-accent-deep' : 'border-border'}`}
+    >
       <p className="text-sm text-text-2 flex items-center gap-2">
         <Sparkles size={16} className="text-accent" /> {t('Datos con IA')}
       </p>
