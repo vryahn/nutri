@@ -1635,20 +1635,25 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
   const isUS = units === 'us';
   const [customAmount, setCustomAmount] = useState('');
   const filled = glassMl > 0 ? Math.floor(waterMl / glassMl) : 0;
+  // Fracción del vaso en curso (índice `filled`): llena parcialmente ese vaso
+  // para que el agua sub-vaso (registro manual < un vaso) SÍ se vea.
+  const frac = glassMl > 0 ? (waterMl % glassMl) / glassMl : 0;
   // ponytail: tope de 16 vasos por si el objetivo/vaso da un número absurdo
   const count = Math.min(Math.max(goalMl > 0 ? Math.ceil(goalMl / glassMl) : 3, filled + 1), 16);
 
-  // Al llenarse un vaso nuevo, su líquido sube con ola (splash = índice animado).
-  const prevFilledRef = useRef(filled);
+  // Al SUMAR agua (clic o manual) el líquido del vaso más alto con agua sube con
+  // ola. Se keyea en waterMl, NO en `filled`: así un add manual parcial —que no
+  // completa vaso— también anima. splash = índice del vaso animado.
+  const prevWaterRef = useRef(waterMl);
   const [splash, setSplash] = useState(-1);
   useEffect(() => {
-    const prev = prevFilledRef.current;
-    prevFilledRef.current = filled;
-    if (filled <= prev) return undefined;
-    setSplash(filled - 1);
+    const prev = prevWaterRef.current;
+    prevWaterRef.current = waterMl;
+    if (waterMl <= prev) return undefined;
+    setSplash(frac > 0 ? filled : filled - 1);
     const timer = setTimeout(() => setSplash(-1), 1400);
     return () => clearTimeout(timer);
-  }, [filled]);
+  }, [waterMl, filled, frac]);
 
   return (
     <section className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
@@ -1671,6 +1676,7 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
       <div className="flex flex-wrap gap-2">
         {Array.from({ length: count }, (_, i) => {
           const isFilled = i < filled;
+          const isPartial = i === filled && frac > 0; // vaso en curso, medio lleno
           return (
             <button
               key={i}
@@ -1680,7 +1686,13 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
               }`}
               aria-label={isFilled ? t('Quitar último registro de agua') : t('Añadir vaso de %n').replace('%n', fmtMl(glassMl))}
             >
-              {isFilled && <span aria-hidden="true" className={`water-liquid ${i === splash ? 'water-liquid-rise' : ''}`} />}
+              {(isFilled || isPartial) && (
+                <span
+                  aria-hidden="true"
+                  className={`water-liquid ${i === splash ? 'water-liquid-rise' : ''}`}
+                  style={isPartial ? { height: `${frac * 68}%` } : undefined}
+                />
+              )}
               <GlassWater size={22} className="relative" />
               {i === filled && <Plus size={11} className="absolute top-1 right-1 text-text-2" />}
             </button>
