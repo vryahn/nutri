@@ -31,6 +31,21 @@ const EN = {
   Brazo: 'Arm',
   Muslo: 'Thigh',
   Pantorrilla: 'Calf',
+  // Importar medidas (ImportSheet kind='body', Body.jsx)
+  'Importar medidas': 'Import measurements',
+  'Pega o sube un CSV: una fila por día. Columna day (AAAA-MM-DD) + una por medida (peso_kg, grasa_pct, cintura_cm…) o su alias en inglés (weight, body_fat, waist). Descarga la plantilla para ver todas.':
+    'Paste or upload a CSV: one row per day. A day column (YYYY-MM-DD) + one per measurement (peso_kg, grasa_pct, cintura_cm…) or its English alias (weight, body_fat, waist). Download the template to see them all.',
+  '%n días del CSV ya tienen medidas registradas.': '%n days in the CSV already have measurements.',
+  Complementar: 'Complement',
+  Reemplazar: 'Replace',
+  'Reemplazar: el CSV sustituye por completo las medidas de esos días.':
+    "Replace: the CSV fully overwrites those days' measurements.",
+  'Complementar: conserva tus medidas y solo agrega o actualiza las del CSV.':
+    'Complement: keeps your measurements and only adds or updates the CSV ones.',
+  '%n medidas': '%n measurements',
+  '%n días importados.': '%n days imported.',
+  'fuera de rango': 'out of range',
+  'sin medidas': 'no measurements',
   // Dashboard: tendencia por nutriente
   'Tendencia por nutriente': 'Trend by nutrient',
   'Elige cualquier nutriente y ve su valor día a día en el rango. La línea punteada es tu objetivo diario, si lo tienes en Metas.':
@@ -129,8 +144,19 @@ const EN = {
     '%n kcal don\'t match the macros (≈ %m kcal by Atwater). The food will be flagged for review.',
   'Los valores no son físicamente plausibles para 100 g. Revisa antes de guardar.':
     'The values are not physically plausible for 100 g. Review before saving.',
-  'Hay componentes inconsistentes (p. ej. azúcar o fibra mayor que los carbs). Revisa antes de guardar.':
-    'There are inconsistent components (e.g. sugar or fiber greater than carbs). Review before saving.',
+  'Componente inconsistente': 'Inconsistent component',
+  'Revisa antes de guardar.': 'Review before saving.',
+  'grasa saturada + trans supera la grasa total': 'saturated + trans fat exceeds total fat',
+  'azúcar supera los carbohidratos': 'sugar exceeds carbs',
+  'azúcar añadido supera el azúcar total': 'added sugar exceeds total sugar',
+  'fibra supera los carbohidratos': 'fiber exceeds carbs',
+  'polialcoholes superan los carbohidratos': 'polyols exceed carbs',
+  'los polialcoholes desglosados superan su total': 'itemized polyols exceed their total',
+  'los azúcares desglosados superan el azúcar total': 'itemized sugars exceed total sugar',
+  'fibra soluble + insoluble supera la fibra total': 'soluble + insoluble fiber exceeds total fiber',
+  'los tipos de grasa superan la grasa total': 'fat types exceed total fat',
+  'ALA + EPA + DHA superan el omega-3 total': 'ALA + EPA + DHA exceed total omega-3',
+  'LA + AA superan el omega-6 total': 'LA + AA exceed total omega-6',
   'Más micros (opcional)': 'More micros (optional)',
   '★ = favorito: aparece arriba junto a los principales.': '★ = favorite: appears above with the main ones.',
   '★ = favorito, se promueve arriba en móvil.': '★ = favorite, promoted above on mobile.',

@@ -120,43 +120,39 @@ describe('macrosImplausible', () => {
 });
 
 describe('componentsInconsistent', () => {
-  it('true: grasa sat.+trans > grasa total (+0.5 holgura)', () => {
+  it('razón: grasa sat.+trans > grasa total (+0.5 holgura)', () => {
     const f = { fat_g: 5, micros: { grasa_sat_g: 6 } };
-    expect(componentsInconsistent(f)).toBe(true);
+    expect(componentsInconsistent(f)).toBe('grasa saturada + trans supera la grasa total');
   });
 
-  it('false: grasa sat.+trans <= grasa total', () => {
+  it('null: grasa sat.+trans <= grasa total', () => {
     const f = { fat_g: 5, micros: { grasa_sat_g: 5 } };
-    expect(componentsInconsistent(f)).toBe(false);
+    expect(componentsInconsistent(f)).toBeNull();
   });
 
   it('dato ausente no cuenta como 0 (fat_g ausente no dispara la desigualdad)', () => {
     const f = { fat_g: '', micros: { grasa_sat_g: 100 } };
-    expect(componentsInconsistent(f)).toBe(false);
+    expect(componentsInconsistent(f)).toBeNull();
   });
 
-  it('true: polialcoholes > carbohidratos', () => {
-    expect(componentsInconsistent({ carbs_g: 10, micros: { polioles_g: 12 } })).toBe(true);
+  it('razón: polialcoholes > carbohidratos', () => {
+    expect(componentsInconsistent({ carbs_g: 10, micros: { polioles_g: 12 } }))
+      .toBe('polialcoholes superan los carbohidratos');
   });
 
-  it('true: suma de azúcares individuales > azúcar total', () => {
+  it('razón: suma de azúcares individuales > azúcar total', () => {
     const f = { micros: { azucar_g: 5, glucosa_g: 4, fructosa_g: 4 } };
-    expect(componentsInconsistent(f)).toBe(true);
+    expect(componentsInconsistent(f)).toBe('los azúcares desglosados superan el azúcar total');
   });
 
-  it('true: ALA+EPA+DHA > omega-3 total', () => {
+  it('razón: ALA+EPA+DHA > omega-3 total', () => {
     const f = { micros: { omega3_g: 1, ala_g: 0.8, epa_g: 0.5, dha_g: 0.5 } }; // 1.8 > 1+0.5
-    expect(componentsInconsistent(f)).toBe(true);
+    expect(componentsInconsistent(f)).toBe('ALA + EPA + DHA superan el omega-3 total');
   });
 
-  it('true: suma de aminoácidos > proteína', () => {
+  it('null: aminoácidos ya no se comparan contra proteína (Kjeldahl/base distinta)', () => {
     const f = { protein_g: 1, micros: { leucina_g: 0.8, lisina_g: 0.8 } };
-    expect(componentsInconsistent(f)).toBe(true);
-  });
-
-  it('false: suma parcial de aminoácidos bajo la proteína', () => {
-    const f = { protein_g: 10, micros: { leucina_g: 0.8, lisina_g: 0.8 } };
-    expect(componentsInconsistent(f)).toBe(false);
+    expect(componentsInconsistent(f)).toBeNull();
   });
 });
 

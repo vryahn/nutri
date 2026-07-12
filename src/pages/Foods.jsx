@@ -1024,7 +1024,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         )}
         {inconsistent && (
           <p className="text-sm text-warn" role="status">
-            ⚠ {t('Hay componentes inconsistentes (p. ej. azúcar o fibra mayor que los carbs). Revisa antes de guardar.')}
+            ⚠ {t('Componente inconsistente')}: {t(inconsistent)}. {t('Revisa antes de guardar.')}
           </p>
         )}
 

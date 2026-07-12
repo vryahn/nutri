@@ -267,6 +267,12 @@ export function macrosImplausible(f) {
 // Desigualdades de composición entre micros y macros (holgura +0.5 g por redondeos).
 // Solo evalúa una desigualdad cuando AMBOS operandos son numéricos — un dato ausente
 // no cuenta como 0, para no marcar falsos positivos. Al vuelo, nunca persistida.
+// Devuelve la FRASE de la primera desigualdad rota (para mostrarla al usuario) o null.
+// Cadena → truthy, null → falsy: los usos como booleano siguen funcionando igual.
+// ponytail: sin check de aminoácidos vs proteína — la suma de aminoácidos casi siempre
+// choca con la proteína Kjeldahl (N×6.25) o viene declarada por 100 g de proteína, no de
+// producto; era falso positivo garantizado en toda proteína en polvo. Reactivar solo si
+// se normaliza la base de los aminoácidos a la del producto.
 export function componentsInconsistent(f) {
   const m = f.micros || {};
   const num = (v) => (v === '' || v == null ? null : Number(v));
@@ -278,7 +284,6 @@ export function componentsInconsistent(f) {
   const azucar = num(m.azucar_g);
   const azucarAnadido = num(m.azucar_anadido_g);
   const fibra = num(m.fibra_g);
-  const protein = num(f.protein_g);
 
   // Suma de las claves presentes (null si ninguna): un dato ausente no cuenta como 0,
   // así una suma parcial siempre queda por debajo del total y nunca es falso positivo.
@@ -295,25 +300,20 @@ export function componentsInconsistent(f) {
   const omega3Partes = sumPresent('ala_g', 'epa_g', 'dha_g');
   const omega6 = num(m.omega6_g);
   const omega6Partes = sumPresent('la_g', 'aa_g');
-  const aminoSuma = sumPresent(
-    'triptofano_g', 'treonina_g', 'isoleucina_g', 'leucina_g', 'lisina_g', 'metionina_g', 'cistina_g',
-    'fenilalanina_g', 'tirosina_g', 'valina_g', 'arginina_g', 'histidina_g', 'alanina_g',
-    'acido_aspartico_g', 'acido_glutamico_g', 'glicina_g', 'prolina_g', 'serina_g', 'hidroxiprolina_g'
-  );
 
-  if (satTrans != null && fat != null && satTrans > fat + 0.5) return true;
-  if (azucar != null && carbs != null && azucar > carbs + 0.5) return true;
-  if (azucarAnadido != null && azucar != null && azucarAnadido > azucar + 0.5) return true;
-  if (fibra != null && carbs != null && fibra > carbs + 0.5) return true;
-  if (polioles != null && carbs != null && polioles > carbs + 0.5) return true;
-  if (poliolPartes != null && polioles != null && poliolPartes > polioles + 0.5) return true;
-  if (azucarPartes != null && azucar != null && azucarPartes > azucar + 0.5) return true;
-  if (fibraPartes != null && fibra != null && fibraPartes > fibra + 0.5) return true;
-  if (grasaPartes != null && fat != null && grasaPartes > fat + 0.5) return true;
-  if (omega3Partes != null && omega3 != null && omega3Partes > omega3 + 0.5) return true;
-  if (omega6Partes != null && omega6 != null && omega6Partes > omega6 + 0.5) return true;
-  if (aminoSuma != null && protein != null && aminoSuma > protein + 0.5) return true;
-  return false;
+  const over = (a, b) => a != null && b != null && a > b + 0.5;
+  if (over(satTrans, fat)) return 'grasa saturada + trans supera la grasa total';
+  if (over(azucar, carbs)) return 'azúcar supera los carbohidratos';
+  if (over(azucarAnadido, azucar)) return 'azúcar añadido supera el azúcar total';
+  if (over(fibra, carbs)) return 'fibra supera los carbohidratos';
+  if (over(polioles, carbs)) return 'polialcoholes superan los carbohidratos';
+  if (over(poliolPartes, polioles)) return 'los polialcoholes desglosados superan su total';
+  if (over(azucarPartes, azucar)) return 'los azúcares desglosados superan el azúcar total';
+  if (over(fibraPartes, fibra)) return 'fibra soluble + insoluble supera la fibra total';
+  if (over(grasaPartes, fat)) return 'los tipos de grasa superan la grasa total';
+  if (over(omega3Partes, omega3)) return 'ALA + EPA + DHA superan el omega-3 total';
+  if (over(omega6Partes, omega6)) return 'LA + AA superan el omega-6 total';
+  return null;
 }
 
 // Mueve la etiqueta en `index` una posición (dir -1|1) y devuelve las filas
