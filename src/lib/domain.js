@@ -270,6 +270,27 @@ export const BODY_METRIC_MAX = {
   grasa_pierna_izq_kg: 20, grasa_pierna_der_kg: 20,
 };
 
+// Composición derivada de peso/grasa/altura: se calcula al vuelo, NUNCA se
+// persiste (misma política que kcal). Solo lectura en Medidas. `formula` alimenta
+// el Hint "?". derivedBodyMetrics devuelve null por clave si faltan sus insumos.
+export const DERIVED_BODY = [
+  { key: 'ffm_kg', label: 'Masa libre de grasa', unit: 'kg', formula: 'peso × (1 − grasa% / 100)' },
+  { key: 'imc', label: 'IMC', unit: 'kg/m²', formula: 'peso / altura² (altura en m)' },
+  { key: 'ffmi', label: 'FFMI', unit: 'kg/m²', formula: 'masa libre de grasa / altura² (altura en m)' },
+];
+
+export function derivedBodyMetrics(m) {
+  const n = (v) => (v === '' || v == null || !(Number(v) >= 0) ? null : Number(v));
+  const peso = n(m?.peso_kg), grasa = n(m?.grasa_pct), alt = n(m?.altura_cm);
+  const hm = alt > 0 ? alt / 100 : null;
+  const ffm = peso != null && grasa != null ? peso * (1 - grasa / 100) : null;
+  return {
+    ffm_kg: ffm != null ? round(ffm, 2) : null,
+    imc: peso != null && hm ? round(peso / (hm * hm), 1) : null,
+    ffmi: ffm != null && hm ? round(ffm / (hm * hm), 1) : null,
+  };
+}
+
 // Chequeo físico grueso por 100 g: proteína+carbs+grasa+alcohol+agua no pueden
 // superar ~105 g (100 g de porción + margen de redondeo/etiqueta); ningún macro
 // por separado puede superar 100 g; ningún micro puede superar su cota en MICRO_MAX.

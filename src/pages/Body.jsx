@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Upload, Camera, X, Star, Moon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Camera, X, Star, Moon, HelpCircle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../lib/supabase.js';
 import { toJpegBlob } from '../lib/ai.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
 import { useToast } from '../lib/useToast.js';
 import ImportSheet from '../components/ImportSheet.jsx';
+import Hint from '../components/Hint.jsx';
 import { t, useLang, locale, useSleepThreshold } from '../lib/i18n.js';
 import {
   todayISO,
@@ -15,6 +16,8 @@ import {
   BODY_METRICS,
   BODY_METRICS_DEFAULT,
   BODY_METRIC_MAX,
+  DERIVED_BODY,
+  derivedBodyMetrics,
 } from '../lib/domain.js';
 
 const HISTORY_DAYS = 180;
@@ -279,6 +282,8 @@ export default function Body() {
   const defaults = BODY_METRICS.slice(0, BODY_METRICS_DEFAULT);
   const extra = BODY_METRICS.slice(BODY_METRICS_DEFAULT);
   const favMetrics = extra.filter((m) => favs.includes(m.key));
+  const derived = derivedBodyMetrics(values);
+  const hasDerived = DERIVED_BODY.some((d) => derived[d.key] != null);
 
   return (
     <div className="px-4 pt-4 pb-20 flex flex-col gap-4 lg:max-w-3xl lg:mx-auto">
@@ -317,6 +322,29 @@ export default function Body() {
           {defaults.map((m) => fieldFor(m))}
           {favMetrics.map((m) => fieldFor(m, true))}
         </div>
+
+        {/* Derivadas de solo lectura: se calculan de peso/grasa/altura, no se guardan. */}
+        {hasDerived && (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-text-3 pt-1">{t('Derivadas')}</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {DERIVED_BODY.map((d) => (
+                <div key={d.key} className="flex flex-col gap-1">
+                  <span className="text-xs text-text-3 flex items-center gap-1">
+                    {t(d.label)}
+                    <Hint text={`${t(d.label)} = ${t(d.formula)}`}>
+                      <HelpCircle size={12} className="text-text-3" aria-label={t('Ver fórmula')} />
+                    </Hint>
+                  </span>
+                  <div className="flex items-center gap-1 rounded-xl border border-border border-dashed bg-surface-2 px-3 min-h-[44px]">
+                    <span className="w-full tabular-nums text-text-2">{derived[d.key] != null ? derived[d.key] : '–'}</span>
+                    <span className="text-xs text-text-3 shrink-0">{d.unit}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {showMore && (
           <>
