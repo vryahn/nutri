@@ -189,6 +189,11 @@ const EN = {
   'de favoritos': 'from favorites',
   Marcar: 'Mark',
   'como favorito': 'as favorite',
+  Sueño: 'Sleep',
+  'Dormí menos de %n h': 'Slept under %n h',
+  'Umbral del checkpoint de Medidas: “dormí menos de N horas”.': 'Measures checkpoint threshold: “slept under N hours”.',
+  Menos: 'Less',
+  Más: 'More',
   'Agua, café, té o caldo': 'Water, coffee, tea or broth',
   Leche: 'Milk',
   'Jugo o refresco': 'Juice or soda',
@@ -896,6 +901,35 @@ export function initialsOf() {
   const a = (profile.first_name || '').trim()[0] || '';
   const b = (profile.last_name || '').trim()[0] || '';
   return (a + b).toUpperCase() || '·';
+}
+
+// --- Umbral de sueño (menú de usuario → Configuración) -----------------
+// Horas bajo las cuales el checkpoint "Sueño" de Medidas se considera "dormí poco".
+// Solo metadato de UI (prefs.data.sueno_umbral_h, sin migración); el valor marcado
+// que se guarda por día es este umbral, para que el flag se autoexplique si cambia.
+let sleepThreshold = 6;
+const sleepSubs = new Set();
+export function getSleepThreshold() {
+  return sleepThreshold;
+}
+export function setSleepThreshold(next, { persist = true } = {}) {
+  const n = Number(next);
+  if (!Number.isFinite(n) || n <= 0) return;
+  sleepThreshold = n;
+  sleepSubs.forEach((fn) => fn(sleepThreshold));
+  if (persist) persistPrefsKey('sueno_umbral_h', n);
+}
+export function registerSleepThreshold(v) {
+  if (v != null) setSleepThreshold(v, { persist: false });
+}
+export function useSleepThreshold() {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const fn = () => force((n) => n + 1);
+    sleepSubs.add(fn);
+    return () => sleepSubs.delete(fn);
+  }, []);
+  return sleepThreshold;
 }
 
 // --- Bandas de adherencia (menú de usuario → Configuración) ------------

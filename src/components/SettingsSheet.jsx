@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Lock, Tags, RotateCcw } from 'lucide-react';
+import { Lock, Tags, RotateCcw, Moon, Minus, Plus } from 'lucide-react';
 import { ADHERENCE_BANDS, getActiveBands, SODIUM_FLOOR_MG, SODIUM_CEILING_MG } from '../lib/domain.js';
-import { t, saveAdherenceBands } from '../lib/i18n.js';
+import { t, saveAdherenceBands, getSleepThreshold, setSleepThreshold } from '../lib/i18n.js';
 import Sheet from './Sheet.jsx';
 import LabelsModal from './LabelsModal.jsx';
 
@@ -52,6 +52,7 @@ export default function SettingsSheet({ onClose }) {
   const [bands, setBands] = useState(() => structuredClone(getActiveBands()));
   const [reg, setReg] = useState('default');
   const [showLabels, setShowLabels] = useState(false);
+  const [sleepH, setSleepH] = useState(() => getSleepThreshold());
   const d = bands.diana[reg];
 
   const updDiana = (key, p) => setBands((b) => {
@@ -74,7 +75,8 @@ export default function SettingsSheet({ onClose }) {
   });
   const updTecho = (p) => setBands((b) => ({ ...b, techo: { warn: p / 100 } }));
 
-  const save = () => { saveAdherenceBands(bands); onClose(); };
+  const save = () => { saveAdherenceBands(bands); setSleepThreshold(sleepH); onClose(); };
+  const bumpSleep = (delta) => setSleepH((h) => Math.min(12, Math.max(1, Math.round((h + delta) * 2) / 2)));
   const reset = () => setBands(structuredClone(ADHERENCE_BANDS));
 
   return (
@@ -125,6 +127,23 @@ export default function SettingsSheet({ onClose }) {
         <div className="flex-1">
           <p className="text-[13px] text-text-2">{t('Sodio')} · <span className="font-mono">{SODIUM_FLOOR_MG}–{SODIUM_CEILING_MG} mg</span></p>
           <p className="text-[11px] text-text-3 mt-0.5">{t('Piso médico fijo, no configurable.')}</p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-black/15 p-4 flex items-center gap-3">
+        <Moon size={18} className="text-text-3 flex-none" />
+        <div className="flex-1">
+          <p className="text-[13px] text-text-2">{t('Sueño')}</p>
+          <p className="text-[11px] text-text-3 mt-0.5">{t('Umbral del checkpoint de Medidas: “dormí menos de N horas”.')}</p>
+        </div>
+        <div className="flex items-center gap-1 flex-none">
+          <button onClick={() => bumpSleep(-0.5)} aria-label={t('Menos')} className="h-11 w-11 flex items-center justify-center rounded-xl border border-border press">
+            <Minus size={16} />
+          </button>
+          <span className="font-mono tabular-nums text-text w-14 text-center">{sleepH} h</span>
+          <button onClick={() => bumpSleep(0.5)} aria-label={t('Más')} className="h-11 w-11 flex items-center justify-center rounded-xl border border-border press">
+            <Plus size={16} />
+          </button>
         </div>
       </div>
 

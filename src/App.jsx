@@ -6,7 +6,7 @@ import { cacheClear } from './lib/cache.js';
 import { subscribeSectionMenu } from './lib/sectionMenu.js';
 import { useOutsideClose } from './lib/useOutsideClose.js';
 import { watchSystem } from './lib/theme.js';
-import { t, useLang, registerLangUser, registerUnitsUser, registerProfile, registerAdherenceBands } from './lib/i18n.js';
+import { t, useLang, registerLangUser, registerUnitsUser, registerProfile, registerAdherenceBands, registerSleepThreshold } from './lib/i18n.js';
 import PageSkeleton from './components/PageSkeleton.jsx';
 import UserMenu from './components/UserMenu.jsx';
 import Login from './pages/Login.jsx';
@@ -51,6 +51,7 @@ function useSession() {
       registerUnitsUser(data?.data?.units);
       registerProfile(data?.data?.profile);
       registerAdherenceBands(data?.data?.adherence_bands);
+      registerSleepThreshold(data?.data?.sueno_umbral_h);
     });
   }, [session]);
 

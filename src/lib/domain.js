@@ -203,13 +203,17 @@ export const MICRO_MAX = {
 
 // Claves EXACTAS del jsonb `body_metrics.metrics` (medidas corporales, migración 012).
 // Mismo contrato que MICROS: el orden es contrato de UI (los primeros
-// BODY_METRICS_DEFAULT visibles, el resto tras "más medidas"); las claves jamás se
-// renombran. Valores numéricos; `cat` agrupa la sección extendida.
+// BODY_METRICS_DEFAULT visibles; el resto oculto salvo favoritos del usuario en
+// prefs.data.fav_body, patrón de fav_micros); las claves jamás se renombran.
+// Valores numéricos; `cat` agrupa la sección extendida. `type:'check'` = checkpoint
+// booleano (Sueño): se guarda el umbral de horas usado como valor (autoexplica el
+// flag si el umbral cambia luego), NUNCA un 1 pelón; ausente = no se marcó.
 export const BODY_METRICS = [
   { key: 'peso_kg', label: 'Peso', unit: 'kg', cat: 'Composición' },
+  { key: 'sueno_corto', label: 'Sueño', type: 'check', cat: 'Composición' },
+  // — ocultas (el usuario las promueve a favoritas, patrón fav_micros) —
   { key: 'grasa_pct', label: 'Grasa corporal', unit: '%', cat: 'Composición' },
   { key: 'musculo_kg', label: 'Masa muscular', unit: 'kg', cat: 'Composición' },
-  // — extendidas (ocultas tras "más medidas") —
   { key: 'agua_pct', label: 'Agua corporal', unit: '%', cat: 'Composición' },
   { key: 'agua_l', label: 'Agua corporal (L)', unit: 'L', cat: 'Composición' },
   { key: 'hueso_kg', label: 'Masa ósea', unit: 'kg', cat: 'Composición' },
@@ -238,7 +242,7 @@ export const BODY_METRICS = [
   { key: 'grasa_pierna_izq_kg', label: 'Grasa pierna izq.', unit: 'kg', cat: 'Segmental' },
   { key: 'grasa_pierna_der_kg', label: 'Grasa pierna der.', unit: 'kg', cat: 'Segmental' },
 ];
-export const BODY_METRICS_DEFAULT = 3; // peso, grasa, músculo siempre visibles
+export const BODY_METRICS_DEFAULT = 2; // peso + sueño siempre visibles
 
 // Limpia un mapa {clave: valor} a solo números finitos ≥ 0 (para persistir medidas
 // corporales): '' o basura se descartan — nunca se guarda un dato inventado.

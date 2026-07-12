@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Upload, Camera, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Camera, X, Star, Moon } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../lib/supabase.js';
 import { toJpegBlob } from '../lib/ai.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
 import { useToast } from '../lib/useToast.js';
 import ImportSheet from '../components/ImportSheet.jsx';
-import { t, useLang, locale } from '../lib/i18n.js';
+import { t, useLang, locale, useSleepThreshold } from '../lib/i18n.js';
 import {
   todayISO,
   addDaysISO,
@@ -41,8 +41,10 @@ const GROUPS = ['Composición', 'Circunferencias', 'Segmental'];
 
 export default function Body() {
   useLang();
+  const sleepH = useSleepThreshold();
   const [date, setDate] = useState(todayISO());
   const [userId, setUserId] = useState(null);
+  const [favs, setFavs] = useState([]); // prefs.data.fav_body: medidas promovidas fuera de "Más medidas"
   const [values, setValues] = useState({}); // strings por clave, para los inputs
   const [note, setNote] = useState('');
   const [photos, setPhotos] = useState([]); // rutas en el bucket body-photos del día
@@ -59,7 +61,20 @@ export default function Body() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+    supabase.from('prefs').select('data').maybeSingle().then(({ data }) => {
+      if (data?.data?.fav_body) setFavs(data.data.fav_body);
+    });
   }, []);
+
+  // Promueve/retira una medida de "Más medidas" (patrón fav_micros). Merge sobre
+  // data existente para no pisar el resto de prefs.
+  async function toggleFav(key) {
+    const next = favs.includes(key) ? favs.filter((k) => k !== key) : [...favs, key];
+    setFavs(next);
+    if (!userId) return;
+    const { data } = await supabase.from('prefs').select('data').maybeSingle();
+    await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), fav_body: next } });
+  }
 
   // Publica "Importar" en el menú "Más opciones" del layout (mismo patrón que Hoy).
   useEffect(() => {
@@ -144,6 +159,16 @@ export default function Body() {
   const setField = (key, raw) => setValues((v) => ({ ...v, [key]: raw }));
   const commit = () => persist(values, note, photos);
 
+  // Checkpoint booleano (Sueño): marcar guarda el umbral vigente como valor (el flag
+  // se autoexplica si el umbral cambia luego); desmarcar lo borra. Persiste al toque
+  // — el <button> no tiene onBlur, así que se envía el mapa nuevo, no el de la closure.
+  const toggleCheck = (m) => {
+    const on = !((values[m.key] ?? '') !== '' && Number(values[m.key]) > 0);
+    const next = { ...values, [m.key]: on ? String(sleepH) : '' };
+    setValues(next);
+    persist(next, note, photos);
+  };
+
   // Comprime cliente (JPEG ~1280px) y sube al bucket privado en {uid}/{uuid}.jpg —
   // el primer segmento = uid es lo que aísla al usuario en el RLS de storage.objects.
   async function uploadPhotos(fileList) {
@@ -187,14 +212,50 @@ export default function Body() {
 
   // Función que devuelve JSX (NO un componente): usarlo como <Field/> lo remontaría
   // en cada tecleo (nueva identidad de función por render) y el input perdería foco.
-  const fieldFor = (m) => {
+  const fieldFor = (m, showStar = false) => {
     const raw = values[m.key] ?? '';
+    const isFav = favs.includes(m.key);
+    const star = showStar && (
+      <button
+        type="button"
+        onClick={(e) => { e.preventDefault(); toggleFav(m.key); }}
+        className="p-2 -m-2 shrink-0 press"
+        aria-label={isFav ? `${t('Quitar')} ${t(m.label)} ${t('de favoritos')}` : `${t('Marcar')} ${t(m.label)} ${t('como favorito')}`}
+      >
+        <Star size={14} className={isFav ? 'text-accent' : 'text-text-3'} fill={isFav ? 'currentColor' : 'none'} />
+      </button>
+    );
+
+    if (m.type === 'check') {
+      const on = raw !== '' && Number(raw) > 0;
+      return (
+        <div key={m.key} className="flex flex-col gap-1">
+          <span className="text-xs text-text-3 flex items-center justify-between gap-1">
+            {t(m.label)}
+            {star}
+          </span>
+          <button
+            type="button"
+            onClick={() => toggleCheck(m)}
+            aria-pressed={on}
+            className={`flex items-center gap-2 rounded-xl border px-3 min-h-[44px] press text-left ${on ? 'border-accent-deep bg-accent-deep/15' : 'border-border bg-surface-2'}`}
+          >
+            <Moon size={16} className={on ? 'text-accent' : 'text-text-3'} />
+            <span className="text-xs leading-tight">{t('Dormí menos de %n h').replace('%n', sleepH)}</span>
+          </button>
+        </div>
+      );
+    }
+
     const over = raw !== '' && Number(raw) > (BODY_METRIC_MAX[m.key] ?? Infinity);
     return (
       <label key={m.key} className="flex flex-col gap-1">
-        <span className="text-xs text-text-3 flex items-center gap-1">
-          {t(m.label)}
-          {over && <span className="text-danger" title={t('Valor fuera de rango — revísalo')}>⚠</span>}
+        <span className="text-xs text-text-3 flex items-center justify-between gap-1">
+          <span className="flex items-center gap-1">
+            {t(m.label)}
+            {over && <span className="text-danger" title={t('Valor fuera de rango — revísalo')}>⚠</span>}
+          </span>
+          {star}
         </span>
         <div className="flex items-center gap-1 rounded-xl border border-border bg-surface-2 px-3 min-h-[44px]">
           <input
@@ -217,6 +278,7 @@ export default function Body() {
 
   const defaults = BODY_METRICS.slice(0, BODY_METRICS_DEFAULT);
   const extra = BODY_METRICS.slice(BODY_METRICS_DEFAULT);
+  const favMetrics = extra.filter((m) => favs.includes(m.key));
 
   return (
     <div className="px-4 pt-4 pb-20 flex flex-col gap-4 lg:max-w-3xl lg:mx-auto">
@@ -251,19 +313,26 @@ export default function Body() {
           <p className="text-sm text-text-3">{t('Medidas del día')}</p>
           {savedFlash && <span className="text-xs text-accent">{t('Guardado.')}</span>}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{defaults.map(fieldFor)}</div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {defaults.map((m) => fieldFor(m))}
+          {favMetrics.map((m) => fieldFor(m, true))}
+        </div>
 
-        {showMore &&
-          GROUPS.map((cat) => {
-            const items = extra.filter((m) => m.cat === cat);
-            if (!items.length) return null;
-            return (
-              <div key={cat} className="flex flex-col gap-2">
-                <p className="text-xs text-text-3 pt-1">{t(cat)}</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{items.map(fieldFor)}</div>
-              </div>
-            );
-          })}
+        {showMore && (
+          <>
+            <p className="text-xs text-text-3">{t('★ = favorito: aparece arriba junto a los principales.')}</p>
+            {GROUPS.map((cat) => {
+              const items = extra.filter((m) => m.cat === cat && !favs.includes(m.key));
+              if (!items.length) return null;
+              return (
+                <div key={cat} className="flex flex-col gap-2">
+                  <p className="text-xs text-text-3 pt-1">{t(cat)}</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{items.map((m) => fieldFor(m, true))}</div>
+                </div>
+              );
+            })}
+          </>
+        )}
 
         <button
           onClick={() => setShowMore((s) => !s)}
@@ -344,7 +413,7 @@ export default function Body() {
           >
             {GROUPS.map((cat) => (
               <optgroup key={cat} label={t(cat)}>
-                {BODY_METRICS.filter((m) => m.cat === cat).map((m) => (
+                {BODY_METRICS.filter((m) => m.cat === cat && m.type !== 'check').map((m) => (
                   <option key={m.key} value={m.key}>
                     {t(m.label)}
                   </option>
