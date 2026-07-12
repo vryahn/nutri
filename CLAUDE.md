@@ -23,7 +23,8 @@ supabase/migrations/     # migraciones incrementales, todas aplicadas: 001 prefs
                           # 003 recetas from Cronometer + targets.description · 004 recetas saladas from Cronometer · 005 recipes.source ·
                           # 006 entries.sort_order · 007 catálogo privado por usuario (RLS) ·
                           # 008 entry_nutrients.brand · 009 índice meal_labels · 010 targets.goal ·
-                          # 011 higiene advisors · 012 body_metrics (medidas corporales, override §11)
+                          # 011 higiene advisors · 012 body_metrics (medidas corporales, override §11) ·
+                          # 013 body_metrics.photo_paths + bucket privado body-photos (fotos de progreso, RLS por prefijo uid)
 src/lib/supabase.js      # createClient, schema 'nutri'
 src/lib/domain.js        # MICROS, resolución de targets, adherencia, fórmula de recetas, reorderLabels
 src/lib/sources.js       # clientes Open Food Facts y USDA FDC, por 100 g, mapeados a claves MICROS
@@ -78,7 +79,7 @@ Recordar: vistas con `security_invoker = true`; nuevas tablas necesitan RLS + po
 - **Push a `main` = deploy automático a producción** en Vercel → https://nutri.vryahn.com (proyecto `nutri`, team `vryahns-projects`). No hay entorno de staging; verificar localmente antes de pushear.
 - GitHub Actions (secrets ya configurados: `SUPABASE_URL`, `ANON_KEY`, `SUPABASE_DB_URL`):
   - `keepalive.yml` — lunes 06:00 UTC, evita la pausa del free tier.
-  - `backup.yml` — día 1 de cada mes, `pg_dump` como artefacto (retención 90 días).
+  - `backup.yml` — día 1 de cada mes, `pg_dump` como artefacto (retención 90 días). ⚠ Solo respalda Postgres: el bucket de Storage `body-photos` (fotos de progreso, migración 013) NO entra en el `pg_dump`; si esas fotos importan, respaldarlas aparte.
 
 ### Git hooks (locales, no versionados — re-crear en clone nuevo)
 

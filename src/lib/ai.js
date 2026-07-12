@@ -39,15 +39,28 @@ export function snapDensity(v) {
   return near ? near.value : n;
 }
 
-// Comprime la foto antes de mandarla inline (una foto de móvil sin comprimir pesa varios MB).
-export async function toJpegBase64(file, maxSide = 1024) {
+// Comprime la foto a un canvas JPEG (una foto de móvil sin comprimir pesa varios MB).
+async function toJpegCanvas(file, maxSide) {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(bitmap.width * scale);
   canvas.height = Math.round(bitmap.height * scale);
   canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+// base64 inline para los prompts de IA (Gemini/Mistral).
+export async function toJpegBase64(file, maxSide = 1024) {
+  const canvas = await toJpegCanvas(file, maxSide);
   return canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+}
+
+// Blob para subir a Storage (fotos de progreso corporal). maxSide 1280 conserva
+// algo más de detalle que las de IA; ~200-500 KB tras comprimir.
+export async function toJpegBlob(file, maxSide = 1280) {
+  const canvas = await toJpegCanvas(file, maxSide);
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.8));
 }
 
 // Jerarquía: etiqueta transcrita > EAN legible > estimación tipo USDA priorizando México.

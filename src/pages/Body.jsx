@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Upload } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Camera, X } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../lib/supabase.js';
+import { toJpegBlob } from '../lib/ai.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
 import { useToast } from '../lib/useToast.js';
 import ImportSheet from '../components/ImportSheet.jsx';
@@ -44,6 +45,9 @@ export default function Body() {
   const [userId, setUserId] = useState(null);
   const [values, setValues] = useState({}); // strings por clave, para los inputs
   const [note, setNote] = useState('');
+  const [photos, setPhotos] = useState([]); // rutas en el bucket body-photos del día
+  const [photoUrls, setPhotoUrls] = useState({}); // ruta -> signed URL (efímera)
+  const [uploading, setUploading] = useState(false);
   const [history, setHistory] = useState([]); // filas {day, metrics} últimos HISTORY_DAYS
   const [showMore, setShowMore] = useState(false);
   const [trendKey, setTrendKey] = usePersistentState('nutri.body.trendKey', 'peso_kg');
@@ -67,7 +71,7 @@ export default function Body() {
     let alive = true;
     supabase
       .from('body_metrics')
-      .select('metrics, note')
+      .select('metrics, note, photo_paths')
       .eq('day', date)
       .maybeSingle()
       .then(({ data }) => {
@@ -75,11 +79,36 @@ export default function Body() {
         const m = data?.metrics || {};
         setValues(Object.fromEntries(Object.entries(m).map(([k, v]) => [k, String(v)])));
         setNote(data?.note || '');
+        setPhotos(data?.photo_paths || []);
       });
     return () => {
       alive = false;
     };
   }, [date, reloadKey]);
+
+  // Signed URLs para las miniaturas (bucket privado: sin URL firmada no se ven).
+  // Se regeneran al cambiar el set de fotos o de día.
+  useEffect(() => {
+    let alive = true;
+    if (!photos.length) {
+      setPhotoUrls({});
+      return;
+    }
+    supabase.storage
+      .from('body-photos')
+      .createSignedUrls(photos, 3600)
+      .then(({ data }) => {
+        if (!alive || !data) return;
+        const map = {};
+        data.forEach((d) => {
+          if (d.signedUrl) map[d.path] = d.signedUrl;
+        });
+        setPhotoUrls(map);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [photos]);
 
   function loadHistory() {
     const start = addDaysISO(todayISO(), -(HISTORY_DAYS - 1));
@@ -92,17 +121,19 @@ export default function Body() {
   }
   useEffect(loadHistory, []);
 
-  async function save(nextValues, nextNote) {
+  async function persist(nextValues, nextNote, nextPhotos) {
     if (!userId) return;
     const metrics = cleanNumericMap(nextValues);
     const noteTrim = (nextNote ?? '').trim();
-    // Ni medidas ni nota → no dejar una fila vacía en la DB.
-    if (Object.keys(metrics).length === 0 && !noteTrim) {
+    const photoPaths = nextPhotos ?? [];
+    // Sin medidas, nota ni fotos → no dejar una fila vacía en la DB.
+    if (Object.keys(metrics).length === 0 && !noteTrim && photoPaths.length === 0) {
       await supabase.from('body_metrics').delete().eq('day', date);
     } else {
-      await supabase
-        .from('body_metrics')
-        .upsert({ owner: userId, day: date, metrics, note: noteTrim || null }, { onConflict: 'owner,day' });
+      await supabase.from('body_metrics').upsert(
+        { owner: userId, day: date, metrics, note: noteTrim || null, photo_paths: photoPaths },
+        { onConflict: 'owner,day' },
+      );
     }
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 1200);
@@ -110,7 +141,41 @@ export default function Body() {
   }
 
   const setField = (key, raw) => setValues((v) => ({ ...v, [key]: raw }));
-  const commit = () => save(values, note);
+  const commit = () => persist(values, note, photos);
+
+  // Comprime cliente (JPEG ~1280px) y sube al bucket privado en {uid}/{uuid}.jpg —
+  // el primer segmento = uid es lo que aísla al usuario en el RLS de storage.objects.
+  async function uploadPhotos(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length || !userId) return;
+    setUploading(true);
+    const added = [];
+    try {
+      for (const f of files) {
+        if (!f.type.startsWith('image/')) continue;
+        const blob = await toJpegBlob(f);
+        const path = `${userId}/${crypto.randomUUID()}.jpg`;
+        const { error } = await supabase.storage
+          .from('body-photos')
+          .upload(path, blob, { contentType: 'image/jpeg' });
+        if (!error) added.push(path);
+      }
+      if (added.length) {
+        const next = [...photos, ...added];
+        setPhotos(next);
+        await persist(values, note, next);
+      }
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function removePhoto(path) {
+    await supabase.storage.from('body-photos').remove([path]);
+    const next = photos.filter((p) => p !== path);
+    setPhotos(next);
+    await persist(values, note, next);
+  }
 
   const trendMeta = BODY_METRICS.find((m) => m.key === trendKey) || BODY_METRICS[0];
   const trendData = history
@@ -215,6 +280,48 @@ export default function Body() {
             rows={2}
             placeholder={t('Contexto del día (opcional)')}
             className="rounded-xl border border-border bg-surface-2 px-3 py-2 outline-none resize-y"
+          />
+        </label>
+      </section>
+
+      {/* Fotos de progreso */}
+      <section className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-text-3">{t('Fotos de progreso')}</p>
+          {uploading && <span className="text-xs text-accent">{t('Subiendo…')}</span>}
+        </div>
+        {photos.length > 0 && (
+          <div className="grid grid-cols-3 gap-2">
+            {photos.map((p) => (
+              <div key={p} className="relative aspect-square rounded-xl overflow-hidden bg-surface-2">
+                {photoUrls[p] && (
+                  <a href={photoUrls[p]} target="_blank" rel="noreferrer" className="block w-full h-full">
+                    <img src={photoUrls[p]} alt={t('Foto de progreso')} className="w-full h-full object-cover" />
+                  </a>
+                )}
+                <button
+                  onClick={() => removePhoto(p)}
+                  aria-label={t('Eliminar foto')}
+                  className="absolute top-1 right-1 h-11 w-11 flex items-center justify-center rounded-full bg-black/55 text-white press"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <label className="self-start inline-flex items-center gap-2 text-sm text-accent min-h-[44px] press cursor-pointer">
+          <Camera size={18} />
+          {t('Añadir fotos')}
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              uploadPhotos(e.target.files);
+              e.target.value = '';
+            }}
           />
         </label>
       </section>
