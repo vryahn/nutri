@@ -9,10 +9,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"/>
 <style>
 :root{
-  --ink:#0A0F0D;--sur:#111815;--sur2:#18211C;--sur3:#223029;
-  --line:rgba(244,247,245,.10);--tx:#F4F7F5;--tx2:#98A8A0;--tx3:#5F6F67;
-  --lime:#A3E635;--lime-d:#3F6212;--ok:#34D399;--warn:#FBBF24;--dng:#F87171;
-  --kcal:#F97316;--prot:#34D399;--carb:#60A5FA;--fat:#FBBF24;
+  --ink:#071010;--sur:#101A1A;--sur2:#182525;--sur3:#243232;
+  --line:rgba(233,247,246,.10);--tx:#E9F7F6;--tx2:#9CB2B1;--tx3:#7A8F8E;
+  --accent:#069C92;--accent-deep:#028078;--accent-glass:#3CB8AE;--on-accent:#F7FBFB;
+  --ok:#4F9B53;--warn:#B97F2C;--dng:#DE6666;
+  --kcal:#D56F46;--prot:#4F9B53;--carb:#6389E2;--fat:#AA8621;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--ink);color:var(--tx);font-family:'Inter',system-ui,sans-serif;line-height:1.55;font-size:16px}
@@ -26,7 +27,7 @@ p{color:var(--tx2);max-width:62ch}
 p strong{color:var(--tx)}
 .hero{padding:80px 0 64px}
 .wm{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(44px,9vw,84px);letter-spacing:-.03em;display:flex;align-items:baseline;gap:2px;margin:18px 0 8px}
-.wm .dot{color:var(--lime)}
+.wm .dot{color:var(--accent)}
 .lead{font-size:19px;color:var(--tx);max-width:56ch}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
@@ -44,14 +45,16 @@ p strong{color:var(--tx)}
 .type-row:last-child{border-bottom:0}
 .type-row .r{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--tx3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px}
 .do,.dont{border-radius:12px;padding:14px 16px;font-size:14px}
-.do{background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.3)}
-.dont{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.3)}
+.do{background:rgba(79,155,83,.10);border:1px solid rgba(79,155,83,.35)}
+.dont{background:rgba(222,102,102,.08);border:1px solid rgba(222,102,102,.32)}
 .do b{color:var(--ok)}.dont b{color:var(--dng)}
 .chip{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 11px;border-radius:999px;border:1px solid var(--line);margin:3px 4px 3px 0}
-.btn{background:var(--lime-d);color:var(--tx);border:0;border-radius:12px;padding:11px 20px;font-weight:600;font-family:inherit;font-size:14px}
-.btn2{background:var(--lime);color:var(--ink);border:0;border-radius:12px;padding:11px 20px;font-weight:600;font-family:inherit;font-size:14px}
-.light{background:#F7FAF8;color:#0A0F0D;border:1px solid #dfe7e2}
-.light .h{color:#4A5952}.light .n{color:#0A0F0D}
+.btn{background:var(--accent-deep);color:var(--on-accent);border:0;border-radius:12px;padding:11px 20px;font-weight:600;font-family:inherit;font-size:14px}
+.btn-out{background:transparent;color:var(--tx);border:1px solid var(--line);border-radius:12px;padding:11px 20px;font-weight:600;font-family:inherit;font-size:14px}
+.glass-demo{position:relative;overflow:hidden;border-radius:16px;border:1px solid var(--line);padding:20px;background:linear-gradient(120deg,var(--kcal),var(--carb),var(--prot))}
+.glass-bar{background:color-mix(in srgb,var(--sur) 72%,transparent);backdrop-filter:blur(16px) saturate(1.4);-webkit-backdrop-filter:blur(16px) saturate(1.4);border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px}
+.light{background:#F3F9F9;color:#0A1C1C;border:1px solid #CDD9D9}
+.light .h{color:#415454}.light .n{color:#0A1C1C}
 .foot{padding:40px 0 64px;color:var(--tx3);font-size:13px}
 </style>
 </head>
@@ -59,7 +62,7 @@ p strong{color:var(--tx)}
 <div class="wrap">
 
   <header class="hero">
-    <div class="kick">Manual de marca · v1 · Julio 2026</div>
+    <div class="kick">Manual de marca · v2 · Julio 2026</div>
     <div class="wm">nutrimetry<span class="dot">.</span></div>
     <p class="lead">El instrumento de precisión nutricional. Una identidad construida sobre lo que la app ya defiende: exactitud y fiabilidad del dato, por encima de todo.</p>
   </header>
@@ -71,24 +74,24 @@ p strong{color:var(--tx)}
     <div class="grid3" style="margin-top:24px">
       <div class="card"><div class="disp" style="font-size:17px;margin-bottom:6px">Preciso</div><p style="font-size:14px;margin:0">El dato manda. Números tabulares, unidades explícitas, sin adornos que compitan con la lectura.</p></div>
       <div class="card"><div class="disp" style="font-size:17px;margin-bottom:6px">Honesto</div><p style="font-size:14px;margin:0">Lo incierto se avisa (⚠). La confianza se gana mostrando los límites del dato, no ocultándolos.</p></div>
-      <div class="card"><div class="disp" style="font-size:17px;margin-bottom:6px">Sobrio</div><p style="font-size:14px;margin:0">Tech-oscuro premium. Un solo golpe de acento sobre casi-negro. El diseño desaparece; el dato queda.</p></div>
+      <div class="card"><div class="disp" style="font-size:17px;margin-bottom:6px">Sobrio</div><p style="font-size:14px;margin:0">Tech-oscuro premium. Un solo golpe de acento turquesa sobre tinta petróleo. El diseño desaparece; el dato queda.</p></div>
     </div>
   </section>
 
   <section>
     <div class="kick">02 · Logo</div>
     <h2 style="font-size:28px;margin:.3em 0">El medidor "n."</h2>
-    <p>Una <strong>n</strong> geométrica en minúscula — de "nutri." — cuyo punto es un nodo lima: el <strong>punto de lectura</strong> de un instrumento. En la versión expresiva, un arco graduado (gauge) envuelve la letra y refuerza el "-metry". El punto lima es siempre el único acento de color del logotipo.</p>
+    <p>Una <strong>n</strong> geométrica en minúscula — de "nutri." — cuyo punto es un nodo turquesa: el <strong>punto de lectura</strong> de un instrumento. En la versión expresiva, un arco graduado (gauge) envuelve la letra y refuerza el "-metry". El punto turquesa es siempre el único acento de color del logotipo.</p>
     <div class="grid3" style="margin-top:24px">
       <div>
         <div class="tile" style="background:var(--ink);border:1px solid var(--line)">
           <svg width="60%" viewBox="0 0 512 512" aria-label="logomark expresivo">
-            <g transform="translate(236,256)"><circle r="150" fill="none" stroke="var(--lime)" stroke-width="26" stroke-dasharray="707 235" stroke-linecap="round" transform="rotate(120)"/></g>
+            <g transform="translate(236,256)"><circle r="150" fill="none" stroke="var(--accent)" stroke-width="26" stroke-dasharray="707 235" stroke-linecap="round" transform="rotate(120)"/></g>
             <g transform="translate(-20,0)">
               <rect x="150" y="152" width="42" height="200" rx="6" fill="var(--tx)"/>
               <rect x="298" y="238" width="42" height="114" rx="6" fill="var(--tx)"/>
               <path d="M150 238 A95 95 0 0 1 340 238 L298 238 A53 53 0 0 0 192 238 Z" fill="var(--tx)"/>
-              <circle cx="360" cy="332" r="22" fill="var(--lime)"/>
+              <circle cx="360" cy="332" r="22" fill="var(--accent)"/>
             </g>
           </svg>
         </div><div class="cap">Logomark expresivo · splash / marketing</div>
@@ -100,13 +103,13 @@ p strong{color:var(--tx)}
               <rect x="150" y="137" width="46" height="215" rx="6" fill="var(--tx)"/>
               <rect x="294" y="232" width="46" height="120" rx="6" fill="var(--tx)"/>
               <path d="M150 232 A95 95 0 0 1 340 232 L294 232 A49 49 0 0 0 196 232 Z" fill="var(--tx)"/>
-              <circle cx="360" cy="330" r="24" fill="var(--lime)"/>
+              <circle cx="360" cy="330" r="24" fill="var(--accent)"/>
             </g>
           </svg>
         </div><div class="cap">App icon / favicon · sobre tinta</div>
       </div>
       <div>
-        <div class="tile" style="background:var(--lime)">
+        <div class="tile" style="background:var(--accent)">
           <svg width="55%" viewBox="0 0 512 512" aria-label="app icon invertido">
             <g transform="translate(-20,0)">
               <rect x="150" y="137" width="46" height="215" rx="6" fill="var(--ink)"/>
@@ -115,73 +118,89 @@ p strong{color:var(--tx)}
               <circle cx="360" cy="330" r="24" fill="var(--ink)"/>
             </g>
           </svg>
-        </div><div class="cap">Variante invertida · sobre lima</div>
+        </div><div class="cap">Variante invertida · sobre turquesa</div>
       </div>
     </div>
     <div class="grid2" style="margin-top:20px">
       <div class="do"><b>Sí</b> — área de resguardo = altura de la "n" a cada lado · tamaño mínimo del ícono 32 px · en producto el wordmark se escribe <span class="mono">nutri.</span> en minúsculas.</div>
-      <div class="dont"><b>No</b> — no rotar, no degradar, no cambiar el color del punto, no rellenar la "n" de lima, no poner el mark sobre fondos de bajo contraste.</div>
+      <div class="dont"><b>No</b> — no rotar, no degradar, no cambiar el color del punto, no rellenar la "n" de turquesa, no poner el mark sobre fondos de bajo contraste.</div>
     </div>
   </section>
 
   <section>
     <div class="kick">03 · Color</div>
-    <h2 style="font-size:28px;margin:.3em 0">Tinta grafito + un acento lima</h2>
-    <p>El tema por defecto es la <strong>tinta grafito</strong>: base casi negra y un único acento interactivo, el lima. La app también tiene <strong>modo claro</strong> (Auto / Claro / Oscuro), que reusa la misma escala para redes, docs e impresos.</p>
+    <h2 style="font-size:28px;margin:.3em 0">Tinta petróleo + un acento turquesa</h2>
+    <p>El tema por defecto es la <strong>tinta petróleo</strong>: base verdeazulada casi negra y un único acento interactivo, el turquesa. La app también tiene <strong>modo claro</strong> (Auto / Claro / Oscuro), que reusa la misma escala para redes, docs e impresos. Toda luminosidad se resolvió en OKLCH contra <span class="mono">--surface-2</span>: ningún par texto/fondo baja de 4.5:1.</p>
+    <p style="margin-top:14px"><strong>Regla de la paleta (no la relajes):</strong> el acento nunca ocupa el hue de un dato. Si lo hiciera, "botón primario", "proteína" y "ok" significarían el mismo color. Con acento turquesa, los carbohidratos viven en índigo (<span class="mono">--d-carb</span>) y no en el azul del acento.</p>
 
-    <div style="margin-top:22px"><div class="kick">Modo oscuro · app</div>
+    <div style="margin-top:22px"><div class="kick">Modo oscuro · app (default)</div>
       <div class="swrow" style="margin-top:12px">
-        <div class="sw"><div class="b" style="background:#0A0F0D"></div><div class="m"><div class="n">Ink · bg</div><div class="h">#0A0F0D</div></div></div>
-        <div class="sw"><div class="b" style="background:#111815"></div><div class="m"><div class="n">Surface</div><div class="h">#111815</div></div></div>
-        <div class="sw"><div class="b" style="background:#18211C"></div><div class="m"><div class="n">Surface-2</div><div class="h">#18211C</div></div></div>
-        <div class="sw"><div class="b" style="background:#223029"></div><div class="m"><div class="n">Surface-3</div><div class="h">#223029</div></div></div>
-        <div class="sw"><div class="b" style="background:#A3E635"></div><div class="m"><div class="n">Accent · lima</div><div class="h">#A3E635</div></div></div>
-        <div class="sw"><div class="b" style="background:#3F6212"></div><div class="m"><div class="n">Accent-deep</div><div class="h">#3F6212</div></div></div>
-        <div class="sw"><div class="b" style="background:#F4F7F5"></div><div class="m"><div class="n">Text</div><div class="h">#F4F7F5</div></div></div>
-        <div class="sw"><div class="b" style="background:#98A8A0"></div><div class="m"><div class="n">Text-2</div><div class="h">#98A8A0</div></div></div>
+        <div class="sw"><div class="b" style="background:#071010"></div><div class="m"><div class="n">Ink · bg</div><div class="h">#071010</div></div></div>
+        <div class="sw"><div class="b" style="background:#101A1A"></div><div class="m"><div class="n">Surface</div><div class="h">#101A1A</div></div></div>
+        <div class="sw"><div class="b" style="background:#182525"></div><div class="m"><div class="n">Surface-2</div><div class="h">#182525</div></div></div>
+        <div class="sw"><div class="b" style="background:#243232"></div><div class="m"><div class="n">Surface-3</div><div class="h">#243232</div></div></div>
+        <div class="sw"><div class="b" style="background:#2D3939"></div><div class="m"><div class="n">Border</div><div class="h">#2D3939</div></div></div>
+        <div class="sw"><div class="b" style="background:#069C92"></div><div class="m"><div class="n">Accent · turquesa</div><div class="h">#069C92</div></div></div>
+        <div class="sw"><div class="b" style="background:#028078"></div><div class="m"><div class="n">Accent-deep</div><div class="h">#028078</div></div></div>
+        <div class="sw"><div class="b" style="background:#3CB8AE"></div><div class="m"><div class="n">Accent-glass</div><div class="h">#3CB8AE</div></div></div>
+        <div class="sw"><div class="b" style="background:#F7FBFB"></div><div class="m"><div class="n">On-accent</div><div class="h">#F7FBFB</div></div></div>
+        <div class="sw"><div class="b" style="background:#E9F7F6"></div><div class="m"><div class="n">Text</div><div class="h">#E9F7F6</div></div></div>
+        <div class="sw"><div class="b" style="background:#9CB2B1"></div><div class="m"><div class="n">Text-2</div><div class="h">#9CB2B1</div></div></div>
+        <div class="sw"><div class="b" style="background:#7A8F8E"></div><div class="m"><div class="n">Text-3</div><div class="h">#7A8F8E</div></div></div>
       </div>
     </div>
 
-    <div style="margin-top:22px"><div class="kick">Semánticos · fijos</div>
+    <div style="margin-top:22px"><div class="kick">Semánticos · oscuro</div>
       <div class="swrow" style="margin-top:12px">
-        <div class="sw"><div class="b" style="background:#34D399"></div><div class="m"><div class="n">OK</div><div class="h">#34D399</div></div></div>
-        <div class="sw"><div class="b" style="background:#FBBF24"></div><div class="m"><div class="n">Warn ⚠</div><div class="h">#FBBF24</div></div></div>
-        <div class="sw"><div class="b" style="background:#F87171"></div><div class="m"><div class="n">Danger</div><div class="h">#F87171</div></div></div>
+        <div class="sw"><div class="b" style="background:#4F9B53"></div><div class="m"><div class="n">OK</div><div class="h">#4F9B53</div></div></div>
+        <div class="sw"><div class="b" style="background:#B97F2C"></div><div class="m"><div class="n">Warn ⚠</div><div class="h">#B97F2C</div></div></div>
+        <div class="sw"><div class="b" style="background:#DE6666"></div><div class="m"><div class="n">Danger</div><div class="h">#DE6666</div></div></div>
       </div>
       <p style="font-size:13.5px;margin-top:12px"><strong>Regla médica inviolable:</strong> el rojo de peligro señala sodio &lt; 1&nbsp;500 mg. Ese badge no se reasigna, no se suaviza y no se hace configurable.</p>
     </div>
 
-    <div style="margin-top:22px"><div class="kick">Datos · escala categórica de macros</div>
+    <div style="margin-top:22px"><div class="kick">Datos · escala categórica de macros (oscuro)</div>
       <div class="swrow" style="margin-top:12px">
-        <div class="sw"><div class="b" style="background:#F97316"></div><div class="m"><div class="n">kcal</div><div class="h">#F97316</div></div></div>
-        <div class="sw"><div class="b" style="background:#34D399"></div><div class="m"><div class="n">Proteína</div><div class="h">#34D399</div></div></div>
-        <div class="sw"><div class="b" style="background:#60A5FA"></div><div class="m"><div class="n">Carbos</div><div class="h">#60A5FA</div></div></div>
-        <div class="sw"><div class="b" style="background:#FBBF24"></div><div class="m"><div class="n">Grasa</div><div class="h">#FBBF24</div></div></div>
+        <div class="sw"><div class="b" style="background:#D56F46"></div><div class="m"><div class="n">kcal</div><div class="h">#D56F46</div></div></div>
+        <div class="sw"><div class="b" style="background:#4F9B53"></div><div class="m"><div class="n">Proteína</div><div class="h">#4F9B53</div></div></div>
+        <div class="sw"><div class="b" style="background:#6389E2"></div><div class="m"><div class="n">Carbos · índigo</div><div class="h">#6389E2</div></div></div>
+        <div class="sw"><div class="b" style="background:#AA8621"></div><div class="m"><div class="n">Grasa</div><div class="h">#AA8621</div></div></div>
       </div>
     </div>
 
     <div style="margin-top:22px"><div class="kick">Modo claro</div>
       <div class="swrow" style="margin-top:12px">
-        <div class="sw light"><div class="b" style="background:#F7FAF8"></div><div class="m"><div class="n">bg</div><div class="h">#F7FAF8</div></div></div>
-        <div class="sw light"><div class="b" style="background:#FFFFFF;border-bottom:1px solid #dfe7e2"></div><div class="m"><div class="n">Surface</div><div class="h">#FFFFFF</div></div></div>
-        <div class="sw light"><div class="b" style="background:#F0F4F1"></div><div class="m"><div class="n">Surface-2</div><div class="h">#F0F4F1</div></div></div>
-        <div class="sw light"><div class="b" style="background:#E1E8E4"></div><div class="m"><div class="n">Surface-3</div><div class="h">#E1E8E4</div></div></div>
-        <div class="sw light"><div class="b" style="background:#D6DFDA"></div><div class="m"><div class="n">Border</div><div class="h">#D6DFDA</div></div></div>
-        <div class="sw light"><div class="b" style="background:#4D7C0F"></div><div class="m"><div class="n">Accent</div><div class="h">#4D7C0F</div></div></div>
-        <div class="sw light"><div class="b" style="background:#3F6212"></div><div class="m"><div class="n">Accent-deep</div><div class="h">#3F6212</div></div></div>
-        <div class="sw light"><div class="b" style="background:#0A0F0D"></div><div class="m"><div class="n">Text</div><div class="h">#0A0F0D</div></div></div>
-        <div class="sw light"><div class="b" style="background:#3F4A45"></div><div class="m"><div class="n">Text-2</div><div class="h">#3F4A45</div></div></div>
-        <div class="sw light"><div class="b" style="background:#5A6A62"></div><div class="m"><div class="n">Text-3</div><div class="h">#5A6A62</div></div></div>
+        <div class="sw light"><div class="b" style="background:#F3F9F9"></div><div class="m"><div class="n">bg</div><div class="h">#F3F9F9</div></div></div>
+        <div class="sw light"><div class="b" style="background:#FCFFFF;border-bottom:1px solid #CDD9D9"></div><div class="m"><div class="n">Surface</div><div class="h">#FCFFFF</div></div></div>
+        <div class="sw light"><div class="b" style="background:#EBF3F3"></div><div class="m"><div class="n">Surface-2</div><div class="h">#EBF3F3</div></div></div>
+        <div class="sw light"><div class="b" style="background:#DAE6E5"></div><div class="m"><div class="n">Surface-3</div><div class="h">#DAE6E5</div></div></div>
+        <div class="sw light"><div class="b" style="background:#CDD9D9"></div><div class="m"><div class="n">Border</div><div class="h">#CDD9D9</div></div></div>
+        <div class="sw light"><div class="b" style="background:#047972"></div><div class="m"><div class="n">Accent</div><div class="h">#047972</div></div></div>
+        <div class="sw light"><div class="b" style="background:#058179"></div><div class="m"><div class="n">Accent-deep</div><div class="h">#058179</div></div></div>
+        <div class="sw light"><div class="b" style="background:#076F69"></div><div class="m"><div class="n">Accent-glass</div><div class="h">#076F69</div></div></div>
+        <div class="sw light"><div class="b" style="background:#0A1C1C"></div><div class="m"><div class="n">Text</div><div class="h">#0A1C1C</div></div></div>
+        <div class="sw light"><div class="b" style="background:#415454"></div><div class="m"><div class="n">Text-2</div><div class="h">#415454</div></div></div>
+        <div class="sw light"><div class="b" style="background:#5C7070"></div><div class="m"><div class="n">Text-3</div><div class="h">#5C7070</div></div></div>
       </div>
       <div class="swrow" style="margin-top:12px">
-        <div class="sw light"><div class="b" style="background:#047857"></div><div class="m"><div class="n">OK · Proteína</div><div class="h">#047857</div></div></div>
-        <div class="sw light"><div class="b" style="background:#B45309"></div><div class="m"><div class="n">Warn ⚠</div><div class="h">#B45309</div></div></div>
-        <div class="sw light"><div class="b" style="background:#DC2626"></div><div class="m"><div class="n">Danger</div><div class="h">#DC2626</div></div></div>
-        <div class="sw light"><div class="b" style="background:#C2410C"></div><div class="m"><div class="n">kcal</div><div class="h">#C2410C</div></div></div>
-        <div class="sw light"><div class="b" style="background:#1D4ED8"></div><div class="m"><div class="n">Carbos</div><div class="h">#1D4ED8</div></div></div>
-        <div class="sw light"><div class="b" style="background:#A16207"></div><div class="m"><div class="n">Grasa</div><div class="h">#A16207</div></div></div>
+        <div class="sw light"><div class="b" style="background:#2E7C35"></div><div class="m"><div class="n">OK · Proteína</div><div class="h">#2E7C35</div></div></div>
+        <div class="sw light"><div class="b" style="background:#966104"></div><div class="m"><div class="n">Warn ⚠</div><div class="h">#966104</div></div></div>
+        <div class="sw light"><div class="b" style="background:#B84548"></div><div class="m"><div class="n">Danger</div><div class="h">#B84548</div></div></div>
+        <div class="sw light"><div class="b" style="background:#B24F25"></div><div class="m"><div class="n">kcal</div><div class="h">#B24F25</div></div></div>
+        <div class="sw light"><div class="b" style="background:#4669BF"></div><div class="m"><div class="n">Carbos</div><div class="h">#4669BF</div></div></div>
+        <div class="sw light"><div class="b" style="background:#876804"></div><div class="m"><div class="n">Grasa</div><div class="h">#876804</div></div></div>
       </div>
-      <p style="font-size:13px;margin-top:10px">En claro el lima brillante pierde contraste sobre blanco (1.6:1): para texto/relleno interactivo se usa el lima profundo <span class="mono">#4D7C0F</span> (AA). El lima brillante queda solo como resalte sobre tinta — p. ej. el punto del logo dentro del tile oscuro. Los colores de datos conservan el hue del tema oscuro pero bajan de luminancia; ningún par foreground/background baja de 4.5:1.</p>
+      <p style="font-size:13px;margin-top:10px">En claro el turquesa brillante pierde contraste sobre blanco: <span class="mono">--accent</span> baja a <span class="mono">#047972</span> (AA). Los colores de datos conservan el hue del tema oscuro pero bajan de luminancia; ningún par foreground/background baja de 4.5:1. <span class="mono">--on-accent</span> (near-white en ambos temas) es el texto sobre los botones primarios — nunca <span class="mono">--text</span>, que se invierte con el tema.</p>
+    </div>
+
+    <div style="margin-top:22px"><div class="kick">Glass · acento sobre cromo translúcido</div>
+      <p style="font-size:13.5px;margin-top:10px;margin-bottom:12px">El material <span class="mono">.glass</span> viste solo el cromo que el contenido cruza por debajo (header y tab bar móviles, menú "Más opciones") — nunca sobre datos. Sobre glass, con una barra de dato detrás, el turquesa normal cae a ~3.3:1, así que todo acento sobre glass usa <span class="mono">--accent-glass</span> (mismo hue, ±L en OKLCH): 4.6:1 contra cualquier color de dato.</p>
+      <div class="glass-demo">
+        <div class="glass-bar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-glass)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          <span class="mono" style="font-size:13px;color:var(--accent-glass);font-weight:700">--accent-glass sobre .glass</span>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -214,7 +233,7 @@ p strong{color:var(--tx)}
         <div style="display:flex;gap:16px;align-items:center">
           <svg width="76" height="76" viewBox="0 0 100 100" aria-label="anillo 78%">
             <circle cx="50" cy="50" r="40" fill="none" stroke="var(--sur3)" stroke-width="10"/>
-            <circle cx="50" cy="50" r="40" fill="none" stroke="var(--lime)" stroke-width="10" stroke-linecap="round" stroke-dasharray="251.3" stroke-dashoffset="55.3" transform="rotate(-90 50 50)"/>
+            <circle cx="50" cy="50" r="40" fill="none" stroke="var(--accent)" stroke-width="10" stroke-linecap="round" stroke-dasharray="251.3" stroke-dashoffset="55.3" transform="rotate(-90 50 50)"/>
             <text x="50" y="49" text-anchor="middle" class="mono" font-weight="700" font-size="20" fill="var(--tx)">78%</text>
             <text x="50" y="64" text-anchor="middle" font-size="9" fill="var(--tx2)">meta</text>
           </svg>
@@ -231,11 +250,11 @@ p strong{color:var(--tx)}
       </div>
       <div class="card">
         <div class="kick" style="margin-bottom:14px">Botones</div>
-        <p style="font-size:13.5px;margin-top:0">Primario de alto énfasis: lima sólido + texto tinta. Primario estándar (guardar, FAB): lima profundo + texto claro (AA). Secundario: contorno.</p>
+        <p style="font-size:13.5px;margin-top:0">Primario (registrar, guardar, FAB): turquesa profundo <span class="mono">--accent-deep</span> + texto <span class="mono">--on-accent</span> (AA). Secundario: contorno sobre la superficie.</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
-          <button class="btn2">Registrar</button>
+          <button class="btn">Registrar</button>
           <button class="btn">Guardar</button>
-          <button class="btn" style="background:transparent;border:1px solid var(--line)">Cancelar</button>
+          <button class="btn-out">Cancelar</button>
         </div>
       </div>
     </div>
