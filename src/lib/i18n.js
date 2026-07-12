@@ -41,8 +41,8 @@ const EN = {
   'Pantorrilla derecha': 'Right calf',
   // Importar medidas (ImportSheet kind='body', Body.jsx)
   'Importar medidas': 'Import measurements',
-  'Sube o pega un CSV con una fila por día: una columna day (AAAA-MM-DD) y una columna por cada medida (peso_kg, grasa_pct, cintura_cm…). Descarga la plantilla para ver los nombres exactos de las columnas.':
-    'Upload or paste a CSV with one row per day: a day column (YYYY-MM-DD) and one column per measurement (weight, body_fat, waist…). Download the template to see the exact column names.',
+  'Sube o pega un CSV con una fila por día: una columna day (AAAA-MM-DD) y una columna por cada medida (%s…). Descarga la plantilla para ver los nombres exactos de las columnas.':
+    'Upload or paste a CSV with one row per day: a day column (YYYY-MM-DD) and one column per measurement (%s…). Download the template to see the exact column names.',
   '%n días del CSV ya tienen medidas registradas.': '%n days in the CSV already have measurements.',
   Complementar: 'Complement',
   Reemplazar: 'Replace',

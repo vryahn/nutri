@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase.js';
 import { t, getLang } from '../lib/i18n.js';
 import {
   parseCSV, foodsFromCSV, entriesFromCSV, bodyMetricsFromCSV, fetchFoodsForImport,
-  FOODS_TEMPLATE_HEADERS, BODY_TEMPLATE_HEADERS, BODY_TEMPLATE_HEADERS_EN,
+  FOODS_TEMPLATE_HEADERS, BODY_TEMPLATE_HEADERS, BODY_TEMPLATE_HEADERS_EN, BODY_HEADERS_EN,
 } from '../lib/importer.js';
 
 // Carga en bloque desde CSV pegado o archivo. kind='foods'|'entries'|'body'. Vista
@@ -13,12 +13,17 @@ import {
 const PLACEHOLDER = {
   foods: 'name,kcal,protein_g,carbs_g,fat_g,sodio_mg\nAvena,389,17,66,7,2',
   entries: 'day,meal,food,grams\n2026-07-07,Desayuno,Avena,60',
-  body: 'day,peso_kg,grasa_pct,cintura_cm\n2026-07-07,80.5,22,86',
 };
 const TEMPLATE = {
   foods: { headers: FOODS_TEMPLATE_HEADERS, file: 'nutri_alimentos_plantilla.csv' },
   body: { headers: BODY_TEMPLATE_HEADERS, file: 'nutri_medidas_plantilla.csv' },
 };
+
+// Columnas de ejemplo del copy y el placeholder de medidas. Se derivan de UNA
+// fuente: la clave canónica en ES, su alias inglés (BODY_HEADERS_EN) en EN. Así
+// los ejemplos nunca se desincronizan de la plantilla real ni se hardcodean por idioma.
+const BODY_EXAMPLE_KEYS = ['peso_kg', 'grasa_pct', 'cintura_cm'];
+const bodyHeader = (key, en) => (en ? BODY_HEADERS_EN[key] || key : key);
 
 export default function ImportSheet({ kind, onClose, onDone }) {
   const [text, setText] = useState('');
@@ -138,13 +143,13 @@ export default function ImportSheet({ kind, onClose, onDone }) {
     kind === 'foods'
       ? t('Pega o sube un CSV: una fila por alimento, valores por 100 g. Columnas: name, kcal, protein_g, carbs_g, fat_g y una por cada micro (p. ej. sodio_mg).')
       : kind === 'body'
-        ? t('Sube o pega un CSV con una fila por día: una columna day (AAAA-MM-DD) y una columna por cada medida (peso_kg, grasa_pct, cintura_cm…). Descarga la plantilla para ver los nombres exactos de las columnas.')
+        ? t('Sube o pega un CSV con una fila por día: una columna day (AAAA-MM-DD) y una columna por cada medida (%s…). Descarga la plantilla para ver los nombres exactos de las columnas.').replace('%s', BODY_EXAMPLE_KEYS.map((k) => bodyHeader(k, getLang() === 'en')).join(', '))
         : t('Pega o sube un CSV: una fila por registro. Columnas: day (AAAA-MM-DD), meal, food, grams. El alimento se empareja por nombre con tu catálogo.');
 
-  // Ejemplo del textarea: en EN, con encabezados en inglés (entran por los alias).
+  // Ejemplo del textarea: encabezados derivados de la misma fuente (inglés en EN).
   const placeholder =
-    kind === 'body' && getLang() === 'en'
-      ? 'day,weight,body_fat,waist\n2026-07-07,80.5,22,86'
+    kind === 'body'
+      ? `${['day', ...BODY_EXAMPLE_KEYS].map((k) => bodyHeader(k, getLang() === 'en')).join(',')}\n2026-07-07,80.5,22,86`
       : PLACEHOLDER[kind];
 
   return (
