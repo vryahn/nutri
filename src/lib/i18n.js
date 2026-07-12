@@ -78,6 +78,7 @@ const EN = {
   'Importar alimentos': 'Import foods',
   'Importar registros': 'Import entries',
   'Subir archivo': 'Upload file',
+  'Suelta el CSV aquí': 'Drop the CSV here',
   'Descargar plantilla': 'Download template',
   'Pega o sube un CSV: una fila por alimento, valores por 100 g. Columnas: name, kcal, protein_g, carbs_g, fat_g y una por cada micro (p. ej. sodio_mg).':
     'Paste or upload a CSV: one row per food, values per 100 g. Columns: name, kcal, protein_g, carbs_g, fat_g and one per micro (e.g. sodio_mg).',

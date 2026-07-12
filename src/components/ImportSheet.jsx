@@ -33,6 +33,7 @@ export default function ImportSheet({ kind, onClose, onDone }) {
   const [bodyReplace, setBodyReplace] = useState(false); // false = complementar (default)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [dragOver, setDragOver] = useState(false);
 
   // Registros necesitan el catálogo + etiquetas para emparejar por nombre.
   useEffect(() => {
@@ -69,12 +70,17 @@ export default function ImportSheet({ kind, onClose, onDone }) {
   const warned = parsed.filter((p) => p.warnings.length);
   const collisions = kind === 'body' ? importable.filter((p) => existingDays.has(p.row.day)) : [];
 
-  function onFile(e) {
-    const file = e.target.files?.[0];
+  function readFile(file) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => setText(String(reader.result || ''));
     reader.readAsText(file);
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    setDragOver(false);
+    readFile(e.dataTransfer.files?.[0]);
   }
 
   function downloadTemplate() {
@@ -159,6 +165,9 @@ export default function ImportSheet({ kind, onClose, onDone }) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+        onDrop={onDrop}
         className="glass w-full sm:max-w-lg border border-border rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-3 sheet-in max-h-[90vh]"
       >
         <h2 className="font-display text-[19px]">{title}</h2>
@@ -167,7 +176,7 @@ export default function ImportSheet({ kind, onClose, onDone }) {
         <div className="flex flex-wrap gap-2">
           <label className="inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-xl border border-border text-sm text-text-2 press cursor-pointer">
             <Upload size={15} /> {t('Subir archivo')}
-            <input type="file" accept=".csv,.txt,text/csv" onChange={onFile} className="hidden" />
+            <input type="file" accept=".csv,.txt,text/csv" onChange={(e) => readFile(e.target.files?.[0])} className="hidden" />
           </label>
           {TEMPLATE[kind] && (
             <button onClick={downloadTemplate} className="inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-xl border border-border text-sm text-text-2 press">
@@ -179,9 +188,9 @@ export default function ImportSheet({ kind, onClose, onDone }) {
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={placeholder}
+          placeholder={dragOver ? t('Suelta el CSV aquí') : placeholder}
           rows={5}
-          className="w-full rounded-xl bg-surface-2 border border-border p-3 text-sm font-mono resize-y"
+          className={`w-full rounded-xl bg-surface-2 border p-3 text-sm font-mono resize-y ${dragOver ? 'border-accent-deep ring-1 ring-accent-deep' : 'border-border'}`}
         />
 
         {kind === 'body' && collisions.length > 0 && (
