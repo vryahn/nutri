@@ -149,7 +149,8 @@ const BODY_ALIASES = {
   visceral: 'grasa_visceral', visceral_fat: 'grasa_visceral',
   bmr: 'metabolismo_basal_kcal',
   waist: 'cintura_cm', hip: 'cadera_cm', hips: 'cadera_cm', chest: 'pecho_cm', neck: 'cuello_cm',
-  arm: 'brazo_cm', thigh: 'muslo_cm', calf: 'pantorrilla_cm',
+  // bíceps/pierna/pantorrilla son izq/der: sin alias de una sola palabra (ambiguo);
+  // se capturan por su clave canónica (biceps_der_cm, pierna_izq_cm, …).
 };
 
 // Una fila = un día. Mapea columnas (clave canónica o alias) a `metrics`, hereda

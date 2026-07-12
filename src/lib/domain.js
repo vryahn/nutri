@@ -218,9 +218,12 @@ export const BODY_METRICS = [
   { key: 'cadera_cm', label: 'Cadera', unit: 'cm', cat: 'Circunferencias' },
   { key: 'pecho_cm', label: 'Pecho', unit: 'cm', cat: 'Circunferencias' },
   { key: 'cuello_cm', label: 'Cuello', unit: 'cm', cat: 'Circunferencias' },
-  { key: 'brazo_cm', label: 'Brazo', unit: 'cm', cat: 'Circunferencias' },
-  { key: 'muslo_cm', label: 'Muslo', unit: 'cm', cat: 'Circunferencias' },
-  { key: 'pantorrilla_cm', label: 'Pantorrilla', unit: 'cm', cat: 'Circunferencias' },
+  { key: 'biceps_der_cm', label: 'Bíceps derecho', unit: 'cm', cat: 'Circunferencias' },
+  { key: 'biceps_izq_cm', label: 'Bíceps izquierdo', unit: 'cm', cat: 'Circunferencias' },
+  { key: 'pierna_izq_cm', label: 'Pierna izquierda', unit: 'cm', cat: 'Circunferencias' },
+  { key: 'pierna_der_cm', label: 'Pierna derecha', unit: 'cm', cat: 'Circunferencias' },
+  { key: 'pantorrilla_izq_cm', label: 'Pantorrilla izquierda', unit: 'cm', cat: 'Circunferencias' },
+  { key: 'pantorrilla_der_cm', label: 'Pantorrilla derecha', unit: 'cm', cat: 'Circunferencias' },
 ];
 export const BODY_METRICS_DEFAULT = 3; // peso, grasa, músculo siempre visibles
 
@@ -242,7 +245,8 @@ export const BODY_METRIC_MAX = {
   peso_kg: 500, grasa_pct: 80, musculo_kg: 120, agua_pct: 90, hueso_kg: 12,
   grasa_visceral: 60, metabolismo_basal_kcal: 6000,
   cintura_cm: 300, cadera_cm: 300, pecho_cm: 300, cuello_cm: 120,
-  brazo_cm: 120, muslo_cm: 150, pantorrilla_cm: 100,
+  biceps_der_cm: 120, biceps_izq_cm: 120, pierna_izq_cm: 150, pierna_der_cm: 150,
+  pantorrilla_izq_cm: 100, pantorrilla_der_cm: 100,
 };
 
 // Chequeo físico grueso por 100 g: proteína+carbs+grasa+alcohol+agua no pueden

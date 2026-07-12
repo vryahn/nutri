@@ -135,7 +135,7 @@ export default function ImportSheet({ kind, onClose, onDone }) {
     kind === 'foods'
       ? t('Pega o sube un CSV: una fila por alimento, valores por 100 g. Columnas: name, kcal, protein_g, carbs_g, fat_g y una por cada micro (p. ej. sodio_mg).')
       : kind === 'body'
-        ? t('Pega o sube un CSV: una fila por día. Columna day (AAAA-MM-DD) + una por medida (peso_kg, grasa_pct, cintura_cm…) o su alias en inglés (weight, body_fat, waist). Descarga la plantilla para ver todas.')
+        ? t('Sube o pega un CSV con una fila por día. Incluye una columna day (AAAA-MM-DD) y una columna por medida, con las claves del sistema (peso_kg, grasa_pct, cintura_cm…) o sus alias en inglés (weight, body_fat, waist). Descarga la plantilla para verlas todas.')
         : t('Pega o sube un CSV: una fila por registro. Columnas: day (AAAA-MM-DD), meal, food, grams. El alimento se empareja por nombre con tu catálogo.');
 
   return (
