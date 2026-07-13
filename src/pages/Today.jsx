@@ -2353,7 +2353,7 @@ function CfgToggle({ label, checked, onChange }) {
   );
 }
 
-function Sheet({ title, onClose, children }) {
+function Sheet({ title, onClose, children, subheader }) {
   // Backdrop cierra al tocar fuera (patrón del Sheet de Objetivos); la ✕ sería
   // redundante aquí, así que se omite — la del editor inline (riel lg+, sin
   // backdrop) sí se conserva porque ahí no hay tap-fuera.
@@ -2361,6 +2361,7 @@ function Sheet({ title, onClose, children }) {
     <div onClick={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 backdrop-in">
       <div onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-sm bg-surface-3 rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-4 max-h-[85dvh] overflow-y-auto sheet-in">
         <h2 className="font-display text-lg">{title}</h2>
+        {subheader && <div className="-mt-1 pb-3 border-b border-border">{subheader}</div>}
         {children}
       </div>
     </div>

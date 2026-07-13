@@ -4,7 +4,7 @@ import { t } from '../lib/i18n.js';
 // card .glass anclada abajo en móvil / centrada en desktop, con scroll propio.
 // stopPropagation en la card para que el tap dentro no cierre. Usado por las
 // sheets del menú de usuario (Perfil, Idioma, Configuración).
-export default function Sheet({ title, onClose, children, footer, subheader }) {
+export default function Sheet({ title, onClose, children, footer }) {
   return (
     <div
       onClick={(e) => { e.stopPropagation(); onClose(); }}
@@ -18,7 +18,6 @@ export default function Sheet({ title, onClose, children, footer, subheader }) {
           <h2 className="font-display text-[19px]">{title}</h2>
           <button onClick={onClose} className="w-9 h-9 -mr-2 flex items-center justify-center text-text-3 press" aria-label={t('Cerrar')}>✕</button>
         </div>
-        {subheader && <div className="px-5 py-2.5 border-b border-border">{subheader}</div>}
         <div className="overflow-y-auto px-5 py-4 flex flex-col gap-3">{children}</div>
         {footer && <div className="px-5 py-3 border-t border-border">{footer}</div>}
       </div>
