@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
-import { Camera, Trash2, ZoomIn } from 'lucide-react';
+import { Camera, Trash2, ZoomIn, KeyRound } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { loadImage } from '../lib/ai.js';
 import { t, getProfile, setProfile } from '../lib/i18n.js';
 import { Avatar } from './UserMenu.jsx';
 import Sheet from './Sheet.jsx';
+import PasswordSheet from './PasswordSheet.jsx';
 
 const SEXES = [
   { key: 'm', label: 'Masculino' },
@@ -111,6 +112,7 @@ export default function ProfileSheet({ avatarUrl, onClose }) {
   const [localUrl, setLocalUrl] = useState(avatarUrl); // preview inmediato tras subir
   const [uploading, setUploading] = useState(false);
   const [cropImg, setCropImg] = useState(null); // Image en edición, o null
+  const [showPwd, setShowPwd] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   async function onPickFile(fileList) {
@@ -205,6 +207,18 @@ export default function ProfileSheet({ avatarUrl, onClose }) {
               ))}
             </div>
           </Field>
+
+          <div className="h-px bg-border" />
+          <button
+            onClick={() => setShowPwd(true)}
+            className="flex items-center gap-3 rounded-xl px-1 py-2 text-sm text-text press"
+          >
+            <KeyRound size={19} className="text-text-2" />
+            <span>{t('Cambiar contraseña')}</span>
+            <span className="ml-auto text-text-3">›</span>
+          </button>
+
+          {showPwd && <PasswordSheet onClose={() => setShowPwd(false)} />}
         </>
       )}
     </Sheet>
