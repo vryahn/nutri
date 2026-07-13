@@ -12,7 +12,7 @@ import {
 } from '../lib/domain.js';
 import { fetchOFF, searchFDC, fetchFDC } from '../lib/sources.js';
 import { GEMINI_KEY, DENSITY_PRESETS, snapDensity, estimateFood } from '../lib/ai.js';
-import { t, useLang } from '../lib/i18n.js';
+import { t, useLang, useUnits, gToOz, mlToFlOz } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import UndoToast from '../components/UndoToast.jsx';
 import SortTh from '../components/SortTh.jsx';
@@ -752,6 +752,9 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const hiddenMicros = MICROS.slice(MICROS_DEFAULT);
   const basisDensity = Number(form.density_g_ml) || 0;
   const basisBlocked = basisUnit === 'ml' && !(basisDensity > 0);
+  // Hint mudo del equivalente en unidades US: la composición se captura en g/ml (estándar
+  // de etiquetas), pero al usuario US le mostramos a cuánto equivale su base. Solo display.
+  const isUS = useUnits() === 'us';
 
   return (
     <div className="flex flex-col gap-4">
@@ -902,6 +905,11 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           {basisBlocked && (
             <span className="text-xs text-warn" role="status">
               {t('Elige el tipo de líquido para convertir ml a gramos')}
+            </span>
+          )}
+          {isUS && Number(basis) > 0 && (
+            <span className="text-xs text-text-3 font-mono tabular-nums">
+              ≈ {basisUnit === 'ml' ? `${round(mlToFlOz(Number(basis)), 2)} fl oz` : `${round(gToOz(Number(basis)), 2)} oz`}
             </span>
           )}
         </div>
