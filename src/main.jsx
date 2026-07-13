@@ -8,9 +8,30 @@ import { supabase } from './lib/supabase.js';
 import './index.css';
 
 let swReg = null;
-registerSW({ immediate: true, onRegisteredSW(_url, r) { swReg = r; } });
+const check = () => swReg?.update(); // pide al navegador comprobar si hay sw.js nuevo
 
-const check = () => swReg?.update(); // busca deploy; autoUpdate reloadea si hay uno nuevo
+// autoUpdate hace skipWaiting+clientsClaim en el propio SW: el SW nuevo se activa
+// solo, pero la pestaña sigue con el JS viejo ya cargado en memoria hasta recargar.
+// Con injectRegister:false nadie recarga por nosotros, así que lo hacemos aquí:
+// al tomar el control un SW nuevo (controllerchange) recargamos una vez. Se omite
+// la 1ª instalación (sin controller previo) para no recargar en la primera visita.
+if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing || !hadController) return;
+    refreshing = true;
+    window.location.reload();
+  });
+}
+
+registerSW({
+  immediate: true,
+  onRegisteredSW(_url, r) {
+    swReg = r;
+    if (r) setInterval(check, 60 * 60 * 1000); // sesión larga abierta: busca deploy cada hora
+  },
+});
 
 // Abrir / traer la app al frente
 document.addEventListener('visibilitychange', () => {
