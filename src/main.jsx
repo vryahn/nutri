@@ -37,6 +37,8 @@ registerSW({
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') check();
 });
+// Recuperar conexión (móvil que estuvo offline)
+window.addEventListener('online', check);
 // Login
 supabase.auth.onAuthStateChange((event) => {
   if (event === 'SIGNED_IN') check();
