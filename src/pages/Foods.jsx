@@ -405,7 +405,7 @@ export default function Foods() {
       </div>
 
       {/* Panel derecho (lg+): ficha/editor, master-detail. */}
-      <div className="hidden lg:block lg:col-start-2 lg:sticky lg:top-6">
+      <div className="hidden lg:block lg:col-start-2 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
         {editing ? (
           <div className="rounded-2xl bg-surface border border-border p-6">
             <FoodForm
@@ -948,10 +948,10 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           ))}
         </div>
 
-        {/* lg+: básicos+obligatorios a la izquierda, resto de micros por categoría a la derecha, sin acordeón. */}
-        <div className="hidden lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
-          <p className="col-span-2 text-xs text-text-3">{t('★ = favorito, se promueve arriba en móvil.')}</p>
-          <div className="grid grid-cols-2 gap-3 content-start">
+        {/* lg+: obligatorios full-width arriba, resto de micros por categoría en columnas balanceadas (masonry CSS), sin acordeón. */}
+        <div className="hidden lg:block">
+          <p className="text-xs text-text-3 pb-3">{t('★ = favorito, se promueve arriba en móvil.')}</p>
+          <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
             <NumberField
               label={t('Kcal')}
               value={form.kcal}
@@ -986,11 +986,11 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
               />
             ))}
           </div>
-          <div className="flex flex-col gap-3">
+          <div className="columns-2 xl:columns-3 gap-6 mt-4">
             {microGroups(MICROS.filter((m) => !REQUIRED_MICROS.includes(m.key))).map(({ cat, items }) => (
-              <div key={cat}>
+              <div key={cat} className="break-inside-avoid mb-4">
                 <p className="text-xs uppercase tracking-wide text-text-3 pb-1">{t(cat)}</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-3">
                   {items.map((m) => (
                     <MicroField
                       key={m.key}
