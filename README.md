@@ -293,4 +293,4 @@ Under **Foods → New food** there's a "Datos con IA" (AI data) module: describe
 
 ## Out of scope
 
-Body weight, bioimpedance, measurements, sleep and training (Notion/Hevy). TypeScript, E2E tests, i18n, light mode, public sign-up, self-service password recovery, camera scanner, edge functions, custom domain for the API.
+Sleep and training (Notion/Hevy). TypeScript, E2E tests, public sign-up, self-service password recovery, camera scanner, edge functions, custom domain for the API.
