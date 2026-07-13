@@ -1038,6 +1038,18 @@ export default function Today() {
 
   const target = resolveTarget(targets, date);
 
+  // Strip de resumen del día para las hojas de añadir/editar (<lg): la hoja
+  // tapa la card de resumen, este strip mantiene el contexto del día a la vista.
+  // Reusa MiniGrid (idéntico al mini-resumen fijo). Null si no hay nada que resumir.
+  const daySummaryStrip = (target != null || foodEntries.length > 0) && (
+    <div className="flex items-center gap-3">
+      <span className="text-[10px] uppercase tracking-wide text-text-3 flex-none">{t('Hoy')}</span>
+      <div className="min-w-0">
+        <MiniGrid cfg={miniCfg} totals={totals} target={target} hasFood={foodEntries.length > 0} />
+      </div>
+    </div>
+  );
+
   const groups = groupByLabel(foodEntries, labels, activeEntry != null);
 
   return (
@@ -1120,6 +1132,22 @@ export default function Today() {
           Sin esas filas explícitas, `1/-1` colapsa a span-1 e infla la fila 1 con la altura
           del rail (hueco en col-1). La fila 1fr absorbe el excedente del rail por abajo. */}
       <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-1 lg:[grid-row:1/-1] lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto">
+        {/* Resumen del día: siempre presente en el rail (lg). Al editar queda fijo
+            arriba del editor (sticky dentro del rail scrolleable) para no perder los
+            totales/metas mientras se ajusta una cantidad. bg propio para tapar el
+            editor que scrollea debajo. */}
+        <div className="hidden lg:block lg:sticky lg:top-0 lg:z-10 bg-bg rounded-2xl">
+          <SummaryCard
+            view={activeView}
+            cfg={viewCfg}
+            onToggleView={toggleTodayView}
+            onConfig={() => setCardConfigOpen(true)}
+            totals={totals}
+            target={target}
+            hasFood={foodEntries.length > 0}
+          />
+        </div>
+
         {isLg && editing ? (
           <div key={editing.id} className="reveal-in rounded-2xl bg-surface border border-border p-4 flex flex-col gap-4">
             <div className="flex items-center justify-between">
@@ -1143,30 +1171,15 @@ export default function Today() {
             />
           </div>
         ) : (
-          <>
-            <div className="hidden lg:block">
-              <SummaryCard
-                view={activeView}
-                cfg={viewCfg}
-                onToggleView={toggleTodayView}
-                onConfig={() => setCardConfigOpen(true)}
-                totals={totals}
-                target={target}
-                hasFood={foodEntries.length > 0}
-              />
-            </div>
-
-            <WaterCard
-              waterMl={Math.max(0, waterMl + pendingWaterMl)}
-              goalMl={Number(target?.micros?.agua_ml) || 0}
-              glassMl={prefs.water_glass_ml}
-              onGlass={() => addWater(prefs.water_glass_ml)}
-              onUndo={undoWater}
-              onCustom={addWater}
-              onSettings={() => setWaterSettingsOpen(true)}
-            />
-
-          </>
+          <WaterCard
+            waterMl={Math.max(0, waterMl + pendingWaterMl)}
+            goalMl={Number(target?.micros?.agua_ml) || 0}
+            glassMl={prefs.water_glass_ml}
+            onGlass={() => addWater(prefs.water_glass_ml)}
+            onUndo={undoWater}
+            onCustom={addWater}
+            onSettings={() => setWaterSettingsOpen(true)}
+          />
         )}
       </div>
 
@@ -1293,6 +1306,7 @@ export default function Today() {
           labels={labels}
           waterFoodId={prefs.water_food_id}
           initialLabelId={adding.labelId}
+          subheader={daySummaryStrip}
           onClose={() => setAdding(null)}
           onAdded={(labelId) => {
             setAdding(null);
@@ -1306,6 +1320,7 @@ export default function Today() {
           entry={editing}
           labels={labels}
           favMicros={prefs.fav_micros || []}
+          subheader={daySummaryStrip}
           onClose={() => setEditing(null)}
           onDelete={() => {
             deleteEntry(editing);
@@ -2033,9 +2048,9 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
   );
 }
 
-function AddEntrySheet({ date, labels, waterFoodId, initialLabelId, onClose, onAdded }) {
+function AddEntrySheet({ date, labels, waterFoodId, initialLabelId, subheader, onClose, onAdded }) {
   return (
-    <Sheet title={t('Añadir registro')} onClose={onClose}>
+    <Sheet title={t('Añadir registro')} onClose={onClose} subheader={subheader}>
       <AddEntryForm
         date={date}
         labels={labels}
@@ -2102,9 +2117,9 @@ function EditEntryForm({ entry, labels, favMicros, onDelete, onSaved }) {
   );
 }
 
-function EditEntrySheet({ entry, labels, favMicros, onClose, onDelete, onSaved }) {
+function EditEntrySheet({ entry, labels, favMicros, subheader, onClose, onDelete, onSaved }) {
   return (
-    <Sheet title={<>{entry.item}{entry.brand && <span className="text-text-3 text-sm font-normal ml-1.5">{entry.brand}</span>}</>} onClose={onClose}>
+    <Sheet title={<>{entry.item}{entry.brand && <span className="text-text-3 text-sm font-normal ml-1.5">{entry.brand}</span>}</>} onClose={onClose} subheader={subheader}>
       <EditEntryForm entry={entry} labels={labels} favMicros={favMicros} onDelete={onDelete} onSaved={onSaved} />
     </Sheet>
   );
