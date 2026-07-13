@@ -36,6 +36,12 @@ describe('scoreCase — tolerancia por modo', () => {
     expect(scoreCase(appleCase(), got({ micros: { sodio_mg: 1, potasio_mg: 60, magnesio_mg: 5 } })).fields.potasio_mg.pass).toBe(false);
   });
 
+  it('estimacion piso absoluto 0.5: esperado 0 no exige exactitud', () => {
+    const c = { id: 'z', expected: { mode: 'estimacion', basis: '100g', values: { fat_g: 0, micros: {} } } };
+    expect(scoreCase(c, got({ fat_g: 0.3 })).fields.fat_g.pass).toBe(true);
+    expect(scoreCase(c, got({ fat_g: 0.6 })).fields.fat_g.pass).toBe(false);
+  });
+
   it('etiqueta: kcal max(2%,2), resto max(2%,0.5)', () => {
     const c = { id: 'lbl', expected: { mode: 'etiqueta', basis: '100g', values: { kcal: 100, protein_g: 10, micros: {} } } };
     const g = { mode: 'etiqueta', basis: '100g', kcal: 100, protein_g: 10, carbs_g: 0, fat_g: 0, micros: { sodio_mg: 0, potasio_mg: 0, magnesio_mg: 0 } };
@@ -113,5 +119,20 @@ describe('compareToBaseline', () => {
   it('caso del baseline ausente en la corrida → regresión', () => {
     const cmp = compareToBaseline(base, []);
     expect(cmp.regressions.some((r) => r.id === 'a' && r.field === null)).toBe(true);
+  });
+
+  it('extras: regresión solo si el conteo crece más allá de 1.5×+3', () => {
+    const mk = (n) => Array.from({ length: n }, (_, i) => `x${i}`);
+    const run = (n) => [{ id: 'a', fields: {}, extras: mk(n) }];
+    const base0 = [{ id: 'a', fields: {}, extras: [] }];
+    // 0 → umbral 3: 3 extras tolerado, 4 regresión.
+    expect(compareToBaseline(base0, run(3)).regressions).toHaveLength(0);
+    expect(compareToBaseline(base0, run(4)).regressions.some((r) => r.field === 'extras')).toBe(true);
+    // 60 → umbral 93: variación fina tolerada, salto grande gatea.
+    const base60 = [{ id: 'a', fields: {}, extras: mk(60) }];
+    expect(compareToBaseline(base60, run(90)).regressions).toHaveLength(0);
+    expect(compareToBaseline(base60, run(94)).regressions.some((r) => r.field === 'extras')).toBe(true);
+    // Baseline viejo sin campo extras no revienta.
+    expect(compareToBaseline([{ id: 'a', fields: {} }], run(0)).regressions).toHaveLength(0);
   });
 });

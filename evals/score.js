@@ -20,7 +20,9 @@ function toleranceFor(field, mode, expected, isMicro, overrides) {
   if (mode === 'etiqueta') {
     return field === 'kcal' ? Math.max(0.02 * abs, 2) : Math.max(0.02 * abs, 0.5);
   }
-  return abs * (isMicro ? 0.4 : 0.3); // estimacion
+  // estimacion, con piso absoluto: sin él, esperado 0 exigiría exactamente 0 y un valor
+  // diminuto (0.2 g) toleraría menos que el modo etiqueta.
+  return Math.max(abs * (isMicro ? 0.4 : 0.3), 0.5);
 }
 
 // Un campo: numérico obligatorio, y si hay valor esperado, dentro de tolerancia.
@@ -86,7 +88,8 @@ export function scoreCase(caseDef, got) {
 }
 
 // Regresión = par (caso, campo) que pasaba en baseline y ahora falla, o caso presente en
-// baseline y ausente en la corrida. Campos/casos nuevos → "nuevo" (no falla). Mejoras → se reportan.
+// baseline y ausente en la corrida, o conteo de extras (alucinaciones) que crece más allá
+// de la holgura. Campos/casos nuevos → "nuevo" (no falla). Mejoras → se reportan.
 export function compareToBaseline(baseline, run) {
   const runById = Object.fromEntries(run.map((r) => [r.id, r]));
   const baseById = Object.fromEntries(baseline.map((r) => [r.id, r]));
@@ -105,6 +108,14 @@ export function compareToBaseline(baseline, run) {
       } else if (!bf.pass && rf.pass) {
         improvements.push({ id: b.id, field });
       }
+    }
+    // Alucinaciones (extras): la identidad de los micros inventados varía entre corridas,
+    // el CONTEO no tanto. Regresión solo si crece más allá de la holgura (0→muchos o salto
+    // grande), así la variación fina no dispara el gate pero re-introducir alucinación sí.
+    const bx = (b.extras || []).length;
+    const rx = (r.extras || []).length;
+    if (rx > bx * 1.5 + 3) {
+      regressions.push({ id: b.id, field: 'extras', reason: `alucinaciones ${bx} → ${rx} (umbral ${Math.floor(bx * 1.5 + 3)})` });
     }
   }
 

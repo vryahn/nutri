@@ -47,7 +47,10 @@ function buildParts(c) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const cases = loadCases();
-const hasAI = !!(import.meta.env.VITE_GEMINI_KEY || import.meta.env.VITE_MISTRAL_KEY);
+// La key requerida depende del modelo pineado: con solo la key "equivocada" en .env, correr
+// igual reventaría los 7 casos como falsas regresiones en vez de un skip limpio.
+const NEED_KEY = EVAL_MODEL.startsWith('mistral') ? 'VITE_MISTRAL_KEY' : 'VITE_GEMINI_KEY';
+const hasAI = !!import.meta.env[NEED_KEY];
 const results = [];
 
 describe.skipIf(!hasAI)('eval extracción IA', () => {
@@ -99,13 +102,23 @@ describe.skipIf(!hasAI)('eval extracción IA', () => {
 
     fs.writeFileSync(LAST_RUN, JSON.stringify({ generated_at: new Date().toISOString(), cases: results }, null, 2));
 
+    const readyIds = new Set(cases.filter((c) => c.ready).map((c) => c.id));
+
     if (process.env.UPDATE_BASELINE) {
+      // Corrida incompleta (un caso murió a mitad, típico 429) NO puede fijar baseline:
+      // quedaría truncado en silencio y los casos perdidos puntuarían "nuevo" para siempre.
+      if (results.length !== readyIds.size) {
+        throw new Error(`UPDATE_BASELINE: corrida incompleta (${results.length}/${readyIds.size} casos ready) — baseline NO escrito.`);
+      }
       fs.writeFileSync(BASELINE, JSON.stringify({ generated_at: new Date().toISOString(), cases: results }, null, 2));
       console.log(`baseline.json actualizado (${agg.p}/${agg.t}).`);
       return;
     }
 
-    const baseline = fs.existsSync(BASELINE) ? JSON.parse(fs.readFileSync(BASELINE, 'utf8')).cases : [];
+    // Casos skipped (foto local-only ausente) se excluyen de la comparación: un clon con keys
+    // pero sin fotos queda verde. La ausencia de un caso READY (throw/429) sí gatea.
+    const baseline = (fs.existsSync(BASELINE) ? JSON.parse(fs.readFileSync(BASELINE, 'utf8')).cases : [])
+      .filter((b) => readyIds.has(b.id));
     const { regressions, improvements, newItems } = compareToBaseline(baseline, results);
     for (const n of newItems) console.log(`nuevo: ${n.id}${n.field ? ' · ' + n.field : ''}`);
     for (const im of improvements) console.log(`mejora: ${im.id} · ${im.field}`);
@@ -117,5 +130,5 @@ describe.skipIf(!hasAI)('eval extracción IA', () => {
 });
 
 if (!hasAI) {
-  console.warn('eval: sin VITE_GEMINI_KEY ni VITE_MISTRAL_KEY — casos omitidos (skip limpio).');
+  console.warn(`eval: sin ${NEED_KEY} (la key de ${EVAL_MODEL}) — casos omitidos (skip limpio).`);
 }

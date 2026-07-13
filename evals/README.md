@@ -23,8 +23,10 @@ en el presupuesto. Si lo agotas, el 429 no recupera hasta el reset diario (media
 
 Salida: tabla por caso (id, modelo que respondió, `passed/total`, campos fallados con esperado
 vs got), `evals/last-run.json` (gitignoreado) y comparación vs `baseline.json`. Cualquier
-**regresión** (par caso/campo que pasaba y ahora falla, o caso del baseline ausente) hace fallar
-el suite.
+**regresión** hace fallar el suite: par caso/campo que pasaba y ahora falla, caso READY del
+baseline ausente en la corrida (los skipped por foto local ausente NO cuentan), o conteo de
+extras (alucinaciones) que crece más allá de `1.5× + 3` vs el baseline — la identidad de los
+micros inventados varía entre corridas, el conteo es la señal estable.
 
 ## Formato de caso — `cases/<id>/case.json`
 
@@ -50,8 +52,9 @@ el suite.
   magnesio_mg`): deben venir numéricos siempre, y dentro de tolerancia si `values` trae valor.
 - Resto de campos en `values` (incl. micros): dentro de tolerancia.
 - **Tolerancias default por modo:** `etiqueta` → `max(2 %, 0.5 u)` (kcal `max(2 %, 2)`) —
-  transcribir no es estimar; `estimacion` → ±30 % macros, ±40 % micros.
-  Override por campo en `tolerances` (`{"kcal": 0.1}` = ±10 %).
+  transcribir no es estimar; `estimacion` → ±30 % macros, ±40 % micros, con piso absoluto de
+  0.5 u (un esperado 0 no exige exactamente 0). Override por campo en `tolerances`
+  (`{"kcal": 0.1}` = ±10 %).
 - `strict_extras: true` (solo casos `etiqueta` con transcripción COMPLETA del empaque):
   cualquier micro devuelto por la IA fuera de `values` = fallo "extra" (alucinación). Los 7
   requeridos quedan exentos.
