@@ -11,6 +11,7 @@ import UndoToast from '../components/UndoToast.jsx';
 import AmountField from '../components/AmountField.jsx';
 import SortTh from '../components/SortTh.jsx';
 import AiDataCard from '../components/AiDataCard.jsx';
+import PortionsEditor from '../components/PortionsEditor.jsx';
 import { t, useLang, useUnits, fmtG, gToOz, ozToG } from '../lib/i18n.js';
 import { fetchFoodsForImport, parseIngredientLines } from '../lib/importer.js';
 
@@ -101,7 +102,7 @@ export default function Recipes() {
 
   async function openEditor(recipe) {
     if (!recipe.id) {
-      setEditing({ name: '', cooked_weight_g: '', ingredients: [], source: 'manual' });
+      setEditing({ name: '', cooked_weight_g: '', portions: [], ingredients: [], source: 'manual' });
       return;
     }
     const { data: items } = await supabase
@@ -111,6 +112,7 @@ export default function Recipes() {
     setEditing({
       ...recipe,
       cooked_weight_g: recipe.cooked_weight_g ?? '',
+      portions: recipe.portions || [],
       ingredients: (items || []).map((i) => ({ food: i.foods, grams: i.grams })),
     });
   }
@@ -119,6 +121,9 @@ export default function Recipes() {
     const payload = {
       name: form.name,
       cooked_weight_g: form.cooked_weight_g || null,
+      portions: (form.portions || [])
+        .filter((p) => p.name.trim() && Number(p.grams) > 0)
+        .map((p) => ({ name: p.name.trim(), grams: Number(p.grams) })),
       source: form.source || 'manual',
     };
     let recipeId = form.id;
@@ -170,7 +175,7 @@ export default function Recipes() {
     setUndoData(null);
     const { data, error } = await supabase
       .from('recipes')
-      .insert({ name: recipe.name, cooked_weight_g: recipe.cooked_weight_g, source: recipe.source })
+      .insert({ name: recipe.name, cooked_weight_g: recipe.cooked_weight_g, portions: recipe.portions, source: recipe.source })
       .select()
       .single();
     if (error) return;
@@ -888,6 +893,11 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
             />
             <p className="text-xs text-text-3">{t('vacío = suma de ingredientes')}</p>
           </div>
+
+          <PortionsEditor
+            portions={form.portions || []}
+            onChange={(portions) => setForm((f) => ({ ...f, portions }))}
+          />
 
           {newFoods.length > 0 && (
             <p className="text-sm text-text-3" role="status">

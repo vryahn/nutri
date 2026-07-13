@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
-  Plus, ChevronLeft, Search, X, Star, AlertTriangle, Trash2, Upload,
+  Plus, ChevronLeft, Search, Star, AlertTriangle, Trash2, Upload,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
@@ -18,6 +18,7 @@ import UndoToast from '../components/UndoToast.jsx';
 import SortTh from '../components/SortTh.jsx';
 import AiDataCard from '../components/AiDataCard.jsx';
 import ImportSheet from '../components/ImportSheet.jsx';
+import PortionsEditor from '../components/PortionsEditor.jsx';
 
 const FDC_KEY = import.meta.env.VITE_FDC_KEY;
 
@@ -733,10 +734,6 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     });
   }
 
-  function setPortion(index, patch) {
-    setForm((f) => ({ ...f, portions: f.portions.map((p, i) => (i === index ? { ...p, ...patch } : p)) }));
-  }
-
   const kcalCalc = kcalFromMacros(form);
   const hasMacros = form.protein_g !== '' || form.carbs_g !== '' || form.fat_g !== '';
   const suspicious = form.kcal !== '' && hasMacros && kcalSuspicious(form);
@@ -1085,46 +1082,10 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           <p className="text-xs text-text-3">{t('Si es líquido, al registrar podrás capturar en ml y se convierte a gramos.')}</p>
         </Field>
 
-        <div className="flex flex-col gap-2">
-          <p className="text-sm text-text-2">{t('Porciones (opcional)')}</p>
-          {form.portions.map((p, i) => (
-            <div key={i} className="flex gap-2">
-              <input
-                value={p.name}
-                onChange={(e) => setPortion(i, { name: e.target.value })}
-                placeholder={t('vaso, cucharada, rebanada…')}
-                className="flex-1 min-w-0 input"
-                aria-label={`${t('Nombre de la porción')} ${i + 1}`}
-              />
-              <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="any"
-                value={p.grams}
-                onChange={(e) => setPortion(i, { grams: e.target.value })}
-                placeholder="g"
-                className="w-24 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
-                aria-label={`${t('Gramos de la porción')} ${i + 1}`}
-              />
-              <button
-                type="button"
-                onClick={() => setForm((f) => ({ ...f, portions: f.portions.filter((_, j) => j !== i) }))}
-                className="min-w-[44px] min-h-[44px] rounded-xl border border-border flex items-center justify-center text-text-2 press"
-                aria-label={`${t('Quitar porción')} ${i + 1}`}
-              >
-                <X size={18} />
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => setForm((f) => ({ ...f, portions: [...f.portions, { name: '', grams: '' }] }))}
-            className="min-h-[44px] rounded-xl border border-border text-text-2 press"
-          >
-            + {t('Añadir porción')}
-          </button>
-        </div>
+        <PortionsEditor
+          portions={form.portions}
+          onChange={(portions) => setForm((f) => ({ ...f, portions }))}
+        />
 
         <Field label={t('Fuente')}>
           <select

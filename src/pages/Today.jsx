@@ -1843,9 +1843,12 @@ function useFoodMeta(foodId, recipeId) {
     if (!key) return;
     let alive = true;
     const query = foodId
-      ? supabase.from('foods').select('kcal, protein_g, carbs_g, fat_g, micros, portions, density_g_ml').eq('id', foodId)
-      : supabase.from('recipe_per_100g').select('kcal, protein_g, carbs_g, fat_g, micros').eq('recipe_id', recipeId);
-    query.maybeSingle().then(({ data }) => {
+      ? supabase.from('foods').select('kcal, protein_g, carbs_g, fat_g, micros, portions, density_g_ml').eq('id', foodId).maybeSingle()
+      : Promise.all([
+          supabase.from('recipe_per_100g').select('kcal, protein_g, carbs_g, fat_g, micros').eq('recipe_id', recipeId).maybeSingle(),
+          supabase.from('recipes').select('portions').eq('id', recipeId).maybeSingle(),
+        ]).then(([n, r]) => ({ data: n.data ? { ...n.data, portions: r.data?.portions || [] } : null }));
+    query.then(({ data }) => {
       if (data) cacheSet(key, data);
       if (alive && data) setMeta(data);
     });
