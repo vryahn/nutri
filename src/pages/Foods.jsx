@@ -1019,7 +1019,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         )}
         {implausible && (
           <p className="text-sm text-warn" role="status">
-            ⚠ {t('Los valores no son físicamente plausibles para 100 g. Revisa antes de guardar.')}
+            ⚠ {t('Valores inusualmente altos para 100 g. Revisa antes de guardar.')}
           </p>
         )}
         {inconsistent && (

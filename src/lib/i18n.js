@@ -152,8 +152,8 @@ const EN = {
     'If you leave Kcal empty, the macro-based calculation will be saved (≈ %n).',
   '%n kcal no cuadran con los macros (≈ %m kcal por Atwater). El alimento quedará marcado para revisión.':
     '%n kcal don\'t match the macros (≈ %m kcal by Atwater). The food will be flagged for review.',
-  'Los valores no son físicamente plausibles para 100 g. Revisa antes de guardar.':
-    'The values are not physically plausible for 100 g. Review before saving.',
+  'Valores inusualmente altos para 100 g. Revisa antes de guardar.':
+    'Unusually high values for 100 g. Review before saving.',
   'Componente inconsistente': 'Inconsistent component',
   'Revisa antes de guardar.': 'Review before saving.',
   'grasa saturada + trans supera la grasa total': 'saturated + trans fat exceeds total fat',
