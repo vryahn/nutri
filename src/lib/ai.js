@@ -219,15 +219,17 @@ async function callMistral(model, systemPrompt, parts, schema) {
 
 // Intenta cada modelo de AI_CHAIN en orden; ante CUALQUIER error pasa al siguiente.
 // Salta un paso si su key no está configurada. Propaga el último error si todos fallan.
+// Devuelve { data, model } — model = "kind:modelo" del paso que respondió (para el eval harness).
 async function callAI(systemPrompt, parts, schema) {
   let lastErr;
   for (const step of AI_CHAIN) {
     if (step.kind === 'gemini' && !GEMINI_KEY) continue;
     if (step.kind === 'mistral' && !MISTRAL_KEY) continue;
     try {
-      return step.kind === 'gemini'
+      const data = step.kind === 'gemini'
         ? await callGemini(step.model, systemPrompt, parts, schema)
         : await callMistral(step.model, systemPrompt, parts, schema);
+      return { data, model: `${step.kind}:${step.model}` };
     } catch (e) {
       lastErr = e;
     }
@@ -240,7 +242,7 @@ export async function estimateRecipe(text, imageFiles, catalogNames) {
   for (const f of imageFiles || []) {
     parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(f) } });
   }
-  const out = await callAI(recipePrompt(catalogNames), parts, RECIPE_SCHEMA);
+  const { data: out } = await callAI(recipePrompt(catalogNames), parts, RECIPE_SCHEMA);
   // grams fuera de rango físico razonable → gramos vacíos, no se descarta el ingrediente
   // (el usuario lo captura a mano). Truncado a 15. Nutrientes = respaldo por 100 g (prefill);
   // se descartan micros null igual que estimateFood.
@@ -290,7 +292,14 @@ export async function estimateFood(text, imageFiles) {
   for (const f of imageFiles || []) {
     parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(f) } });
   }
-  const out = await callAI(geminiPrompt(), parts, GEMINI_SCHEMA);
+  return estimateFoodFromParts(parts);
+}
+
+// Parte del pipeline posterior a construir `parts` (sin canvas/DOM): llama la cascada
+// y normaliza. La usa estimateFood (browser, con toJpegBase64) y el eval harness (node,
+// que lee las fotos de disco). `ai_model` = qué modelo respondió; Foods.jsx lo ignora.
+export async function estimateFoodFromParts(parts) {
+  const { data: out, model } = await callAI(geminiPrompt(), parts, GEMINI_SCHEMA);
   const micros = {};
   for (const m of MICROS) {
     const v = out.micros?.[m.key];
@@ -310,5 +319,6 @@ export async function estimateFood(text, imageFiles) {
     fat_g: out.fat_g ?? '',
     micros,
     density_g_ml: snapDensity(out.density_g_ml),
+    ai_model: model,
   };
 }

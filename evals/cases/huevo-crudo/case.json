@@ -1,0 +1,18 @@
+{
+  "text": "huevo entero crudo",
+  "photos": [],
+  "expected": {
+    "mode": "estimacion",
+    "basis": "100g",
+    "values": {
+      "kcal": 143,
+      "protein_g": 12.6,
+      "carbs_g": 0.72,
+      "fat_g": 9.51,
+      "micros": { "sodio_mg": 142, "potasio_mg": 138, "magnesio_mg": 12, "fibra_g": 0 }
+    }
+  },
+  "strict_extras": false,
+  "tolerances": {},
+  "notes": "FDC 171287 (SR Legacy), 'Egg, whole, raw, fresh', consultado 2026-07-13. carbs_g 0.72 y fibra_g 0 con tolerancia estimacion (±30/40 %) son estrictos en absoluto; el baseline captura lo que devuelva el modelo."
+}

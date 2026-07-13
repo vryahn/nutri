@@ -1,0 +1,18 @@
+{
+  "text": "tortilla de maíz nixtamalizado",
+  "photos": [],
+  "expected": {
+    "mode": "estimacion",
+    "basis": "100g",
+    "values": {
+      "kcal": 218,
+      "protein_g": 5.7,
+      "carbs_g": 44.6,
+      "fat_g": 2.85,
+      "micros": { "sodio_mg": 45, "potasio_mg": 186, "magnesio_mg": 72, "fibra_g": 6.3 }
+    }
+  },
+  "strict_extras": false,
+  "tolerances": {},
+  "notes": "FDC 175036 (SR Legacy), 'Tortillas, ready-to-bake or -fry, corn', consultado 2026-07-13. sodio_mg 45 con ±40 % es estrecho: tortillas comerciales varían mucho en sodio; el baseline captura lo real."
+}

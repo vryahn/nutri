@@ -1,0 +1,18 @@
+{
+  "text": "manzana fuji cruda",
+  "photos": [],
+  "expected": {
+    "mode": "estimacion",
+    "basis": "100g",
+    "values": {
+      "kcal": 63,
+      "protein_g": 0.2,
+      "carbs_g": 15.2,
+      "fat_g": 0.18,
+      "micros": { "sodio_mg": 1, "potasio_mg": 109, "magnesio_mg": 5, "fibra_g": 2.1 }
+    }
+  },
+  "strict_extras": false,
+  "tolerances": {},
+  "notes": "FDC 167793 (SR Legacy), 'Apples, raw, fuji, with skin', consultado 2026-07-13."
+}

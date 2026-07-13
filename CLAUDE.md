@@ -43,6 +43,7 @@ src/components/          # 17 extraídos: Sheet/ConfirmSheet/ImportSheet/Profile
                           # Hint, SwipeToDelete, UndoToast, SortTh, PageSkeleton, ErrorBoundary
 src/App.jsx              # router, guard de sesión, tab bar
 brand/                   # manual de marca Nutrimetry (nutrimetry-brand.html)
+evals/                    # golden set + regresiones puntuadas de la extracción IA (npm run eval, NUNCA en CI)
 .github/workflows/       # ci.yml (lint+test+build en cada push), keepalive.yml (semanal), backup.yml (mensual)
 ```
 
@@ -127,7 +128,8 @@ Recordar: vistas con `security_invoker = true`; nuevas tablas necesitan RLS + po
 2. Si tocaste cálculos: caso canónico de recetas y/o registrar 150 g de un alimento = 1.5× sus valores por 100 g (macros Y micros).
 3. Si tocaste RLS/queries: probar que un usuario no ve datos privados del otro (hay 2 cuentas reales; pedir credenciales al usuario, nunca hardcodearlas).
 4. UI: revisar a 375 px en el preview.
-5. Commit descriptivo y push (recuerda: push = deploy).
+5. Si tocaste `src/lib/ai.js` (prompt, schema, cascada o normalización): `npm run eval` antes y después; cualquier regresión vs `evals/baseline.json` bloquea el push. El baseline se actualiza solo deliberadamente (`UPDATE_BASELINE=1 npm run eval`) y se committea explicando el porqué.
+6. Commit descriptivo y push (recuerda: push = deploy).
 
 ## Fuera de alcance (spec §11 — no construir)
 
