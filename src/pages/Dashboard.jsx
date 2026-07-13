@@ -714,7 +714,6 @@ export default function Dashboard() {
   const [targets, setTargets] = useState([]);
   const [favs, setFavs] = useState([]); // prefs.data.fav_micros
   const [dashboards, setDashboards] = useState([]); // prefs.data.dashboards: gráficas personalizadas
-  const [userId, setUserId] = useState(null);
   const [stdOpen, setStdOpen] = usePersistentState('nutri.dash.stdOpen', true); // plegar el análisis estándar
   const [waterFoodId, setWaterFoodId] = useState(null);
   const [itemRows, setItemRows] = useState([]); // entry_nutrients del rango, para "Top alimentos"
@@ -770,10 +769,6 @@ export default function Dashboard() {
     preset === 'custom' ? customEnd >= today : phaseMode ? selectedPhases.some((p) => p.ongoing) : false;
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
-  }, []);
-
-  useEffect(() => {
     // SWR: si este rango ya se vio en la sesión, pinta el cache al instante
     // (sin skeleton) y el load() de fondo actualiza al llegar.
     const cached = cacheGet(`dash:${start}:${end}`);
@@ -794,14 +789,15 @@ export default function Dashboard() {
     setLoading(false);
   }
 
-  // Persiste las gráficas personalizadas en prefs.data.dashboards. Merge sobre
-  // data existente para no pisar el resto de prefs (patrón fav_micros/fav_body).
+  // Persiste las gráficas personalizadas en prefs.data.dashboards vía merge_prefs
+  // (migración 014): merge atómico server-side en 1 round-trip con auth.uid() —
+  // sin depender del userId del cliente (getUser por red podía dejarlo null y
+  // descartar el guardado en silencio) y sin read-modify-write que pise otras claves.
   async function saveDashboards(next) {
     setDashboards(next);
     cacheSet(`dash:${start}:${end}`, { ...(cacheGet(`dash:${start}:${end}`) || {}), dashboards: next });
-    if (!userId) return;
-    const { data } = await supabase.from('prefs').select('data').maybeSingle();
-    await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), dashboards: next } });
+    const { error } = await supabase.rpc('merge_prefs', { patch: { dashboards: next } });
+    if (error) showToast(t('No se pudo guardar la gráfica — reintenta.'));
   }
 
   async function load() {

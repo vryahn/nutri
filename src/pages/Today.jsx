@@ -635,7 +635,10 @@ export default function Today() {
   async function savePrefs(patch) {
     const next = { ...prefs, ...patch };
     setPrefs(next);
-    await supabase.from('prefs').upsert({ owner: userId, data: next });
+    // merge_prefs (migración 014): escribe SOLO las claves del patch server-side.
+    // El upsert anterior reemplazaba el jsonb completo desde este estado local
+    // parcial y podía pisar claves ajenas (p. ej. dashboards del Dashboard).
+    await supabase.rpc('merge_prefs', { patch });
     return next;
   }
 
