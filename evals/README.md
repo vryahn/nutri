@@ -74,8 +74,22 @@ El eval fija **un solo modelo + `temperature: 0`** (`EVAL_MODEL`, default `gemin
 primario real de la app). Sin esto, la cascada de `ai.js` cae a otro modelo ante un 503 y el
 modelo que contesta cambia por llamada: 3.5 vs 2.5 dan números distintos y el re-run marca
 regresiones falsas. Al fijar el modelo, el baseline mide un objetivo consistente. Reintenta en
-error transitorio (3.5-flash se satura) para no morir en un 503. Sobrescribir:
-`EVAL_MODEL=gemini-2.5-flash npm run eval`.
+error transitorio 5xx (3.5-flash se satura) para no morir en un 503; un 429 (cuota) NO se
+reintenta.
+
+**Un baseline por modelo.** El default va a `baseline.json`; cualquier otro `EVAL_MODEL` a
+`baseline.<modelo>.json` (ambos committeados). Así se cubre también el **último paso de la
+cascada, Mistral** (`mistral-small-latest`, sí hace visión — verificado), que de otro modo queda
+sin probar (incluida la traducción `toJsonSchema` Gemini→Mistral):
+`EVAL_MODEL=mistral-small-latest npm run eval` (necesita `VITE_MISTRAL_KEY`). El pin rutea a
+Gemini o Mistral según el prefijo del nombre.
+
+Ojo: `mistral-small-latest` resultó **débil y no reproducible ni a temp 0** (alucina casi todo el
+panel de micros; mis-transcribe etiquetas —lee la columna "por porción", ignora valores
+declarados—; el kcal de una misma etiqueta osciló 47→37 entre corridas). Su `baseline.mistral-small-latest.json`
+es un **snapshot de calidad del último paso de la cascada, no un gate estricto**: puede marcar una
+regresión falsa por su propia varianza. Trátalo como smoke test (¿la ruta Mistral sigue viva y
+devuelve JSON válido?), no como criterio de bloqueo.
 
 Aun con modelo fijo, la generación no es 100 % determinista: un campo de **estimación** en el
 borde de la tolerancia puede oscilar entre corridas.

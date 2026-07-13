@@ -1,0 +1,832 @@
+{
+  "generated_at": "2026-07-13T22:02:51.022Z",
+  "cases": [
+    {
+      "id": "gomitas-magnesio",
+      "model": "mistral:mistral-small-latest",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 257.2,
+          "got": 216,
+          "pass": false
+        },
+        "protein_g": {
+          "expected": 6,
+          "got": 0,
+          "pass": false
+        },
+        "carbs_g": {
+          "expected": 58.3,
+          "got": 52.72,
+          "pass": false
+        },
+        "fat_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 145.2,
+          "got": 12.2,
+          "pass": false
+        },
+        "potasio_mg": {
+          "expected": null,
+          "got": 163,
+          "pass": true
+        },
+        "magnesio_mg": {
+          "expected": 3600,
+          "got": 178.5,
+          "pass": false
+        },
+        "vit_d_mcg": {
+          "expected": 119,
+          "got": 0,
+          "pass": false
+        }
+      },
+      "extras": [
+        "grasa_sat_g",
+        "grasa_trans_g",
+        "azucar_g",
+        "azucar_anadido_g",
+        "fibra_g",
+        "calcio_mg",
+        "hierro_mg",
+        "agua_ml",
+        "alcohol_g",
+        "colesterol_mg",
+        "vit_a_mcg",
+        "vit_c_mg",
+        "vit_e_mg",
+        "vit_k_mcg",
+        "vit_b1_mg",
+        "vit_b2_mg",
+        "vit_b3_mg",
+        "vit_b5_mg",
+        "vit_b6_mg",
+        "vit_b7_mcg",
+        "vit_b9_mcg",
+        "vit_b12_mcg",
+        "colina_mg",
+        "zinc_mg",
+        "fosforo_mg",
+        "selenio_mcg",
+        "cobre_mg",
+        "manganeso_mg",
+        "yodo_mcg",
+        "cromo_mcg",
+        "molibdeno_mcg",
+        "beta_caroteno_mcg",
+        "licopeno_mcg",
+        "luteina_zeaxantina_mcg",
+        "fibra_soluble_g",
+        "fibra_insoluble_g",
+        "almidon_g",
+        "sacarosa_g",
+        "glucosa_g",
+        "fructosa_g",
+        "galactosa_g",
+        "lactosa_g",
+        "maltosa_g",
+        "alulosa_g",
+        "polioles_g",
+        "eritritol_g",
+        "xilitol_g",
+        "sorbitol_g",
+        "maltitol_g",
+        "manitol_g",
+        "isomalt_g",
+        "lactitol_g",
+        "aspartame_mg",
+        "sucralosa_mg",
+        "acesulfame_k_mg",
+        "sacarina_mg",
+        "ciclamato_mg",
+        "glucosidos_esteviol_mg",
+        "mogrosidos_mg",
+        "neotame_mg",
+        "advantame_mg",
+        "taumatina_mg",
+        "grasa_mono_g",
+        "grasa_poli_g",
+        "omega3_g",
+        "ala_g",
+        "epa_g",
+        "dha_g",
+        "omega6_g",
+        "la_g",
+        "aa_g",
+        "fitosteroles_mg",
+        "retinol_mcg",
+        "tocoferol_beta_mg",
+        "tocoferol_gamma_mg",
+        "tocoferol_delta_mg",
+        "alfa_caroteno_mcg",
+        "beta_criptoxantina_mcg",
+        "fluoruro_mcg",
+        "cafeina_mg",
+        "teobromina_mg",
+        "ceniza_g",
+        "beta_hidroxibutirato_g",
+        "oxalato_mg",
+        "fitato_mg",
+        "triptofano_g",
+        "treonina_g",
+        "isoleucina_g",
+        "leucina_g",
+        "lisina_g",
+        "metionina_g",
+        "cistina_g",
+        "fenilalanina_g",
+        "tirosina_g",
+        "valina_g",
+        "arginina_g",
+        "histidina_g",
+        "alanina_g",
+        "acido_aspartico_g",
+        "acido_glutamico_g",
+        "glicina_g",
+        "prolina_g",
+        "serina_g",
+        "hidroxiprolina_g"
+      ],
+      "passed": 2,
+      "total": 112
+    },
+    {
+      "id": "huevo-crudo",
+      "model": "mistral:mistral-small-latest",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 143,
+          "got": 143,
+          "pass": true
+        },
+        "protein_g": {
+          "expected": 12.6,
+          "got": 12.56,
+          "pass": true
+        },
+        "carbs_g": {
+          "expected": 0.72,
+          "got": 0.72,
+          "pass": true
+        },
+        "fat_g": {
+          "expected": 9.51,
+          "got": 9.51,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 142,
+          "got": 142,
+          "pass": true
+        },
+        "potasio_mg": {
+          "expected": 138,
+          "got": 138,
+          "pass": true
+        },
+        "magnesio_mg": {
+          "expected": 12,
+          "got": 12,
+          "pass": true
+        },
+        "fibra_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        }
+      },
+      "extras": [],
+      "passed": 8,
+      "total": 8
+    },
+    {
+      "id": "huevo-gallinita",
+      "model": "mistral:mistral-small-latest",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 146.2,
+          "got": 52,
+          "pass": false
+        },
+        "protein_g": {
+          "expected": 12.3,
+          "got": 11,
+          "pass": false
+        },
+        "carbs_g": {
+          "expected": 4.9,
+          "got": 0.7,
+          "pass": false
+        },
+        "fat_g": {
+          "expected": 8.6,
+          "got": 0.2,
+          "pass": false
+        },
+        "sodio_mg": {
+          "expected": 133.1,
+          "got": 142,
+          "pass": false
+        },
+        "potasio_mg": {
+          "expected": null,
+          "got": 163,
+          "pass": true
+        },
+        "magnesio_mg": {
+          "expected": null,
+          "got": 11,
+          "pass": true
+        },
+        "grasa_sat_g": {
+          "expected": 3.1,
+          "got": 0.06,
+          "pass": false
+        },
+        "grasa_trans_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "azucar_g": {
+          "expected": 0.4,
+          "got": 0.7,
+          "pass": true
+        },
+        "azucar_anadido_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "fibra_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        }
+      },
+      "extras": [
+        "calcio_mg",
+        "hierro_mg",
+        "agua_ml",
+        "alcohol_g",
+        "colesterol_mg",
+        "vit_a_mcg",
+        "vit_c_mg",
+        "vit_d_mcg",
+        "vit_e_mg",
+        "vit_k_mcg",
+        "vit_b1_mg",
+        "vit_b2_mg",
+        "vit_b3_mg",
+        "vit_b5_mg",
+        "vit_b6_mg",
+        "vit_b7_mcg",
+        "vit_b9_mcg",
+        "vit_b12_mcg",
+        "colina_mg",
+        "zinc_mg",
+        "fosforo_mg",
+        "selenio_mcg",
+        "cobre_mg",
+        "manganeso_mg",
+        "yodo_mcg",
+        "cromo_mcg",
+        "molibdeno_mcg",
+        "beta_caroteno_mcg",
+        "licopeno_mcg",
+        "luteina_zeaxantina_mcg",
+        "fibra_soluble_g",
+        "fibra_insoluble_g",
+        "almidon_g",
+        "sacarosa_g",
+        "glucosa_g",
+        "fructosa_g",
+        "galactosa_g",
+        "lactosa_g",
+        "maltosa_g",
+        "alulosa_g",
+        "polioles_g",
+        "eritritol_g",
+        "xilitol_g",
+        "sorbitol_g",
+        "maltitol_g",
+        "manitol_g",
+        "isomalt_g",
+        "lactitol_g",
+        "aspartame_mg",
+        "sucralosa_mg",
+        "acesulfame_k_mg",
+        "sacarina_mg",
+        "ciclamato_mg",
+        "glucosidos_esteviol_mg",
+        "mogrosidos_mg",
+        "neotame_mg",
+        "advantame_mg",
+        "taumatina_mg",
+        "grasa_mono_g",
+        "grasa_poli_g",
+        "omega3_g",
+        "ala_g",
+        "epa_g",
+        "dha_g",
+        "omega6_g",
+        "la_g",
+        "aa_g",
+        "fitosteroles_mg",
+        "retinol_mcg",
+        "tocoferol_beta_mg",
+        "tocoferol_gamma_mg",
+        "tocoferol_delta_mg",
+        "alfa_caroteno_mcg",
+        "beta_criptoxantina_mcg",
+        "fluoruro_mcg",
+        "cafeina_mg",
+        "teobromina_mg",
+        "ceniza_g",
+        "beta_hidroxibutirato_g",
+        "oxalato_mg",
+        "fitato_mg",
+        "triptofano_g",
+        "treonina_g",
+        "isoleucina_g",
+        "leucina_g",
+        "lisina_g",
+        "metionina_g",
+        "cistina_g",
+        "fenilalanina_g",
+        "tirosina_g",
+        "valina_g",
+        "arginina_g",
+        "histidina_g",
+        "alanina_g",
+        "acido_aspartico_g",
+        "acido_glutamico_g",
+        "glicina_g",
+        "prolina_g",
+        "serina_g",
+        "hidroxiprolina_g"
+      ],
+      "passed": 6,
+      "total": 112
+    },
+    {
+      "id": "leche-deslactosada",
+      "model": "mistral:mistral-small-latest",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 47,
+          "got": 47,
+          "pass": true
+        },
+        "protein_g": {
+          "expected": 5.4,
+          "got": 3.4,
+          "pass": false
+        },
+        "carbs_g": {
+          "expected": 5.1,
+          "got": 5.1,
+          "pass": true
+        },
+        "fat_g": {
+          "expected": 0.5,
+          "got": 0.1,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 60,
+          "got": 47,
+          "pass": false
+        },
+        "potasio_mg": {
+          "expected": null,
+          "got": 178,
+          "pass": true
+        },
+        "magnesio_mg": {
+          "expected": null,
+          "got": 13,
+          "pass": true
+        },
+        "grasa_sat_g": {
+          "expected": 0.3,
+          "got": 0.06,
+          "pass": true
+        },
+        "grasa_trans_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "azucar_g": {
+          "expected": 5.1,
+          "got": 5.1,
+          "pass": true
+        },
+        "azucar_anadido_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "fibra_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "calcio_mg": {
+          "expected": 178,
+          "got": 122,
+          "pass": false
+        },
+        "vit_a_mcg": {
+          "expected": 60,
+          "got": 427,
+          "pass": false
+        },
+        "vit_d_mcg": {
+          "expected": 0.62,
+          "got": 1.5,
+          "pass": false
+        }
+      },
+      "extras": [
+        "hierro_mg",
+        "agua_ml",
+        "alcohol_g",
+        "colesterol_mg",
+        "vit_c_mg",
+        "vit_e_mg",
+        "vit_k_mcg",
+        "vit_b1_mg",
+        "vit_b2_mg",
+        "vit_b3_mg",
+        "vit_b5_mg",
+        "vit_b6_mg",
+        "vit_b7_mcg",
+        "vit_b9_mcg",
+        "vit_b12_mcg",
+        "colina_mg",
+        "zinc_mg",
+        "fosforo_mg",
+        "selenio_mcg",
+        "cobre_mg",
+        "manganeso_mg",
+        "yodo_mcg",
+        "cromo_mcg",
+        "molibdeno_mcg",
+        "beta_caroteno_mcg",
+        "licopeno_mcg",
+        "luteina_zeaxantina_mcg",
+        "fibra_soluble_g",
+        "fibra_insoluble_g",
+        "almidon_g",
+        "sacarosa_g",
+        "glucosa_g",
+        "fructosa_g",
+        "galactosa_g",
+        "lactosa_g",
+        "maltosa_g",
+        "alulosa_g",
+        "polioles_g",
+        "eritritol_g",
+        "xilitol_g",
+        "sorbitol_g",
+        "maltitol_g",
+        "manitol_g",
+        "isomalt_g",
+        "lactitol_g",
+        "aspartame_mg",
+        "sucralosa_mg",
+        "acesulfame_k_mg",
+        "sacarina_mg",
+        "ciclamato_mg",
+        "glucosidos_esteviol_mg",
+        "mogrosidos_mg",
+        "neotame_mg",
+        "advantame_mg",
+        "taumatina_mg",
+        "grasa_mono_g",
+        "grasa_poli_g",
+        "omega3_g",
+        "ala_g",
+        "epa_g",
+        "dha_g",
+        "omega6_g",
+        "la_g",
+        "aa_g",
+        "fitosteroles_mg",
+        "retinol_mcg",
+        "tocoferol_beta_mg",
+        "tocoferol_gamma_mg",
+        "tocoferol_delta_mg",
+        "alfa_caroteno_mcg",
+        "beta_criptoxantina_mcg",
+        "fluoruro_mcg",
+        "cafeina_mg",
+        "teobromina_mg",
+        "ceniza_g",
+        "beta_hidroxibutirato_g",
+        "oxalato_mg",
+        "fitato_mg",
+        "triptofano_g",
+        "treonina_g",
+        "isoleucina_g",
+        "leucina_g",
+        "lisina_g",
+        "metionina_g",
+        "cistina_g",
+        "fenilalanina_g",
+        "tirosina_g",
+        "valina_g",
+        "arginina_g",
+        "histidina_g",
+        "alanina_g",
+        "acido_aspartico_g",
+        "acido_glutamico_g",
+        "glicina_g",
+        "prolina_g",
+        "serina_g",
+        "hidroxiprolina_g"
+      ],
+      "passed": 10,
+      "total": 112
+    },
+    {
+      "id": "manzana-fuji",
+      "model": "mistral:mistral-small-latest",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 63,
+          "got": 57,
+          "pass": true
+        },
+        "protein_g": {
+          "expected": 0.2,
+          "got": 0.42,
+          "pass": false
+        },
+        "carbs_g": {
+          "expected": 15.2,
+          "got": 13.81,
+          "pass": true
+        },
+        "fat_g": {
+          "expected": 0.18,
+          "got": 0.17,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 1,
+          "got": 1,
+          "pass": true
+        },
+        "potasio_mg": {
+          "expected": 109,
+          "got": 107,
+          "pass": true
+        },
+        "magnesio_mg": {
+          "expected": 5,
+          "got": 5,
+          "pass": true
+        },
+        "fibra_g": {
+          "expected": 2.1,
+          "got": 2.4,
+          "pass": true
+        }
+      },
+      "extras": [],
+      "passed": 7,
+      "total": 8
+    },
+    {
+      "id": "miel-aguacate",
+      "model": "mistral:mistral-small-latest",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 324,
+          "got": 315,
+          "pass": false
+        },
+        "protein_g": {
+          "expected": 0,
+          "got": 0.4,
+          "pass": true
+        },
+        "carbs_g": {
+          "expected": 81,
+          "got": 81,
+          "pass": true
+        },
+        "fat_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 0,
+          "got": 8,
+          "pass": false
+        },
+        "potasio_mg": {
+          "expected": null,
+          "got": 40,
+          "pass": true
+        },
+        "magnesio_mg": {
+          "expected": null,
+          "got": 1,
+          "pass": true
+        },
+        "grasa_sat_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "grasa_trans_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "azucar_g": {
+          "expected": 81,
+          "got": 81,
+          "pass": true
+        },
+        "azucar_anadido_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "fibra_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        }
+      },
+      "extras": [
+        "calcio_mg",
+        "hierro_mg",
+        "agua_ml",
+        "alcohol_g",
+        "colesterol_mg",
+        "vit_a_mcg",
+        "vit_c_mg",
+        "vit_d_mcg",
+        "vit_e_mg",
+        "vit_k_mcg",
+        "vit_b1_mg",
+        "vit_b2_mg",
+        "vit_b3_mg",
+        "vit_b5_mg",
+        "vit_b6_mg",
+        "vit_b7_mcg",
+        "vit_b9_mcg",
+        "vit_b12_mcg",
+        "colina_mg",
+        "zinc_mg",
+        "fosforo_mg",
+        "selenio_mcg",
+        "cobre_mg",
+        "manganeso_mg",
+        "yodo_mcg",
+        "cromo_mcg",
+        "molibdeno_mcg",
+        "beta_caroteno_mcg",
+        "licopeno_mcg",
+        "luteina_zeaxantina_mcg",
+        "fibra_soluble_g",
+        "fibra_insoluble_g",
+        "almidon_g",
+        "sacarosa_g",
+        "glucosa_g",
+        "fructosa_g",
+        "galactosa_g",
+        "lactosa_g",
+        "maltosa_g",
+        "alulosa_g",
+        "polioles_g",
+        "eritritol_g",
+        "xilitol_g",
+        "sorbitol_g",
+        "maltitol_g",
+        "manitol_g",
+        "isomalt_g",
+        "lactitol_g",
+        "grasa_mono_g",
+        "grasa_poli_g",
+        "omega3_g",
+        "ala_g",
+        "epa_g",
+        "dha_g",
+        "omega6_g",
+        "la_g",
+        "aa_g",
+        "fitosteroles_mg",
+        "retinol_mcg",
+        "tocoferol_beta_mg",
+        "tocoferol_gamma_mg",
+        "tocoferol_delta_mg",
+        "alfa_caroteno_mcg",
+        "beta_criptoxantina_mcg",
+        "fluoruro_mcg",
+        "cafeina_mg",
+        "teobromina_mg",
+        "ceniza_g",
+        "beta_hidroxibutirato_g",
+        "oxalato_mg",
+        "fitato_mg",
+        "triptofano_g",
+        "treonina_g",
+        "isoleucina_g",
+        "leucina_g",
+        "lisina_g",
+        "metionina_g",
+        "cistina_g",
+        "fenilalanina_g",
+        "tirosina_g",
+        "valina_g",
+        "arginina_g",
+        "histidina_g",
+        "alanina_g",
+        "acido_aspartico_g",
+        "acido_glutamico_g",
+        "glicina_g",
+        "prolina_g",
+        "serina_g",
+        "hidroxiprolina_g"
+      ],
+      "passed": 10,
+      "total": 102
+    },
+    {
+      "id": "tortilla-maiz",
+      "model": "mistral:mistral-small-latest",
+      "mode_ok": false,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 218,
+          "got": 220,
+          "pass": false
+        },
+        "protein_g": {
+          "expected": 5.7,
+          "got": 6.5,
+          "pass": false
+        },
+        "carbs_g": {
+          "expected": 44.6,
+          "got": 44.6,
+          "pass": false
+        },
+        "fat_g": {
+          "expected": 2.85,
+          "got": 2.5,
+          "pass": false
+        },
+        "sodio_mg": {
+          "expected": 45,
+          "got": 10,
+          "pass": false
+        },
+        "potasio_mg": {
+          "expected": 186,
+          "got": 127,
+          "pass": false
+        },
+        "magnesio_mg": {
+          "expected": 72,
+          "got": 36,
+          "pass": false
+        },
+        "fibra_g": {
+          "expected": 6.3,
+          "got": 4.8,
+          "pass": false
+        }
+      },
+      "extras": [],
+      "passed": 0,
+      "total": 8
+    }
+  ]
+}

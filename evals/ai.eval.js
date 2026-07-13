@@ -8,8 +8,17 @@ import { scoreCase, compareToBaseline } from './score.js';
 
 const DIR = import.meta.dirname;
 const CASES_DIR = path.join(DIR, 'cases');
-const BASELINE = path.join(DIR, 'baseline.json');
-const LAST_RUN = path.join(DIR, 'last-run.json');
+
+// Modelo fijo + temp 0: sin esto el gate depende de qué modelo contestó por el 503
+// (3.5 vs 2.5 dan números distintos → regresiones falsas en el re-run). EVAL_MODEL puede
+// sobreescribirlo por env; cada modelo tiene su propio baseline (el default va a baseline.json,
+// el resto —p. ej. Mistral, cobertura del último paso de la cascada— a baseline.<modelo>.json).
+const DEFAULT_MODEL = 'gemini-3.5-flash';
+const EVAL_MODEL = process.env.EVAL_MODEL || DEFAULT_MODEL;
+const EVAL_OPTS = { model: EVAL_MODEL, temperature: 0 };
+const suffix = EVAL_MODEL === DEFAULT_MODEL ? '' : `.${EVAL_MODEL}`;
+const BASELINE = path.join(DIR, `baseline${suffix}.json`);
+const LAST_RUN = path.join(DIR, `last-run${suffix}.json`);
 
 function loadCases() {
   if (!fs.existsSync(CASES_DIR)) return [];
@@ -36,12 +45,6 @@ function buildParts(c) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// Modelo fijo + temp 0: sin esto el gate depende de qué modelo contestó por el 503
-// (3.5 vs 2.5 dan números distintos → regresiones falsas en el re-run). EVAL_MODEL puede
-// sobreescribirlo por env. Reintento porque 3.5-flash es el que más se satura (503).
-const EVAL_MODEL = process.env.EVAL_MODEL || 'gemini-3.5-flash';
-const EVAL_OPTS = { model: EVAL_MODEL, temperature: 0 };
 
 const cases = loadCases();
 const hasAI = !!(import.meta.env.VITE_GEMINI_KEY || import.meta.env.VITE_MISTRAL_KEY);
@@ -108,7 +111,7 @@ describe.skipIf(!hasAI)('eval extracción IA', () => {
     for (const im of improvements) console.log(`mejora: ${im.id} · ${im.field}`);
     if (regressions.length) {
       const lines = regressions.map((r) => `  ${r.id}${r.field ? ' · ' + r.field : ''}: ${r.reason}`).join('\n');
-      throw new Error(`Regresiones vs baseline.json (${regressions.length}):\n${lines}\nSi es intencional: UPDATE_BASELINE=1 npm run eval`);
+      throw new Error(`Regresiones vs ${path.basename(BASELINE)} (${regressions.length}):\n${lines}\nSi es intencional: UPDATE_BASELINE=1 EVAL_MODEL=${EVAL_MODEL} npm run eval`);
     }
   });
 });

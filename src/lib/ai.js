@@ -201,18 +201,20 @@ async function callGemini(model, systemPrompt, parts, schema, temperature) {
   return JSON.parse(data.candidates[0].content.parts[0].text);
 }
 
-async function callMistral(model, systemPrompt, parts, schema) {
+async function callMistral(model, systemPrompt, parts, schema, temperature) {
   const content = parts.map((p) => (p.text != null
     ? { type: 'text', text: p.text }
     : { type: 'image_url', image_url: `data:${p.inline_data.mime_type};base64,${p.inline_data.data}` }));
+  const body = {
+    model,
+    messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content }],
+    response_format: { type: 'json_schema', json_schema: { name: 'nutri', strict: true, schema: toJsonSchema(schema) } },
+  };
+  if (temperature != null) body.temperature = temperature; // solo lo usa el eval
   const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${MISTRAL_KEY}` },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content }],
-      response_format: { type: 'json_schema', json_schema: { name: 'nutri', strict: true, schema: toJsonSchema(schema) } },
-    }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Mistral ${model} ${res.status}`);
   const data = await res.json();
@@ -305,8 +307,10 @@ export async function estimateFood(text, imageFiles) {
 export async function estimateFoodFromParts(parts, opts = {}) {
   let out, model;
   if (opts.model) {
-    out = await callGemini(opts.model, geminiPrompt(), parts, GEMINI_SCHEMA, opts.temperature);
-    model = `gemini:${opts.model}`;
+    const mistral = opts.model.startsWith('mistral');
+    const call = mistral ? callMistral : callGemini;
+    out = await call(opts.model, geminiPrompt(), parts, GEMINI_SCHEMA, opts.temperature);
+    model = `${mistral ? 'mistral' : 'gemini'}:${opts.model}`;
   } else {
     ({ data: out, model } = await callAI(geminiPrompt(), parts, GEMINI_SCHEMA));
   }
