@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Sparkles, ImagePlus, X } from 'lucide-react';
+import { Sparkles, ImagePlus, X, Loader2 } from 'lucide-react';
 import { t, useLang } from '../lib/i18n.js';
 
 // Card "Datos con IA" compartida por FoodForm y RecipeForm: texto/fotos (hasta 2:
@@ -21,15 +21,18 @@ export default function AiDataCard({
   function onDrop(e) {
     e.preventDefault();
     setDragOver(false);
+    if (loading) return; // petición en curso: card bloqueada
     const imgs = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
     if (imgs.length) onFiles([...files, ...imgs].slice(0, MAX_PHOTOS));
   }
+  const border = loading ? 'border-accent-deep' : dragOver ? 'border-accent-deep ring-1 ring-accent-deep' : 'border-border';
   return (
     <div
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      aria-busy={loading}
+      onDragOver={(e) => { e.preventDefault(); if (!loading) setDragOver(true); }}
       onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
       onDrop={onDrop}
-      className={`rounded-xl bg-surface-2 border p-3 flex flex-col gap-2 ${dragOver ? 'border-accent-deep ring-1 ring-accent-deep' : 'border-border'}`}
+      className={`rounded-xl bg-surface-2 border p-3 flex flex-col gap-2 ${border}`}
     >
       <p className="text-sm text-text-2 flex items-center gap-2">
         <Sparkles size={16} className="text-accent" /> {t('Datos con IA')}
@@ -39,16 +42,18 @@ export default function AiDataCard({
         onChange={(e) => onText(e.target.value)}
         rows={2}
         placeholder={placeholder}
-        className="rounded-xl bg-surface-3 border border-border px-3 py-2 text-text focus:outline-none focus:ring-2 focus:ring-accent resize-none"
+        disabled={loading}
+        className="rounded-xl bg-surface-3 border border-border px-3 py-2 text-text focus:outline-none focus:ring-2 focus:ring-accent resize-none disabled:opacity-50 disabled:cursor-not-allowed"
       />
       <div className="flex gap-2 items-center">
-        <div className="flex-1 min-w-0 flex gap-2">
+        <div className={`flex-1 min-w-0 flex gap-2 ${loading ? 'opacity-50' : ''}`}>
           {files.map((f, i) => (
             <button
               key={i}
               type="button"
               onClick={() => onFiles(files.filter((_, j) => j !== i))}
-              className="relative flex-1 min-w-0 min-h-[44px] rounded-xl border border-border overflow-hidden press"
+              disabled={loading}
+              className="relative flex-1 min-w-0 min-h-[44px] rounded-xl border border-border overflow-hidden press disabled:cursor-not-allowed"
               aria-label={t('Quitar foto')}
             >
               <img src={thumbs[i]} alt="" className="absolute inset-0 w-full h-full object-cover" />
@@ -59,7 +64,7 @@ export default function AiDataCard({
           ))}
           {files.length < MAX_PHOTOS && (
             <label
-              className="flex-1 min-w-0 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 flex items-center justify-center gap-2 text-sm text-text-2 cursor-pointer press"
+              className={`flex-1 min-w-0 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 flex items-center justify-center gap-2 text-sm text-text-2 press ${loading ? 'opacity-50 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
               aria-label={files.length === 0 ? undefined : t('Otra foto')}
             >
               <ImagePlus size={18} className="shrink-0" />
@@ -70,6 +75,7 @@ export default function AiDataCard({
                 type="file"
                 accept="image/*"
                 multiple
+                disabled={loading}
                 className="hidden"
                 onChange={(e) => {
                   onFiles([...files, ...Array.from(e.target.files)].slice(0, MAX_PHOTOS));
@@ -83,8 +89,9 @@ export default function AiDataCard({
           type="button"
           onClick={onSubmit}
           disabled={loading || (!text.trim() && files.length === 0)}
-          className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium disabled:opacity-40 press"
+          className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium disabled:opacity-40 press flex items-center gap-2"
         >
+          {loading && <Loader2 size={16} className="animate-spin motion-reduce:animate-none" />}
           {loading ? t('Obteniendo…') : t('Obtener datos')}
         </button>
       </div>
