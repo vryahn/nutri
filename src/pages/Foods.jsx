@@ -236,7 +236,7 @@ export default function Foods() {
   }
 
   return (
-    <div className="px-4 py-4 flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-6 lg:items-start">
+    <div className="px-4 py-4 flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-6 lg:items-start">
       {importing && (
         <ImportSheet
           kind="foods"
@@ -249,8 +249,10 @@ export default function Foods() {
             en <lg por el FAB. Sin botón de cabecera para no duplicar. */}
         <h1 className="font-display text-xl">{t('Alimentos')}</h1>
 
-        <div className="flex flex-col lg:flex-row gap-2">
-          <div className="relative flex-1">
+        {/* Buscador en su propia fila; en lg+ la columna maestra (5/12) no da ancho
+            para search + importar + 2 filtros en una sola línea (se recortaban). */}
+        <div className="flex flex-col gap-2">
+          <div className="relative">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-3" />
             <input
               ref={searchRef}
@@ -260,34 +262,36 @@ export default function Foods() {
               className="w-full min-h-[44px] rounded-xl bg-surface-2 border border-border pl-10 pr-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
-          <button
-            type="button"
-            onClick={() => setImporting(true)}
-            className="min-h-[44px] px-3 rounded-xl border border-border bg-surface-2 text-text-2 press whitespace-nowrap inline-flex items-center justify-center gap-1.5"
-          >
-            <Upload size={16} /> {t('Importar')}
-          </button>
-          <div className="hidden lg:flex gap-2">
-            <select
-              value={filterSource}
-              onChange={(e) => setFilterSource(e.target.value)}
-              className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">{t('Todos')}</option>
-              {sourceOptions.map((s) => (
-                <option key={s} value={s}>{sourceLabel(s)}</option>
-              ))}
-            </select>
+          <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => setWarnOnly((w) => !w)}
-              aria-pressed={warnOnly}
-              className={`min-h-[44px] px-3 rounded-xl border press whitespace-nowrap ${
-                warnOnly ? 'bg-warn/20 border-warn text-warn' : 'bg-surface-2 border-border text-text-2'
-              }`}
+              onClick={() => setImporting(true)}
+              className="min-h-[44px] px-3 rounded-xl border border-border bg-surface-2 text-text-2 press whitespace-nowrap inline-flex items-center justify-center gap-1.5 flex-1 lg:flex-none"
             >
-              ⚠ {t('solo avisos')}
+              <Upload size={16} /> {t('Importar')}
             </button>
+            <div className="hidden lg:flex gap-2 flex-1">
+              <select
+                value={filterSource}
+                onChange={(e) => setFilterSource(e.target.value)}
+                className="min-h-[44px] flex-1 min-w-0 rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                <option value="">{t('Todos')}</option>
+                {sourceOptions.map((s) => (
+                  <option key={s} value={s}>{sourceLabel(s)}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setWarnOnly((w) => !w)}
+                aria-pressed={warnOnly}
+                className={`min-h-[44px] px-3 rounded-xl border press whitespace-nowrap ${
+                  warnOnly ? 'bg-warn/20 border-warn text-warn' : 'bg-surface-2 border-border text-text-2'
+                }`}
+              >
+                ⚠ {t('solo avisos')}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -351,8 +355,8 @@ export default function Foods() {
                   <SortTh label={t('P')} sortKey="protein_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
                   <SortTh label={t('C')} sortKey="carbs_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
                   <SortTh label={t('G')} sortKey="fat_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
-                  {/* Origen fuera de la tabla: la columna maestra (5/12, tope max-w-6xl ≈ 455px)
-                      nunca da ancho para 7 columnas. El origen se ve en la ficha del panel. */}
+                  {/* Origen fuera de la tabla: aun con la columna maestra al 50% no hay
+                      ancho para 7 columnas. El origen se ve en la ficha del panel. */}
                   <th className="px-3 py-2 text-center w-16">⚠</th>
                 </tr>
               </thead>
@@ -365,9 +369,12 @@ export default function Foods() {
                       editing?.id === f.id ? 'bg-surface-2 ring-1 ring-inset ring-accent' : ''
                     }`}
                   >
-                    <td className="px-3 py-2">
-                      <div className="font-medium">{f.name}</div>
-                      {f.brand && <div className="text-xs text-text-3">{f.brand}</div>}
+                    {/* max-w-0 + w-full: la columna absorbe el sobrante. line-clamp-2:
+                        1 línea cuando hay ancho, 2 como máximo al estrecharse (nombre
+                        completo en la ficha del panel y en title) — nunca 6 líneas. */}
+                    <td className="px-3 py-2 max-w-0 w-full">
+                      <div className="font-medium line-clamp-2" title={f.name}>{f.name}</div>
+                      {f.brand && <div className="text-xs text-text-3 truncate" title={f.brand}>{f.brand}</div>}
                     </td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">{f.kcal}</td>
                     <td className="px-3 py-2 text-right font-mono tabular-nums">{f.protein_g}</td>
