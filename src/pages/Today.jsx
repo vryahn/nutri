@@ -1037,8 +1037,6 @@ export default function Today() {
   }, Object.fromEntries(totalKeys.map((k) => [k, 0])));
 
   const target = resolveTarget(targets, date);
-  const sodiumLow = sodiumIsLow(totals.sodio_mg, foodEntries.length > 0);
-  const sodiumHigh = sodiumIsHigh(totals.sodio_mg, foodEntries.length > 0);
 
   const groups = groupByLabel(foodEntries, labels, activeEntry != null);
 
@@ -1157,17 +1155,6 @@ export default function Today() {
                 hasFood={foodEntries.length > 0}
               />
             </div>
-
-            {sodiumLow && (
-              <p className="text-sm text-danger" role="status" aria-live="polite">
-                {t('⚠ sodio < %n mg').replace('%n', SODIUM_FLOOR_MG)}
-              </p>
-            )}
-            {sodiumHigh && (
-              <p className="text-sm text-danger" role="status" aria-live="polite">
-                {t('⚠ sodio > %n mg').replace('%n', SODIUM_CEILING_MG)}
-              </p>
-            )}
 
             <WaterCard
               waterMl={Math.max(0, waterMl + pendingWaterMl)}
@@ -2286,11 +2273,6 @@ function SummaryConfigSheet({ view, prefs, onPatch, onSync, onClose }) {
             </optgroup>
           ))}
         </select>
-        {!cfg.items.includes('sodio_mg') && (
-          <p className="text-xs text-warn">
-            {t('El aviso de sodio < %n mg se muestra siempre, aunque quites el sodio de la lista.').replace('%n', SODIUM_FLOOR_MG)}
-          </p>
-        )}
       </div>
 
       <div className="border-t border-border pt-1">
