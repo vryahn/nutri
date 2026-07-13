@@ -357,7 +357,6 @@ export default function CustomCharts({ dashboards, onChange, dates, nutByDay, bo
   return (
     <section>
       <div className="flex items-center gap-2 mb-2">
-        <h2 className="font-display text-base">{t('Mis gráficas')}</h2>
         {dashboards.length > 0 && <span className="text-xs text-text-3">{dashboards.length}</span>}
         <span className="flex-1" />
         <button onClick={() => setEditing('new')} className="text-sm text-accent press">
