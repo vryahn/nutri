@@ -180,7 +180,7 @@ const EN = {
   'Porciones (opcional)': 'Portions (optional)',
   'vaso, cucharada, rebanada…': 'glass, spoon, slice…',
   'Nombre de la porción': 'Portion name',
-  'Gramos de la porción': 'Portion grams',
+  'Cantidad de la porción': 'Portion amount',
   'Quitar porción': 'Remove portion',
   'Añadir porción': 'Add portion',
   Fuente: 'Source',

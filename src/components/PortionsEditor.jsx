@@ -1,10 +1,16 @@
 import { X } from 'lucide-react';
-import { t } from '../lib/i18n.js';
+import { t, useUnits, gToOz, ozToG } from '../lib/i18n.js';
+import { round } from '../lib/domain.js';
 
 // Editor de porciones custom [{name, grams}] — chips que SUMAN gramos al registrar.
-// Compartido por FoodForm (Alimentos) y RecipeForm (Recetas). Captura siempre en gramos
-// (la DB solo conoce gramos); AmountField adapta el display a oz en unidades US.
+// Compartido por FoodForm (Alimentos) y RecipeForm (Recetas). La DB solo conoce gramos;
+// en unidades US se captura/muestra en oz (peso, densidad-independiente) y se convierte a
+// gramos aquí, igual que AmountField los muestra en oz al consumir. Sin round-trip contra
+// el per-100 g del alimento, así que la conversión no toca la precisión de los nutrientes.
 export default function PortionsEditor({ portions, onChange }) {
+  const isUS = useUnits() === 'us';
+  const dispAmt = (g) => (g === '' || g == null ? '' : isUS ? round(gToOz(g), 2) : g);
+  const toGrams = (v) => (v === '' ? '' : isUS ? round(ozToG(Number(v)), 1) : v);
   const set = (i, patch) => onChange(portions.map((p, j) => (j === i ? { ...p, ...patch } : p)));
   return (
     <div className="flex flex-col gap-2">
@@ -23,11 +29,11 @@ export default function PortionsEditor({ portions, onChange }) {
             inputMode="decimal"
             min="0"
             step="any"
-            value={p.grams}
-            onChange={(e) => set(i, { grams: e.target.value })}
-            placeholder="g"
+            value={dispAmt(p.grams)}
+            onChange={(e) => set(i, { grams: toGrams(e.target.value) })}
+            placeholder={isUS ? 'oz' : 'g'}
             className="w-24 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
-            aria-label={`${t('Gramos de la porción')} ${i + 1}`}
+            aria-label={`${t('Cantidad de la porción')} (${isUS ? 'oz' : 'g'}) ${i + 1}`}
           />
           <button
             type="button"
