@@ -76,6 +76,7 @@ Invariantes de dominio:
 - `npm run lint` y `npm test` (vitest) — ambos limpios antes de cualquier commit; CI (`ci.yml`) los corre en cada push junto al build.
 - `npm run build` — debe salir limpio antes de cualquier commit (el warning de chunk >500 kB por Recharts es conocido y aceptado).
 - `.env` local (gitignoreado): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, opcional `VITE_GEMINI_KEY` (habilita "Datos con IA" en Alimentos; sin key el módulo se oculta) y opcional `VITE_FDC_KEY` (habilita los chips de coincidencias USDA; sin key, mismo patrón, los chips simplemente no aparecen). Si la carpeta es un clone nuevo, copiar de `.env.example` y rellenar.
+- **Verificación autónoma con login (IA):** el agente no puede teclear contraseñas (regla del harness). Con `VITE_DEV_EMAIL`/`VITE_DEV_PASSWORD` en `.env` (cuenta de pruebas), abrir `/?dev=1` en el dev server autentica solo — efecto dev-only en `Login.jsx`, flag capturado a nivel de módulo porque el router borra la query al redirigir a `/login`. `import.meta.env.DEV` elimina el bloque del bundle de producción (verificado con grep sobre `dist/`) y las `VITE_DEV_*` no existen en Vercel. Si las vars se acaban de añadir, reiniciar el dev server.
 
 ## Migraciones de base de datos
 

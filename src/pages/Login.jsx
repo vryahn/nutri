@@ -1,6 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { t, useLang } from '../lib/i18n.js';
+
+// Capturado al cargar el módulo: el router redirige a /login y borra la query
+// antes de que Login monte, así que dentro del efecto ya no existe ?dev=1.
+const devAutoLogin =
+  import.meta.env.DEV && new URLSearchParams(window.location.search).has('dev');
 
 export default function Login() {
   useLang();
@@ -8,6 +13,20 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Auto-login SOLO en dev, para pruebas autónomas por IA: el agente no puede
+  // teclear contraseñas (regla del harness), así que con /?dev=1 la app se
+  // autentica sola con VITE_DEV_EMAIL/VITE_DEV_PASSWORD de .env (gitignoreado).
+  // import.meta.env.DEV es false literal en producción: Vite elimina el bloque
+  // del bundle y las VITE_DEV_* no existen en Vercel.
+  useEffect(() => {
+    if (!devAutoLogin) return;
+    const { VITE_DEV_EMAIL: devEmail, VITE_DEV_PASSWORD: devPassword } = import.meta.env;
+    if (!devEmail || !devPassword) return;
+    supabase.auth.signInWithPassword({ email: devEmail, password: devPassword }).then(({ error }) => {
+      if (error) setError('dev-login: ' + error.message);
+    });
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
