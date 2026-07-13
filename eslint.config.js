@@ -4,7 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 
 export default [
-  { ignores: ['dist/**', 'dev-dist/**'] },
+  { ignores: ['dist/**', 'dev-dist/**', 'scripts/**'] },
   js.configs.recommended,
   reactHooks.configs.flat['recommended-latest'],
   reactRefresh.configs.vite,
