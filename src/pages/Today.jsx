@@ -492,6 +492,10 @@ export default function Today() {
   const [adding, setAdding] = useState(null); // { labelId } | null
   const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState(null); // entry being edited
+  // Preview "calculadora": el form de añadir/editar reporta { meta(per-100g),
+  // grams, minus(entry a reemplazar|null) }; el resumen refleja cómo quedaría el
+  // día si se guardara. Se limpia al desmontar el form (cancelar/guardar/cerrar).
+  const [preview, setPreview] = useState(null);
   const [toast, showToast] = useToast();
   const [userId, setUserId] = useState(null);
   const [prefs, setPrefs] = useState({ water_glass_ml: 1000, water_food_id: null, today_view: 'estado' });
@@ -1036,6 +1040,17 @@ export default function Today() {
     return acc;
   }, Object.fromEntries(totalKeys.map((k) => [k, 0])));
 
+  // Totales que ve el resumen: los reales + el delta del registro en edición
+  // (mismo escalado per-100g que AportaPanel). Sin preview, son los reales.
+  const displayTotals = preview?.meta
+    ? totalKeys.reduce((acc, k) => {
+        const per100 = MACRO_META[k] ? preview.meta[k] : preview.meta.micros?.[k];
+        acc[k] = totals[k] + Number(per100 || 0) * ((Number(preview.grams) || 0) / 100)
+          - (preview.minus ? Number((MACRO_META[k] ? preview.minus[k] : preview.minus.micros?.[k]) || 0) : 0);
+        return acc;
+      }, { ...totals })
+    : totals;
+
   const target = resolveTarget(targets, date);
 
   // Strip de resumen del día para las hojas de añadir/editar (<lg): la hoja
@@ -1045,7 +1060,7 @@ export default function Today() {
     <div className="flex items-center gap-3">
       <span className="text-[10px] uppercase tracking-wide text-text-3 flex-none">{t('Hoy')}</span>
       <div className="min-w-0">
-        <MiniGrid cfg={miniCfg} totals={totals} target={target} hasFood={foodEntries.length > 0} />
+        <MiniGrid cfg={miniCfg} totals={displayTotals} target={target} hasFood={foodEntries.length > 0} />
       </div>
     </div>
   );
@@ -1096,6 +1111,7 @@ export default function Today() {
             initialLabelId={quickAddInitialLabel}
             inputRef={quickAddInputRef}
             autoFocus={quickAddKey > 0}
+            onPreview={setPreview}
             onAdded={(labelId) => {
               setQuickAddKey((k) => k + 1);
               setQuickAddInitialLabel(null);
@@ -1109,7 +1125,7 @@ export default function Today() {
         visible={miniVisible}
         top={miniTop}
         cfg={miniCfg}
-        totals={totals}
+        totals={displayTotals}
         target={target}
         hasFood={foodEntries.length > 0}
         onTap={scrollToSummary}
@@ -1121,7 +1137,7 @@ export default function Today() {
           cfg={viewCfg}
           onToggleView={toggleTodayView}
           onConfig={() => setCardConfigOpen(true)}
-          totals={totals}
+          totals={displayTotals}
           target={target}
           hasFood={foodEntries.length > 0}
         />
@@ -1142,7 +1158,7 @@ export default function Today() {
             cfg={viewCfg}
             onToggleView={toggleTodayView}
             onConfig={() => setCardConfigOpen(true)}
-            totals={totals}
+            totals={displayTotals}
             target={target}
             hasFood={foodEntries.length > 0}
           />
@@ -1160,6 +1176,7 @@ export default function Today() {
               entry={editing}
               labels={labels}
               favMicros={prefs.fav_micros || []}
+              onPreview={setPreview}
               onDelete={() => {
                 deleteEntry(editing);
                 setEditing(null);
@@ -1307,6 +1324,7 @@ export default function Today() {
           waterFoodId={prefs.water_food_id}
           initialLabelId={adding.labelId}
           subheader={daySummaryStrip}
+          onPreview={setPreview}
           onClose={() => setAdding(null)}
           onAdded={(labelId) => {
             setAdding(null);
@@ -1321,6 +1339,7 @@ export default function Today() {
           labels={labels}
           favMicros={prefs.fav_micros || []}
           subheader={daySummaryStrip}
+          onPreview={setPreview}
           onClose={() => setEditing(null)}
           onDelete={() => {
             deleteEntry(editing);
@@ -1862,7 +1881,7 @@ function useFoodMeta(foodId, recipeId) {
 // Núcleo de "añadir registro": buscador con recientes, cantidad y etiqueta.
 // Reutilizado por AddEntrySheet (sheet, <lg) y el quick-add inline (rail, lg+).
 // Navegación por teclado en resultados: ↓/↑ mueve la selección, Enter la confirma.
-function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inputRef, autoFocus }) {
+function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inputRef, autoFocus, onPreview }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -1877,6 +1896,16 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
   useEffect(() => {
     setActiveIndex(-1);
   }, [results]);
+
+  // Preview "calculadora": reporta el aporte del alimento elegido a la cantidad
+  // en curso. Sin selección/gramos/meta → null (el resumen vuelve a los reales).
+  useEffect(() => {
+    if (!onPreview) return;
+    const g = Number(grams === '' ? presetGrams : grams);
+    if (!selected || !foodMeta || !(g > 0)) onPreview(null);
+    else onPreview({ meta: foodMeta, grams: g, minus: null });
+  }, [selected, foodMeta, grams, presetGrams]);
+  useEffect(() => () => onPreview?.(null), []); // limpia al desmontar (cierre/registro)
 
   // Frecuentes desde el caché de src/lib/frequent.js (prefetch al montar Hoy):
   // abrir el sheet no espera red, solo deriva la lista de la etiqueta activa.
@@ -2048,7 +2077,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
   );
 }
 
-function AddEntrySheet({ date, labels, waterFoodId, initialLabelId, subheader, onClose, onAdded }) {
+function AddEntrySheet({ date, labels, waterFoodId, initialLabelId, subheader, onClose, onAdded, onPreview }) {
   return (
     <Sheet title={t('Añadir registro')} onClose={onClose} subheader={subheader}>
       <AddEntryForm
@@ -2056,6 +2085,7 @@ function AddEntrySheet({ date, labels, waterFoodId, initialLabelId, subheader, o
         labels={labels}
         waterFoodId={waterFoodId}
         initialLabelId={initialLabelId}
+        onPreview={onPreview}
         onAdded={onAdded}
       />
     </Sheet>
@@ -2064,10 +2094,19 @@ function AddEntrySheet({ date, labels, waterFoodId, initialLabelId, subheader, o
 
 // Núcleo de "editar registro": cantidad, etiqueta y el panel "Aporta". Reutilizado
 // por EditEntrySheet (sheet, <lg) y el panel de edición inline (rail, lg+).
-function EditEntryForm({ entry, labels, favMicros, onDelete, onSaved }) {
+function EditEntryForm({ entry, labels, favMicros, onDelete, onSaved, onPreview }) {
   const [grams, setGrams] = useState('');
   const [labelId, setLabelId] = useState(entry.meal_label_id || '');
   const foodMeta = useFoodMeta(entry.food_id, entry.recipe_id);
+
+  // Preview "calculadora": sustituye el aporte guardado del registro (minus) por
+  // el de la cantidad en edición. Sin meta aún, deja los totales reales.
+  useEffect(() => {
+    if (!onPreview || !foodMeta) return;
+    const g = Number(grams === '' ? entry.grams : grams);
+    if (g >= 0) onPreview({ meta: foodMeta, grams: g, minus: entry });
+  }, [foodMeta, grams, entry]);
+  useEffect(() => () => onPreview?.(null), []); // limpia al desmontar (cierre/guardado)
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -2117,10 +2156,10 @@ function EditEntryForm({ entry, labels, favMicros, onDelete, onSaved }) {
   );
 }
 
-function EditEntrySheet({ entry, labels, favMicros, subheader, onClose, onDelete, onSaved }) {
+function EditEntrySheet({ entry, labels, favMicros, subheader, onClose, onDelete, onSaved, onPreview }) {
   return (
     <Sheet title={<>{entry.item}{entry.brand && <span className="text-text-3 text-sm font-normal ml-1.5">{entry.brand}</span>}</>} onClose={onClose} subheader={subheader}>
-      <EditEntryForm entry={entry} labels={labels} favMicros={favMicros} onDelete={onDelete} onSaved={onSaved} />
+      <EditEntryForm entry={entry} labels={labels} favMicros={favMicros} onPreview={onPreview} onDelete={onDelete} onSaved={onSaved} />
     </Sheet>
   );
 }
