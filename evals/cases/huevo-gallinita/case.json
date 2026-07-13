@@ -1,0 +1,25 @@
+{
+  "text": "huevo blanco Gallinita Libre",
+  "photos": ["label.jpg"],
+  "expected": {
+    "mode": "etiqueta",
+    "basis": "100g",
+    "values": {
+      "kcal": 146.2,
+      "protein_g": 12.3,
+      "carbs_g": 4.9,
+      "fat_g": 8.6,
+      "micros": {
+        "grasa_sat_g": 3.1,
+        "grasa_trans_g": 0,
+        "azucar_g": 0.4,
+        "azucar_anadido_g": 0,
+        "fibra_g": 0,
+        "sodio_mg": 133.1
+      }
+    }
+  },
+  "strict_extras": true,
+  "tolerances": {},
+  "notes": "Etiqueta NOM-051 'Gallinita Libre, huevo blanco libre pastoreo', por 100 g. potasio_mg/magnesio_mg no declarados (requeridos, exentos)."
+}

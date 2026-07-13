@@ -16,7 +16,14 @@ function loadCases() {
   return fs.readdirSync(CASES_DIR)
     .filter((d) => fs.existsSync(path.join(CASES_DIR, d, 'case.json')))
     .sort()
-    .map((id) => ({ id, dir: path.join(CASES_DIR, id), ...JSON.parse(fs.readFileSync(path.join(CASES_DIR, id, 'case.json'), 'utf8')) }));
+    .map((id) => {
+      const dir = path.join(CASES_DIR, id);
+      const def = { id, dir, ...JSON.parse(fs.readFileSync(path.join(dir, 'case.json'), 'utf8')) };
+      // Fotos local-only (no van al repo público): un caso cuya foto falte se salta
+      // limpio en vez de romper el runner.
+      def.ready = (def.photos || []).every((p) => fs.existsSync(path.join(dir, p)));
+      return def;
+    });
 }
 
 function buildParts(c) {
@@ -30,12 +37,31 @@ function buildParts(c) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Modelo fijo + temp 0: sin esto el gate depende de qué modelo contestó por el 503
+// (3.5 vs 2.5 dan números distintos → regresiones falsas en el re-run). EVAL_MODEL puede
+// sobreescribirlo por env. Reintento porque 3.5-flash es el que más se satura (503).
+const EVAL_MODEL = process.env.EVAL_MODEL || 'gemini-3.5-flash';
+const EVAL_OPTS = { model: EVAL_MODEL, temperature: 0 };
+
 const cases = loadCases();
 const hasAI = !!(import.meta.env.VITE_GEMINI_KEY || import.meta.env.VITE_MISTRAL_KEY);
 const results = [];
 
 describe.skipIf(!hasAI)('eval extracción IA', () => {
   let estimateFoodFromParts;
+  // Reintenta SOLO ante 5xx transitorio (típico 503 de 3.5-flash saturado); sin cascada
+  // de fallback (modelo fijo), un 503 mataría el caso. Un 429 (cuota diaria, free tier =
+  // 20 req/día/modelo) NO se reintenta: no recupera en segundos y quemaría la ventana RPM.
+  async function estimateWithRetry(parts, tries = 4) {
+    for (let a = 1; ; a++) {
+      try { return await estimateFoodFromParts(parts, EVAL_OPTS); }
+      catch (e) {
+        const transient = /\b(500|502|503|504)\b/.test(String(e.message));
+        if (!transient || a >= tries) throw e;
+        await sleep(6000);
+      }
+    }
+  }
   beforeAll(async () => {
     // i18n.js lee localStorage al importar; se stubea mínimo (patrón de ai.test.js).
     globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
@@ -43,9 +69,10 @@ describe.skipIf(!hasAI)('eval extracción IA', () => {
   });
 
   for (const [i, c] of cases.entries()) {
-    it(c.id, async () => {
+    if (!c.ready) console.warn(`eval: caso '${c.id}' sin sus fotos en disco — omitido.`);
+    it.skipIf(!c.ready)(c.id, async () => {
       if (i > 0) await sleep(4000); // free tier RPM: separa las llamadas
-      const got = await estimateFoodFromParts(buildParts(c));
+      const got = await estimateWithRetry(buildParts(c));
       results.push(scoreCase(c, got));
     }, 120000);
   }

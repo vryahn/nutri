@@ -9,3 +9,4 @@ servings-6.csv
 privado/
 .claude/worktrees/
 evals/last-run.json
+evals/cases/**/*.jpg

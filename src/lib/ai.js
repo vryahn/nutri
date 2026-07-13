@@ -184,14 +184,16 @@ export function toJsonSchema(g) {
   return node;
 }
 
-async function callGemini(model, systemPrompt, parts, schema) {
+async function callGemini(model, systemPrompt, parts, schema, temperature) {
+  const generationConfig = { response_mime_type: 'application/json', response_schema: schema };
+  if (temperature != null) generationConfig.temperature = temperature; // solo lo usa el eval (temp 0 = reproducible)
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: [{ parts }],
-      generationConfig: { response_mime_type: 'application/json', response_schema: schema },
+      generationConfig,
     }),
   });
   if (!res.ok) throw new Error(`Gemini ${model} ${res.status}`);
@@ -298,8 +300,16 @@ export async function estimateFood(text, imageFiles) {
 // Parte del pipeline posterior a construir `parts` (sin canvas/DOM): llama la cascada
 // y normaliza. La usa estimateFood (browser, con toJpegBase64) y el eval harness (node,
 // que lee las fotos de disco). `ai_model` = qué modelo respondió; Foods.jsx lo ignora.
-export async function estimateFoodFromParts(parts) {
-  const { data: out, model } = await callAI(geminiPrompt(), parts, GEMINI_SCHEMA);
+// opts (solo eval): { model, temperature } fija UN modelo (sin cascada) para que el gate
+// no dependa de qué modelo contestó por el 503; Foods.jsx llama sin opts y usa la cascada.
+export async function estimateFoodFromParts(parts, opts = {}) {
+  let out, model;
+  if (opts.model) {
+    out = await callGemini(opts.model, geminiPrompt(), parts, GEMINI_SCHEMA, opts.temperature);
+    model = `gemini:${opts.model}`;
+  } else {
+    ({ data: out, model } = await callAI(geminiPrompt(), parts, GEMINI_SCHEMA));
+  }
   const micros = {};
   for (const m of MICROS) {
     const v = out.micros?.[m.key];

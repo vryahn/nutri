@@ -1,0 +1,25 @@
+{
+  "text": "miel de aguacate monofloral",
+  "photos": ["label.jpg"],
+  "expected": {
+    "mode": "etiqueta",
+    "basis": "100g",
+    "values": {
+      "kcal": 324,
+      "protein_g": 0,
+      "carbs_g": 81,
+      "fat_g": 0,
+      "micros": {
+        "grasa_sat_g": 0,
+        "grasa_trans_g": 0,
+        "azucar_g": 81,
+        "azucar_anadido_g": 0,
+        "fibra_g": 0,
+        "sodio_mg": 0
+      }
+    }
+  },
+  "strict_extras": true,
+  "tolerances": {},
+  "notes": "Etiqueta 'beebrands miel aguacate monofloral', porción 100 g = por 100 g. EAN 7503020880087. potasio_mg/magnesio_mg no declarados (requeridos, exentos)."
+}

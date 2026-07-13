@@ -1,0 +1,22 @@
+{
+  "text": "gomitas de magnesio beebear",
+  "photos": ["label.jpg"],
+  "expected": {
+    "mode": "etiqueta",
+    "basis": "100g",
+    "values": {
+      "kcal": 257.2,
+      "protein_g": 6.0,
+      "carbs_g": 58.3,
+      "fat_g": 0,
+      "micros": {
+        "sodio_mg": 145.2,
+        "magnesio_mg": 3600,
+        "vit_d_mcg": 119
+      }
+    }
+  },
+  "strict_extras": true,
+  "tolerances": {},
+  "notes": "Etiqueta 'beebear 3 Magnesios sin azúcar añadida' (gomitas), columna por 100 g. magnesio 3.6 g/100 g = 3600 mg (supera MICRO_MAX 1200 → dispararía el aviso de plausibilidad en la app, pero el dato es real). L-Teanina 178.6 mg/100 g NO tiene clave en MICROS, se descarta. potasio_mg no declarado (requerido, exento). El panel no desglosa azúcar/fibra: strict_extras castiga cualquier micro que el modelo invente fuera de lo declarado."
+}

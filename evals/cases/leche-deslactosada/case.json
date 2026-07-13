@@ -1,0 +1,28 @@
+{
+  "text": "leche deslactosada descremada",
+  "photos": ["label.jpg"],
+  "expected": {
+    "mode": "etiqueta",
+    "basis": "100ml",
+    "values": {
+      "kcal": 47,
+      "protein_g": 5.4,
+      "carbs_g": 5.1,
+      "fat_g": 0.5,
+      "micros": {
+        "grasa_sat_g": 0.3,
+        "grasa_trans_g": 0,
+        "azucar_g": 5.1,
+        "azucar_anadido_g": 0,
+        "fibra_g": 0,
+        "sodio_mg": 60,
+        "calcio_mg": 178,
+        "vit_a_mcg": 60,
+        "vit_d_mcg": 0.62
+      }
+    }
+  },
+  "strict_extras": true,
+  "tolerances": {},
+  "notes": "Etiqueta NOM-051 leche descremada deslactosada, declara por 100 ml (líquido) → basis 100ml, NO convertir a gramos. potasio_mg/magnesio_mg no declarados (requeridos, exentos)."
+}
