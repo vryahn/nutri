@@ -707,6 +707,8 @@ export default function Dashboard() {
   const [phaseSel, setPhaseSel] = usePersistentState('nutri.dash.phaseSel', { kind: 'actual' }); // {kind:'actual'|'previa'} | {kind:'goal', goal}
   const [customStart, setCustomStart] = usePersistentState('nutri.dash.customStart', addDaysISO(todayISO(), -6));
   const [customEnd, setCustomEnd] = usePersistentState('nutri.dash.customEnd', todayISO());
+  const [savedRanges, setSavedRanges] = usePersistentState('nutri.dash.savedRanges', []); // rangos custom guardados: [{start,end,name?}]
+  const [rangeName, setRangeName] = useState(''); // nombre opcional al guardar un rango
   const [dailyTotals, setDailyTotals] = useState([]);
   const [prevDailyTotals, setPrevDailyTotals] = useState([]);
   const [historyTotals, setHistoryTotals] = useState([]); // daily_totals(day,kcal) últimos 90 días, para completitud
@@ -798,6 +800,23 @@ export default function Dashboard() {
     cacheSet(`dash:${start}:${end}`, { ...(cacheGet(`dash:${start}:${end}`) || {}), dashboards: next });
     const { error } = await supabase.rpc('merge_prefs', { patch: { dashboards: next } });
     if (error) showToast(t('No se pudo guardar la gráfica — reintenta.'));
+  }
+
+  // Rangos custom guardados (localStorage, per-device como el propio custom range).
+  const rangeExists = savedRanges.some((r) => r.start === customStart && r.end === customEnd);
+  function saveCurrentRange() {
+    if (customStart > customEnd || rangeExists) return;
+    const name = rangeName.trim();
+    setSavedRanges([...savedRanges, name ? { start: customStart, end: customEnd, name } : { start: customStart, end: customEnd }]);
+    setRangeName('');
+  }
+  function applyRange(r) {
+    setCustomStart(r.start);
+    setCustomEnd(r.end);
+    setPreset('custom');
+  }
+  function deleteRange(r) {
+    setSavedRanges(savedRanges.filter((x) => !(x.start === r.start && x.end === r.end)));
   }
 
   async function load() {
@@ -1315,15 +1334,14 @@ export default function Dashboard() {
               {presetLabel(p)}
             </button>
           ))}
-          <button
-            onClick={() => setPreset('custom')}
-            className={`px-3 py-2 rounded-full text-sm whitespace-nowrap press ${
-              preset === 'custom' ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
-            }`}
-          >
-            {t('Custom')}
-          </button>
         </div>
+        <CustomMenu
+          active={preset === 'custom'}
+          savedRanges={savedRanges}
+          onPersonalizado={() => setPreset('custom')}
+          onApply={applyRange}
+          onDelete={deleteRange}
+        />
         <PhaseMenu
           phases={phases}
           selection={phaseSel}
@@ -1356,19 +1374,42 @@ export default function Dashboard() {
       )}
 
       {preset === 'custom' && (
-        <div className="flex gap-2">
-          <input
-            type="date"
-            value={customStart}
-            onChange={(e) => setCustomStart(e.target.value)}
-            className="flex-1 input"
-          />
-          <input
-            type="date"
-            value={customEnd}
-            onChange={(e) => setCustomEnd(e.target.value)}
-            className="flex-1 input"
-          />
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className="flex-1 min-w-0 input"
+            />
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className="flex-1 min-w-0 input"
+            />
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={rangeName}
+              onChange={(e) => setRangeName(e.target.value)}
+              placeholder={t('Nombre (opcional)')}
+              maxLength={40}
+              className="flex-1 min-w-0 input"
+            />
+            <button
+              onClick={saveCurrentRange}
+              disabled={customStart > customEnd || rangeExists}
+              className={`shrink-0 rounded-xl px-4 text-sm font-medium press ${
+                customStart > customEnd || rangeExists
+                  ? 'bg-surface-2 text-text-3 cursor-not-allowed'
+                  : 'bg-accent-deep text-on-accent'
+              }`}
+            >
+              {rangeExists ? t('Guardado') : t('Guardar rango')}
+            </button>
+          </div>
         </div>
       )}
 
@@ -1898,6 +1939,78 @@ function ExportMenu({ calcLabel, onRaw, onResumen, onInforme }) {
               <span className="block text-xs text-text-3 mt-0.5">{it.sub}</span>
             </button>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Menú Custom: activa el rango personalizado y lista los rangos guardados
+// (aplicar / borrar). Anclado con useOutsideClose + glass, fuera del scroller
+// de presets (su overflow-x recortaría el popover), igual que PhaseMenu.
+function CustomMenu({ active, savedRanges, onPersonalizado, onApply, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const ref = useOutsideClose(open, setOpen);
+  const fmt = (r) => `${r.start.slice(5)} → ${r.end.slice(5)}`; // MM-DD, como el eje de los charts
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={`px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap press ${
+          active ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
+        }`}
+      >
+        {t('Custom')} {open ? '▴' : '▾'}
+      </button>
+      {open && (
+        <div className="absolute z-50 top-full right-0 mt-1 w-64 rounded-xl border border-border p-1 shadow-lg glass">
+          <button
+            onClick={() => {
+              setOpen(false);
+              onPersonalizado();
+            }}
+            className={`w-full text-left rounded-lg px-3 py-2 min-h-[44px] hover:bg-surface-2 press ${
+              active ? 'text-accent-glass font-medium' : 'text-text-2'
+            }`}
+          >
+            <span className="block text-sm">{t('Personalizado…')}</span>
+            <span className="block font-mono text-[11px] text-text-3">{t('Elige un rango de fechas')}</span>
+          </button>
+          <div className="border-t border-border mt-1 pt-1">
+            {savedRanges.length === 0 ? (
+              <p className="px-3 py-2 text-[11px] text-text-3">{t('Guarda un rango para reutilizarlo aquí.')}</p>
+            ) : (
+              savedRanges.map((r) => (
+                <div key={`${r.start}_${r.end}`} className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      setOpen(false);
+                      onApply(r);
+                    }}
+                    className="flex-1 min-w-0 text-left rounded-lg px-3 py-2 min-h-[44px] hover:bg-surface-2 press text-text-2"
+                  >
+                    {r.name ? (
+                      <>
+                        <span className="block text-sm truncate">{r.name}</span>
+                        <span className="block font-mono text-[11px] text-text-3">{fmt(r)}</span>
+                      </>
+                    ) : (
+                      <span className="block font-mono text-sm">{fmt(r)}</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => onDelete(r)}
+                    aria-label={t('Eliminar rango')}
+                    className="w-9 h-9 shrink-0 flex items-center justify-center text-text-3 hover:text-danger press rounded-lg"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
     </div>
