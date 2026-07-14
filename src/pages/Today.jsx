@@ -9,6 +9,7 @@ import { useToast } from '../lib/useToast.js';
 import { t, useLang, locale, useUnits, fmtG, fmtMl, mlToFlOz, flOzToMl, useAdherenceBands } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import ConfirmSheet from '../components/ConfirmSheet.jsx';
+import UndoToast from '../components/UndoToast.jsx';
 import AmountField from '../components/AmountField.jsx';
 import ImportSheet from '../components/ImportSheet.jsx';
 import {
@@ -505,6 +506,7 @@ export default function Today() {
   // al instante sin esperar el round-trip a Supabase. Se descuenta al resolver.
   const [pendingWaterMl, setPendingWaterMl] = useState(0);
   const [undoData, setUndoData] = useState(null); // { entry, timer } tras un borrado, para "Deshacer"
+  const [undoTpl, setUndoTpl] = useState(null); // { list, timer }: prefs.meal_templates previo a borrar una plantilla, para "Deshacer"
   const [activeEntry, setActiveEntry] = useState(null); // entry en arrastre (para el fantasma de DragOverlay)
   const [dragOverSection, setDragOverSection] = useState(null); // id de etiqueta (o 'none') bajo una card en arrastre
   const [draggingSection, setDraggingSection] = useState(null); // id de la sección en arrastre (atenúa a las demás)
@@ -923,8 +925,22 @@ export default function Today() {
   }
 
   async function deleteTemplate(id) {
-    const next = (prefs.meal_templates || []).filter((tp) => tp.id !== id);
-    await savePrefs({ meal_templates: next });
+    const prevList = prefs.meal_templates || [];
+    await savePrefs({ meal_templates: prevList.filter((tp) => tp.id !== id) });
+    setUndoTpl((prev) => {
+      if (prev?.timer) clearTimeout(prev.timer);
+      const timer = setTimeout(() => setUndoTpl(null), 5000);
+      return { list: prevList, timer };
+    });
+  }
+
+  // La plantilla vive en un array de prefs: deshacer = reescribir el array previo.
+  async function undoDeleteTemplate() {
+    if (!undoTpl) return;
+    clearTimeout(undoTpl.timer);
+    const { list } = undoTpl;
+    setUndoTpl(null);
+    await savePrefs({ meal_templates: list });
   }
 
   // Inserta la plantilla en la fecha actual. Filtra items cuyo alimento/receta ya
@@ -1368,7 +1384,9 @@ export default function Today() {
         </div>
       )}
 
-      {!undoData && toast && (
+      {undoTpl && <UndoToast message={t('Plantilla borrada')} onUndo={undoDeleteTemplate} />}
+
+      {!undoData && !undoTpl && toast && (
         <div role="status" aria-live="polite" className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 text-center text-sm lg:left-auto lg:right-6 lg:bottom-6">
           {toast}
         </div>

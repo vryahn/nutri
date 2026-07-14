@@ -7,6 +7,7 @@ import { setSectionMenu } from '../lib/sectionMenu.js';
 import { useToast } from '../lib/useToast.js';
 import ImportSheet from '../components/ImportSheet.jsx';
 import Hint from '../components/Hint.jsx';
+import ConfirmSheet from '../components/ConfirmSheet.jsx';
 import { t, useLang, locale, useSleepThreshold } from '../lib/i18n.js';
 import {
   todayISO,
@@ -61,6 +62,7 @@ export default function Body() {
   const [importing, setImporting] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [toast, showToast] = useToast();
+  const [confirmPhoto, setConfirmPhoto] = useState(null); // path de la foto pendiente de confirmar su borrado
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
@@ -418,7 +420,7 @@ export default function Body() {
                   </a>
                 )}
                 <button
-                  onClick={() => removePhoto(p)}
+                  onClick={() => setConfirmPhoto(p)}
                   aria-label={t('Eliminar foto')}
                   className="absolute top-1 right-1 h-11 w-11 flex items-center justify-center rounded-full bg-black/55 text-white press"
                 >
@@ -505,6 +507,19 @@ export default function Body() {
             loadHistory();
             setReloadKey((k) => k + 1);
           }}
+        />
+      )}
+      {confirmPhoto && (
+        <ConfirmSheet
+          title={t('¿Eliminar la foto?')}
+          body={t('Se borra del almacenamiento y no se puede deshacer.')}
+          confirmLabel={t('Eliminar foto')}
+          onConfirm={() => {
+            const p = confirmPhoto;
+            setConfirmPhoto(null);
+            removePhoto(p);
+          }}
+          onClose={() => setConfirmPhoto(null)}
         />
       )}
       {toast}

@@ -111,6 +111,7 @@ export default function ProfileSheet({ avatarUrl, onClose }) {
   const [form, setForm] = useState(() => ({ ...getProfile() }));
   const [localUrl, setLocalUrl] = useState(avatarUrl); // preview inmediato tras subir
   const [uploading, setUploading] = useState(false);
+  const [trash, setTrash] = useState([]); // paths del storage a borrar AL GUARDAR (borrarlos antes rompía el avatar si el usuario cancelaba)
   const [cropImg, setCropImg] = useState(null); // Image en edición, o null
   const [showPwd, setShowPwd] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -132,7 +133,7 @@ export default function ProfileSheet({ avatarUrl, onClose }) {
       const path = `${uid}/avatar/${crypto.randomUUID()}.jpg`;
       const { error } = await supabase.storage.from('body-photos').upload(path, blob, { contentType: 'image/jpeg' });
       if (error) return;
-      if (form.avatar_path) supabase.storage.from('body-photos').remove([form.avatar_path]); // limpia la anterior
+      if (form.avatar_path) setTrash((ts) => [...ts, form.avatar_path]); // la anterior se limpia al guardar
       set('avatar_path', path);
       const { data } = await supabase.storage.from('body-photos').createSignedUrl(path, 3600);
       setLocalUrl(data?.signedUrl || null);
@@ -142,7 +143,7 @@ export default function ProfileSheet({ avatarUrl, onClose }) {
   }
 
   function removePhoto() {
-    if (form.avatar_path) supabase.storage.from('body-photos').remove([form.avatar_path]);
+    if (form.avatar_path) setTrash((ts) => [...ts, form.avatar_path]);
     set('avatar_path', null);
     setLocalUrl(null);
   }
@@ -153,6 +154,10 @@ export default function ProfileSheet({ avatarUrl, onClose }) {
     const clean = {};
     for (const [k, v] of Object.entries(form)) if (v !== '' && v != null) clean[k] = v;
     setProfile(clean);
+    // ponytail: los JPEG reemplazados o quitados se borran solo al confirmar. Si el
+    // usuario sube uno nuevo y cancela la hoja, ese archivo queda huérfano en el
+    // bucket (fuga aceptada: borrar el viejo antes de guardar dejaba el avatar roto).
+    if (trash.length) supabase.storage.from('body-photos').remove(trash);
     onClose();
   };
 

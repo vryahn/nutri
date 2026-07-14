@@ -7,6 +7,7 @@ import { MICROS, microGroups, PHASE_GOALS, goalLabel, todayISO, addDaysISO, reso
 import { t, useLang, getLang, locale } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import ConfirmSheet from '../components/ConfirmSheet.jsx';
+import UndoToast from '../components/UndoToast.jsx';
 import PageSkeleton from '../components/PageSkeleton.jsx';
 
 // ===== Helpers puros (agrupación §2.1, fechas §5) =====
@@ -193,6 +194,7 @@ export default function Targets() {
   const [loading, setLoading] = useState(() => !cacheGet('targets'));
   const [userId, setUserId] = useState(null);
   const [toast, showToast] = useToast();
+  const [undoOverride, setUndoOverride] = useState(null); // { row, timer } tras borrar una fecha específica, para "Deshacer"
   const [sheet, setSheet] = useState(null); // unión discriminada por .type
   const [vigVer, setVigVer] = useState(0); // fuerza remontar la card vigente a lectura tras guardar
   const lgUp = useLgUp();
@@ -333,9 +335,30 @@ export default function Targets() {
     return null;
   }
   async function deleteOverride(id) {
-    setTargets((ts) => ts.filter((t) => t.id !== id)); // optimista, sin confirmación (§2.3)
+    const row = targets.find((tg) => tg.id === id);
+    setTargets((ts) => ts.filter((t) => t.id !== id)); // optimista, sin confirmación (§2.3): la red es el "Deshacer"
     const { error } = await supabase.from('targets').delete().eq('id', id);
-    if (error) load();
+    if (error) {
+      load();
+      return;
+    }
+    setUndoOverride((prev) => {
+      if (prev?.timer) clearTimeout(prev.timer);
+      const timer = setTimeout(() => setUndoOverride(null), 5000);
+      return { row, timer };
+    });
+  }
+
+  // Reinserta el override con los mismos campos que escribe saveOverride (sin id:
+  // la fila se recrea, nada la referencia).
+  async function undoDeleteOverride() {
+    if (!undoOverride) return;
+    clearTimeout(undoOverride.timer);
+    const { day, label, kcal, protein_g, carbs_g, fat_g, micros } = undoOverride.row;
+    setUndoOverride(null);
+    const { error } = await supabase.from('targets').insert({ owner: userId, day, label, kcal, protein_g, carbs_g, fat_g, micros });
+    if (error) showToast(t('No se pudo deshacer.'));
+    load();
   }
 
   if (loading) return <PageSkeleton />;
@@ -660,7 +683,9 @@ export default function Targets() {
         />
       )}
 
-      {toast && (
+      {undoOverride && <UndoToast message={t('Objetivo borrado')} onUndo={undoDeleteOverride} />}
+
+      {!undoOverride && toast && (
         <div
           role="status"
           aria-live="polite"

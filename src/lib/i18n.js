@@ -21,6 +21,8 @@ const EN = {
   'Subiendo…': 'Uploading…',
   'Foto de progreso': 'Progress photo',
   'Eliminar foto': 'Delete photo',
+  '¿Eliminar la foto?': 'Delete this photo?',
+  'Se borra del almacenamiento y no se puede deshacer.': 'It will be removed from storage and cannot be undone.',
   Composición: 'Composition',
   Circunferencias: 'Circumferences',
   Peso: 'Weight',
@@ -536,6 +538,9 @@ const EN = {
   Borrar: 'Delete',
   'Añadir registro': 'Add entry',
   'Registro borrado': 'Entry deleted',
+  'Objetivo borrado': 'Target deleted',
+  'Plantilla borrada': 'Template deleted',
+  'No se pudo deshacer.': 'Could not undo.',
   Deshacer: 'Undo',
   Cerrar: 'Close',
 
