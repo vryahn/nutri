@@ -3,20 +3,20 @@ import { X, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { reorderLabels } from '../lib/domain.js';
 import { t, useLang } from '../lib/i18n.js';
-import ConfirmSheet from './ConfirmSheet.jsx';
+import UndoToast from './UndoToast.jsx';
 
 export default function LabelsModal({ onClose }) {
   useLang();
   const [labels, setLabels] = useState([]);
   const [name, setName] = useState('');
-  const [deleting, setDeleting] = useState(null); // etiqueta a confirmar borrado
+  const [undoLabel, setUndoLabel] = useState(null); // { id, timer } tras archivar una etiqueta, para "Deshacer"
 
   useEffect(() => {
     load();
   }, []);
 
   async function load() {
-    const { data } = await supabase.from('meal_labels').select('*').order('sort_order');
+    const { data } = await supabase.from('meal_labels').select('*').is('archived_at', null).order('sort_order');
     if (data) setLabels(data);
     // Hoy renderiza secciones por etiqueta sin remontarse cuando este modal cambia algo.
     window.dispatchEvent(new Event('labels-changed'));
@@ -24,9 +24,16 @@ export default function LabelsModal({ onClose }) {
 
   async function addLabel(e) {
     e.preventDefault();
-    if (!name.trim()) return;
+    const nm = name.trim();
+    if (!nm) return;
     const maxOrder = labels.reduce((m, l) => Math.max(m, l.sort_order ?? 0), 0);
-    await supabase.from('meal_labels').insert({ name: name.trim(), sort_order: maxOrder + 1 });
+    const { error } = await supabase.from('meal_labels').insert({ name: nm, sort_order: maxOrder + 1 });
+    // 23505 = choca el unique (owner, name) con una etiqueta ARCHIVADA (las vivas ya
+    // están en la lista). Revivirla en vez de crear otra fila devuelve sus registros
+    // históricos a esta sección, que es de donde salieron. RLS acota el eq('name').
+    if (error?.code === '23505') {
+      await supabase.from('meal_labels').update({ archived_at: null, sort_order: maxOrder + 1 }).eq('name', nm);
+    }
     setName('');
     load();
   }
@@ -36,9 +43,27 @@ export default function LabelsModal({ onClose }) {
     load();
   }
 
-  async function remove(id) {
-    await supabase.from('meal_labels').delete().eq('id', id);
-    setDeleting(null);
+  // Archivar, no borrar: la FK entries.meal_label_id es ON DELETE SET NULL, así que
+  // un delete reescribiría todos los registros históricos de la etiqueta. Archivada,
+  // desaparece de la lista y sus registros caen en "Sin etiqueta" (groupByLabel rutea
+  // ahí cualquier id que no esté en labels) — mismo efecto visible, reversible.
+  async function archive(id) {
+    const { error } = await supabase.from('meal_labels').update({ archived_at: new Date().toISOString() }).eq('id', id);
+    if (error) return;
+    load();
+    setUndoLabel((prev) => {
+      if (prev?.timer) clearTimeout(prev.timer);
+      const timer = setTimeout(() => setUndoLabel(null), 5000);
+      return { id, timer };
+    });
+  }
+
+  async function undoArchive() {
+    if (!undoLabel) return;
+    clearTimeout(undoLabel.timer);
+    const { id } = undoLabel;
+    setUndoLabel(null);
+    await supabase.from('meal_labels').update({ archived_at: null }).eq('id', id);
     load();
   }
 
@@ -96,7 +121,7 @@ export default function LabelsModal({ onClose }) {
               >
                 <ArrowDown size={16} />
               </button>
-              <button onClick={() => setDeleting(l)} className="p-1 text-danger" aria-label={t('Borrar')}>
+              <button onClick={() => archive(l.id)} className="p-1 text-danger" aria-label={t('Borrar')}>
                 <Trash2 size={16} />
               </button>
             </div>
@@ -104,14 +129,10 @@ export default function LabelsModal({ onClose }) {
         </div>
       </div>
 
-      {deleting && (
-        <ConfirmSheet
-          title={`${t('¿Borrar')} "${deleting.name}"?`}
-          body={t('Los registros con esta etiqueta quedarán sin sección. No se puede deshacer.')}
-          confirmLabel={t('Borrar etiqueta')}
-          onConfirm={() => remove(deleting.id)}
-          onClose={() => setDeleting(null)}
-        />
+      {undoLabel && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <UndoToast message={t('Etiqueta borrada')} onUndo={undoArchive} />
+        </div>
       )}
     </div>
   );

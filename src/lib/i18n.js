@@ -675,10 +675,7 @@ const EN = {
   // LabelsModal.jsx
   'Nueva etiqueta': 'New label',
   'Sin etiquetas aún': 'No labels yet',
-  '¿Borrar': 'Delete',
-  'Los registros con esta etiqueta quedarán sin sección. No se puede deshacer.':
-    'Entries with this label will lose their section. This cannot be undone.',
-  'Borrar etiqueta': 'Delete label',
+  'Etiqueta borrada': 'Label deleted',
 
   // AiDataCard.jsx
   'Datos con IA': 'AI data',

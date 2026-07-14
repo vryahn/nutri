@@ -747,7 +747,7 @@ export default function Today() {
   }
 
   async function loadLabels() {
-    const { data, error } = await supabase.from('meal_labels').select('*').order('sort_order');
+    const { data, error } = await supabase.from('meal_labels').select('*').is('archived_at', null).order('sort_order');
     if (error) { showToast(t('No se pudieron cargar las etiquetas — revisa tu conexión.')); return; }
     setLabels(cacheSet('labels', data || []));
   }

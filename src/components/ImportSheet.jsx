@@ -42,7 +42,7 @@ export default function ImportSheet({ kind, onClose, onDone }) {
     (async () => {
       const [f, { data: l }] = await Promise.all([
         fetchFoodsForImport(),
-        supabase.from('meal_labels').select('id, name').order('sort_order'),
+        supabase.from('meal_labels').select('id, name').is('archived_at', null).order('sort_order'),
       ]);
       if (!alive) return;
       setFoods(f);
