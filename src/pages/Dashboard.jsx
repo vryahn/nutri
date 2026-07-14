@@ -479,7 +479,15 @@ const dowShort = () => (getLang() === 'en' ? DOW_SHORT_EN : DOW_SHORT_ES);
 
 const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// ponytail: techo de 5 años. Teclear el año en el input de fecha del rango custom
+// pasa por fechas válidas pero absurdas ('0202-07-01'): sin cota, el bucle genera
+// cientos de miles de días y congela la pestaña. Rango inválido o imposible = vacío,
+// nunca truncado: media página de datos silenciosamente incompletos sería peor.
+const MAX_RANGE_DAYS = 1830;
 function datesInRange(start, end) {
+  if (!start || !end || start > end) return [];
+  const span = (Date.parse(end) - Date.parse(start)) / 86400000;
+  if (!Number.isFinite(span) || span > MAX_RANGE_DAYS) return [];
   const dates = [];
   let d = start;
   while (d <= end) {
