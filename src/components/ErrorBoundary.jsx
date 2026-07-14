@@ -1,4 +1,5 @@
 import { Component } from 'react';
+import * as Sentry from '@sentry/react';
 
 // Texto fijo bilingüe: si algo se rompió a este nivel, no hay garantía de que
 // i18n (o cualquier otro contexto) siga siendo seguro de usar.
@@ -11,6 +12,7 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     console.error('ErrorBoundary', error, info);
+    Sentry.captureException(error, { extra: info });
   }
 
   render() {

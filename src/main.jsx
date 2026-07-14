@@ -2,10 +2,17 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { registerSW } from 'virtual:pwa-register';
+import * as Sentry from '@sentry/react';
 import App from './App.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { supabase } from './lib/supabase.js';
 import './index.css';
+
+// Monitoreo de errores en producción. DSN de Sentry (publicable, va en el bundle
+// cliente); ausente en dev = sin ruido. Solo captura de errores: sin tracing ni replay.
+if (import.meta.env.PROD && import.meta.env.VITE_SENTRY_DSN) {
+  Sentry.init({ dsn: import.meta.env.VITE_SENTRY_DSN });
+}
 
 let swReg = null;
 const check = () => swReg?.update(); // pide al navegador comprobar si hay sw.js nuevo

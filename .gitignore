@@ -10,3 +10,5 @@ privado/
 .claude/worktrees/
 evals/last-run*.json
 evals/cases/**/*.jpg
+.vercel
+.env*
