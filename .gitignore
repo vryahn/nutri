@@ -12,3 +12,4 @@ evals/last-run*.json
 evals/cases/**/*.jpg
 .vercel
 .env*
+node_modules
