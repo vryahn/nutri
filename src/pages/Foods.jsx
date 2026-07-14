@@ -38,6 +38,13 @@ function hasWarning(f) {
   return kcalSuspicious(f) || macrosImplausible(f) || componentsInconsistent(f);
 }
 
+// El aviso ⚠ solo se pinta si el usuario NO lo ha revisado: `reviewed_at` no apaga el
+// cálculo (sigue en el form), solo deja de gritar en la lista. Guardar el alimento lo
+// limpia (ver handleSave), así una edición de valores vuelve a exponer el aviso.
+function pendingWarning(f) {
+  return hasWarning(f) && !f.reviewed_at;
+}
+
 const SOURCE_OPTIONS = ['manual', 'etiqueta', 'gemini', 'off', 'usda', 'cronometer'];
 const SOURCE_LABELS = { manual: 'Manual', etiqueta: 'Etiqueta', gemini: 'IA', off: 'OFF', usda: 'USDA', cronometer: 'Cronometer' };
 function sourceLabel(s) {
@@ -148,6 +155,9 @@ export default function Foods() {
         .map((p) => ({ name: p.name.trim(), grams: Number(p.grams) })),
       density_g_ml: Number(food.density_g_ml) > 0 ? Number(food.density_g_ml) : null,
       source: food.source,
+      // Solo el botón "Marcar revisado" del form manda un timestamp; cualquier otro
+      // guardado lo deja en null y el aviso ⚠ vuelve a aparecer.
+      reviewed_at: food.reviewed_at || null,
     };
     const { error } = food.id
       ? await supabase.from('foods').update(payload).eq('id', food.id)
@@ -220,7 +230,7 @@ export default function Foods() {
 
   let visibleFoods = foods;
   if (filterSource) visibleFoods = visibleFoods.filter((f) => f.source === filterSource);
-  if (warnOnly) visibleFoods = visibleFoods.filter(hasWarning);
+  if (warnOnly) visibleFoods = visibleFoods.filter(pendingWarning);
   if (sortKey) {
     visibleFoods = [...visibleFoods].sort((a, b) => {
       let av = a[sortKey];
@@ -285,11 +295,13 @@ export default function Foods() {
                 type="button"
                 onClick={() => setWarnOnly((w) => !w)}
                 aria-pressed={warnOnly}
-                className={`min-h-[44px] px-3 rounded-xl border press whitespace-nowrap ${
-                  warnOnly ? 'bg-warn/20 border-warn text-warn' : 'bg-surface-2 border-border text-text-2'
+                aria-label={t('Solo alimentos con avisos')}
+                title={t('Solo alimentos con avisos')}
+                className={`min-h-[44px] w-[44px] shrink-0 rounded-xl border press inline-flex items-center justify-center ${
+                  warnOnly ? 'bg-warn/20 border-warn text-warn' : 'border-border text-text-3'
                 }`}
               >
-                ⚠ {t('solo avisos')}
+                <AlertTriangle size={18} />
               </button>
             </div>
           </div>
@@ -328,7 +340,7 @@ export default function Foods() {
                 <div className="flex justify-between items-baseline gap-2">
                   <span className="font-medium">
                     {f.name}
-                    {hasWarning(f) && (
+                    {pendingWarning(f) && (
                       <AlertTriangle
                         size={14}
                         className="inline ml-1.5 -mt-0.5 text-warn"
@@ -383,7 +395,7 @@ export default function Foods() {
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-center gap-1">
                         <span className="w-4 flex justify-center">
-                          {hasWarning(f) && (
+                          {pendingWarning(f) && (
                             <AlertTriangle size={14} className="text-warn" aria-label={t('Valores nutricionales requieren revisión')} />
                           )}
                         </span>
@@ -621,8 +633,10 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const [labelMismatch, setLabelMismatch] = useState([]); // labels donde etiqueta y OFF difieren >25%, solo UI
   const [sweeteners, setSweeteners] = useState([]); // edulcorantes detectados por OFF (presencia, no cantidad), solo UI
 
+  // Tocar cualquier campo invalida la revisión previa: los valores ya no son los que el
+  // usuario confirmó, así que el aviso ⚠ se re-arma en el acto (y handleSave lo persiste).
   function setField(key, value) {
-    setForm((f) => ({ ...f, [key]: value }));
+    setForm((f) => ({ ...f, reviewed_at: null, [key]: value }));
   }
 
   function applyPrefill(merged, source, resultName, confidence, prefillBasisUnit = 'g') {
@@ -737,7 +751,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
       const micros = { ...f.micros };
       if (value === '') delete micros[key];
       else micros[key] = Number(value);
-      return { ...f, micros };
+      return { ...f, reviewed_at: null, micros };
     });
   }
 
@@ -749,6 +763,9 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const normForCheck = normalizeTo100(form) ?? form;
   const implausible = macrosImplausible(normForCheck);
   const inconsistent = componentsInconsistent(normForCheck);
+  const warned = Boolean(suspicious || implausible || inconsistent);
+  // kcal vacío → se guarda el cálculo por macros (el placeholder que ve el usuario)
+  const submitValues = () => normalizeTo100({ ...form, kcal: form.kcal === '' ? kcalCalc : form.kcal });
   const hiddenMicros = MICROS.slice(MICROS_DEFAULT);
   const basisDensity = Number(form.density_g_ml) || 0;
   const basisBlocked = basisUnit === 'ml' && !(basisDensity > 0);
@@ -846,8 +863,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         onSubmit={(e) => {
           e.preventDefault();
           if (basisBlocked) return; // botón ya deshabilitado; guarda por si el submit llega por Enter
-          // kcal vacío → se guarda el cálculo por macros (el placeholder que ve el usuario)
-          onSave(normalizeTo100({ ...form, kcal: form.kcal === '' ? kcalCalc : form.kcal }));
+          onSave(submitValues());
         }}
         className="flex flex-col gap-4"
       >
@@ -998,11 +1014,15 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
               />
             ))}
           </div>
-          <div className="columns-2 xl:columns-3 gap-6 mt-4">
+          {/* Categoría a ancho completo + campos en rejilla. El masonry por grupo
+              (`columns-2` + `break-inside-avoid`) dejaba una columna enorme y la otra
+              casi vacía: con Vitaminas (18), Edulcorantes (18) y Aminoácidos (19) el
+              grupo no puede partirse y las columnas nunca se balancean. */}
+          <div className="mt-4 flex flex-col gap-4">
             {microGroups(MICROS.filter((m) => !REQUIRED_MICROS.includes(m.key))).map(({ cat, items }) => (
-              <div key={cat} className="break-inside-avoid mb-4">
+              <div key={cat}>
                 <p className="text-xs uppercase tracking-wide text-text-3 pb-1">{t(cat)}</p>
-                <div className="flex flex-col gap-3">
+                <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
                   {items.map((m) => (
                     <MicroField
                       key={m.key}
@@ -1023,20 +1043,38 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         {form.kcal === '' && hasMacros && (
           <p className="text-xs text-text-3">{t('Si dejas Kcal vacío, se guardará el cálculo por macros (≈ %n).').replace('%n', kcalCalc)}</p>
         )}
-        {suspicious && (
+        {/* Avisos ⚠: si el usuario ya revisó estos valores y los dio por buenos, se
+            degradan a una línea muda (nunca desaparecen del todo). Tocar cualquier campo
+            limpia reviewed_at y los devuelve a su forma completa. */}
+        {!form.reviewed_at && suspicious && (
           <p className="text-sm text-warn" role="status">
             ⚠ {t('%n kcal no cuadran con los macros (≈ %m kcal por Atwater). El alimento quedará marcado para revisión.')
               .replace('%n', form.kcal).replace('%m', kcalCalc)}
           </p>
         )}
-        {implausible && (
+        {!form.reviewed_at && implausible && (
           <p className="text-sm text-warn" role="status">
             ⚠ {t('Valores inusualmente altos para 100 g. Revisa antes de guardar.')}
           </p>
         )}
-        {inconsistent && (
+        {!form.reviewed_at && inconsistent && (
           <p className="text-sm text-warn" role="status">
             ⚠ {t('Componente inconsistente')}: {t(inconsistent)}. {t('Revisa antes de guardar.')}
+          </p>
+        )}
+        {form.id && warned && !form.reviewed_at && (
+          <button
+            type="button"
+            disabled={basisBlocked}
+            onClick={() => onSave({ ...submitValues(), reviewed_at: new Date().toISOString() })}
+            className="self-start min-h-[44px] px-4 rounded-xl border border-warn text-warn font-medium press disabled:opacity-40"
+          >
+            {t('Marcar revisado')}
+          </button>
+        )}
+        {warned && form.reviewed_at && (
+          <p className="text-xs text-text-3" role="status">
+            {t('Valores atípicos, ya revisados por ti. El aviso vuelve si cambias los valores.')}
           </p>
         )}
 

@@ -114,7 +114,10 @@ const EN = {
   P: 'P',
   C: 'C',
   Todos: 'All',
-  'solo avisos': 'warnings only',
+  'Solo alimentos con avisos': 'Foods with warnings only',
+  'Marcar revisado': 'Mark as reviewed',
+  'Valores atípicos, ya revisados por ti. El aviso vuelve si cambias los valores.':
+    'Atypical values, already reviewed by you. The warning returns if you change the values.',
   'Sin alimentos aún': 'No foods yet',
   'Crear el primero': 'Create the first one',
   'Valores nutricionales requieren revisión': 'Nutritional values need review',

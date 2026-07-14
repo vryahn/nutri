@@ -24,7 +24,8 @@ supabase/migrations/     # migraciones incrementales, todas aplicadas: 001 prefs
                           # 006 entries.sort_order · 007 catálogo privado por usuario (RLS) ·
                           # 008 entry_nutrients.brand · 009 índice meal_labels · 010 targets.goal ·
                           # 011 higiene advisors · 012 body_metrics (medidas corporales, override §11) ·
-                          # 013 body_metrics.photo_paths + bucket privado body-photos (fotos de progreso, RLS por prefijo uid)
+                          # 013 body_metrics.photo_paths + bucket privado body-photos (fotos de progreso, RLS por prefijo uid) ·
+                          # 014 foods.reviewed_at (el usuario da por buenos los valores atípicos; cualquier guardado la limpia)
 src/lib/supabase.js      # createClient, schema 'nutri'
 src/lib/domain.js        # MICROS, resolución de targets, adherencia, fórmula de recetas, reorderLabels
 src/lib/sources.js       # clientes Open Food Facts y USDA FDC, por 100 g, mapeados a claves MICROS
