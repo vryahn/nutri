@@ -1,35 +1,91 @@
 {
-  "generated_at": "2026-07-13T16:58:42.135Z",
+  "generated_at": "2026-07-14T07:24:01.137Z",
   "cases": [
     {
+      "id": "gomitas-magnesio",
+      "model": "gemini:gemini-3.5-flash",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 257.2,
+          "got": 257.2,
+          "pass": true
+        },
+        "protein_g": {
+          "expected": 6,
+          "got": 6,
+          "pass": true
+        },
+        "carbs_g": {
+          "expected": 58.3,
+          "got": 58.3,
+          "pass": true
+        },
+        "fat_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 145.2,
+          "got": 145.2,
+          "pass": true
+        },
+        "potasio_mg": {
+          "expected": null,
+          "got": 10,
+          "pass": true
+        },
+        "magnesio_mg": {
+          "expected": 3600,
+          "got": 3600,
+          "pass": true
+        },
+        "vit_d_mcg": {
+          "expected": 119,
+          "got": 119,
+          "pass": true
+        }
+      },
+      "extras": [
+        "grasa_sat_g",
+        "grasa_trans_g",
+        "alcohol_g",
+        "colesterol_mg"
+      ],
+      "passed": 8,
+      "total": 12
+    },
+    {
       "id": "huevo-crudo",
-      "model": "gemini:gemini-2.5-flash",
+      "model": "gemini:gemini-3.5-flash",
       "mode_ok": true,
       "basis_ok": true,
       "fields": {
         "kcal": {
           "expected": 143,
-          "got": 147,
+          "got": 143,
           "pass": true
         },
         "protein_g": {
           "expected": 12.6,
-          "got": 12.58,
+          "got": 12.6,
           "pass": true
         },
         "carbs_g": {
           "expected": 0.72,
-          "got": 1.12,
-          "pass": false
+          "got": 0.72,
+          "pass": true
         },
         "fat_g": {
           "expected": 9.51,
-          "got": 9.94,
+          "got": 9.51,
           "pass": true
         },
         "sodio_mg": {
           "expected": 142,
-          "got": 124,
+          "got": 142,
           "pass": true
         },
         "potasio_mg": {
@@ -49,33 +105,265 @@
         }
       },
       "extras": [],
-      "passed": 7,
+      "passed": 8,
       "total": 8
     },
     {
+      "id": "huevo-gallinita",
+      "model": "gemini:gemini-3.5-flash",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 146.2,
+          "got": 146.2,
+          "pass": true
+        },
+        "protein_g": {
+          "expected": 12.3,
+          "got": 12.3,
+          "pass": true
+        },
+        "carbs_g": {
+          "expected": 4.9,
+          "got": 4.9,
+          "pass": true
+        },
+        "fat_g": {
+          "expected": 8.6,
+          "got": 8.6,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 133.1,
+          "got": 133.1,
+          "pass": true
+        },
+        "potasio_mg": {
+          "expected": null,
+          "got": 138,
+          "pass": true
+        },
+        "magnesio_mg": {
+          "expected": null,
+          "got": 12,
+          "pass": true
+        },
+        "grasa_sat_g": {
+          "expected": 3.1,
+          "got": 3.1,
+          "pass": true
+        },
+        "grasa_trans_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "azucar_g": {
+          "expected": 0.4,
+          "got": 0.4,
+          "pass": true
+        },
+        "azucar_anadido_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "fibra_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        }
+      },
+      "extras": [
+        "calcio_mg",
+        "hierro_mg",
+        "agua_ml",
+        "alcohol_g",
+        "colesterol_mg",
+        "vit_a_mcg",
+        "vit_c_mg",
+        "vit_d_mcg",
+        "vit_e_mg",
+        "vit_k_mcg",
+        "vit_b1_mg",
+        "vit_b2_mg",
+        "vit_b3_mg",
+        "vit_b5_mg",
+        "vit_b6_mg",
+        "vit_b9_mcg",
+        "vit_b12_mcg",
+        "colina_mg",
+        "zinc_mg",
+        "fosforo_mg",
+        "selenio_mcg",
+        "cobre_mg",
+        "manganeso_mg",
+        "beta_caroteno_mcg",
+        "licopeno_mcg",
+        "luteina_zeaxantina_mcg",
+        "fibra_soluble_g",
+        "fibra_insoluble_g",
+        "almidon_g",
+        "sacarosa_g",
+        "glucosa_g",
+        "fructosa_g",
+        "galactosa_g",
+        "lactosa_g",
+        "maltosa_g",
+        "alulosa_g",
+        "polioles_g",
+        "eritritol_g",
+        "xilitol_g",
+        "sorbitol_g",
+        "maltitol_g",
+        "manitol_g",
+        "isomalt_g",
+        "lactitol_g",
+        "grasa_mono_g",
+        "grasa_poli_g",
+        "retinol_mcg",
+        "alfa_caroteno_mcg",
+        "beta_criptoxantina_mcg",
+        "cafeina_mg",
+        "teobromina_mg",
+        "ceniza_g",
+        "triptofano_g",
+        "treonina_g",
+        "isoleucina_g",
+        "leucina_g",
+        "lisina_g",
+        "metionina_g",
+        "cistina_g",
+        "fenilalanina_g",
+        "tirosina_g",
+        "valina_g",
+        "arginina_g",
+        "histidina_g",
+        "alanina_g",
+        "acido_aspartico_g",
+        "acido_glutamico_g",
+        "glicina_g",
+        "prolina_g",
+        "serina_g"
+      ],
+      "passed": 12,
+      "total": 82
+    },
+    {
+      "id": "leche-deslactosada",
+      "model": "gemini:gemini-3.5-flash",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 47,
+          "got": 47,
+          "pass": true
+        },
+        "protein_g": {
+          "expected": 5.4,
+          "got": 5.4,
+          "pass": true
+        },
+        "carbs_g": {
+          "expected": 5.1,
+          "got": 5.1,
+          "pass": true
+        },
+        "fat_g": {
+          "expected": 0.5,
+          "got": 0.5,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 60,
+          "got": 60,
+          "pass": true
+        },
+        "potasio_mg": {
+          "expected": null,
+          "got": 150,
+          "pass": true
+        },
+        "magnesio_mg": {
+          "expected": null,
+          "got": 11,
+          "pass": true
+        },
+        "grasa_sat_g": {
+          "expected": 0.3,
+          "got": 0.3,
+          "pass": true
+        },
+        "grasa_trans_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "azucar_g": {
+          "expected": 5.1,
+          "got": 5.1,
+          "pass": true
+        },
+        "azucar_anadido_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "fibra_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "calcio_mg": {
+          "expected": 178,
+          "got": 178,
+          "pass": true
+        },
+        "vit_a_mcg": {
+          "expected": 60,
+          "got": 60,
+          "pass": true
+        },
+        "vit_d_mcg": {
+          "expected": 0.62,
+          "got": 0.62,
+          "pass": true
+        }
+      },
+      "extras": [
+        "hierro_mg",
+        "alcohol_g",
+        "lactosa_g"
+      ],
+      "passed": 15,
+      "total": 18
+    },
+    {
       "id": "manzana-fuji",
-      "model": "gemini:gemini-2.5-flash",
+      "model": "gemini:gemini-3.5-flash",
       "mode_ok": true,
       "basis_ok": true,
       "fields": {
         "kcal": {
           "expected": 63,
-          "got": 52,
+          "got": 63,
           "pass": true
         },
         "protein_g": {
           "expected": 0.2,
-          "got": 0.26,
+          "got": 0.2,
           "pass": true
         },
         "carbs_g": {
           "expected": 15.2,
-          "got": 13.81,
+          "got": 15.22,
           "pass": true
         },
         "fat_g": {
           "expected": 0.18,
-          "got": 0.17,
+          "got": 0.18,
           "pass": true
         },
         "sodio_mg": {
@@ -85,7 +373,7 @@
         },
         "potasio_mg": {
           "expected": 109,
-          "got": 107,
+          "got": 101,
           "pass": true
         },
         "magnesio_mg": {
@@ -95,7 +383,7 @@
         },
         "fibra_g": {
           "expected": 2.1,
-          "got": 2.4,
+          "got": 2.1,
           "pass": true
         }
       },
@@ -104,8 +392,88 @@
       "total": 8
     },
     {
+      "id": "miel-aguacate",
+      "model": "gemini:gemini-3.5-flash",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 324,
+          "got": 324,
+          "pass": true
+        },
+        "protein_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "carbs_g": {
+          "expected": 81,
+          "got": 81,
+          "pass": true
+        },
+        "fat_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "potasio_mg": {
+          "expected": null,
+          "got": 52,
+          "pass": true
+        },
+        "magnesio_mg": {
+          "expected": null,
+          "got": 2,
+          "pass": true
+        },
+        "grasa_sat_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "grasa_trans_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "azucar_g": {
+          "expected": 81,
+          "got": 81,
+          "pass": true
+        },
+        "azucar_anadido_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "fibra_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        }
+      },
+      "extras": [
+        "calcio_mg",
+        "hierro_mg",
+        "agua_ml",
+        "alcohol_g",
+        "colesterol_mg",
+        "zinc_mg",
+        "fosforo_mg",
+        "ceniza_g"
+      ],
+      "passed": 12,
+      "total": 20
+    },
+    {
       "id": "tortilla-maiz",
-      "model": "gemini:gemini-2.5-flash",
+      "model": "gemini:gemini-3.5-flash",
       "mode_ok": true,
       "basis_ok": true,
       "fields": {
@@ -116,42 +484,42 @@
         },
         "protein_g": {
           "expected": 5.7,
-          "got": 5.75,
+          "got": 5.7,
           "pass": true
         },
         "carbs_g": {
           "expected": 44.6,
-          "got": 41.25,
+          "got": 44.7,
           "pass": true
         },
         "fat_g": {
           "expected": 2.85,
-          "got": 3.25,
+          "got": 2.85,
           "pass": true
         },
         "sodio_mg": {
           "expected": 45,
-          "got": 228,
-          "pass": false
+          "got": 46,
+          "pass": true
         },
         "potasio_mg": {
           "expected": 186,
-          "got": 106,
-          "pass": false
+          "got": 186,
+          "pass": true
         },
         "magnesio_mg": {
           "expected": 72,
-          "got": 76,
+          "got": 46,
           "pass": true
         },
         "fibra_g": {
           "expected": 6.3,
-          "got": 5.7,
+          "got": 6.3,
           "pass": true
         }
       },
       "extras": [],
-      "passed": 6,
+      "passed": 8,
       "total": 8
     }
   ]
