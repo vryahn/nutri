@@ -1,6 +1,6 @@
 # nutri.
 
-Personal nutrition-tracking app (Cronometer-style, simplified) for 2 users. Backend = Supabase (Postgres + Auth + PostgREST), no server of our own. Frontend = static SPA (React + Vite + Tailwind).
+Personal nutrition-tracking app (Cronometer-style, simplified) for 2 users. Backend = Supabase (Postgres + Auth + PostgREST), no server of our own. Frontend = static SPA (React + Vite + Tailwind). Production error monitoring via [Sentry](https://sentry.io) (errors only, enabled on the production build).
 
 ## Setup
 
@@ -17,6 +17,8 @@ One-time manual steps:
    ```
 
 `.env` is in `.gitignore`. Never use the `service_role` key in the frontend.
+
+Optional: to capture production runtime errors in [Sentry](https://sentry.io), create a project (platform: React), copy its DSN into `VITE_SENTRY_DSN` (in `.env` and in the Vercel production env vars). The DSN is publishable — it ships in the client bundle. Sentry only initializes on the production build, so dev stays silent.
 
 ## API — contract for external scripts
 
