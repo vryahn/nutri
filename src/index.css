@@ -8,6 +8,10 @@
    en OKLCH contra --surface-2 (el fondo más adverso de cada tema): ningún par
    texto/fondo baja de 4.5:1. */
 :root {
+  /* Sin esto el navegador pinta los controles NATIVOS (checkbox, scrollbar, el
+     calendario de <input type=date>) en claro: un checkbox sin marcar salía como
+     un cuadro blanco sólido sobre el tema oscuro. */
+  color-scheme: dark;
   --bg: #071010;
   --surface: #101A1A;
   --surface-2: #182525;
@@ -33,6 +37,7 @@
    --accent baja de luminancia; los colores de datos conservan el hue y hacen lo
    mismo. Ningún par foreground/background queda bajo 4.5:1. */
 :root[data-theme='light'] {
+  color-scheme: light;
   --bg: #F3F9F9;
   --surface: #FCFFFF;
   --surface-2: #EBF3F3;

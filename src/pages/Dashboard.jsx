@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Pencil, Trash2 } from 'lucide-react';
 import {
   ComposedChart,
   AreaChart,
@@ -699,6 +700,10 @@ function usePersistentState(key, initial) {
 const PRESET_LABELS_EN = { hoy: 'Today', semana: 'Week', mes: 'Month', trimestre: 'Quarter', año: 'Year' };
 const presetLabel = (p) => (getLang() === 'en' ? PRESET_LABELS_EN[p.key] : p.label);
 
+// Identidad de un rango guardado. Los que ya viven en localStorage no traen id:
+// caen a su clave vieja (fechas), que para ellos sigue siendo única.
+const rangeId = (r) => r.id ?? `${r.start}_${r.end}`;
+
 export default function Dashboard() {
   useLang();
   useUnits();
@@ -707,8 +712,13 @@ export default function Dashboard() {
   const [phaseSel, setPhaseSel] = usePersistentState('nutri.dash.phaseSel', { kind: 'actual' }); // {kind:'actual'|'previa'} | {kind:'goal', goal}
   const [customStart, setCustomStart] = usePersistentState('nutri.dash.customStart', addDaysISO(todayISO(), -6));
   const [customEnd, setCustomEnd] = usePersistentState('nutri.dash.customEnd', todayISO());
-  const [savedRanges, setSavedRanges] = usePersistentState('nutri.dash.savedRanges', []); // rangos custom guardados: [{start,end,name?}]
+  // Rangos guardados: [{id,start,end,name?}]. end:null = ABIERTO (hasta hoy) — no
+  // se puede congelar una fecha o el rango envejecería en silencio.
+  const [savedRanges, setSavedRanges] = usePersistentState('nutri.dash.savedRanges', []);
+  const [activeRangeId, setActiveRangeId] = usePersistentState('nutri.dash.activeRangeId', null); // rango guardado abierto; null = custom manual
   const [rangeName, setRangeName] = useState(''); // nombre opcional al guardar un rango
+  const [editKey, setEditKey] = useState(null); // id del rango en edición; null = no se está editando
+  const [rollingEnd, setRollingEnd] = useState(false); // checkbox "Hasta hoy" del formulario
   const [dailyTotals, setDailyTotals] = useState([]);
   const [prevDailyTotals, setPrevDailyTotals] = useState([]);
   const [historyTotals, setHistoryTotals] = useState([]); // daily_totals(day,kcal) últimos 90 días, para completitud
@@ -734,6 +744,15 @@ export default function Dashboard() {
   // 'hoy' lee el día actual; todo lo demás ancla en ayer.
   const lastClosed = addDaysISO(today, -1);
   const presetDef = PRESETS.find((p) => p.key === preset) || PRESETS[1]; // 'custom'/'fase' caen a semana
+
+  // Rango guardado abierto (si lo hay). Sin uno, el custom es manual y el
+  // formulario es la única vista posible: si no, no habría cómo editarlo.
+  const activeRange = savedRanges.find((r) => rangeId(r) === activeRangeId) || null;
+  const showRangeForm = !activeRange || editKey !== null;
+  // El fin abierto se RESUELVE en cada render, no se lee de disco: por eso el
+  // mismo rango vale un día más mañana.
+  const openEnded = showRangeForm ? rollingEnd : activeRange.end == null;
+  const effectiveEnd = openEnded ? today : customEnd;
 
   // Fases con al menos un día cerrado, con el fin recortado a ayer. Las
   // programadas o iniciadas hoy no tienen días cerrados: no entran al selector.
@@ -763,12 +782,12 @@ export default function Dashboard() {
         : t('Fase previa');
 
   const anchor = preset === 'hoy' ? today : lastClosed;
-  const clampedCustomEnd = customEnd > lastClosed ? lastClosed : customEnd;
+  const clampedCustomEnd = effectiveEnd > lastClosed ? lastClosed : effectiveEnd;
   const start = phaseMode ? phaseDays[0] : preset === 'custom' ? customStart : addDaysISO(anchor, -(presetDef.days - 1));
   const end = phaseMode ? phaseDays[phaseDays.length - 1] : preset === 'custom' ? clampedCustomEnd : anchor;
   // Recorte explícito de una selección del usuario → se declara la causa.
   const excludesToday =
-    preset === 'custom' ? customEnd >= today : phaseMode ? selectedPhases.some((p) => p.ongoing) : false;
+    preset === 'custom' ? effectiveEnd >= today : phaseMode ? selectedPhases.some((p) => p.ongoing) : false;
 
   useEffect(() => {
     // SWR: si este rango ya se vio en la sesión, pinta el cache al instante
@@ -803,20 +822,44 @@ export default function Dashboard() {
   }
 
   // Rangos custom guardados (localStorage, per-device como el propio custom range).
-  const rangeExists = savedRanges.some((r) => r.start === customStart && r.end === customEnd);
+  const rangeInvalid = !rollingEnd && customStart > customEnd;
   function saveCurrentRange() {
-    if (customStart > customEnd || rangeExists) return;
+    if (rangeInvalid) return;
     const name = rangeName.trim();
-    setSavedRanges([...savedRanges, name ? { start: customStart, end: customEnd, name } : { start: customStart, end: customEnd }]);
-    setRangeName('');
+    const data = { start: customStart, end: rollingEnd ? null : customEnd, ...(name ? { name } : {}) };
+    const id = editKey ?? crypto.randomUUID();
+    setSavedRanges(
+      editKey ? savedRanges.map((r) => (rangeId(r) === editKey ? { ...data, id } : r)) : [...savedRanges, { ...data, id }],
+    );
+    setActiveRangeId(id);
+    setEditKey(null);
   }
+  // Aplicar = abrir en solo lectura. customEnd guarda la fecha con la que se
+  // editaría si el rango es abierto: el input de Fin necesita un valor.
   function applyRange(r) {
     setCustomStart(r.start);
-    setCustomEnd(r.end);
+    setCustomEnd(r.end ?? lastClosed);
+    setRollingEnd(r.end == null);
+    setRangeName(r.name || '');
+    setActiveRangeId(rangeId(r));
+    setEditKey(null);
+    setPreset('custom');
+  }
+  function editRange(r) {
+    applyRange(r);
+    setEditKey(rangeId(r));
+  }
+  // Custom manual: sin rango activo, showRangeForm queda en true por sí solo.
+  function newRange() {
+    setActiveRangeId(null);
+    setEditKey(null);
+    setRangeName('');
+    setRollingEnd(false);
     setPreset('custom');
   }
   function deleteRange(r) {
-    setSavedRanges(savedRanges.filter((x) => !(x.start === r.start && x.end === r.end)));
+    setSavedRanges(savedRanges.filter((x) => rangeId(x) !== rangeId(r)));
+    if (activeRangeId === rangeId(r)) newRange();
   }
 
   async function load() {
@@ -1337,9 +1380,12 @@ export default function Dashboard() {
         </div>
         <CustomMenu
           active={preset === 'custom'}
+          label={(preset === 'custom' && activeRange?.name) || t('Custom')}
           savedRanges={savedRanges}
-          onPersonalizado={() => setPreset('custom')}
+          activeId={activeRangeId}
+          onPersonalizado={newRange}
           onApply={applyRange}
+          onEdit={editRange}
           onDelete={deleteRange}
         />
         <PhaseMenu
@@ -1373,22 +1419,42 @@ export default function Dashboard() {
         </p>
       )}
 
-      {preset === 'custom' && (
-        <div className="flex flex-col gap-2">
+      {/* Rango guardado abierto: solo se LEE. Editar y borrar viven únicamente en
+          el menú — administrar el objeto no es tarea de la vista de datos. */}
+      {preset === 'custom' && !showRangeForm && (
+        <p className="font-mono text-xs text-text-3">
+          {customStart} → {clampedCustomEnd} · {t('%d días').replace('%d', dates.length)}
+        </p>
+      )}
+
+      {preset === 'custom' && showRangeForm && (
+        <div className="flex flex-col gap-2 max-w-xl">
           <div className="flex gap-2">
-            <input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              className="flex-1 min-w-0 input"
-            />
-            <input
-              type="date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              className="flex-1 min-w-0 input"
-            />
+            <label className="flex-1 min-w-0 flex flex-col gap-1">
+              <span className="text-xs text-text-3">{t('Inicio')}</span>
+              <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="input" />
+            </label>
+            <label className="flex-1 min-w-0 flex flex-col gap-1">
+              <span className="text-xs text-text-3">{t('Fin')}</span>
+              {rollingEnd ? (
+                <div className="input flex items-center border-dashed bg-surface text-text-3">{t('Hoy')}</div>
+              ) : (
+                <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="input" />
+              )}
+            </label>
           </div>
+          <label className="flex items-start gap-2 py-1 min-h-[44px] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={rollingEnd}
+              onChange={(e) => setRollingEnd(e.target.checked)}
+              className="mt-1 w-5 h-5 shrink-0 accent-[var(--accent-deep)]"
+            />
+            <span>
+              <span className="block text-sm">{t('Hasta hoy')}</span>
+              <span className="block text-xs text-text-3">{t('El rango crece solo: mañana incluirá un día más.')}</span>
+            </span>
+          </label>
           <div className="flex gap-2">
             <input
               type="text"
@@ -1400,16 +1466,20 @@ export default function Dashboard() {
             />
             <button
               onClick={saveCurrentRange}
-              disabled={customStart > customEnd || rangeExists}
+              disabled={rangeInvalid}
               className={`shrink-0 rounded-xl px-4 text-sm font-medium press ${
-                customStart > customEnd || rangeExists
-                  ? 'bg-surface-2 text-text-3 cursor-not-allowed'
-                  : 'bg-accent-deep text-on-accent'
+                rangeInvalid ? 'bg-surface-2 text-text-3 cursor-not-allowed' : 'bg-accent-deep text-on-accent'
               }`}
             >
-              {rangeExists ? t('Guardado') : t('Guardar rango')}
+              {editKey ? t('Guardar cambios') : t('Guardar rango')}
             </button>
           </div>
+          {rangeInvalid && <p className="text-xs text-danger">{t('La fecha de inicio va después del fin.')}</p>}
+          {editKey && (
+            <button onClick={() => setEditKey(null)} className="self-end text-sm text-text-2 px-3 py-2 min-h-[44px] press">
+              {t('Cancelar')}
+            </button>
+          )}
         </div>
       )}
 
@@ -1957,26 +2027,30 @@ function ExportMenu({ calcLabel, onRaw, onResumen, onInforme }) {
   );
 }
 
-// Menú Custom: activa el rango personalizado y lista los rangos guardados
-// (aplicar / borrar). Anclado con useOutsideClose + glass, fuera del scroller
-// de presets (su overflow-x recortaría el popover), igual que PhaseMenu.
-function CustomMenu({ active, savedRanges, onPersonalizado, onApply, onDelete }) {
+// Menú Custom: activa el rango personalizado y lista los guardados. ÚNICO lugar
+// donde se edita o borra un rango — la vista de datos solo los lee. Anclado con
+// useOutsideClose + glass, fuera del scroller de presets (su overflow-x
+// recortaría el popover), igual que PhaseMenu.
+function CustomMenu({ active, label, savedRanges, activeId, onPersonalizado, onApply, onEdit, onDelete }) {
   const [open, setOpen] = useState(false);
   const ref = useOutsideClose(open, setOpen);
-  const fmt = (r) => `${r.start.slice(5)} → ${r.end.slice(5)}`; // MM-DD, como el eje de los charts
+  const fmt = (r) => `${r.start.slice(5)} → ${r.end ? r.end.slice(5) : t('Hoy')}`; // MM-DD, como el eje de los charts
 
   return (
     <div className="relative shrink-0" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className={`px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap press ${
+        className={`flex items-center gap-1 px-3 py-2 min-h-[44px] max-w-[10rem] rounded-full text-sm press ${
           active ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2 border border-border'
         }`}
       >
-        {t('Custom')} {open ? '▴' : '▾'}
+        <span className="truncate">{label}</span>
+        <span className="shrink-0">{open ? '▴' : '▾'}</span>
       </button>
       {open && (
+        // w-64 es el máximo que cabe: el popover se ancla al borde derecho del
+        // disparador (x≈264 a 375 px), y 288 px se salían por la izquierda.
         <div className="absolute z-50 top-full right-0 mt-1 w-64 rounded-xl border border-border p-1 shadow-lg glass">
           <button
             onClick={() => {
@@ -1984,7 +2058,7 @@ function CustomMenu({ active, savedRanges, onPersonalizado, onApply, onDelete })
               onPersonalizado();
             }}
             className={`w-full text-left rounded-lg px-3 py-2 min-h-[44px] hover:bg-surface-2 press ${
-              active ? 'text-accent-glass font-medium' : 'text-text-2'
+              active && !activeId ? 'text-accent-glass font-medium' : 'text-text-2'
             }`}
           >
             <span className="block text-sm">{t('Personalizado…')}</span>
@@ -1995,13 +2069,15 @@ function CustomMenu({ active, savedRanges, onPersonalizado, onApply, onDelete })
               <p className="px-3 py-2 text-[11px] text-text-3">{t('Guarda un rango para reutilizarlo aquí.')}</p>
             ) : (
               savedRanges.map((r) => (
-                <div key={`${r.start}_${r.end}`} className="flex items-center gap-1">
+                <div key={rangeId(r)} className="flex items-center gap-1">
                   <button
                     onClick={() => {
                       setOpen(false);
                       onApply(r);
                     }}
-                    className="flex-1 min-w-0 text-left rounded-lg px-3 py-2 min-h-[44px] hover:bg-surface-2 press text-text-2"
+                    className={`flex-1 min-w-0 text-left rounded-lg px-3 py-2 min-h-[44px] hover:bg-surface-2 press ${
+                      rangeId(r) === activeId ? 'text-accent-glass font-medium' : 'text-text-2'
+                    }`}
                   >
                     {r.name ? (
                       <>
@@ -2013,11 +2089,21 @@ function CustomMenu({ active, savedRanges, onPersonalizado, onApply, onDelete })
                     )}
                   </button>
                   <button
+                    onClick={() => {
+                      setOpen(false);
+                      onEdit(r);
+                    }}
+                    aria-label={t('Editar rango')}
+                    className="w-11 h-11 shrink-0 flex items-center justify-center text-text-3 hover:text-text press rounded-lg"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button
                     onClick={() => onDelete(r)}
                     aria-label={t('Eliminar rango')}
-                    className="w-9 h-9 shrink-0 flex items-center justify-center text-text-3 hover:text-danger press rounded-lg"
+                    className="w-11 h-11 shrink-0 flex items-center justify-center text-text-3 hover:text-danger press rounded-lg"
                   >
-                    ✕
+                    <Trash2 size={16} />
                   </button>
                 </div>
               ))
