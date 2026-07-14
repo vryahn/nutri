@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pencil, Trash2 } from 'lucide-react';
 import {
@@ -735,6 +735,10 @@ export default function Dashboard() {
   const [csvNotice, setCsvNotice] = useState('');
   const [toast, showToast] = useToast();
   const [loading, setLoading] = useState(true);
+  const [refetching, setRefetching] = useState(false);
+  // Skeleton solo en la 1ª carga: cambiar de rango no debe desmontar la página
+  // (desmontaba el propio formulario del rango y cerraba el date picker).
+  const loadedOnce = useRef(false);
   const [calcMode, setCalcMode] = usePersistentState('nutri.dash.calcMode', 'promedio');
   const [trendKey, setTrendKey] = usePersistentState('nutri.dash.trendKey', 'protein_g');
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -796,7 +800,10 @@ export default function Dashboard() {
     // (sin skeleton) y el load() de fondo actualiza al llegar.
     const cached = cacheGet(`dash:${start}:${end}`);
     if (cached) applyData(cached);
-    load();
+    // Teclear una fecha en el rango custom pasa por fechas intermedias válidas
+    // (0202-…, 2020-…): sin debounce cada una dispara las 7 queries de load().
+    const timer = setTimeout(load, cached || !loadedOnce.current ? 0 : 250);
+    return () => clearTimeout(timer);
   }, [start, end]);
 
   function applyData(d) {
@@ -809,7 +816,9 @@ export default function Dashboard() {
     setDashboards(d.dashboards);
     setWaterFoodId(d.waterFoodId);
     setItemRows(d.items);
+    loadedOnce.current = true;
     setLoading(false);
+    setRefetching(false);
   }
 
   // Persiste las gráficas personalizadas en prefs.data.dashboards vía merge_prefs
@@ -886,7 +895,8 @@ export default function Dashboard() {
   }
 
   async function load() {
-    if (!cacheGet(`dash:${start}:${end}`)) setLoading(true);
+    if (!loadedOnce.current) setLoading(true);
+    else if (!cacheGet(`dash:${start}:${end}`)) setRefetching(true);
     setCsvNotice('');
     const { prevStart, prevEnd } = prevRangeOf(start, end);
     const historyEnd = addDaysISO(todayISO(), -1); // hoy a medias no entra a la mediana de completitud
@@ -903,6 +913,7 @@ export default function Dashboard() {
     if (results.some((r) => r.error)) {
       showToast(t('No se pudo cargar el Dashboard — revisa tu conexión.'));
       setLoading(false);
+      setRefetching(false);
       return;
     }
     const [{ data: dt }, { data: prevDt }, { data: hist }, { data: tg }, { data: pf }, { data: items }, { data: body }] = results;
@@ -1373,7 +1384,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="px-4 py-4 flex flex-col gap-4">
+    <div className={`px-4 py-4 flex flex-col gap-4 ${refetching ? 'opacity-60 transition-opacity' : ''}`} aria-busy={refetching}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-xl">{t('Dashboard')}</h1>
         <ExportMenu calcLabel={calcHeader(calcMode)} onRaw={exportCSV} onResumen={exportResumenCSV} onInforme={exportInforme} />
