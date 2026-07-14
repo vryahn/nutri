@@ -28,6 +28,7 @@ import { useOutsideClose } from '../lib/useOutsideClose.js';
 import { useToast } from '../lib/useToast.js';
 import Hint from '../components/Hint.jsx';
 import PageSkeleton from '../components/PageSkeleton.jsx';
+import UndoToast from '../components/UndoToast.jsx';
 import CustomCharts from '../components/CustomChart.jsx';
 import {
   MICROS,
@@ -719,6 +720,7 @@ export default function Dashboard() {
   const [rangeName, setRangeName] = useState(''); // nombre opcional al guardar un rango
   const [editKey, setEditKey] = useState(null); // id del rango en edición; null = no se está editando
   const [rollingEnd, setRollingEnd] = useState(false); // checkbox "Hasta hoy" del formulario
+  const [undoRange, setUndoRange] = useState(null); // { range, index, prevActiveId, timer } tras borrar, para "Deshacer"
   const [dailyTotals, setDailyTotals] = useState([]);
   const [prevDailyTotals, setPrevDailyTotals] = useState([]);
   const [historyTotals, setHistoryTotals] = useState([]); // daily_totals(day,kcal) últimos 90 días, para completitud
@@ -857,9 +859,30 @@ export default function Dashboard() {
     setRollingEnd(false);
     setPreset('custom');
   }
+  // Borrar es inmediato + "Deshacer" 5 s (mismo patrón que Foods/Recipes): una
+  // confirmación cobraría peaje en cada borrado correcto; el undo, solo en los errados.
   function deleteRange(r) {
+    const index = savedRanges.findIndex((x) => rangeId(x) === rangeId(r));
+    if (index < 0) return;
+    if (undoRange) clearTimeout(undoRange.timer); // un borrado seguido pisa el anterior
     setSavedRanges(savedRanges.filter((x) => rangeId(x) !== rangeId(r)));
+    setUndoRange({
+      range: r,
+      index,
+      prevActiveId: activeRangeId,
+      timer: setTimeout(() => setUndoRange(null), 5000),
+    });
     if (activeRangeId === rangeId(r)) newRange();
+  }
+
+  function undoDeleteRange() {
+    if (!undoRange) return;
+    clearTimeout(undoRange.timer);
+    const next = [...savedRanges];
+    next.splice(undoRange.index, 0, undoRange.range); // vuelve a SU posición, no al final
+    setSavedRanges(next);
+    if (undoRange.prevActiveId === rangeId(undoRange.range)) applyRange(undoRange.range);
+    setUndoRange(null);
   }
 
   async function load() {
@@ -1951,7 +1974,9 @@ export default function Dashboard() {
       </>
       )}
 
-      {toast && (
+      {undoRange && <UndoToast message={t('Rango borrado')} onUndo={undoDeleteRange} />}
+
+      {!undoRange && toast && (
         <div
           role="status"
           aria-live="polite"

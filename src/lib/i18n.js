@@ -399,6 +399,7 @@ const EN = {
   'Guarda un rango para reutilizarlo aquí.': 'Save a range to reuse it here.',
   'Editar rango': 'Edit range',
   'Eliminar rango': 'Delete range',
+  'Rango borrado': 'Range deleted',
   '%d días': '%d days',
   Fases: 'Phases',
   'Fase actual': 'Current phase',
