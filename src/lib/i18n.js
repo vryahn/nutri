@@ -122,6 +122,7 @@ const EN = {
     'Atypical values, already reviewed by you. The warning returns if you change the values.',
   'Sin alimentos aún': 'No foods yet',
   'Crear el primero': 'Create the first one',
+  'Sin coincidencias con tu búsqueda': 'No matches for your search',
   'Valores nutricionales requieren revisión': 'Nutritional values need review',
   'Sin resultados con estos filtros.': 'No results with these filters.',
   'Selecciona un alimento o crea uno nuevo': 'Select a food or create a new one',

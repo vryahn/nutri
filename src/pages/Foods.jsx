@@ -317,13 +317,19 @@ export default function Foods() {
 
         {!loading && foods.length === 0 && (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
-            <p className="text-text-2">{t('Sin alimentos aún')}</p>
-            <button
-              onClick={() => setEditing(EMPTY_FOOD)}
-              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press"
-            >
-              {t('Crear el primero')}
-            </button>
+            {query.trim() && cacheGet('foods')?.length > 0 ? (
+              <p className="text-text-2">{t('Sin coincidencias con tu búsqueda')}</p>
+            ) : (
+              <>
+                <p className="text-text-2">{t('Sin alimentos aún')}</p>
+                <button
+                  onClick={() => setEditing(EMPTY_FOOD)}
+                  className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press"
+                >
+                  {t('Crear el primero')}
+                </button>
+              </>
+            )}
           </div>
         )}
 
