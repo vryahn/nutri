@@ -8,6 +8,7 @@ import { useToast } from '../lib/useToast.js';
 import ImportSheet from '../components/ImportSheet.jsx';
 import Hint from '../components/Hint.jsx';
 import ConfirmSheet from '../components/ConfirmSheet.jsx';
+import UndoToast from '../components/UndoToast.jsx';
 import { t, useLang, locale, useSleepThreshold } from '../lib/i18n.js';
 import {
   todayISO,
@@ -63,6 +64,7 @@ export default function Body() {
   const [reloadKey, setReloadKey] = useState(0);
   const [toast, showToast] = useToast();
   const [confirmPhoto, setConfirmPhoto] = useState(null); // path de la foto pendiente de confirmar su borrado
+  const [undoRow, setUndoRow] = useState(null); // { day, row: {metrics,note,photo_paths}, timer }: fila borrada al vaciar todos sus campos
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
@@ -147,9 +149,23 @@ export default function Body() {
     const metrics = cleanNumericMap(nextValues);
     const noteTrim = (nextNote ?? '').trim();
     const photoPaths = nextPhotos ?? [];
-    // Sin medidas, nota ni fotos → no dejar una fila vacía en la DB.
+    // Sin medidas, nota ni fotos → no dejar una fila vacía en la DB. Borrado de UN
+    // registro = optimista + Undo (política de borrado del proyecto): se captura la
+    // fila antes de borrarla para poder reinsertarla tal cual.
     if (Object.keys(metrics).length === 0 && !noteTrim && photoPaths.length === 0) {
-      await supabase.from('body_metrics').delete().eq('day', date);
+      const { data: prevRow } = await supabase
+        .from('body_metrics')
+        .select('metrics, note, photo_paths')
+        .eq('day', date)
+        .maybeSingle();
+      const { error } = await supabase.from('body_metrics').delete().eq('day', date);
+      if (!error && prevRow) {
+        setUndoRow((prev) => {
+          if (prev?.timer) clearTimeout(prev.timer);
+          const timer = setTimeout(() => setUndoRow(null), 5000);
+          return { day: date, row: prevRow, timer };
+        });
+      }
     } else {
       await supabase.from('body_metrics').upsert(
         { owner: userId, day: date, metrics, note: noteTrim || null, photo_paths: photoPaths },
@@ -158,6 +174,29 @@ export default function Body() {
     }
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 1200);
+    loadHistory();
+  }
+
+  // Reinserta la fila capturada por persist() antes de borrarla. Si sigue en el
+  // mismo día, también refresca el formulario visible (si no, solo la DB/historial).
+  async function undoDeleteRow() {
+    if (!undoRow) return;
+    clearTimeout(undoRow.timer);
+    const { day, row } = undoRow;
+    setUndoRow(null);
+    const { error } = await supabase.from('body_metrics').upsert(
+      { owner: userId, day, metrics: row.metrics || {}, note: row.note || null, photo_paths: row.photo_paths || [] },
+      { onConflict: 'owner,day' },
+    );
+    if (error) {
+      showToast(t('No se pudo deshacer.'));
+      return;
+    }
+    if (day === date) {
+      setValues(Object.fromEntries(Object.entries(row.metrics || {}).map(([k, v]) => [k, String(v)])));
+      setNote(row.note || '');
+      setPhotos(row.photo_paths || []);
+    }
     loadHistory();
   }
 
@@ -522,6 +561,7 @@ export default function Body() {
           onClose={() => setConfirmPhoto(null)}
         />
       )}
+      {undoRow && <UndoToast message={t('Medida borrada')} onUndo={undoDeleteRow} />}
       {toast}
     </div>
   );

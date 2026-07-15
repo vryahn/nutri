@@ -540,6 +540,7 @@ const EN = {
   'Añadir registro': 'Add entry',
   'Registro borrado': 'Entry deleted',
   'Objetivo borrado': 'Target deleted',
+  'Medida borrada': 'Measurement deleted',
   'Plantilla borrada': 'Template deleted',
   'No se pudo deshacer.': 'Could not undo.',
   Deshacer: 'Undo',
