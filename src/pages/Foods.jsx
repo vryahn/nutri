@@ -280,7 +280,7 @@ export default function Foods() {
             >
               <Upload size={16} /> {t('Importar')}
             </button>
-            <div className="hidden lg:flex gap-2 flex-1">
+            <div className="flex gap-2 flex-1">
               <select
                 value={filterSource}
                 onChange={(e) => setFilterSource(e.target.value)}
