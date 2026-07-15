@@ -1144,6 +1144,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         <PortionsEditor
           portions={form.portions}
           onChange={(portions) => setForm((f) => ({ ...f, portions }))}
+          density={Number(form.density_g_ml) || 0}
         />
 
         <Field label={t('Fuente')}>
