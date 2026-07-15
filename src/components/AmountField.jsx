@@ -18,7 +18,7 @@ export default function AmountField({ grams, onGrams, meta, placeholder, require
   const density = Number(meta?.density_g_ml) || 0;
   const portions = meta?.portions || [];
   const usesAlt = unit === 'ml' || unit === 'floz';
-  const altFromG = (g) => (unit === 'ml' ? round(g / density, 1) : round(mlToFlOz(g / density), 2));
+  const altFromG = (g, u = unit) => (u === 'ml' ? round(g / density, 1) : round(mlToFlOz(g / density), 2));
   const altPlaceholder = placeholder != null && density > 0 && usesAlt ? String(altFromG(Number(placeholder))) : undefined;
 
   function gramsFromUnit(v, u) {
@@ -42,7 +42,7 @@ export default function AmountField({ grams, onGrams, meta, placeholder, require
   function switchUnit(u) {
     if (u === unit) return;
     setUnit(u);
-    if (u === 'ml' || u === 'floz') setAlt(grams === '' ? '' : String(altFromG(Number(grams))));
+    if (u === 'ml' || u === 'floz') setAlt(grams === '' ? '' : String(altFromG(Number(grams), u)));
   }
 
   function addPortion(p) {
