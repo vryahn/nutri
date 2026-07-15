@@ -453,10 +453,11 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     const t = setTimeout(async () => {
       const { data } = await supabase
         .from('foods')
-        .select('id, name, kcal, protein_g, carbs_g, fat_g, micros, density_g_ml, portions')
+        .select('id, name, kcal, protein_g, carbs_g, fat_g, micros, density_g_ml, portions, source')
         .ilike('name', `%${query.trim()}%`)
         .limit(8);
-      setResults(data || []);
+      // catálogo base (usda) al final, estable
+      setResults([...(data || [])].sort((a, b) => (a.source === 'usda') - (b.source === 'usda')));
     }, 250);
     return () => clearTimeout(t);
   }, [query]);
@@ -1049,10 +1050,11 @@ function StagedIngredientCard({ ing, onFood, onGrams, onSave, onRemove, onSwapCa
     const t = setTimeout(async () => {
       const { data } = await supabase
         .from('foods')
-        .select('id, name, kcal, protein_g, carbs_g, fat_g, micros, density_g_ml, portions')
+        .select('id, name, kcal, protein_g, carbs_g, fat_g, micros, density_g_ml, portions, source')
         .ilike('name', `%${query.trim()}%`)
         .limit(8);
-      setResults(data || []);
+      // catálogo base (usda) al final, estable
+      setResults([...(data || [])].sort((a, b) => (a.source === 'usda') - (b.source === 'usda')));
     }, 250);
     return () => clearTimeout(t);
   }, [query]);

@@ -141,6 +141,8 @@ const EN = {
   baja: 'low',
   Volver: 'Back',
   'Editar alimento': 'Edit food',
+  'Alimento del catálogo base — al guardar se creará tu propia copia.':
+    'Base catalog food — saving will create your own copy.',
   'Describe el alimento, pega un código de barras (EAN) o adjunta una foto de etiqueta/platillo':
     'Describe the food, paste a barcode (EAN) or attach a photo of the label/dish',
   'Etiqueta legible → se transcribe. EAN → Open Food Facts. Si no, estimación IA con chips USDA para genéricos. Siempre por 100 g; revisa antes de guardar.':
@@ -524,6 +526,7 @@ const EN = {
   'Tamaño de vaso (ml)': 'Glass size (ml)',
   'Tamaño de vaso (fl oz)': 'Glass size (fl oz)',
   Guardar: 'Save',
+  'Guardar copia': 'Save copy',
 
   // Sodium warning
   '⚠ sodio < %n mg': '⚠ sodium < %n mg',

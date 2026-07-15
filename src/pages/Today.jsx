@@ -1941,14 +1941,17 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
     const timer = setTimeout(async () => {
       const q = query.trim().replace(/[,()]/g, ' ');
       const [{ data: foods }, { data: recipes }] = await Promise.all([
-        supabase.from('foods').select('id,name,brand').or(`name.ilike.%${q}%,brand.ilike.%${q}%`).limit(8),
+        supabase.from('foods').select('id,name,brand,source').or(`name.ilike.%${q}%,brand.ilike.%${q}%`).limit(8),
         supabase.from('recipes').select('id,name').ilike('name', `%${q}%`).limit(8),
       ]);
-      setResults([
+      const combined = [
         // el Agua se registra desde su tarjeta, no como comida
         ...(foods || []).filter((f) => f.id !== waterFoodId).map((f) => ({ ...f, type: 'food' })),
         ...(recipes || []).map((r) => ({ ...r, type: 'recipe' })),
-      ]);
+      ];
+      // catálogo base (usda) al final; estable, conserva el orden dentro de cada grupo
+      combined.sort((a, b) => (a.source === 'usda') - (b.source === 'usda'));
+      setResults(combined);
     }, 250);
     return () => clearTimeout(timer);
   }, [query]);

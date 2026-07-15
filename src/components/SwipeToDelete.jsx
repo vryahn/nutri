@@ -40,7 +40,7 @@ export default function SwipeToDelete({
   }
 
   function onPointerMove(ev) {
-    if (dragDisabled || !gesture.current.tracking) return;
+    if (dragDisabled || !onDelete || !gesture.current.tracking) return;
     const dx = ev.clientX - gesture.current.startX;
     const dy = ev.clientY - gesture.current.startY;
     if (!gesture.current.swiping) {
@@ -61,7 +61,7 @@ export default function SwipeToDelete({
     const cardWidth = cardRef.current?.offsetWidth || 300;
     const threshold = Math.min(96, cardWidth * 0.35);
     if (Math.abs(swipeX) > threshold) {
-      onDelete();
+      onDelete?.();
       if (resetOnDelete) {
         setRestoring(true);
         setSwipeX(0);

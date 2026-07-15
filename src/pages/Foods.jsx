@@ -215,7 +215,7 @@ export default function Foods() {
           onToggleFav={toggleFav}
           onCancel={() => setEditing(null)}
           onSave={handleSave}
-          onDelete={editing.id ? () => handleDelete(editing.id) : null}
+          onDelete={editing.id && editing.owner ? () => handleDelete(editing.id) : null}
         />
       </div>
     );
@@ -243,6 +243,9 @@ export default function Foods() {
       if (av > bv) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
+  } else if (query.trim()) {
+    // catálogo base (usda) al final, solo con búsqueda activa y sin sort explícito
+    visibleFoods = [...visibleFoods].sort((a, b) => (a.source === 'usda') - (b.source === 'usda'));
   }
 
   return (
@@ -340,7 +343,7 @@ export default function Foods() {
               <SwipeToDelete
                 key={f.id}
                 onTap={() => setEditing(f)}
-                onDelete={() => handleDelete(f.id)}
+                onDelete={f.owner ? () => handleDelete(f.id) : undefined}
                 className="rounded-2xl bg-surface border border-border p-4"
               >
                 <div className="flex justify-between items-baseline gap-2">
@@ -405,16 +408,18 @@ export default function Foods() {
                             <AlertTriangle size={14} className="text-warn" aria-label={t('Valores nutricionales requieren revisión')} />
                           )}
                         </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(f.id);
-                          }}
-                          className="p-1.5 text-text-2 hover:text-danger opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                          aria-label={`${t('Borrar')} ${f.name}`}
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {f.owner && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(f.id);
+                            }}
+                            className="p-1.5 text-text-2 hover:text-danger opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                            aria-label={`${t('Borrar')} ${f.name}`}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -440,7 +445,7 @@ export default function Foods() {
               onToggleFav={toggleFav}
               onCancel={() => setEditing(null)}
               onSave={handleSave}
-              onDelete={editing.id ? () => handleDelete(editing.id) : null}
+              onDelete={editing.id && editing.owner ? () => handleDelete(editing.id) : null}
             />
           </div>
         ) : (
@@ -772,6 +777,10 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const warned = Boolean(suspicious || implausible || inconsistent);
   // kcal vacío → se guarda el cálculo por macros (el placeholder que ve el usuario)
   const submitValues = () => normalizeTo100({ ...form, kcal: form.kcal === '' ? kcalCalc : form.kcal });
+  // Alimento del catálogo base (owner null): guardar SIEMPRE crea una copia propia
+  // (sin id → handleSave toma la rama insert; el server asigna owner = auth.uid()).
+  const isBaseFood = food.owner === null;
+  const save = (values) => onSave(isBaseFood ? { ...values, id: undefined } : values);
   const hiddenMicros = MICROS.slice(MICROS_DEFAULT);
   const basisDensity = Number(form.density_g_ml) || 0;
   const basisBlocked = basisUnit === 'ml' && !(basisDensity > 0);
@@ -787,6 +796,12 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         </button>
         <h1 className="font-display text-xl">{form.id ? t('Editar alimento') : t('Nuevo alimento')}</h1>
       </div>
+
+      {food.owner === null && (
+        <p className="text-sm text-accent">
+          {t('Alimento del catálogo base — al guardar se creará tu propia copia.')}
+        </p>
+      )}
 
       {GEMINI_KEY && (
         <AiDataCard
@@ -869,7 +884,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         onSubmit={(e) => {
           e.preventDefault();
           if (basisBlocked) return; // botón ya deshabilitado; guarda por si el submit llega por Enter
-          onSave(submitValues());
+          save(submitValues());
         }}
         className="flex flex-col gap-4"
       >
@@ -1072,7 +1087,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           <button
             type="button"
             disabled={basisBlocked}
-            onClick={() => onSave({ ...submitValues(), reviewed_at: new Date().toISOString() })}
+            onClick={() => save({ ...submitValues(), reviewed_at: new Date().toISOString() })}
             className="self-start min-h-[44px] px-4 rounded-xl border border-warn text-warn font-medium press disabled:opacity-40"
           >
             {t('Marcar revisado')}
@@ -1166,7 +1181,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           disabled={basisBlocked}
           className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-40"
         >
-          {t('Guardar')}
+          {isBaseFood ? t('Guardar copia') : t('Guardar')}
         </button>
 
         {onDelete && (
