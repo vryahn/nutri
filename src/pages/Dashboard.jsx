@@ -26,10 +26,12 @@ import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { useOutsideClose } from '../lib/useOutsideClose.js';
 import { useToast } from '../lib/useToast.js';
+import { GEMINI_KEY, planAskQuery, formatAskContext, askAnswer } from '../lib/ai.js';
 import Hint from '../components/Hint.jsx';
 import PageSkeleton from '../components/PageSkeleton.jsx';
 import UndoToast from '../components/UndoToast.jsx';
 import CustomCharts from '../components/CustomChart.jsx';
+import Sheet from '../components/Sheet.jsx';
 import {
   MICROS,
   MICROS_DEFAULT,
@@ -751,6 +753,10 @@ export default function Dashboard() {
   const [trendKey, setTrendKey] = usePersistentState('nutri.dash.trendKey', 'protein_g');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [printing, setPrinting] = useState(false); // monta #print-report y dispara window.print()
+  const [askOpen, setAskOpen] = useState(false);
+  const [askHistory, setAskHistory] = useState([]); // [{q,a,clamped}], solo en memoria — sin hilo conversacional
+  const [askQuestion, setAskQuestion] = useState('');
+  const [askLoading, setAskLoading] = useState(false);
 
   const today = todayISO();
   // El Dashboard analiza días TERMINADOS: el día en curso (a medias hasta la
@@ -936,6 +942,40 @@ export default function Dashboard() {
       waterFoodId: pf?.data?.water_food_id || null,
       items: items || [],
     }));
+  }
+
+  // "Pregúntale a tu bitácora": planner (IA) → SQL (Supabase) → generación
+  // (IA) con citas. Cada pregunta es independiente (sin hilo conversacional);
+  // el par se agrega al historial en memoria del sheet. Nunca lanza: cualquier
+  // fallo del pipeline cae en el mensaje de error como respuesta del par.
+  async function submitAsk() {
+    const q = askQuestion.trim();
+    if (!q || askLoading) return;
+    setAskQuestion('');
+    setAskLoading(true);
+    try {
+      const lang = getLang();
+      const plan = await planAskQuery(q, todayISO(), lang);
+      const [{ data: dt, error: e1 }, { data: items, error: e2 }] = await Promise.all([
+        supabase.from('daily_totals').select('*').gte('day', plan.date_from).lte('day', plan.date_to),
+        plan.need_detail
+          ? supabase.from('entry_nutrients').select('day,item,grams,kcal,protein_g,carbs_g,fat_g,micros').gte('day', plan.date_from).lte('day', plan.date_to)
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+      if (e1 || e2) throw e1 || e2;
+      // targets ya está cargado sin filtro de fecha (query de load()): resolver
+      // aquí evita un round-trip extra idéntico al que ya hizo el Dashboard.
+      const targetByDay = Object.fromEntries(
+        datesInRange(plan.date_from, plan.date_to).map((d) => [d, resolveTarget(targets, d)]),
+      );
+      const contextStr = formatAskContext({ days: dt || [], targetByDay, entries: items, nutrients: plan.nutrients, lang });
+      const answer = await askAnswer(q, contextStr, lang);
+      setAskHistory((h) => [...h, { q, a: answer, clamped: plan.clamped }]);
+    } catch {
+      setAskHistory((h) => [...h, { q, a: t('No se pudo responder — intenta de nuevo'), clamped: false }]);
+    } finally {
+      setAskLoading(false);
+    }
   }
 
   async function exportCSV() {
@@ -1440,6 +1480,14 @@ export default function Dashboard() {
             setPreset('fase');
           }}
         />
+        {GEMINI_KEY && (
+          <button
+            onClick={() => setAskOpen(true)}
+            className="shrink-0 px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap bg-surface-2 border border-border text-text-2 press"
+          >
+            {t('Preguntar')}
+          </button>
+        )}
       </div>
 
       {preset === 'fase' && !phaseMode && (
@@ -2006,7 +2054,63 @@ export default function Dashboard() {
       )}
 
       {printing && createPortal(renderInforme(), document.body)}
+
+      {askOpen && (
+        <AskLogSheet
+          history={askHistory}
+          question={askQuestion}
+          onQuestion={setAskQuestion}
+          onSubmit={submitAsk}
+          loading={askLoading}
+          onClose={() => setAskOpen(false)}
+        />
+      )}
     </div>
+  );
+}
+
+// Sheet de "Pregúntale a tu bitácora": lista de pares pregunta/respuesta de
+// la sesión (sin hilo conversacional, cada pregunta se procesa sola) + input.
+// Nota de IA fija en el footer del Sheet compartido (regla del repo: cierre
+// al tocar fuera + stopPropagation ya los da Sheet.jsx).
+function AskLogSheet({ history, question, onQuestion, onSubmit, loading, onClose }) {
+  return (
+    <Sheet
+      title={t('Pregúntale a tu bitácora')}
+      onClose={onClose}
+      footer={<p className="text-xs text-text-3">{t('Respuesta generada por IA — verifica contra el Dashboard.')}</p>}
+    >
+      <div className="flex flex-col gap-3">
+        {history.length === 0 && !loading && (
+          <p className="text-sm text-text-3">{t('Pregunta algo sobre tus registros, p. ej. "¿Cuánto sodio comí esta semana?"')}</p>
+        )}
+        {history.map((pair, i) => (
+          <div key={i} className="flex flex-col gap-1">
+            <p className="text-sm font-medium text-text">{pair.q}</p>
+            <p className="text-sm text-text-2 whitespace-pre-wrap">{pair.a}</p>
+            {pair.clamped && <p className="text-xs text-warn">{t('Rango recortado a 92 días')}</p>}
+          </div>
+        ))}
+        {loading && <p className="text-sm text-text-3">{t('Pensando…')}</p>}
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={question}
+          onChange={(e) => onQuestion(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') onSubmit(); }}
+          disabled={loading}
+          placeholder={t('Escribe tu pregunta…')}
+          className="flex-1 min-w-0 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60"
+        />
+        <button
+          onClick={onSubmit}
+          disabled={loading || !question.trim()}
+          className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium disabled:opacity-40 press"
+        >
+          {t('Enviar')}
+        </button>
+      </div>
+    </Sheet>
   );
 }
 

@@ -915,6 +915,18 @@ const EN = {
   'Agua y electrolitos': 'Water and electrolytes',
   'Fechas especiales': 'Special dates',
   Techos: 'Ceilings',
+
+  // "Pregúntale a tu bitácora" (Dashboard)
+  Preguntar: 'Ask',
+  'Pregúntale a tu bitácora': 'Ask your log',
+  'Respuesta generada por IA — verifica contra el Dashboard.': 'AI-generated answer — verify against the Dashboard.',
+  'Pregunta algo sobre tus registros, p. ej. "¿Cuánto sodio comí esta semana?"':
+    'Ask something about your records, e.g. "How much sodium did I eat this week?"',
+  'Rango recortado a 92 días': 'Range clamped to 92 days',
+  'Pensando…': 'Thinking…',
+  'Escribe tu pregunta…': 'Type your question…',
+  Enviar: 'Send',
+  'No se pudo responder — intenta de nuevo': 'Could not answer — try again',
 };
 
 const LANG_KEY = 'nutri-lang';

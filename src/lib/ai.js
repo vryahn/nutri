@@ -333,6 +333,141 @@ export async function estimateFood(text, imageFiles) {
 // que lee las fotos de disco). `ai_model` = qué modelo respondió; Foods.jsx lo ignora.
 // opts (solo eval): { model, temperature } fija UN modelo (sin cascada) para que el gate
 // no dependa de qué modelo contestó por el 503; Foods.jsx llama sin opts y usa la cascada.
+// —— "Pregúntale a tu bitácora": RAG estructurado de 3 pasos (planner → SQL
+// en el caller → generación con citas). Todo gateado por GEMINI_KEY en el caller.
+
+const ASK_NUTRIENT_KEYS = ['kcal', 'protein_g', 'carbs_g', 'fat_g', ...MICROS.map((m) => m.key)];
+const ASK_DEFAULT_NUTRIENTS = ['kcal', 'protein_g', 'carbs_g', 'fat_g'];
+const ASK_MAX_RANGE_DAYS = 92;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidISODate(s) {
+  return typeof s === 'string' && ISO_DATE_RE.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00`));
+}
+
+function addDaysISOLocal(iso, delta) {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + delta);
+  return d.toLocaleDateString('sv-SE');
+}
+
+// Pura: normaliza el plan del planner a un rango y set de nutrientes seguros
+// de consultar. Ver reglas en el prompt del worktree (CLAUDE.md de la tarea).
+export function sanitizeAskPlan(plan, todayStr, validNutrients) {
+  let dateFrom = plan?.date_from;
+  let dateTo = plan?.date_to;
+  if (!isValidISODate(dateFrom) || !isValidISODate(dateTo)) {
+    dateTo = todayStr;
+    dateFrom = addDaysISOLocal(todayStr, -29);
+  }
+  if (dateTo > todayStr) dateTo = todayStr;
+  if (dateFrom > dateTo) [dateFrom, dateTo] = [dateTo, dateFrom];
+  let clamped = false;
+  const spanDays = Math.round((Date.parse(`${dateTo}T00:00:00`) - Date.parse(`${dateFrom}T00:00:00`)) / 86400000) + 1;
+  if (spanDays > ASK_MAX_RANGE_DAYS) {
+    dateFrom = addDaysISOLocal(dateTo, -91);
+    clamped = true;
+  }
+  const validSet = new Set(validNutrients);
+  let nutrients = Array.isArray(plan?.nutrients) ? plan.nutrients.filter((n) => validSet.has(n)) : [];
+  if (!nutrients.length) nutrients = ASK_DEFAULT_NUTRIENTS;
+  return { date_from: dateFrom, date_to: dateTo, need_detail: !!plan?.need_detail, nutrients, clamped };
+}
+
+const ASK_PLAN_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    date_from: { type: 'STRING' },
+    date_to: { type: 'STRING' },
+    need_detail: { type: 'BOOLEAN' },
+    nutrients: { type: 'ARRAY', items: { type: 'STRING' } },
+  },
+  required: ['date_from', 'date_to', 'need_detail', 'nutrients'],
+};
+
+function askPlanPrompt(todayStr) {
+  return `Dada una pregunta del usuario sobre su registro nutricional y la fecha de hoy (${todayStr}, formato YYYY-MM-DD), decide el rango de fechas a consultar (date_from, date_to, formato YYYY-MM-DD), si hacen falta alimentos individuales (need_detail: true cuando la pregunta pide causas, alimentos concretos o "qué comí") y qué nutrientes están implicados (nutrients: claves EXACTAS de esta lista, nunca inventes otras): ${ASK_NUTRIENT_KEYS.join(', ')}.`;
+}
+
+// Paso 1 del RAG: decide rango de fechas, si hace falta detalle por alimento
+// y qué nutrientes consultar. Devuelve el plan ya saneado (sanitizeAskPlan).
+export async function planAskQuery(question, todayStr, lang) {
+  const langInstr = lang === 'en' ? 'Answer only via the schema fields.' : 'Responde solo con los campos del schema.';
+  const { data } = await callAI(`${askPlanPrompt(todayStr)} ${langInstr}`, [{ text: question }], ASK_PLAN_SCHEMA);
+  return sanitizeAskPlan(data, todayStr, ASK_NUTRIENT_KEYS);
+}
+
+function csvCell(v) {
+  const s = String(v ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function roundTo1(v) {
+  return Math.round(Number(v) * 10) / 10;
+}
+
+// kcal/protein_g/carbs_g/fat_g viven en campos planos de la fila (daily_totals
+// / targets); el resto de nutrientes viven en su jsonb `micros`.
+function nutrientValue(row, key) {
+  if (row == null) return null;
+  if (key === 'kcal' || key === 'protein_g' || key === 'carbs_g' || key === 'fat_g') return row[key] ?? null;
+  return row.micros?.[key] ?? null;
+}
+
+const ASK_ENTRIES_LIMIT = 400;
+
+// Pura: arma el contexto CSV compacto para el paso de generación. `days` =
+// filas de daily_totals del rango; `targetByDay` = { day: filaTargetOResuelta
+// | null } (resolveTarget ya aplicado por el caller); `entries` = filas de
+// entry_nutrients del rango o null si need_detail era false.
+export function formatAskContext({ days, targetByDay, entries, nutrients }) {
+  const sortedDays = [...(days || [])].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+  const nutrientRow = (day, row) => [day, ...nutrients.map((k) => { const v = nutrientValue(row, k); return v == null ? '' : roundTo1(v); })].map(csvCell).join(',');
+
+  const lines = [
+    '# Totales diarios (unidades: kcal, g o mg segun la clave)',
+    ['day', ...nutrients].map(csvCell).join(','),
+    ...sortedDays.map((d) => nutrientRow(d.day, d)),
+    '# Objetivo del día (mismas columnas; vacío si no hay)',
+    ['day', ...nutrients].map(csvCell).join(','),
+    ...sortedDays.map((d) => nutrientRow(d.day, targetByDay?.[d.day] ?? null)),
+  ];
+
+  if (entries != null) {
+    const total = entries.length;
+    const rows = total > ASK_ENTRIES_LIMIT
+      ? [...entries].sort((a, b) => Number(b.kcal || 0) - Number(a.kcal || 0)).slice(0, ASK_ENTRIES_LIMIT)
+      : entries;
+    // Columnas extra = los nutrientes de la pregunta: sin ellas la respuesta no
+    // puede atribuir un micro (p. ej. sodio) a alimentos concretos.
+    const extra = nutrients.filter((k) => k !== 'kcal');
+    lines.push('# Alimentos', ['day', 'item', 'grams', 'kcal', ...extra].map(csvCell).join(','));
+    for (const r of rows) {
+      const vals = extra.map((k) => { const v = nutrientValue(r, k); return v == null ? '' : roundTo1(v); });
+      lines.push([r.day, r.item, roundTo1(r.grams), roundTo1(r.kcal), ...vals].map(csvCell).join(','));
+    }
+    if (total > ASK_ENTRIES_LIMIT) lines.push(`(recortado a ${ASK_ENTRIES_LIMIT} alimentos de ${total})`);
+  }
+
+  return lines.join('\n');
+}
+
+const ASK_ANSWER_SCHEMA = { type: 'OBJECT', properties: { answer: { type: 'STRING' } }, required: ['answer'] };
+
+function askAnswerPrompt(lang) {
+  const idioma = lang === 'en' ? 'inglés' : 'español';
+  return `Eres el asistente de datos de una app de registro nutricional personal. Responde la pregunta usando EXCLUSIVAMENTE las cifras del contexto; nunca inventes ni extrapoles valores. Cita días y alimentos concretos (ej. "El 12 jul: 2,890 mg de sodio, principalmente Chilaquiles 320 g"). Describe los datos, no prescribas ni des consejo médico. Responde en ${idioma}, conciso, en texto plano sin markdown.`;
+}
+
+// Paso 3 del RAG: genera la respuesta en lenguaje natural a partir del
+// contexto ya armado (formatAskContext). Sin schema libre real — GEMINI_SCHEMA
+// exige uno, así que se usa un objeto de un solo campo y se extrae `answer`.
+export async function askAnswer(question, contextStr, lang) {
+  const parts = [{ text: `Contexto:\n${contextStr}\n\nPregunta: ${question}` }];
+  const { data } = await callAI(askAnswerPrompt(lang), parts, ASK_ANSWER_SCHEMA);
+  return data.answer || '';
+}
+
 export async function estimateFoodFromParts(parts, opts = {}) {
   let out, model;
   if (opts.model) {
