@@ -18,6 +18,7 @@ const Recipes = lazy(() => import('./pages/Recipes.jsx'));
 const Targets = lazy(() => import('./pages/Targets.jsx'));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const Body = lazy(() => import('./pages/Body.jsx'));
+const OAuthConsent = lazy(() => import('./pages/OAuthConsent.jsx'));
 
 const PageFallback = <PageSkeleton />;
 
@@ -218,14 +219,19 @@ function Layout({ children }) {
   );
 }
 
-function RequireAuth({ session, children }) {
+// Rutas fuera del tab bar (p. ej. /oauth/consent) no llevan Layout: son de una sola
+// pantalla, sin nav. `withLayout` lo decide el caller según la ruta.
+function RequireAuth({ session, children, withLayout = true }) {
+  const location = useLocation();
   if (session === undefined) return null;
-  if (session === null) return <Navigate to="/login" replace />;
-  return <Layout>{children}</Layout>;
+  if (session === null) return <Navigate to="/login" state={{ from: `${location.pathname}${location.search}` }} replace />;
+  return withLayout ? <Layout>{children}</Layout> : children;
 }
 
 export default function App() {
   const session = useSession();
+  const location = useLocation();
+  const loginRedirect = location.state?.from || '/';
 
   useEffect(watchSystem, []);
 
@@ -252,7 +258,7 @@ export default function App() {
     <Routes>
       <Route
         path="/login"
-        element={session ? <Navigate to="/" replace /> : <Login />}
+        element={session ? <Navigate to={loginRedirect} replace /> : <Login />}
       />
       <Route
         path="/"
@@ -308,6 +314,16 @@ export default function App() {
           <RequireAuth session={session}>
             <Suspense fallback={PageFallback}>
               <Body />
+            </Suspense>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/oauth/consent"
+        element={
+          <RequireAuth session={session} withLayout={false}>
+            <Suspense fallback={PageFallback}>
+              <OAuthConsent />
             </Suspense>
           </RequireAuth>
         }

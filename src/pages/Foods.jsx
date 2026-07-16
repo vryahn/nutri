@@ -45,8 +45,8 @@ function pendingWarning(f) {
   return hasWarning(f) && !f.reviewed_at;
 }
 
-const SOURCE_OPTIONS = ['manual', 'etiqueta', 'gemini', 'off', 'usda', 'cronometer'];
-const SOURCE_LABELS = { manual: 'Manual', etiqueta: 'Etiqueta', gemini: 'IA', off: 'OFF', usda: 'USDA', cronometer: 'Cronometer' };
+const SOURCE_OPTIONS = ['manual', 'etiqueta', 'gemini', 'off', 'usda', 'cronometer', 'ia_personal'];
+const SOURCE_LABELS = { manual: 'Manual', etiqueta: 'Etiqueta', gemini: 'IA', off: 'OFF', usda: 'USDA', cronometer: 'Cronometer', ia_personal: 'IA personal' };
 function sourceLabel(s) {
   return t(SOURCE_LABELS[s] || s);
 }

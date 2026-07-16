@@ -194,6 +194,7 @@ const EN = {
   Fuente: 'Source',
   Manual: 'Manual',
   'IA (Gemini)': 'AI (Gemini)',
+  'IA personal': 'Personal AI',
   'de favoritos': 'from favorites',
   Marcar: 'Mark',
   'como favorito': 'as favorite',
@@ -830,6 +831,16 @@ const EN = {
 
   // Today.jsx
   'Ver resumen del día': 'View day summary',
+
+  // OAuthConsent.jsx (conector MCP)
+  'Redirigiendo…': 'Redirecting…',
+  'Falta el parámetro authorization_id.': 'Missing the authorization_id parameter.',
+  'No se pudo cargar la solicitud de autorización.': 'Could not load the authorization request.',
+  '%n quiere acceder a tu cuenta de nutri.': '%n wants to access your nutri account.',
+  'Esta aplicación': 'This application',
+  'Permisos solicitados': 'Requested permissions',
+  Aprobar: 'Approve',
+  Denegar: 'Deny',
 
   // Toasts de error de carga (showToast) — antes solo en español
   'No se pudieron cargar los objetivos — revisa tu conexión.': 'Could not load targets — check your connection.',

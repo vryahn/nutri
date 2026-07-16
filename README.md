@@ -134,6 +134,12 @@ Basic operators on any column: `eq.` `gte.` `lte.` `ilike.`. Query modifiers: `o
 
 ## Playbooks for agents (AI via API)
 
+### MCP connector (remote server with OAuth)
+
+The app exposes a remote MCP server at `https://nutri.vryahn.com/api/mcp` (Streamable HTTP, stateless). Auth is OAuth via Supabase Auth: MCP clients discover the flow from the `WWW-Authenticate` header (`/.well-known/oauth-protected-resource`) and the user approves access on the in-app consent page (`/oauth/consent`). RLS is the only authorization layer — the connector can only touch the authenticated user's data. Adding a user = creating their account in the Supabase dashboard, nothing else.
+
+Tools: `search_catalog`, `log_entry` (by id or name; water = the "Agua" food, grams = ml), `delete_entry`, `get_day`, `get_targets`, `create_food` (per 100 g, hard-validates micro keys, soft warnings ⚠ same as the app), `create_recipe`, `update_food` (own food → update; base-catalog food → fork to own copy). Deleting foods and editing recipes are app-only by design.
+
 Claude (or another AI) operates with the user's credentials via the password grant above — RLS applies by itself, so an agent can only write what its user could. The valid keys of the `micros` jsonb are exactly those in `MICROS` in `src/lib/domain.js` (38 keys; values **per 100 g**, always): the basics `grasa_sat_g, grasa_trans_g, azucar_g, azucar_anadido_g, fibra_g, sodio_mg, potasio_mg, magnesio_mg, calcio_mg, hierro_mg, agua_ml, alcohol_g` plus cholesterol, vitamins (`vit_a_mcg … vit_b12_mcg, colina_mg`), minerals (`zinc_mg, fosforo_mg, selenio_mcg, cobre_mg, manganeso_mg, yodo_mcg, cromo_mcg, molibdeno_mcg`) and antioxidants (`beta_caroteno_mcg, licopeno_mcg, luteina_zeaxantina_mcg`) — check the file for the exact list with units.
 
 Extra `foods` fields: `portions` (jsonb `[{"name":"vaso","grams":247}]`, amount chips when logging) and `density_g_ml` (numeric, liquids only: the UI lets you enter ml and converts it to grams). kcal↔macros consistency audit: a food "needs review" when `|kcal − (4·protein_g + 4·carbs_g + 9·fat_g + 7·alcohol_g)| > max(20, 25 %)` — same criterion as `kcalSuspicious` in `domain.js`; an agent can audit the catalog with a simple `GET /rest/v1/foods` and that formula.

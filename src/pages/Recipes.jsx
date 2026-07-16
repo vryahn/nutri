@@ -16,7 +16,7 @@ import { t, useLang, useUnits, fmtG, gToOz, ozToG } from '../lib/i18n.js';
 import { fetchFoodsForImport, parseIngredientLines } from '../lib/importer.js';
 
 const FDC_KEY = import.meta.env.VITE_FDC_KEY;
-const SOURCE_LABELS = { manual: 'Manual', gemini: 'IA' };
+const SOURCE_LABELS = { manual: 'Manual', gemini: 'IA', ia_personal: 'IA personal' };
 
 // ponytail: matchMedia en vez de resize-observer propio; mismo patrón que Today.jsx.
 function useIsLgUp() {
