@@ -41,8 +41,12 @@ function hasWarning(f) {
 // El aviso ⚠ solo se pinta si el usuario NO lo ha revisado: `reviewed_at` no apaga el
 // cálculo (sigue en el form), solo deja de gritar en la lista. Guardar el alimento lo
 // limpia (ver handleSave), así una edición de valores vuelve a exponer el aviso.
+// Los alimentos del catálogo base (owner null) NUNCA avisan: el usuario no puede
+// editarlos en sitio (marcarlos "revisado" solo crearía una copia y dejaría el base
+// avisando), y disparan falsos positivos (p. ej. cacao 228 kcal, correcto pero Atwater
+// sobreestima por la fibra). Su copia propia sí participa del flujo de revisión.
 function pendingWarning(f) {
-  return hasWarning(f) && !f.reviewed_at;
+  return f.owner != null && hasWarning(f) && !f.reviewed_at;
 }
 
 const SOURCE_LABELS = { manual: 'Manual', etiqueta: 'Etiqueta', gemini: 'IA', off: 'OFF', usda: 'USDA', cronometer: 'Cronometer', ia_personal: 'IA personal' };
@@ -1086,7 +1090,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
             ⚠ {t('Componente inconsistente')}: {t(inconsistent)}. {t('Revisa antes de guardar.')}
           </p>
         )}
-        {form.id && warned && !form.reviewed_at && (
+        {form.id && !isBaseFood && warned && !form.reviewed_at && (
           <button
             type="button"
             disabled={basisBlocked}
