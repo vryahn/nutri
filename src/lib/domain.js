@@ -540,6 +540,50 @@ export function resolveTarget(targets, dateISO) {
   return candidates.reduce((best, t) => (t.valid_from > best.valid_from ? t : best));
 }
 
+// —— Construcción de filas de fase (targets) ——————————————————————————
+// Movidos desde Targets.jsx para reutilizarlos en el asistente de metas
+// (TargetsWizard). Comportamiento idéntico: null-safe, micros ordenados.
+export const numOrNull = (v) => (v === '' || v == null ? null : Number(v));
+
+export function cleanMicros(m) {
+  const out = {};
+  for (const k of Object.keys(m || {}).sort()) {
+    const v = m[k];
+    if (v === '' || v == null) continue;
+    out[k] = Number(v);
+  }
+  return out;
+}
+
+// Expande los grupos del draft a las 7 filas dow (siempre 7). groups:
+// [{ dows:[0-6], values:{ kcal, protein_g, carbs_g, fat_g, micros } }].
+export function draftToRows(groups, { validFrom, label, description, goal, owner }) {
+  const byDow = {};
+  for (const g of groups) {
+    const row = {
+      kcal: numOrNull(g.values.kcal),
+      protein_g: numOrNull(g.values.protein_g),
+      carbs_g: numOrNull(g.values.carbs_g),
+      fat_g: numOrNull(g.values.fat_g),
+      micros: cleanMicros(g.values.micros),
+    };
+    for (const dow of g.dows) byDow[dow] = row;
+  }
+  const rows = [];
+  for (let dow = 0; dow < 7; dow++) {
+    rows.push({
+      owner,
+      dow,
+      valid_from: validFrom,
+      label: (label || '').trim() || null,
+      description: (description || '').trim() || null,
+      goal: goal || null,
+      ...(byDow[dow] || { kcal: null, protein_g: null, carbs_g: null, fat_g: null, micros: {} }),
+    });
+  }
+  return rows;
+}
+
 // —— Semántica de adherencia nutricional ——————————————————————————————
 // El rango de gracia NO es simétrico ni igual para todo nutriente. Cada uno cae
 // en un arquetipo (nutrientKind) que decide color y "cumplido":

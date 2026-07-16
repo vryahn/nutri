@@ -3,7 +3,7 @@ import { History, ChevronLeft, ChevronDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { useToast } from '../lib/useToast.js';
-import { MICROS, microGroups, PHASE_GOALS, goalLabel, todayISO, addDaysISO, resolveTarget } from '../lib/domain.js';
+import { MICROS, microGroups, PHASE_GOALS, goalLabel, todayISO, addDaysISO, resolveTarget, numOrNull, cleanMicros, draftToRows } from '../lib/domain.js';
 import { t, useLang, getLang, locale } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import ConfirmSheet from '../components/ConfirmSheet.jsx';
@@ -23,18 +23,6 @@ const tint = (token, pct) => `color-mix(in srgb, var(${token}) ${pct}%, transpar
 
 let _uid = 0;
 const uid = () => `g${++_uid}`;
-
-const numOrNull = (v) => (v === '' || v == null ? null : Number(v));
-
-function cleanMicros(m) {
-  const out = {};
-  for (const k of Object.keys(m || {}).sort()) {
-    const v = m[k];
-    if (v === '' || v == null) continue;
-    out[k] = Number(v);
-  }
-  return out;
-}
 
 // Firma de un día por igualdad profunda de {kcal, macros, micros} para agrupar.
 function rowSig(r) {
@@ -137,34 +125,6 @@ function emptyWeekGroups() {
 function sortGroups(groups) {
   const key = (g) => Math.min(...g.dows.map((d) => VISUAL_ORDER.indexOf(d)));
   return [...groups].sort((a, b) => key(a) - key(b));
-}
-
-// Expande los grupos del draft a las 7 filas dow (§7.2d: siempre 7).
-function draftToRows(groups, { validFrom, label, description, goal, owner }) {
-  const byDow = {};
-  for (const g of groups) {
-    const row = {
-      kcal: numOrNull(g.values.kcal),
-      protein_g: numOrNull(g.values.protein_g),
-      carbs_g: numOrNull(g.values.carbs_g),
-      fat_g: numOrNull(g.values.fat_g),
-      micros: cleanMicros(g.values.micros),
-    };
-    for (const dow of g.dows) byDow[dow] = row;
-  }
-  const rows = [];
-  for (let dow = 0; dow < 7; dow++) {
-    rows.push({
-      owner,
-      dow,
-      valid_from: validFrom,
-      label: label.trim() || null,
-      description: description.trim() || null,
-      goal: goal || null,
-      ...(byDow[dow] || { kcal: null, protein_g: null, carbs_g: null, fat_g: null, micros: {} }),
-    });
-  }
-  return rows;
 }
 
 function friendly(error, dupMsg) {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Monitor, Sun, Moon, User, Globe, SlidersHorizontal, LogOut } from 'lucide-react';
+import { Monitor, Sun, Moon, User, Globe, SlidersHorizontal, Wand2, LogOut } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { useOutsideClose } from '../lib/useOutsideClose.js';
 import { MODES, getMode, setMode } from '../lib/theme.js';
@@ -8,6 +8,7 @@ import { t, useLang, useProfile, displayName } from '../lib/i18n.js';
 import ProfileSheet from './ProfileSheet.jsx';
 import RegionSheet from './RegionSheet.jsx';
 import SettingsSheet from './SettingsSheet.jsx';
+import TargetsWizard from './TargetsWizard.jsx';
 
 const THEME_META = { system: { icon: Monitor, label: 'Auto' }, light: { icon: Sun, label: 'Claro' }, dark: { icon: Moon, label: 'Oscuro' } };
 
@@ -96,6 +97,7 @@ export default function UserMenu({ placement = 'bottom', className, showLabel = 
           <MenuItem icon={User} label={t('Perfil')} onClick={() => openSheet('perfil')} />
           <MenuItem icon={Globe} label={t('Idioma y unidades')} onClick={() => openSheet('idioma')} />
           <MenuItem icon={SlidersHorizontal} label={t('Configuración')} onClick={() => openSheet('config')} />
+          <MenuItem icon={Wand2} label={t('Asistente de metas')} onClick={() => openSheet('wizard')} />
           <div className="h-px bg-border mx-1 my-1" />
           <MenuItem icon={LogOut} label={t('Cerrar sesión')} danger onClick={() => supabase.auth.signOut()} />
         </div>
@@ -104,7 +106,8 @@ export default function UserMenu({ placement = 'bottom', className, showLabel = 
       {sheet && createPortal(
         sheet === 'perfil' ? <ProfileSheet avatarUrl={avatarUrl} onClose={() => setSheet(null)} />
           : sheet === 'idioma' ? <RegionSheet onClose={() => setSheet(null)} />
-            : <SettingsSheet onClose={() => setSheet(null)} />,
+            : sheet === 'wizard' ? <TargetsWizard onClose={() => setSheet(null)} />
+              : <SettingsSheet onClose={() => setSheet(null)} />,
         document.body
       )}
     </div>
