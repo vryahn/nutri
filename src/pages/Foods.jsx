@@ -45,7 +45,6 @@ function pendingWarning(f) {
   return hasWarning(f) && !f.reviewed_at;
 }
 
-const SOURCE_OPTIONS = ['manual', 'etiqueta', 'gemini', 'off', 'usda', 'cronometer', 'ia_personal'];
 const SOURCE_LABELS = { manual: 'Manual', etiqueta: 'Etiqueta', gemini: 'IA', off: 'OFF', usda: 'USDA', cronometer: 'Cronometer', ia_personal: 'IA personal' };
 function sourceLabel(s) {
   return t(SOURCE_LABELS[s] || s);
@@ -226,7 +225,8 @@ export default function Foods() {
     setSortKey(key);
   }
 
-  const sourceOptions = [...new Set([...SOURCE_OPTIONS, ...foods.map((f) => f.source).filter(Boolean)])];
+  // Solo sources con al menos un alimento: no ofrecer filtros que darían lista vacía.
+  const sourceOptions = [...new Set(foods.map((f) => f.source).filter(Boolean))].sort();
 
   let visibleFoods = foods;
   if (filterSource) visibleFoods = visibleFoods.filter((f) => f.source === filterSource);
