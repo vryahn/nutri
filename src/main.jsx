@@ -15,7 +15,9 @@ if (import.meta.env.PROD && import.meta.env.VITE_SENTRY_DSN) {
 }
 
 let swReg = null;
-const check = () => swReg?.update(); // pide al navegador comprobar si hay sw.js nuevo
+// update() rechaza si la fetch de sw.js falla (red intermitente): se traga el error,
+// no hay nada que hacer y reintenta en el próximo check. Sin catch = ruido en Sentry.
+const check = () => swReg?.update().catch(() => {}); // comprueba si hay sw.js nuevo
 
 // El sw.js de vite-plugin-pwa NO hace skipWaiting solo: trae un listener que espera
 // un mensaje 'SKIP_WAITING' (y con injectRegister:false nadie se lo manda). Sin eso el
