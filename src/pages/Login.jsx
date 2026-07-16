@@ -96,6 +96,12 @@ export default function Login() {
           {loading ? t('Entrando…') : t('Entrar')}
         </button>
       </form>
+      <a
+        href="/about/"
+        className="mt-5 block text-center text-sm text-text-3 hover:text-text-2"
+      >
+        {t('Conoce el proyecto')} →
+      </a>
     </div>
   );
 }

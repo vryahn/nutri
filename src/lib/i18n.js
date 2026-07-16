@@ -473,6 +473,7 @@ const EN = {
   Contraseña: 'Password',
   'Entrando…': 'Signing in…',
   Entrar: 'Sign in',
+  'Conoce el proyecto': 'About the project',
 
   // Today.jsx — cabecera y resumen
   'Día anterior': 'Previous day',

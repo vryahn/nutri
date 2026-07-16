@@ -9,6 +9,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: false,
+      // /about es la landing estática: sin esto el SW instalado la
+      // reescribiría al shell del app en los clientes con PWA.
+      workbox: { navigateFallbackDenylist: [/^\/about/] },
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Nutrimetry',

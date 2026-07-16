@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#071010" />
+    <script>
+      // si editas este script, recalcula el hash CSP en vercel.json
+      // Antes del primer paint: sin esto el tema claro arranca con un flash oscuro.
+      // Resuelve 'system' a un data-theme explícito, así el CSS solo define un override.
+      (function () {
+        var m = localStorage.getItem('nutri-theme') || 'system';
+        var dark = m === 'dark' || (m !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        if (!dark) document.querySelector('meta[name="theme-color"]').content = '#F3F9F9';
+      })();
+    </script>
+    <title>nutri. — registro nutricional con precisión de laboratorio</title>
+    <meta name="description" content="Nutrimetry: app personal de registro nutricional con 108 micronutrientes, búsqueda semántica y análisis con IA. Construida de punta a punta por Bryan Rodríguez Abarca." />
+    <link rel="canonical" href="https://nutri.vryahn.com/about/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="nutri. — registro nutricional con precisión de laboratorio" />
+    <meta property="og:description" content="108 micronutrientes, objetivos por fases, búsqueda semántica y análisis con IA — construida de punta a punta por una sola persona." />
+    <meta property="og:url" content="https://nutri.vryahn.com/about/" />
+    <meta property="og:image" content="https://nutri.vryahn.com/apple-touch-icon.png" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+    
+    :root {
+      color-scheme: dark;
+      --bg: #071010;
+      --surface: #101A1A;
+      --surface-2: #182525;
+      --surface-3: #243232;
+      --border: #2D3939;
+      --text: #E9F7F6;
+      --text-2: #9CB2B1;
+      --text-3: #7A8F8E;
+      --accent: #069C92;
+      --accent-deep: #028078;
+      --on-accent: #F7FBFB;
+      --ok: #4F9B53;
+      --warn: #B97F2C;
+      --danger: #DE6666;
+      --d-kcal: #D56F46;
+      --d-prot: #4F9B53;
+      --d-carb: #6389E2;
+      --d-fat: #AA8621;
+      --glow: rgba(6, 156, 146, 0.13);
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        color-scheme: light;
+        --bg: #F3F9F9;
+        --surface: #FCFFFF;
+        --surface-2: #EBF3F3;
+        --surface-3: #DAE6E5;
+        --border: #CDD9D9;
+        --text: #0A1C1C;
+        --text-2: #415454;
+        --text-3: #5C7070;
+        --accent: #047972;
+        --accent-deep: #058179;
+        --on-accent: #F8FDFD;
+        --ok: #2E7C35;
+        --warn: #966104;
+        --danger: #B84548;
+        --d-kcal: #B24F25;
+        --d-prot: #2E7C35;
+        --d-carb: #4669BF;
+        --d-fat: #876804;
+        --glow: rgba(4, 121, 114, 0.10);
+      }
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #071010; --surface: #101A1A; --surface-2: #182525; --surface-3: #243232;
+      --border: #2D3939; --text: #E9F7F6; --text-2: #9CB2B1; --text-3: #7A8F8E;
+      --accent: #069C92; --accent-deep: #028078; --on-accent: #F7FBFB;
+      --ok: #4F9B53; --warn: #B97F2C; --danger: #DE6666;
+      --d-kcal: #D56F46; --d-prot: #4F9B53; --d-carb: #6389E2; --d-fat: #AA8621;
+      --glow: rgba(6, 156, 146, 0.13);
+    }
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg: #F3F9F9; --surface: #FCFFFF; --surface-2: #EBF3F3; --surface-3: #DAE6E5;
+      --border: #CDD9D9; --text: #0A1C1C; --text-2: #415454; --text-3: #5C7070;
+      --accent: #047972; --accent-deep: #058179; --on-accent: #F8FDFD;
+      --ok: #2E7C35; --warn: #966104; --danger: #B84548;
+      --d-kcal: #B24F25; --d-prot: #2E7C35; --d-carb: #4669BF; --d-fat: #876804;
+      --glow: rgba(4, 121, 114, 0.10);
+    }
+    
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(700px 420px at 68% 180px, var(--glow), transparent 70%) no-repeat, var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    .display { font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+    
+    .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+    
+    /* ---------- header ---------- */
+    header.wrap {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: 20px; padding-bottom: 20px;
+    }
+    .brand { display: flex; align-items: baseline; gap: 2px; font-weight: 700; font-size: 1.35rem; letter-spacing: -0.02em; }
+    .brand .dot { color: var(--accent); }
+    .hnav { display: flex; align-items: center; gap: 16px; }
+    .langs { display: flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+    .langs button {
+      background: none; border: 0; color: var(--text-3); font: inherit; font-size: 0.78rem;
+      padding: 5px 12px; cursor: pointer; letter-spacing: 0.06em;
+    }
+    .langs button.on { background: var(--surface-3); color: var(--text); }
+    .langs button:focus-visible, a:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    
+    /* ---------- hero ---------- */
+    .wrap.hero {
+      position: relative;
+      padding-top: 56px; padding-bottom: 72px;
+      display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 56px; align-items: center;
+    }
+    .eyebrow {
+      font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--accent); font-weight: 600; margin: 0 0 18px;
+    }
+    h1 {
+      font-family: 'Space Grotesk', system-ui, sans-serif;
+      font-size: clamp(2.1rem, 4.6vw, 3.3rem);
+      line-height: 1.08; letter-spacing: -0.03em; font-weight: 700;
+      margin: 0 0 20px; text-wrap: balance;
+    }
+    .lede { color: var(--text-2); font-size: 1.06rem; max-width: 46ch; margin: 0 0 30px; }
+    .lede strong { color: var(--text); font-weight: 600; }
+    .ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 22px; border-radius: 14px; font-weight: 600; font-size: 0.95rem;
+      text-decoration: none; transition: transform 0.15s ease, background 0.15s ease;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: var(--accent-deep); color: var(--on-accent); }
+    .btn-ghost { border: 1px solid var(--border); color: var(--text); background: var(--surface); }
+    .btn-sm { padding: 8px 16px; font-size: 0.83rem; border-radius: 10px; }
+    .byline { margin-top: 22px; font-size: 0.85rem; color: var(--text-3); }
+    .byline a { color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; }
+    
+    /* ---------- mock day card ---------- */
+    .day {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+      padding: 22px 24px; box-shadow: 0 24px 60px -30px rgba(0,0,0,0.5);
+    }
+    .day-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .day-head .t { font-weight: 600; font-size: 0.95rem; }
+    .chip {
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em;
+      padding: 3px 10px; border-radius: 999px;
+    }
+    .chip-ok { color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent); }
+    .kcal { display: flex; align-items: baseline; gap: 8px; margin-bottom: 20px; }
+    .kcal .n { font-size: 2.3rem; font-weight: 700; letter-spacing: -0.02em; }
+    .kcal .of { color: var(--text-3); font-size: 0.9rem; }
+    .bar-row { margin-bottom: 14px; }
+    .bar-meta { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 5px; }
+    .bar-meta .lbl { color: var(--text-2); }
+    .bar-meta .val { color: var(--text-3); }
+    .bar { height: 7px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+    .bar i {
+      display: block; height: 100%; border-radius: 999px; width: 0;
+      transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .loaded .bar i { width: var(--w); }
+    .sodium {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border);
+      font-size: 0.8rem; color: var(--text-2);
+    }
+    .badge-warn {
+      color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+      border-radius: 999px; padding: 2px 9px; font-size: 0.7rem; font-weight: 600;
+    }
+    .day-note { margin-top: 10px; font-size: 0.72rem; color: var(--text-3); text-align: right; }
+    
+    /* ---------- signals band ---------- */
+    .signals {
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .signals .wrap {
+      display: grid; grid-template-columns: repeat(5, 1fr);
+      padding-top: 26px; padding-bottom: 26px; gap: 18px;
+    }
+    .sig { text-align: center; }
+    .sig .n { font-size: 1.7rem; font-weight: 700; letter-spacing: -0.02em; display: block; }
+    .sig .l { font-size: 0.74rem; color: var(--text-3); letter-spacing: 0.05em; text-transform: uppercase; }
+    
+    /* ---------- sections ---------- */
+    section.wrap { padding-top: 80px; }
+    .sec-head { max-width: 56ch; margin-bottom: 36px; }
+    h2 {
+      font-family: 'Space Grotesk', system-ui, sans-serif;
+      font-size: clamp(1.5rem, 3vw, 2.1rem); letter-spacing: -0.02em; line-height: 1.15;
+      margin: 0 0 12px; text-wrap: balance;
+    }
+    .sec-head p { color: var(--text-2); margin: 0; }
+    
+    /* ---------- decision showcase ---------- */
+    .dec { display: grid; grid-template-columns: 290px 1fr; gap: 28px; align-items: start; }
+    .dec-nav { display: flex; flex-direction: column; }
+    .dec-nav button {
+      text-align: left; background: none; border: 0; border-left: 2px solid var(--border);
+      padding: 13px 18px; cursor: pointer; font: inherit; display: block; width: 100%;
+    }
+    .dec-nav button .k {
+      display: block; font-size: 0.64rem; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--text-3); font-weight: 600; margin-bottom: 2px;
+    }
+    .dec-nav button .t { display: block; font-size: 0.9rem; color: var(--text-3); line-height: 1.35; }
+    .dec-nav button:hover .t { color: var(--text-2); }
+    .dec-nav button.on {
+      border-left-color: var(--accent);
+      background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 80%);
+    }
+    .dec-nav button.on .k { color: var(--accent); }
+    .dec-nav button.on .t { color: var(--text); font-weight: 600; }
+    .dec-panel {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+      padding: 34px 36px; min-height: 430px;
+      display: grid; grid-template-columns: 5fr 7fr; gap: 36px; align-items: start;
+    }
+    .dec-panel[hidden] { display: none; }
+    .dec-copy h3 {
+      font-family: 'Space Grotesk', system-ui, sans-serif;
+      font-size: 1.45rem; letter-spacing: -0.02em; line-height: 1.2; margin: 0 0 14px; text-wrap: balance;
+    }
+    .dec-copy p { margin: 0 0 12px; font-size: 0.92rem; color: var(--text-2); }
+    .dec-copy .k {
+      display: inline-block; font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--accent); font-weight: 600; margin-bottom: 12px;
+    }
+    .dec-viz { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+    @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    .dec-panel .anim { opacity: 0; }
+    .dec-panel.show .anim { animation: rise 0.45s ease forwards; animation-delay: calc(var(--i, 0) * 0.3s); }
+    .x { color: var(--danger); font-weight: 600; }
+    .dim { color: var(--text-3); }
+    .dim td { color: var(--text-3) !important; }
+    .warnchip {
+      display: inline-block; font-size: 0.74rem; color: var(--warn);
+      border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+      border-radius: 10px; padding: 8px 12px;
+    }
+    .qline { margin: 0; font-size: 0.8rem; color: var(--text-3); }
+    .rls-demo { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .rls-col { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+    .rls-col > b { display: block; font-size: 0.68rem; font-weight: 500; color: var(--text-3); margin-bottom: 8px; }
+    .rls-col .r { display: block; font-size: 0.78rem; color: var(--text-2); padding: 4px 0; border-top: 1px dashed var(--border); }
+    .rls-col .r-no { color: transparent; background: var(--surface-3); border-radius: 4px; margin-top: 4px; user-select: none; }
+    .rls-cap { font-size: 0.68rem; color: var(--text-3); margin: 6px 0 0; }
+    .pal { display: flex; flex-direction: column; gap: 16px; }
+    .pal-row { display: flex; align-items: stretch; gap: 8px; }
+    .pal-row .pl {
+      writing-mode: vertical-rl; transform: rotate(180deg); text-align: center;
+      font-size: 0.6rem; color: var(--text-3); letter-spacing: 0.1em; text-transform: uppercase;
+    }
+    .flow.big { font-size: 0.78rem; }
+    .flow.big .stepchip { padding: 6px 12px; border-radius: 8px; white-space: normal; max-width: 100%; }
+    
+    /* ---------- card visuals ---------- */
+    .viz { margin-top: 16px; border-top: 1px dashed var(--border); padding-top: 14px; }
+    .minitable { width: 100%; border-collapse: collapse; font-size: 0.74rem; }
+    .minitable th, .minitable td { text-align: right; padding: 3px 0 3px 12px; color: var(--text-2); font-weight: 400; }
+    .minitable th:first-child, .minitable td:first-child { text-align: left; padding-left: 0; color: var(--text-3); }
+    .minitable thead th { color: var(--text-3); border-bottom: 1px solid var(--border); }
+    .minitable .hl { color: var(--accent); }
+    .viz-note { margin: 10px 0 0; font-size: 0.68rem; color: var(--text-3); }
+    .flow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 0.68rem; }
+    .flow .stepchip { border: 1px solid var(--border); background: var(--surface-2); border-radius: 6px; padding: 3px 8px; color: var(--text-2); white-space: nowrap; }
+    .flow .arr { color: var(--text-3); }
+    .flow .ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+    .code-chip { display: block; margin: 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 0.7rem; line-height: 1.55; color: var(--text-2); overflow-x: auto; }
+    .chat { display: flex; flex-direction: column; gap: 8px; font-size: 0.76rem; }
+    .chat .b { max-width: 88%; padding: 7px 12px; border-radius: 12px; }
+    .chat .me { align-self: flex-end; background: var(--accent-deep); color: var(--on-accent); border-bottom-right-radius: 4px; }
+    .chat .ai { align-self: flex-start; background: var(--surface-2); color: var(--text-2); border-bottom-left-radius: 4px; }
+    .swatches { display: flex; align-items: stretch; gap: 8px; }
+    .sw { flex: 1; }
+    .sw i { display: block; height: 26px; border-radius: 6px; }
+    .sw span { font-size: 0.6rem; color: var(--text-3); display: block; text-align: center; margin-top: 4px; letter-spacing: 0.04em; }
+    .sw-div { width: 1px; background: var(--border); }
+    
+    /* ---------- architecture ---------- */
+    .arch { display: grid; gap: 12px; margin-bottom: 32px; }
+    .arch-row { display: grid; grid-template-columns: 1fr minmax(120px, auto) 1fr; gap: 12px; align-items: center; }
+    .node { border: 1px solid var(--border); background: var(--surface); border-radius: 12px; padding: 12px 16px; min-height: 100%; }
+    .node b { display: block; font-size: 0.85rem; font-weight: 700; font-family: 'Space Grotesk', system-ui, sans-serif; }
+    .node span { font-size: 0.7rem; color: var(--text-3); }
+    .link { text-align: center; font-size: 0.66rem; color: var(--text-3); padding: 0 4px; }
+    .link .a { display: block; color: var(--accent); font-size: 0.95rem; line-height: 1; margin-bottom: 3px; }
+    .link .a::after { content: '→'; }
+    
+    /* ---------- stack ---------- */
+    .stack { display: flex; flex-wrap: wrap; gap: 10px; }
+    .stack span {
+      font-size: 0.8rem; padding: 6px 14px; border-radius: 999px;
+      border: 1px solid var(--border); color: var(--text-2); background: var(--surface);
+    }
+    
+    /* ---------- builder ---------- */
+    .builder {
+      margin-top: 72px; border-top: 1px solid var(--border);
+      background: linear-gradient(180deg, var(--surface) 0%, transparent 100%);
+    }
+    .builder .wrap { padding-top: 64px; padding-bottom: 64px; text-align: center; }
+    .builder h2 { margin-bottom: 14px; }
+    .builder p { color: var(--text-2); max-width: 52ch; margin: 0 auto 28px; }
+    .builder .ctas { justify-content: center; }
+    
+    footer { border-top: 1px solid var(--border); }
+    footer .wrap {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-top: 20px; padding-bottom: 28px; font-size: 0.8rem; color: var(--text-3);
+    }
+    footer a { color: var(--text-2); text-decoration: none; }
+    
+    @media (max-width: 800px) {
+      .wrap.hero { grid-template-columns: 1fr; gap: 40px; padding-top: 32px; }
+      .arch-row { grid-template-columns: 1fr; }
+      .link .a::after { content: '↓'; }
+      .dec { grid-template-columns: 1fr; gap: 16px; }
+      .dec-nav { flex-direction: row; overflow-x: auto; gap: 4px; padding-bottom: 6px; }
+      .dec-nav button { border-left: 0; border-bottom: 2px solid var(--border); padding: 8px 12px; white-space: nowrap; flex: 0 0 auto; }
+      .dec-nav button.on { border-bottom-color: var(--accent); background: none; }
+      .dec-nav button .k { display: none; }
+      .dec-panel { grid-template-columns: 1fr; gap: 22px; padding: 22px 20px; min-height: 0; }
+      .rls-demo { grid-template-columns: 1fr; }
+      .signals .wrap { grid-template-columns: repeat(2, 1fr); }
+      .sig:last-child { grid-column: 1 / -1; }
+      .grid { grid-template-columns: 1fr; }
+    }
+    @media (min-width: 801px) and (max-width: 1040px) {
+      .dec { grid-template-columns: 230px 1fr; }
+      .dec-panel { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .bar i { transition: none; }
+      .btn { transition: none; }
+      .dec-panel .anim, .dec-panel.show .anim { animation: none; opacity: 1; }
+    }
+    </style>
+  </head>
+  <body>
+<header class="wrap">
+  <div class="brand display">nutri<span class="dot">.</span></div>
+  <nav class="hnav">
+    <div class="langs" role="group" aria-label="Idioma">
+      <button id="lang-es" class="on" aria-pressed="true">ES</button>
+      <button id="lang-en" aria-pressed="false">EN</button>
+    </div>
+    <a class="btn btn-primary btn-sm" href="https://nutri.vryahn.com/login" data-en="Log in">Entrar</a>
+  </nav>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div>
+      <p class="eyebrow" data-en="Nutrimetry — personal project, in production">Nutrimetry — proyecto personal, en producción</p>
+      <h1 data-en="Nutrition tracking with laboratory-grade precision.">Registro nutricional con precisión de laboratorio.</h1>
+      <p class="lede" data-en="A PWA I use every day: 108 micronutrients, phased targets, semantic search and AI analysis. Built end to end — product, data, design and infrastructure — by one person.">Una PWA que uso a diario: 108 micronutrientes, objetivos por fases, búsqueda semántica y análisis con IA. Construida de punta a punta — producto, datos, diseño e infraestructura — por una sola persona.</p>
+      <div class="ctas">
+        <a class="btn btn-primary" href="https://nutri.vryahn.com/login" data-en="Open the live app">Ver la app en vivo</a>
+        <a class="btn btn-ghost" href="https://github.com/vryahn/nutri" data-en="Read the code">Leer el código</a>
+      </div>
+      <p class="byline" data-en-html='Designed and built by <a href="https://vryahn.com">Bryan Rodríguez Abarca</a>.' >Diseñada y construida por <a href="https://vryahn.com">Bryan Rodríguez Abarca</a>.</p>
+    </div>
+
+    <div class="day" id="day" aria-label="Resumen del día (demostración)">
+      <div class="day-head">
+        <span class="t" data-en="Today · Jul 16">Hoy · 16 jul</span>
+        <span class="chip chip-ok" data-en="On target">En objetivo</span>
+      </div>
+      <div class="kcal">
+        <span class="n mono">1,842</span>
+        <span class="of mono" data-en="/ 2,100 kcal">/ 2,100 kcal</span>
+      </div>
+      <div class="bar-row">
+        <div class="bar-meta"><span class="lbl" data-en="Protein">Proteína</span><span class="val mono">132 / 150 g</span></div>
+        <div class="bar"><i style="--w:88%; background:var(--d-prot)"></i></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-meta"><span class="lbl" data-en="Carbs">Carbohidratos</span><span class="val mono">178 / 220 g</span></div>
+        <div class="bar"><i style="--w:81%; background:var(--d-carb)"></i></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-meta"><span class="lbl" data-en="Fat">Grasa</span><span class="val mono">58 / 70 g</span></div>
+        <div class="bar"><i style="--w:83%; background:var(--d-fat)"></i></div>
+      </div>
+      <div class="sodium">
+        <span data-en="Sodium · 1,240 mg">Sodio · 1,240 mg</span>
+        <span class="badge-warn mono" data-en="⚠ under 1,500 mg">⚠ bajo 1,500 mg</span>
+      </div>
+      <p class="day-note" data-en="Real interface data model — the safety floor never turns off.">Modelo de datos real de la interfaz — el piso de seguridad nunca se apaga.</p>
+    </div>
+  </div>
+
+  <div class="signals">
+    <div class="wrap mono">
+      <div class="sig"><span class="n">108</span><span class="l" data-en="micronutrients">micronutrientes</span></div>
+      <div class="sig"><span class="n">99</span><span class="l" data-en="automated tests">tests automatizados</span></div>
+      <div class="sig"><span class="n">17</span><span class="l" data-en="SQL migrations">migraciones SQL</span></div>
+      <div class="sig"><span class="n">4.5:1</span><span class="l" data-en="minimum contrast">contraste mínimo</span></div>
+      <div class="sig"><span class="n">2</span><span class="l" data-en="real daily users">usuarios reales diarios</span></div>
+    </div>
+  </div>
+
+  <section class="wrap">
+    <div class="sec-head">
+      <h2 data-en="Decisions, not just features">Decisiones, no solo features</h2>
+      <p data-en="Every trade-off resolves in favor of data accuracy. These are the calls that shaped the system.">Cada trade-off se resuelve a favor de la exactitud de los datos. Estas son las decisiones que dieron forma al sistema.</p>
+    </div>
+    <div class="dec">
+      <div class="dec-nav" role="tablist" aria-label="Decisiones">
+        <button class="on" role="tab" aria-selected="true" data-p="p-data">
+          <span class="k" data-en="Data integrity">Integridad de datos</span>
+          <span class="t" data-en="Accuracy wins every trade-off">La exactitud gana todo trade-off</span>
+        </button>
+        <button role="tab" aria-selected="false" data-p="p-ai">
+          <span class="k" data-en="AI with guardrails">IA con paracaídas</span>
+          <span class="t" data-en="A cascade gated by evals">Cascada custodiada por evals</span>
+        </button>
+        <button role="tab" aria-selected="false" data-p="p-search">
+          <span class="k" data-en="Search">Búsqueda</span>
+          <span class="t" data-en="Semantic, with pgvector">Semántica, con pgvector</span>
+        </button>
+        <button role="tab" aria-selected="false" data-p="p-rls">
+          <span class="k" data-en="Security">Seguridad</span>
+          <span class="t" data-en="Privacy by design">Privacidad por diseño</span>
+        </button>
+        <button role="tab" aria-selected="false" data-p="p-mcp">
+          <span class="k" data-en="Interoperability">Interoperabilidad</span>
+          <span class="t" data-en="Its own MCP connector">Conector MCP propio</span>
+        </button>
+        <button role="tab" aria-selected="false" data-p="p-pal">
+          <span class="k" data-en="Design system">Sistema de diseño</span>
+          <span class="t" data-en="A palette that never lies">Una paleta que nunca miente</span>
+        </button>
+      </div>
+
+      <div class="dec-panels">
+        <article class="dec-panel show" id="p-data" role="tabpanel">
+          <div class="dec-copy">
+            <span class="k" data-en="Data integrity">Integridad de datos</span>
+            <h3 data-en="Accuracy wins every trade-off">La exactitud gana todo trade-off</h3>
+            <p data-en="Everything is stored per 100 g and computed in SQL views at read time — values are never copied between tables. Doubtful data gets flagged ⚠, never saved silently.">Todo se almacena por 100 g y se calcula en vistas SQL al leer — los valores nunca se copian entre tablas. El dato dudoso se marca ⚠, nunca se guarda en silencio.</p>
+            <p data-en="Declared kcal are checked against Atwater factors (4/4/9, fiber at 2 kcal/g): a gap over 25% demands review before saving.">El kcal declarado se contrasta con los factores de Atwater (4/4/9, fibra a 2 kcal/g): una diferencia mayor al 25% exige revisión antes de guardar.</p>
+          </div>
+          <div class="dec-viz">
+            <div class="flow big mono anim" style="--i:0">
+              <span class="stepchip" data-en="label · OFF · USDA · AI">etiqueta · OFF · USDA · IA</span><span class="arr">→</span>
+              <span class="stepchip" data-en="normalized to 100 g">normalizado a 100 g</span><span class="arr">→</span>
+              <span class="stepchip ok" data-en="SQL view at read time">vista SQL al leer</span>
+            </div>
+            <table class="minitable mono anim" style="--i:1">
+              <thead><tr><th data-en="Banana">Plátano</th><th data-en="stored">almacenado</th><th class="hl" data-en="logged: 150 g">registro: 150 g</th></tr></thead>
+              <tbody>
+                <tr><td>kcal</td><td>89</td><td class="hl">134</td></tr>
+                <tr><td data-en="protein">proteína</td><td>1.1 g</td><td class="hl">1.7 g</td></tr>
+                <tr><td data-en="potassium">potasio</td><td>358 mg</td><td class="hl">537 mg</td></tr>
+                <tr><td data-en="fiber">fibra</td><td>2.6 g</td><td class="hl">3.9 g</td></tr>
+              </tbody>
+            </table>
+            <span class="warnchip mono anim" style="--i:2" data-en="⚠ 89 kcal declared · 132 per Atwater — needs review">⚠ 89 kcal declaradas · 132 según Atwater — requiere revisión</span>
+            <p class="viz-note anim" style="--i:2" data-en="One correction to the food fixes every historical entry — the view scales, it doesn't copy.">Una corrección al alimento arregla todo el historial — la vista escala, no copia.</p>
+          </div>
+        </article>
+
+        <article class="dec-panel" id="p-ai" role="tabpanel" hidden>
+          <div class="dec-copy">
+            <span class="k" data-en="AI with guardrails">IA con paracaídas</span>
+            <h3 data-en="A fallback cascade, gated by evals">Cascada de respaldo, custodiada por evals</h3>
+            <p data-en="Photo label transcription runs on free-tier keys. Any error — timeout, quota, invalid JSON — falls through to the next model without the user noticing.">La transcripción de etiquetas desde foto corre sobre keys de free tier. Cualquier error — timeout, cuota, JSON inválido — cae al siguiente modelo sin que el usuario lo note.</p>
+            <p data-en="A scored golden set of real label photos runs before every AI change: any regression against baseline blocks the push.">Un golden set puntuado de fotos reales de etiquetas corre antes de cada cambio a la IA: cualquier regresión contra el baseline bloquea el push.</p>
+          </div>
+          <div class="dec-viz">
+            <div class="flow big mono">
+              <span class="stepchip anim" style="--i:0">gemini-3.5-flash <b class="x">✗ timeout</b></span>
+              <span class="arr anim" style="--i:1">→</span>
+              <span class="stepchip anim" style="--i:1">gemini-2.5-flash <b class="x">✗ 429</b></span>
+              <span class="arr anim" style="--i:2">→</span>
+              <span class="stepchip ok anim" style="--i:2">mistral-small ✓</span>
+            </div>
+            <div class="flow big mono">
+              <span class="stepchip ok anim" style="--i:3" data-en="✓ npm run eval — regression vs baseline = no deploy">✓ npm run eval — regresión vs baseline = no hay deploy</span>
+            </div>
+            <p class="viz-note anim" style="--i:3" data-en="The Gemini schema is translated to strict JSON Schema for Mistral — same structured output, different dialect.">El schema de Gemini se traduce a JSON Schema estricto para Mistral — misma salida estructurada, otro dialecto.</p>
+          </div>
+        </article>
+
+        <article class="dec-panel" id="p-search" role="tabpanel" hidden>
+          <div class="dec-copy">
+            <span class="k" data-en="Search">Búsqueda</span>
+            <h3 data-en="Semantic search over the catalog">Búsqueda semántica del catálogo</h3>
+            <p data-en="Hybrid retrieval: exact match answers first; if it comes up short, pgvector completes with cosine similarity over 768-dim embeddings generated when each food is saved.">Recuperación híbrida: la coincidencia exacta responde primero; si se queda corta, pgvector completa con similitud coseno sobre embeddings de 768 dims generados al guardar cada alimento.</p>
+            <p data-en="The same infrastructure powers 'Ask your log': a 3-step RAG pipeline that answers questions citing only real logged data.">La misma infraestructura alimenta «Pregúntale a tu bitácora»: un pipeline RAG de 3 pasos que responde citando solo datos realmente registrados.</p>
+          </div>
+          <div class="dec-viz">
+            <p class="qline mono anim" style="--i:0">match_foods('yogurt')</p>
+            <table class="minitable mono anim" style="--i:1">
+              <thead><tr><th data-en="food">alimento</th><th data-en="cosine">coseno</th><th></th></tr></thead>
+              <tbody>
+                <tr><td data-en="Greek yogurt, plain">Yogur griego natural</td><td>0.21</td><td class="hl">✓</td></tr>
+                <tr><td data-en="Drinkable strawberry yogurt">Yogur bebible fresa</td><td>0.28</td><td class="hl">✓</td></tr>
+                <tr><td data-en="Cottage cheese">Queso cottage</td><td>0.47</td><td class="hl">✓</td></tr>
+                <tr class="dim"><td data-en="Whole milk">Leche entera</td><td>0.68</td><td data-en="✗ &gt; 0.65">✗ &gt; 0.65</td></tr>
+              </tbody>
+            </table>
+            <p class="viz-note anim" style="--i:2" data-en="Spelling variants and synonyms stop breaking search — embeddings absorb them; a distance cap keeps noise out.">Las variantes de escritura y los sinónimos dejan de romper la búsqueda — los embeddings los absorben; el tope de distancia deja el ruido fuera.</p>
+          </div>
+        </article>
+
+        <article class="dec-panel" id="p-rls" role="tabpanel" hidden>
+          <div class="dec-copy">
+            <span class="k" data-en="Security">Seguridad</span>
+            <h3 data-en="Privacy by design">Privacidad por diseño</h3>
+            <p data-en="Row Level Security isolates every user inside Postgres: the filter lives in the database, not in the UI. No secret key ships to the client.">Row Level Security aísla a cada usuario dentro de Postgres: el filtro vive en la base de datos, no en la UI. Ninguna secret key viaja al cliente.</p>
+            <p data-en="The repo is public with zero credentials in its history — the design assumes the code can be read by anyone.">El repo es público con cero credenciales en el historial — el diseño asume que cualquiera puede leer el código.</p>
+          </div>
+          <div class="dec-viz">
+            <pre class="code-chip mono anim" style="--i:0">create policy foods_select
+  on nutri.foods for select
+  using (owner = auth.uid());</pre>
+            <div class="rls-demo">
+              <div class="rls-col anim" style="--i:1">
+                <b class="mono" data-en="session: user A">sesión: usuario A</b>
+                <span class="r" data-en="Greek yogurt">Yogur griego</span>
+                <span class="r" data-en="Oats">Avena</span>
+                <span class="r" data-en="Café de olla">Café de olla</span>
+              </div>
+              <div class="rls-col anim" style="--i:2">
+                <b class="mono" data-en="user B's rows">filas del usuario B</b>
+                <span class="r r-no">████████████</span>
+                <span class="r r-no">██████████</span>
+                <span class="r r-no">█████████████</span>
+              </div>
+            </div>
+            <p class="viz-note anim" style="--i:3" data-en="Postgres doesn't even return the other user's rows — it's not a UI filter a bug could skip.">Postgres ni siquiera devuelve las filas del otro usuario — no es un filtro de UI que un bug pueda saltarse.</p>
+          </div>
+        </article>
+
+        <article class="dec-panel" id="p-mcp" role="tabpanel" hidden>
+          <div class="dec-copy">
+            <span class="k" data-en="Interoperability">Interoperabilidad</span>
+            <h3 data-en="Its own MCP connector">Su propio conector MCP</h3>
+            <p data-en="A remote MCP server with OAuth exposes 8 tools — log, search, audit — acting with each user's own identity, under the same RLS.">Un servidor MCP remoto con OAuth expone 8 tools — registrar, buscar, auditar — actuando con la identidad de cada usuario, bajo el mismo RLS.</p>
+            <p data-en="The food log became conversational: logging a meal or auditing a week happens from any MCP client — Claude, ChatGPT, Perplexity and more — no UI needed.">La bitácora se volvió conversacional: registrar una comida o auditar una semana ocurre desde cualquier cliente MCP — Claude, ChatGPT, Perplexity y más — sin pasar por la UI.</p>
+          </div>
+          <div class="dec-viz">
+            <div class="chat">
+              <div class="b me anim" style="--i:0" data-en="Log 150 g of Greek yogurt and 30 g of granola">Registra 150 g de yogur griego y 30 g de granola</div>
+              <div class="b ai anim" style="--i:1" data-en="Done — 265 kcal, 18 g protein added to today.">Listo — 265 kcal, 18 g de proteína sumados a hoy.</div>
+              <div class="b me anim" style="--i:2" data-en="How's my sodium this week?">¿Cómo voy de sodio esta semana?</div>
+              <div class="b ai anim" style="--i:3" data-en="Averaging 1,870 mg/day. Monday landed at 1,320 mg ⚠ — under the 1,500 floor.">Promedio de 1,870 mg/día. El lunes quedaste en 1,320 mg ⚠ — bajo el piso de 1,500.</div>
+            </div>
+            <p class="viz-note anim" style="--i:4" data-en="Real interaction pattern with the production connector — the open MCP standard makes it work with any compatible client.">Patrón real de interacción con el conector en producción — el estándar abierto MCP lo hace funcionar con cualquier cliente compatible.</p>
+          </div>
+        </article>
+
+        <article class="dec-panel" id="p-pal" role="tabpanel" hidden>
+          <div class="dec-copy">
+            <span class="k" data-en="Design system">Sistema de diseño</span>
+            <h3 data-en="A palette that never lies">Una paleta que nunca miente</h3>
+            <p data-en="The accent never occupies a data hue — carbs live in indigo so 'primary button' and 'protein' can't mean the same color.">El acento nunca ocupa el hue de un dato — los carbohidratos viven en índigo para que «botón primario» y «proteína» no signifiquen el mismo color.</p>
+            <p data-en="Each theme recalculates lightness in OKLCH against its worst background: every text/background pair stays at or above 4.5:1.">Cada tema recalcula la luminancia en OKLCH contra su fondo más adverso: todo par texto/fondo se mantiene en 4.5:1 o más.</p>
+          </div>
+          <div class="dec-viz">
+            <div class="pal">
+              <div class="pal-row anim" style="--i:0">
+                <span class="pl" data-en="dark">oscuro</span>
+                <div class="sw"><i style="background:#069C92"></i><span class="mono">#069C92</span></div>
+                <div class="sw-div"></div>
+                <div class="sw"><i style="background:#D56F46"></i><span class="mono">#D56F46</span></div>
+                <div class="sw"><i style="background:#4F9B53"></i><span class="mono">#4F9B53</span></div>
+                <div class="sw"><i style="background:#6389E2"></i><span class="mono">#6389E2</span></div>
+                <div class="sw"><i style="background:#AA8621"></i><span class="mono">#AA8621</span></div>
+              </div>
+              <div class="pal-row anim" style="--i:1">
+                <span class="pl" data-en="light">claro</span>
+                <div class="sw"><i style="background:#047972"></i><span class="mono">#047972</span></div>
+                <div class="sw-div"></div>
+                <div class="sw"><i style="background:#B24F25"></i><span class="mono">#B24F25</span></div>
+                <div class="sw"><i style="background:#2E7C35"></i><span class="mono">#2E7C35</span></div>
+                <div class="sw"><i style="background:#4669BF"></i><span class="mono">#4669BF</span></div>
+                <div class="sw"><i style="background:#876804"></i><span class="mono">#876804</span></div>
+              </div>
+            </div>
+            <p class="viz-note anim" style="--i:2" data-en="Accent | data: kcal · protein · carbs · fat. Same hue per theme, lightness re-solved — this page runs on the app's exact tokens.">Acento | datos: kcal · proteína · carbs · grasa. Mismo hue por tema, luminancia re-resuelta — esta página corre sobre los tokens exactos de la app.</p>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="sec-head">
+      <h2 data-en="A deliberately small stack">Un stack deliberadamente pequeño</h2>
+      <p data-en="~42 source files, zero TypeScript, no state library. Restraint is a feature: every dependency must justify itself in one line.">~42 archivos fuente, cero TypeScript, sin librería de estado. La contención es un feature: cada dependencia debe justificarse en una línea.</p>
+    </div>
+    <div class="arch">
+      <div class="arch-row">
+        <div class="node"><b>React PWA</b><span>Vite · Tailwind · Recharts · offline · es/en</span></div>
+        <div class="link"><span class="a"></span><span class="mono" data-en="supabase-js · row-level RLS">supabase-js · RLS por fila</span></div>
+        <div class="node"><b>Postgres · Supabase</b><span data-en="SQL views · pgvector · Auth · Storage">vistas SQL · pgvector · Auth · Storage</span></div>
+      </div>
+      <div class="arch-row">
+        <div class="node"><b data-en="Photo or label">Foto o etiqueta</b><span data-en="canvas compression → 1024 px">compresión canvas → 1024 px</span></div>
+        <div class="link"><span class="a"></span><span class="mono">response_schema JSON</span></div>
+        <div class="node"><b data-en="AI cascade">Cascada IA</b><span>Gemini 3.5 → 2.5 → Mistral</span></div>
+      </div>
+      <div class="arch-row">
+        <div class="node"><b data-en="MCP clients">Clientes MCP</b><span>Claude · ChatGPT · Perplexity…</span></div>
+        <div class="link"><span class="a"></span><span class="mono">MCP · OAuth</span></div>
+        <div class="node"><b data-en="The same log">La misma bitácora</b><span data-en="8 tools: log, search, audit">8 tools: registrar, buscar, auditar</span></div>
+      </div>
+      <div class="arch-row">
+        <div class="node"><b>git push main</b><span data-en="GitHub Actions: lint · 99 tests · build">GitHub Actions: lint · 99 tests · build</span></div>
+        <div class="link"><span class="a"></span><span class="mono" data-en="green CI = deploy">CI verde = deploy</span></div>
+        <div class="node"><b>Vercel</b><span data-en="production — no staging, verified locally">producción — sin staging, verificado en local</span></div>
+      </div>
+    </div>
+    <div class="stack mono">
+      <span>React</span><span>Supabase · Postgres + RLS</span><span>pgvector</span><span>Tailwind</span><span>Recharts</span><span>Vite PWA</span><span>Gemini + Mistral</span><span>MCP</span><span>GitHub Actions</span><span>Vercel</span>
+    </div>
+  </section>
+
+  <div class="builder">
+    <div class="wrap">
+      <h2 data-en="Behind the project">Detrás del proyecto</h2>
+      <p data-en="nutri. is a personal project by Bryan Rodríguez Abarca — precise data, honest interfaces, end-to-end delivery: from the SQL schema to the pixel. There's more work like this in the portfolio.">nutri. es un proyecto personal de Bryan Rodríguez Abarca — datos precisos, interfaces honestas y entrega de punta a punta: del esquema SQL al pixel. Hay más trabajo como este en el portafolio.</p>
+      <div class="ctas">
+        <a class="btn btn-primary" href="https://vryahn.com" data-en="View portfolio">Ver portafolio</a>
+        <a class="btn btn-ghost" href="https://github.com/vryahn/nutri" data-en="GitHub">GitHub</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>nutri. · Nutrimetry © 2026</span>
+    <a href="https://vryahn.com">vryahn.com</a>
+  </div>
+</footer>
+    <script src="/about/landing.js" defer></script>
+  </body>
+</html>
