@@ -7,7 +7,7 @@ import {
   classifyCeiling, classifySodium, sodiumIsLow, sodiumIsHigh,
   SODIUM_FLOOR_MG, SODIUM_CEILING_MG,
   DASH_VARS_BY_KEY, axisUnits, buildDashSeries, dashVarTarget,
-  autoAgg, resolveAgg, reduceBucket, bucketRows,
+  autoAgg, resolveAgg, reduceBucket, bucketRows, mergeFoodResults,
 } from './domain.js';
 
 describe('agregación temporal de gráficas custom', () => {
@@ -408,5 +408,25 @@ describe('sodio dual (piso 1500 + techo 2300)', () => {
     expect(sodiumIsLow(1200, false)).toBe(false);
     expect(sodiumIsHigh(2600, true)).toBe(true);
     expect(sodiumIsHigh(2000, true)).toBe(false);
+  });
+});
+
+describe('mergeFoodResults', () => {
+  it('primary primero, semantic dedup por id', () => {
+    const primary = [{ id: 1 }, { id: 2 }];
+    const semantic = [{ id: 2 }, { id: 3 }];
+    expect(mergeFoodResults(primary, semantic)).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+  });
+
+  it('recorta a max', () => {
+    const primary = [{ id: 1 }, { id: 2 }];
+    const semantic = [{ id: 3 }, { id: 4 }, { id: 5 }];
+    expect(mergeFoodResults(primary, semantic, 3)).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+  });
+
+  it('semantic vacío o null se tolera', () => {
+    const primary = [{ id: 1 }];
+    expect(mergeFoodResults(primary, [])).toEqual(primary);
+    expect(mergeFoodResults(primary, null)).toEqual(primary);
   });
 });

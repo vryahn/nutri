@@ -3,10 +3,10 @@ import { describe, it, expect, beforeAll } from 'vitest';
 // i18n.js (importado por ai.js) lee localStorage al cargar el módulo (detección
 // de idioma) — en el entorno 'node' de vitest no existe; se stubea mínimamente
 // y se importa dinámico después, en vez de sumar jsdom como dependencia nueva.
-let toJsonSchema, parseAmount;
+let toJsonSchema, parseAmount, l2normalize;
 beforeAll(async () => {
   globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
-  ({ toJsonSchema, parseAmount } = await import('./ai.js'));
+  ({ toJsonSchema, parseAmount, l2normalize } = await import('./ai.js'));
 });
 
 describe('toJsonSchema', () => {
@@ -54,5 +54,23 @@ describe('parseAmount', () => {
 
   it('sin cantidad -> null', () => {
     expect(parseAmount('pollo a la plancha')).toBeNull();
+  });
+});
+
+describe('l2normalize', () => {
+  it('[3,4] -> [0.6, 0.8]', () => {
+    expect(l2normalize([3, 4])).toEqual([0.6, 0.8]);
+  });
+
+  it('array vacío -> null', () => {
+    expect(l2normalize([])).toBeNull();
+  });
+
+  it('null -> null', () => {
+    expect(l2normalize(null)).toBeNull();
+  });
+
+  it('vector de ceros -> null', () => {
+    expect(l2normalize([0, 0, 0])).toBeNull();
   });
 });

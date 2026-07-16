@@ -1004,3 +1004,11 @@ export function computeRecipePer100g(ingredients, cookedWeightG) {
     micros: Object.fromEntries(Object.entries(micros).map(([k, v]) => [k, round(v * scale, 3)])),
   };
 }
+
+// Fusiona resultados de búsqueda ilike (primary) con los de match_foods (semantic):
+// primary conserva su orden y va primero, semantic solo aporta ids nuevos, recortado a max.
+export function mergeFoodResults(primary, semantic, max = 8) {
+  const seen = new Set((primary || []).map((f) => f.id));
+  const extra = (semantic || []).filter((f) => !seen.has(f.id));
+  return [...(primary || []), ...extra].slice(0, max);
+}

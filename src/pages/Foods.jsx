@@ -8,10 +8,10 @@ import { cacheGet, cacheSet } from '../lib/cache.js';
 import { useToast } from '../lib/useToast.js';
 import {
   MICROS, MICROS_DEFAULT, microGroups, round, kcalFromMacros, kcalSuspicious, macrosImplausible,
-  componentsInconsistent, isWaterSentinel, eanChecksumValid,
+  componentsInconsistent, isWaterSentinel, eanChecksumValid, mergeFoodResults,
 } from '../lib/domain.js';
 import { fetchOFF, searchFDC, fetchFDC } from '../lib/sources.js';
-import { GEMINI_KEY, DENSITY_PRESETS, snapDensity, estimateFood } from '../lib/ai.js';
+import { GEMINI_KEY, DENSITY_PRESETS, snapDensity, estimateFood, embedText } from '../lib/ai.js';
 import { t, useLang, useUnits, gToOz, mlToFlOz } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import UndoToast from '../components/UndoToast.jsx';
@@ -139,7 +139,21 @@ export default function Foods() {
     if (!isBase) req = req.ilike('name', `%${query.trim()}%`);
     const { data, error } = await req;
     if (error) { showToast(t('No se pudieron cargar los alimentos — revisa tu conexión.')); setLoading(false); return; }
-    const list = data.filter((f) => !isWaterSentinel(f));
+    let hits = data;
+    // Búsqueda semántica de respaldo: solo si hay pocos hits por ilike. Nunca debe
+    // romper la búsqueda normal — embedText ya devuelve null ante cualquier fallo.
+    if (!isBase && GEMINI_KEY && query.trim().length >= 3 && data.length < 8) {
+      try {
+        const vec = await embedText(query.trim());
+        if (vec) {
+          const { data: semantic } = await supabase.rpc('match_foods', { q: JSON.stringify(vec), n: 8 });
+          hits = mergeFoodResults(hits, semantic, 8);
+        }
+      } catch {
+        // ignorado: se queda con los hits de ilike
+      }
+    }
+    const list = hits.filter((f) => !isWaterSentinel(f));
     setFoods(isBase ? cacheSet('foods', list) : list);
     setLoading(false);
   }
@@ -162,9 +176,9 @@ export default function Foods() {
       // guardado lo deja en null y el aviso ⚠ vuelve a aparecer.
       reviewed_at: food.reviewed_at || null,
     };
-    const { error } = food.id
-      ? await supabase.from('foods').update(payload).eq('id', food.id)
-      : await supabase.from('foods').insert(payload);
+    const { data: saved, error } = food.id
+      ? await supabase.from('foods').update(payload).eq('id', food.id).select().single()
+      : await supabase.from('foods').insert(payload).select().single();
 
     if (error) {
       showToast(t('Error al guardar.'));
@@ -173,6 +187,10 @@ export default function Foods() {
     showToast(t('Guardado.'));
     setEditing(null);
     load();
+    // Embedding para búsqueda semántica: fire-and-forget, nunca bloquea el guardado.
+    embedText(saved.name.trim() + (saved.brand?.trim() ? ' ' + saved.brand.trim() : '')).then((e) => {
+      if (e) supabase.from('foods').update({ embedding: JSON.stringify(e) }).eq('id', saved.id);
+    });
   }
 
   // Borrado sin confirmación (swipe en la lista y botón "Borrar" del form):

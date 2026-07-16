@@ -184,6 +184,35 @@ export function toJsonSchema(g) {
   return node;
 }
 
+// Normaliza L2. gemini-embedding-001 solo devuelve normalizado a 3072 dims;
+// a 768 hay que re-normalizar para que <=> sea distancia coseno válida.
+export function l2normalize(v) {
+  if (!Array.isArray(v) || v.length === 0) return null;
+  const n = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
+  if (!n || !Number.isFinite(n)) return null;
+  return v.map((x) => x / n);
+}
+
+// Embedding para búsqueda semántica del catálogo. null ante cualquier fallo (nunca lanza).
+export async function embedText(text) {
+  if (!GEMINI_KEY || !text?.trim()) return null;
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
+        body: JSON.stringify({ content: { parts: [{ text: text.trim() }] }, outputDimensionality: 768 }),
+      },
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    return l2normalize(json?.embedding?.values);
+  } catch {
+    return null;
+  }
+}
+
 async function callGemini(model, systemPrompt, parts, schema, temperature) {
   const generationConfig = { response_mime_type: 'application/json', response_schema: schema };
   if (temperature != null) generationConfig.temperature = temperature; // solo lo usa el eval (temp 0 = reproducible)

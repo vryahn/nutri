@@ -32,7 +32,9 @@ import {
   MICROS,
   MICROS_DEFAULT,
   microGroups,
+  mergeFoodResults,
 } from '../lib/domain.js';
+import { GEMINI_KEY, embedText } from '../lib/ai.js';
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, closestCenter, closestCorners, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
@@ -1939,14 +1941,29 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
       return;
     }
     const timer = setTimeout(async () => {
-      const q = query.trim().replace(/[,()]/g, ' ');
+      const trimmed = query.trim();
+      const q = trimmed.replace(/[,()]/g, ' ');
       const [{ data: foods }, { data: recipes }] = await Promise.all([
         supabase.from('foods').select('id,name,brand,source').or(`name.ilike.%${q}%,brand.ilike.%${q}%`).limit(8),
         supabase.from('recipes').select('id,name').ilike('name', `%${q}%`).limit(8),
       ]);
+      let foodHits = foods || [];
+      // Búsqueda semántica de respaldo: solo si hay pocos hits por ilike. Nunca
+      // debe romper la búsqueda normal — embedText ya devuelve null ante cualquier fallo.
+      if (GEMINI_KEY && trimmed.length >= 3 && foodHits.length < 8) {
+        try {
+          const vec = await embedText(trimmed);
+          if (vec) {
+            const { data: semantic } = await supabase.rpc('match_foods', { q: JSON.stringify(vec), n: 8 });
+            foodHits = mergeFoodResults(foodHits, semantic, 8);
+          }
+        } catch {
+          // ignorado: se queda con los hits de ilike
+        }
+      }
       const combined = [
         // el Agua se registra desde su tarjeta, no como comida
-        ...(foods || []).filter((f) => f.id !== waterFoodId).map((f) => ({ ...f, type: 'food' })),
+        ...foodHits.filter((f) => f.id !== waterFoodId).map((f) => ({ ...f, type: 'food' })),
         ...(recipes || []).map((r) => ({ ...r, type: 'recipe' })),
       ];
       // catálogo base (usda) al final; estable, conserva el orden dentro de cada grupo
