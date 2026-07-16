@@ -1435,7 +1435,17 @@ export default function Dashboard() {
     <div className={`px-4 py-4 flex flex-col gap-4 ${refetching ? 'opacity-60 transition-opacity' : ''}`} aria-busy={refetching}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-xl">{t('Dashboard')}</h1>
-        <ExportMenu calcLabel={calcHeader(calcMode)} onRaw={exportCSV} onResumen={exportResumenCSV} onInforme={exportInforme} />
+        <div className="flex items-center gap-2">
+          {GEMINI_KEY && (
+            <button
+              onClick={() => setAskOpen(true)}
+              className="shrink-0 px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap bg-surface-2 border border-border text-text-2 press"
+            >
+              {t('Preguntar')}
+            </button>
+          )}
+          <ExportMenu calcLabel={calcHeader(calcMode)} onRaw={exportCSV} onResumen={exportResumenCSV} onInforme={exportInforme} />
+        </div>
       </div>
 
       {/* El botón de fases vive FUERA del scroller: su popover no puede quedar
@@ -1480,14 +1490,6 @@ export default function Dashboard() {
             setPreset('fase');
           }}
         />
-        {GEMINI_KEY && (
-          <button
-            onClick={() => setAskOpen(true)}
-            className="shrink-0 px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap bg-surface-2 border border-border text-text-2 press"
-          >
-            {t('Preguntar')}
-          </button>
-        )}
       </div>
 
       {preset === 'fase' && !phaseMode && (
