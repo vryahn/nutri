@@ -1,8 +1,3 @@
-// Animate macro bars on load
-requestAnimationFrame(() => requestAnimationFrame(() => {
-  document.getElementById('day').classList.add('loaded');
-}));
-
 // Decision showcase tabs
 const decTabs = [...document.querySelectorAll('.dec-nav button')];
 const decPanels = [...document.querySelectorAll('.dec-panel')];

@@ -180,11 +180,11 @@
     .bar-meta .lbl { color: var(--text-2); }
     .bar-meta .val { color: var(--text-3); }
     .bar { height: 7px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+    @keyframes growbar { from { width: 0; } }
     .bar i {
-      display: block; height: 100%; border-radius: 999px; width: 0;
-      transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+      display: block; height: 100%; border-radius: 999px; width: var(--w);
+      animation: growbar 0.9s cubic-bezier(0.22, 1, 0.36, 1);
     }
-    .loaded .bar i { width: var(--w); }
     .sodium {
       display: flex; justify-content: space-between; align-items: center;
       margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border);
@@ -358,7 +358,7 @@
       .dec-panel { grid-template-columns: 1fr; }
     }
     @media (prefers-reduced-motion: reduce) {
-      .bar i { transition: none; }
+      .bar i { animation: none; }
       .btn { transition: none; }
       .dec-panel .anim, .dec-panel.show .anim { animation: none; opacity: 1; }
     }
