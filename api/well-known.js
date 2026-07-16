@@ -19,6 +19,7 @@ export default function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
   res.status(200).json({
     resource: 'https://nutri.vryahn.com/api/mcp',
+    resource_name: 'Nutrimetry',
     authorization_servers: ['https://shzoiqbahfmfszjsrkzy.supabase.co/auth/v1'],
     bearer_methods_supported: ['header'],
   });

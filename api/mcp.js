@@ -285,11 +285,25 @@ async function updateFood(supabase, uid, foodId, patch) {
 // ── Servidor MCP: una instancia nueva por request (stateless) ──────────────
 
 function buildServer(supabase, uid) {
-  const server = new McpServer({ name: 'nutrimetry', version: '1.0.0' });
+  const server = new McpServer(
+    {
+      name: 'nutrimetry',
+      title: 'Nutrimetry',
+      version: '1.0.0',
+      websiteUrl: 'https://nutri.vryahn.com',
+      icons: [{ src: 'https://nutri.vryahn.com/icon.svg', mimeType: 'image/svg+xml' }],
+    },
+    {
+      instructions:
+        'Registro nutricional personal. Valores por 100 g; cantidades siempre en gramos. Busca con search_catalog antes de registrar y usa food_id/recipe_id en log_entry.',
+    }
+  );
 
   server.registerTool(
     'search_catalog',
     {
+      title: 'Buscar en el catálogo',
+      annotations: { readOnlyHint: true, openWorldHint: false },
       description:
         'Busca alimentos y recetas por nombre/marca (ilike). Valores por 100 g. is_mine indica si el ítem es propio (owner del food/receta); el catálogo base compartido (owner NULL) aparece con is_mine:false.',
       inputSchema: {
@@ -306,6 +320,8 @@ function buildServer(supabase, uid) {
   server.registerTool(
     'log_entry',
     {
+      title: 'Registrar consumo',
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
       description:
         'Registra un consumo (cantidad SIEMPRE en gramos; el agua se registra con el food "Agua", grams = ml). Preferir food_id/recipe_id (de search_catalog); item (nombre) es fallback y puede enganchar un homónimo.',
       inputSchema: {
@@ -326,6 +342,8 @@ function buildServer(supabase, uid) {
   server.registerTool(
     'delete_entry',
     {
+      title: 'Borrar registro',
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
       description: 'Borra un registro de consumo por id (RLS limita a los propios).',
       inputSchema: { entry_id: z.string().uuid() },
     },
@@ -338,6 +356,8 @@ function buildServer(supabase, uid) {
   server.registerTool(
     'get_day',
     {
+      title: 'Ver registros del día',
+      annotations: { readOnlyHint: true, openWorldHint: false },
       description: 'Totales del día (daily_totals) + registros individuales (entry_nutrients), con etiqueta y nombre. Default hoy.',
       inputSchema: { day: z.string().optional().describe('AAAA-MM-DD, default hoy') },
     },
@@ -350,6 +370,8 @@ function buildServer(supabase, uid) {
   server.registerTool(
     'get_targets',
     {
+      title: 'Ver objetivo del día',
+      annotations: { readOnlyHint: true, openWorldHint: false },
       description: 'Objetivo resuelto para una fecha (día específico si existe, si no la fase dow vigente), con label/goal de la fase. Default hoy.',
       inputSchema: { day: z.string().optional().describe('AAAA-MM-DD, default hoy') },
     },
@@ -362,6 +384,8 @@ function buildServer(supabase, uid) {
   server.registerTool(
     'create_food',
     {
+      title: 'Crear alimento',
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
       description:
         'Crea un alimento en tu catálogo, TODO por 100 g. Guarda bajo responsabilidad del usuario; los avisos ⚠ (kcal vs macros, valores implausibles, componentes inconsistentes) se muestran también en la app y NO bloquean el guardado. Las claves de micros inválidas SÍ bloquean (error).',
       inputSchema: {
@@ -385,6 +409,8 @@ function buildServer(supabase, uid) {
   server.registerTool(
     'create_recipe',
     {
+      title: 'Crear receta',
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
       description:
         'Crea una receta a partir de ingredientes existentes en el catálogo (food_id + gramos). cooked_weight_g es el peso final tras cocinar; si se omite o es 0 se usa la suma de gramos de los ingredientes. Devuelve los valores por 100 g calculados.',
       inputSchema: {
@@ -403,6 +429,8 @@ function buildServer(supabase, uid) {
   server.registerTool(
     'update_food',
     {
+      title: 'Editar alimento',
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
       description:
         'Edita un food. Si es propio, actualiza en sitio (portions-only no cambia la fuente; cualquier otro campo marca source:"ia_personal" y limpia reviewed_at). Si es del catálogo base o de otro dueño (no editable), crea tu propia copia (forked:true) sin tocar el original. Prohibido: borrar foods o editar recetas vía MCP — hazlo en la app.',
       inputSchema: {
