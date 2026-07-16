@@ -837,10 +837,23 @@ const EN = {
   'Falta el parámetro authorization_id.': 'Missing the authorization_id parameter.',
   'No se pudo cargar la solicitud de autorización.': 'Could not load the authorization request.',
   '%n quiere acceder a tu cuenta de nutri.': '%n wants to access your nutri account.',
+  '%n quiere conectarse a tu cuenta': '%n wants to connect to your account',
+  'Podrá registrar y consultar tu información de nutri en tu nombre.':
+    'It will be able to log and read your nutri data on your behalf.',
+  'Conectado como': 'Signed in as',
   'Esta aplicación': 'This application',
   'Permisos solicitados': 'Requested permissions',
+  'Verificar tu identidad': 'Verify your identity',
+  'Confirmar quién eres en nutri': 'Confirm who you are in nutri',
+  'Nombre y datos básicos de la cuenta': 'Name and basic account details',
+  'Tu correo electrónico': 'Your email address',
+  'La dirección con la que inicias sesión': 'The address you sign in with',
+  'Tu teléfono': 'Your phone',
+  'Solo si tienes uno registrado': 'Only if you have one on file',
   Aprobar: 'Approve',
+  'Aprobar acceso': 'Allow access',
   Denegar: 'Deny',
+  'Podrás revocar este acceso cuando quieras.': 'You can revoke this access at any time.',
 
   // Toasts de error de carga (showToast) — antes solo en español
   'No se pudieron cargar los objetivos — revisa tu conexión.': 'Could not load targets — check your connection.',
