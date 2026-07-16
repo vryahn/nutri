@@ -336,10 +336,10 @@ export default function Foods() {
           </div>
         )}
 
-        {/* <lg: cards + swipe, sin cambios. */}
+        {/* <lg: cards + swipe. Misma lista filtrada/ordenada que la tabla lg+ (visibleFoods). */}
         {!loading && foods.length > 0 && (
           <div className="flex flex-col gap-4 lg:hidden">
-            {foods.map((f) => (
+            {visibleFoods.map((f) => (
               <SwipeToDelete
                 key={f.id}
                 onTap={() => setEditing(f)}
@@ -362,6 +362,9 @@ export default function Foods() {
                 {f.brand && <span className="text-sm text-text-3">{f.brand}</span>}
               </SwipeToDelete>
             ))}
+            {visibleFoods.length === 0 && (
+              <p className="px-3 py-6 text-center text-text-2">{t('Sin resultados con estos filtros.')}</p>
+            )}
           </div>
         )}
 
