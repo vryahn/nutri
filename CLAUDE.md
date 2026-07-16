@@ -27,12 +27,15 @@ supabase/migrations/     # migraciones incrementales, todas aplicadas: 001 prefs
                           # 011 higiene advisors · 012 body_metrics (medidas corporales, override §11) ·
                           # 013 body_metrics.photo_paths + bucket privado body-photos (fotos de progreso, RLS por prefijo uid) ·
                           # 014 foods.reviewed_at (el usuario da por buenos los valores atípicos; cualquier guardado la limpia) ·
-                          # 014 meal_labels.archived_at (borrado suave: archivar en vez de borrar)
+                          # 014 meal_labels.archived_at (borrado suave: archivar en vez de borrar) ·
+                          # 015 catálogo base compartido (144 foods USDA, owner null) · 016 log_entry por id ·
+                          # 017 foods.embedding vector(768) + RPC match_foods (búsqueda semántica, pgvector)
 src/lib/supabase.js      # createClient, schema 'nutri'
 src/lib/domain.js        # MICROS, resolución de targets, adherencia, fórmula de recetas, reorderLabels
 src/lib/sources.js       # clientes Open Food Facts y USDA FDC, por 100 g, mapeados a claves MICROS
 src/lib/theme.js         # modo claro/oscuro/sistema en localStorage + data-theme en <html>
-src/lib/ai.js            # cascada Gemini→Mistral ("Datos con IA"), schema estructurado por 100 g
+src/lib/ai.js            # cascada Gemini→Mistral ("Datos con IA"), schema estructurado por 100 g;
+                          # embedText (embeddings 768d búsqueda semántica) y pipeline "Pregúntale a tu bitácora"
 src/lib/i18n.js          # es/en: string español ES la clave, fallback a español; idioma+unidades en RegionSheet
 src/lib/importer.js      # carga en bloque (foods/entries/ingredientes) — funciones puras, hereda validadores ⚠
 src/lib/cache.js         # cache de sesión en memoria (stale-while-revalidate casero), se vacía al cerrar sesión
@@ -138,4 +141,4 @@ Recordar: vistas con `security_invoker = true`; nuevas tablas necesitan RLS + po
 
 Peso corporal, sueño, entrenamiento (viven en Notion/Hevy). TypeScript, tests E2E, i18n, registro público de usuarios, recuperación de contraseña self-service, escáner de cámara, edge functions.
 
-(Excepciones a §11 ya construidas con autorización de Bryan: **modo claro** (`src/lib/theme.js`, selector en `UserMenu`); **medidas corporales** (peso/composición) autorizadas el 2026-07-11 — tab **Medidas** (`src/pages/Body.jsx`), tabla `nutri.body_metrics` (migración 012), claves en `BODY_METRICS` de `domain.js`; e **i18n es/en** (`src/lib/i18n.js`, selector de idioma+unidades en `RegionSheet` — el string en español es la clave, así una traducción faltante cae al español). Sueño y entrenamiento SIGUEN fuera de alcance. El resto de §11 sigue vigente.)
+(Excepciones a §11 ya construidas con autorización de Bryan: **modo claro** (`src/lib/theme.js`, selector en `UserMenu`); **medidas corporales** (peso/composición) autorizadas el 2026-07-11 — tab **Medidas** (`src/pages/Body.jsx`), tabla `nutri.body_metrics` (migración 012), claves en `BODY_METRICS` de `domain.js`; e **i18n es/en** (`src/lib/i18n.js`, selector de idioma+unidades en `RegionSheet` — el string en español es la clave, así una traducción faltante cae al español). Sueño y entrenamiento SIGUEN fuera de alcance. El resto de §11 sigue vigente. Autorizadas el 2026-07-15: **búsqueda semántica del catálogo** — migración 017 (`foods.embedding vector(768)` + RPC `match_foods`, pgvector, coseno, max_dist 0.65), `embedText`/`l2normalize` en `ai.js` (gemini-embedding-001, 768 dims re-normalizados L2), híbrido en Foods y Hoy: ilike primero y si da <8 hits se completa con `match_foods` vía `mergeFoodResults` de `domain.js`; el embedding se genera fire-and-forget al guardar el food con texto `nombre + ' ' + marca` (fórmula fija — el catálogo entero se backfilleó con ella); foods sin embedding (creados por MCP/REST) siguen saliendo por ilike. Y **"Pregúntale a tu bitácora"** — botón Preguntar en Dashboard (gateado por `VITE_GEMINI_KEY`), RAG estructurado de 3 pasos en `ai.js`: `planAskQuery` (planner con schema: rango/nutrientes/need_detail, saneado por `sanitizeAskPlan`, rango cap 92 días) → fetch a `daily_totals`/`entry_nutrients` + `resolveTarget` → `askAnswer` (cita días/alimentos, solo cifras del contexto, no prescribe); `formatAskContext` arma el CSV compacto (entries recortadas a 400 por kcal); historial solo en memoria del sheet.)
