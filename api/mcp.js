@@ -12,6 +12,8 @@ import {
   assertValidMicros,
   assertNonNegative,
   assertValidPortions,
+  assertValidBodyMetrics,
+  bodyMetricWarnings,
   buildWarnings,
   resolveKcal,
   decideUpdatePath,
@@ -282,6 +284,37 @@ async function updateFood(supabase, uid, foodId, patch) {
   return { forked: false, ...data, warnings };
 }
 
+// log_measurement: merge sobre body_metrics (unique owner,day — misma tabla que la
+// tab Medidas). Merge en vez de upsert ciego: una medición parcial no pisa las
+// claves ya guardadas ese día (prioridad del proyecto: no perder datos).
+async function logMeasurement(supabase, uid, { day, metrics }) {
+  assertValidBodyMetrics(metrics);
+  const d = day || todayISO();
+  const { data: existing, error: getErr } = await supabase
+    .from('body_metrics')
+    .select('metrics')
+    .eq('day', d)
+    .maybeSingle();
+  if (getErr) throw new Error(getErr.message);
+  const merged = { ...(existing?.metrics || {}), ...metrics };
+  const { data, error } = await supabase
+    .from('body_metrics')
+    .upsert({ owner: uid, day: d, metrics: merged }, { onConflict: 'owner,day' })
+    .select('id,day,metrics')
+    .single();
+  if (error) throw new Error(error.message);
+  return { ...data, warnings: bodyMetricWarnings(metrics) };
+}
+
+async function getMeasurements(supabase, { from, to }) {
+  let q = supabase.from('body_metrics').select('id,day,metrics,note').order('day', { ascending: false });
+  if (from) q = q.gte('day', from);
+  if (to) q = q.lte('day', to);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 // ── Servidor MCP: una instancia nueva por request (stateless) ──────────────
 
 function buildServer(supabase, uid) {
@@ -449,6 +482,41 @@ function buildServer(supabase, uid) {
     async ({ food_id, ...patch }) => {
       const result = await updateFood(supabase, uid, food_id, patch);
       return toolResult(result.forked ? 'Se creó tu propia copia (fork).' : 'Actualizado.', result);
+    }
+  );
+
+  server.registerTool(
+    'log_measurement',
+    {
+      title: 'Registrar medición corporal',
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      description:
+        'Guarda mediciones corporales (bioimpedancia, circunferencias) del día en la tab Medidas. Claves EXACTAS de BODY_METRICS en domain.js (peso_kg, grasa_pct, musculo_kg, agua_pct, grasa_visceral, metabolismo_basal_kcal, …); claves libres se rechazan. Merge con lo ya guardado ese día: solo pisa las claves enviadas.',
+      inputSchema: {
+        day: z.string().optional().describe('AAAA-MM-DD, default hoy'),
+        metrics: z.record(z.string(), z.number()).describe('claves de BODY_METRICS, valores numéricos'),
+      },
+    },
+    async (input) => {
+      const result = await logMeasurement(supabase, uid, input);
+      return toolResult(`Medición guardada para ${result.day}.`, result);
+    }
+  );
+
+  server.registerTool(
+    'get_measurements',
+    {
+      title: 'Ver mediciones corporales',
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      description: 'Mediciones corporales por rango de fechas (ambos extremos opcionales), orden descendente por día.',
+      inputSchema: {
+        from: z.string().optional().describe('AAAA-MM-DD, inicio del rango'),
+        to: z.string().optional().describe('AAAA-MM-DD, fin del rango'),
+      },
+    },
+    async (input) => {
+      const rows = await getMeasurements(supabase, input);
+      return toolResult(`${rows.length} medición(es).`, { measurements: rows });
     }
   );
 

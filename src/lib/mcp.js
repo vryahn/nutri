@@ -3,6 +3,8 @@
 // de recetas. Reusa domain.js — los mismos criterios que la UI (FoodForm/Recipes).
 import {
   MICROS,
+  BODY_METRICS,
+  BODY_METRIC_MAX,
   kcalFromMacros,
   kcalSuspicious,
   macrosImplausible,
@@ -11,6 +13,7 @@ import {
 } from './domain.js';
 
 export const MICRO_KEYS = new Set(MICROS.map((m) => m.key));
+export const BODY_METRIC_KEYS = new Set(BODY_METRICS.map((m) => m.key));
 
 // Validación DURA: claves de micros fuera de MICROS bloquean el guardado.
 export function assertValidMicros(micros) {
@@ -40,6 +43,26 @@ export function assertValidPortions(portions) {
       throw new Error('cada elemento de portions requiere {name: string, grams: number > 0}');
     }
   }
+}
+
+// Validación DURA de medidas corporales: claves EXACTAS de BODY_METRICS y valores
+// numéricos finitos ≥ 0 (misma política que los micros: claves libres se rechazan).
+export function assertValidBodyMetrics(metrics) {
+  if (!metrics || typeof metrics !== 'object' || Array.isArray(metrics) || !Object.keys(metrics).length) {
+    throw new Error('metrics debe ser un objeto no vacío {clave: número}');
+  }
+  const bad = Object.keys(metrics).filter((k) => !BODY_METRIC_KEYS.has(k));
+  if (bad.length) {
+    throw new Error(`Claves de medida inválidas: ${bad.join(', ')}. Válidas: ${[...BODY_METRIC_KEYS].join(', ')}`);
+  }
+  assertNonNegative(metrics);
+}
+
+// Aviso SUAVE: valores sobre la cota fisiológica (BODY_METRIC_MAX) — no bloquea.
+export function bodyMetricWarnings(metrics) {
+  return Object.entries(metrics)
+    .filter(([k, v]) => BODY_METRIC_MAX[k] != null && v > BODY_METRIC_MAX[k])
+    .map(([k, v]) => `${k}: ${v} supera la cota fisiológica (${BODY_METRIC_MAX[k]}) — revisa unidades.`);
 }
 
 // Avisos SUAVES — mismos criterios que FoodForm (Foods.jsx): nunca bloquean el guardado.

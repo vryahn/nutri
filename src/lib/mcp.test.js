@@ -3,6 +3,8 @@ import {
   assertValidMicros,
   assertNonNegative,
   assertValidPortions,
+  assertValidBodyMetrics,
+  bodyMetricWarnings,
   buildWarnings,
   decideUpdatePath,
   recipeResponse,
@@ -35,6 +37,30 @@ describe('assertValidPortions', () => {
   });
   it('acepta portions válidas', () => {
     expect(() => assertValidPortions([{ name: 'vaso', grams: 250 }])).not.toThrow();
+  });
+});
+
+describe('assertValidBodyMetrics', () => {
+  it('acepta claves de BODY_METRICS (caso de aceptación: peso + grasa)', () => {
+    expect(() => assertValidBodyMetrics({ peso_kg: 80, grasa_pct: 18 })).not.toThrow();
+  });
+  it('rechaza claves libres y lista las válidas', () => {
+    expect(() => assertValidBodyMetrics({ weight_kg: 80 })).toThrow(/weight_kg/);
+    expect(() => assertValidBodyMetrics({ weight_kg: 80 })).toThrow(/peso_kg/);
+  });
+  it('rechaza vacío, no-objeto y valores no numéricos/negativos', () => {
+    expect(() => assertValidBodyMetrics({})).toThrow();
+    expect(() => assertValidBodyMetrics(null)).toThrow();
+    expect(() => assertValidBodyMetrics([1])).toThrow();
+    expect(() => assertValidBodyMetrics({ peso_kg: -1 })).toThrow();
+    expect(() => assertValidBodyMetrics({ peso_kg: NaN })).toThrow();
+  });
+});
+
+describe('bodyMetricWarnings', () => {
+  it('avisa sobre la cota fisiológica sin bloquear', () => {
+    expect(bodyMetricWarnings({ peso_kg: 800 })).toHaveLength(1);
+    expect(bodyMetricWarnings({ peso_kg: 80, grasa_pct: 18 })).toEqual([]);
   });
 });
 
