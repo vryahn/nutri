@@ -1,6 +1,6 @@
-// Tema claro/oscuro. El modo vive en localStorage (no en prefs de Supabase:
-// debe aplicarse antes del primer paint, mucho antes de que responda la red).
-// El script inline de index.html hace la primera aplicación; esto la mantiene.
+// Light/dark theme. The mode lives in localStorage (not in Supabase prefs:
+// it must be applied before the first paint, long before the network responds).
+// The inline script in index.html performs the initial application; this maintains it.
 
 const KEY = 'nutri-theme';
 export const MODES = ['system', 'light', 'dark'];
@@ -17,8 +17,9 @@ const resolve = (mode) => (mode === 'system' ? (mq().matches ? 'dark' : 'light')
 function applyMode(mode) {
   const root = document.documentElement;
   root.dataset.theme = resolve(mode);
-  // El color se lee del token ya aplicado, no de una copia del hex: así cambiar
-  // la paleta en index.css no deja el theme-color apuntando al color anterior.
+  // The color is read from the already-applied token, not from a copy of the hex:
+  // that way changing the palette in index.css does not leave the theme-color
+  // pointing at the previous color.
   const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
   if (bg) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg);
 }
@@ -28,7 +29,7 @@ export function setMode(mode) {
   applyMode(mode);
 }
 
-// El SO puede cambiar de tema con la app abierta; solo importa en modo 'system'.
+// The OS may switch themes while the app is open; only relevant in 'system' mode.
 export function watchSystem() {
   const m = mq();
   const onChange = () => getMode() === 'system' && applyMode('system');

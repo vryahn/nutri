@@ -1,6 +1,6 @@
 import { ChevronUp, ChevronDown } from 'lucide-react';
 
-// Encabezado de columna ordenable, compartido por las tablas lg+ de Alimentos y Recetas.
+// Sortable column header, shared by the lg+ tables of Foods and Recipes.
 export default function SortTh({ label, sortKey: key, active, dir, onSort, align }) {
   const isActive = active === key;
   return (

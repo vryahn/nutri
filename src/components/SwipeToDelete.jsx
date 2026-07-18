@@ -1,20 +1,21 @@
 import { useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 
-// Swipe-izquierda-para-borrar reutilizable. Mecánica extraída de Today.jsx:
-// lock de eje a ~8 px, translateX ≤ 0, fondo danger con Trash2, umbral 40 %
-// (cap 96 px, idéntico a Hoy), supresión del click posterior al swipe y
-// restauración animada al soltar antes del umbral.
+// Reusable swipe-left-to-delete. Mechanics extracted from Today.jsx:
+// axis lock at ~8 px, translateX ≤ 0, danger background with Trash2, 40 % threshold
+// (96 px cap, identical to the Today page), suppression of the click that follows
+// the swipe, and animated restore when released before the threshold.
 //
-// Integración con dnd-kit (Hoy): la card es a la vez draggable de dnd-kit y
-// swipeable. Los props opcionales permiten compartir el mismo nodo/gesto:
-//   dragDisabled  -> true mientras dnd-kit arrastra (aborta el swipe)
-//   dragListeners -> listeners de dnd-kit (onMouseDown/onTouchStart) a esparcir
-//                    en el elemento; conviven con el pointerdown del swipe
-//   nodeRef       -> callback de setNodeRef de dnd-kit (se fusiona con el ref interno)
-//   dragAttributes -> attributes de dnd-kit a esparcir en el elemento
-// `resetOnDelete`: al pasar el umbral, vuelve a su sitio tras invocar onDelete
-// (para cuando el borrado abre una confirmación en vez de desmontar la card).
+// dnd-kit integration (Today page): the card is simultaneously a dnd-kit draggable
+// and swipeable. The optional props allow sharing the same node/gesture:
+//   dragDisabled  -> true while dnd-kit is dragging (aborts the swipe)
+//   dragListeners -> dnd-kit listeners (onMouseDown/onTouchStart) to spread
+//                    onto the element; they coexist with the swipe's pointerdown
+//   nodeRef       -> dnd-kit setNodeRef callback (merged with the internal ref)
+//   dragAttributes -> dnd-kit attributes to spread onto the element
+// `resetOnDelete`: once past the threshold, the card returns to its place after
+// invoking onDelete (for when the delete opens a confirmation instead of
+// unmounting the card).
 export default function SwipeToDelete({
   children,
   onDelete,

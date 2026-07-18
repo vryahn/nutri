@@ -1,6 +1,6 @@
-// Runner del golden set: llama la ruta REAL de extracción con IA (estimateFoodFromParts)
-// caso por caso y puntúa contra ground truth. SOLO vía `npm run eval` (config aparte);
-// nunca entra al `npm test` normal ni a CI (cuesta cuota y no es determinista).
+// Golden-set runner: calls the REAL AI extraction path (estimateFoodFromParts)
+// case by case and scores against ground truth. ONLY via `npm run eval` (separate config);
+// never part of the regular `npm test` or CI (it costs quota and is not deterministic).
 import { describe, it, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,10 +9,10 @@ import { scoreCase, compareToBaseline } from './score.js';
 const DIR = import.meta.dirname;
 const CASES_DIR = path.join(DIR, 'cases');
 
-// Modelo fijo + temp 0: sin esto el gate depende de qué modelo contestó por el 503
-// (3.5 vs 2.5 dan números distintos → regresiones falsas en el re-run). EVAL_MODEL puede
-// sobreescribirlo por env; cada modelo tiene su propio baseline (el default va a baseline.json,
-// el resto —p. ej. Mistral, cobertura del último paso de la cascada— a baseline.<modelo>.json).
+// Pinned model + temp 0: without this, the gate depends on which model answered after a 503
+// (3.5 vs 2.5 give different numbers → false regressions on the re-run). EVAL_MODEL can
+// override it via env; each model has its own baseline (the default goes to baseline.json,
+// the rest — e.g. Mistral, coverage of the cascade's last step — to baseline.<model>.json).
 const DEFAULT_MODEL = 'gemini-3.5-flash';
 const EVAL_MODEL = process.env.EVAL_MODEL || DEFAULT_MODEL;
 const EVAL_OPTS = { model: EVAL_MODEL, temperature: 0 };
@@ -28,8 +28,8 @@ function loadCases() {
     .map((id) => {
       const dir = path.join(CASES_DIR, id);
       const def = { id, dir, ...JSON.parse(fs.readFileSync(path.join(dir, 'case.json'), 'utf8')) };
-      // Fotos local-only (no van al repo público): un caso cuya foto falte se salta
-      // limpio en vez de romper el runner.
+      // Local-only photos (they do not go into the public repo): a case whose photo is
+      // missing is skipped cleanly instead of breaking the runner.
       def.ready = (def.photos || []).every((p) => fs.existsSync(path.join(dir, p)));
       return def;
     });
@@ -47,17 +47,18 @@ function buildParts(c) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const cases = loadCases();
-// La key requerida depende del modelo pineado: con solo la key "equivocada" en .env, correr
-// igual reventaría los 7 casos como falsas regresiones en vez de un skip limpio.
+// The required key depends on the pinned model: with only the "wrong" key in .env, running
+// anyway would blow up all 7 cases as false regressions instead of a clean skip.
 const NEED_KEY = EVAL_MODEL.startsWith('mistral') ? 'VITE_MISTRAL_KEY' : 'VITE_GEMINI_KEY';
 const hasAI = !!import.meta.env[NEED_KEY];
 const results = [];
 
 describe.skipIf(!hasAI)('eval extracción IA', () => {
   let estimateFoodFromParts;
-  // Reintenta SOLO ante 5xx transitorio (típico 503 de 3.5-flash saturado); sin cascada
-  // de fallback (modelo fijo), un 503 mataría el caso. Un 429 (cuota diaria, free tier =
-  // 20 req/día/modelo) NO se reintenta: no recupera en segundos y quemaría la ventana RPM.
+  // Retries ONLY on a transient 5xx (typically a 503 from a saturated 3.5-flash); without
+  // the fallback cascade (pinned model), a 503 would kill the case. A 429 (daily quota,
+  // free tier = 20 req/day/model) is NOT retried: it does not recover within seconds and
+  // would burn the RPM window.
   async function estimateWithRetry(parts, tries = 4) {
     for (let a = 1; ; a++) {
       try { return await estimateFoodFromParts(parts, EVAL_OPTS); }
@@ -69,7 +70,7 @@ describe.skipIf(!hasAI)('eval extracción IA', () => {
     }
   }
   beforeAll(async () => {
-    // i18n.js lee localStorage al importar; se stubea mínimo (patrón de ai.test.js).
+    // i18n.js reads localStorage on import; minimally stubbed (same pattern as ai.test.js).
     globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
     ({ estimateFoodFromParts } = await import('../src/lib/ai.js'));
   });
@@ -77,7 +78,7 @@ describe.skipIf(!hasAI)('eval extracción IA', () => {
   for (const [i, c] of cases.entries()) {
     if (!c.ready) console.warn(`eval: caso '${c.id}' sin sus fotos en disco — omitido.`);
     it.skipIf(!c.ready)(c.id, async () => {
-      if (i > 0) await sleep(4000); // free tier RPM: separa las llamadas
+      if (i > 0) await sleep(4000); // free tier RPM: space out the calls
       const got = await estimateWithRetry(buildParts(c));
       results.push(scoreCase(c, got));
     }, 120000);
@@ -87,7 +88,7 @@ describe.skipIf(!hasAI)('eval extracción IA', () => {
     if (results.length === 0) return;
     results.sort((a, b) => a.id.localeCompare(b.id));
 
-    // Tabla legible por caso + campos fallados (esperado vs got).
+    // Human-readable table per case + failed fields (expected vs got).
     let table = '\n=== eval extracción IA ===\n';
     for (const r of results) {
       table += `\n[${r.id}] ${r.model || '?'}  ${r.passed}/${r.total}  ${r.mode_ok ? '' : 'MODE✗ '}${r.basis_ok ? '' : 'BASIS✗ '}\n`;
@@ -105,8 +106,8 @@ describe.skipIf(!hasAI)('eval extracción IA', () => {
     const readyIds = new Set(cases.filter((c) => c.ready).map((c) => c.id));
 
     if (process.env.UPDATE_BASELINE) {
-      // Corrida incompleta (un caso murió a mitad, típico 429) NO puede fijar baseline:
-      // quedaría truncado en silencio y los casos perdidos puntuarían "nuevo" para siempre.
+      // An incomplete run (a case died midway, typically a 429) must NOT set the baseline:
+      // it would be silently truncated and the lost cases would score as "new" forever.
       if (results.length !== readyIds.size) {
         throw new Error(`UPDATE_BASELINE: corrida incompleta (${results.length}/${readyIds.size} casos ready) — baseline NO escrito.`);
       }
@@ -115,8 +116,8 @@ describe.skipIf(!hasAI)('eval extracción IA', () => {
       return;
     }
 
-    // Casos skipped (foto local-only ausente) se excluyen de la comparación: un clon con keys
-    // pero sin fotos queda verde. La ausencia de un caso READY (throw/429) sí gatea.
+    // Skipped cases (missing local-only photo) are excluded from the comparison: a clone with
+    // keys but no photos stays green. The absence of a READY case (throw/429) does gate.
     const baseline = (fs.existsSync(BASELINE) ? JSON.parse(fs.readFileSync(BASELINE, 'utf8')).cases : [])
       .filter((b) => readyIds.has(b.id));
     const { regressions, improvements, newItems } = compareToBaseline(baseline, results);

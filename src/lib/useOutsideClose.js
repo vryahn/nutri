@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
 
-// Cierra un desplegable flotante al tocar fuera de él. Devuelve el ref que debe
-// envolver disparador + panel (tocar el disparador no cierra: lo togglea).
+// Closes a floating dropdown when tapping outside of it. Returns the ref that must
+// wrap trigger + panel (tapping the trigger does not close: it toggles).
 //
-// Un backdrop `fixed inset-0` NO sirve como cierre-al-tocar-fuera: dentro de un
-// ancestro con `backdrop-filter` (todo `.glass`: header y tab bar móviles) el
-// fixed se ancla a ese ancestro, no al viewport, y el resto de la pantalla queda
-// sin cubrir. Por eso el listener va en `document`.
+// A `fixed inset-0` backdrop does NOT work as close-on-outside-tap: inside an
+// ancestor with `backdrop-filter` (everything `.glass`: mobile header and tab bar)
+// the fixed element anchors to that ancestor, not the viewport, and the rest of the
+// screen is left uncovered. That is why the listener goes on `document`.
 export function useOutsideClose(open, setOpen) {
   const ref = useRef(null);
   useEffect(() => {

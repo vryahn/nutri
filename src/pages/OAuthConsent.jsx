@@ -4,8 +4,8 @@ import { BadgeCheck, Mail, Phone, UserRound, ShieldCheck, Loader2, Check, AlertC
 import { supabase } from '../lib/supabase.js';
 import { t, useLang } from '../lib/i18n.js';
 
-// Etiqueta legible por scope OIDC (Supabase reporta openid/profile/email/phone).
-// Un scope sin entrada cae a su string crudo — nunca se oculta lo que se pide.
+// Human-readable label per OIDC scope (Supabase reports openid/profile/email/phone).
+// A scope without an entry falls back to its raw string — what is requested is never hidden.
 const SCOPE_META = {
   openid: { Icon: BadgeCheck, label: 'Verificar tu identidad', desc: 'Confirmar quién eres en nutri' },
   profile: { Icon: UserRound, label: 'Tu perfil', desc: 'Nombre y datos básicos de la cuenta' },
@@ -13,11 +13,11 @@ const SCOPE_META = {
   phone: { Icon: Phone, label: 'Tu teléfono', desc: 'Solo si tienes uno registrado' },
 };
 
-// Pantalla de consentimiento del OAuth 2.1 server de Supabase (conector MCP).
-// Supabase redirige aquí con ?authorization_id=… (dashboard → Authentication →
-// OAuth Server → authorization_url_path). getAuthorizationDetails da tres salidas:
-// detalles a mostrar (consentir), un redirect_url ya resuelto (consentimiento
-// previo → seguirlo directo), o error.
+// Consent screen for Supabase's OAuth 2.1 server (MCP connector).
+// Supabase redirects here with ?authorization_id=… (dashboard → Authentication →
+// OAuth Server → authorization_url_path). getAuthorizationDetails yields three outcomes:
+// details to display (ask for consent), an already-resolved redirect_url (prior
+// consent → follow it directly), or an error.
 export default function OAuthConsent() {
   useLang();
   const [params] = useSearchParams();

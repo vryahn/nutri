@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { t, useLang } from '../lib/i18n.js';
 
-// Capturado al cargar el módulo: el router redirige a /login y borra la query
-// antes de que Login monte, así que dentro del efecto ya no existe ?dev=1.
+// Captured at module load: the router redirects to /login and clears the query
+// string before Login mounts, so ?dev=1 no longer exists inside the effect.
 const devAutoLogin =
   import.meta.env.DEV && new URLSearchParams(window.location.search).has('dev');
 
@@ -14,11 +14,11 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Auto-login SOLO en dev, para pruebas autónomas por IA: el agente no puede
-  // teclear contraseñas (regla del harness), así que con /?dev=1 la app se
-  // autentica sola con VITE_DEV_EMAIL/VITE_DEV_PASSWORD de .env (gitignoreado).
-  // import.meta.env.DEV es false literal en producción: Vite elimina el bloque
-  // del bundle y las VITE_DEV_* no existen en Vercel.
+  // Auto-login ONLY in dev, for autonomous AI-driven testing: the agent cannot
+  // type passwords (harness rule), so with /?dev=1 the app authenticates itself
+  // using VITE_DEV_EMAIL/VITE_DEV_PASSWORD from .env (gitignored).
+  // import.meta.env.DEV is a literal false in production: Vite strips the block
+  // from the bundle and the VITE_DEV_* variables do not exist on Vercel.
   useEffect(() => {
     if (!devAutoLogin) return;
     const { VITE_DEV_EMAIL: devEmail, VITE_DEV_PASSWORD: devPassword } = import.meta.env;
@@ -41,8 +41,8 @@ export default function Login() {
     <div className="min-h-dvh flex flex-col items-center justify-center gap-8 px-6">
       <div className="flex flex-col items-center gap-3">
         <svg width="72" height="72" viewBox="0 0 512 512" aria-label="Nutrimetry">
-          {/* Colores de marca, no tokens: el tile del logo es oscuro en ambos temas
-              (igual que public/icon.svg). Si cambia la paleta, cambian los dos. */}
+          {/* Brand colors, not tokens: the logo tile is dark in both themes
+              (same as public/icon.svg). If the palette changes, both must change. */}
           <rect width="512" height="512" rx="96" fill="#101A1A" />
           <g transform="translate(-20,0)">
             <rect x="150" y="137" width="46" height="215" rx="6" fill="#E9F7F6" />

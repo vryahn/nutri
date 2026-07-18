@@ -12,7 +12,7 @@ import UserMenu from './components/UserMenu.jsx';
 import Login from './pages/Login.jsx';
 import Today from './pages/Today.jsx';
 
-// Today queda eager (ruta principal); el resto solo se descarga al abrir su tab.
+// Today stays eager (main route); the rest is only downloaded when its tab is opened.
 const Foods = lazy(() => import('./pages/Foods.jsx'));
 const Recipes = lazy(() => import('./pages/Recipes.jsx'));
 const Targets = lazy(() => import('./pages/Targets.jsx'));
@@ -38,13 +38,13 @@ function useSession() {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      if (!s) cacheClear(); // el cache de sesión no debe sobrevivir un signout
+      if (!s) cacheClear(); // the session cache must not survive a signout
     });
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Registra el usuario para persistir idioma y unidades en prefs (cross-device)
-  // y aplica prefs.data.{lang,units} si difieren de lo detectado por localStorage.
+  // Registers the user to persist language and units in prefs (cross-device)
+  // and applies prefs.data.{lang,units} if they differ from what localStorage detected.
   useEffect(() => {
     if (!session) return;
     supabase.from('prefs').select('data').maybeSingle().then(({ data }) => {
@@ -59,12 +59,12 @@ function useSession() {
   return session;
 }
 
-// "Más opciones": botón dinámico que anida las acciones que publica la página
-// activa (setSectionMenu). Sin acciones no se renderiza. `placement` decide si
-// el menú abre hacia abajo (header móvil) o hacia la derecha (sidebar, al pie).
-// En ambos casos flota sobre el contenido, así que lleva `.glass`; abrirlo hacia
-// arriba lo dejaba dentro del sidebar, sin nada detrás que difuminar.
-// Cierre al tocar fuera: `useOutsideClose`, no un backdrop (el header es .glass).
+// "Más opciones": dynamic button that nests the actions published by the active
+// page (setSectionMenu). With no actions it does not render. `placement` decides
+// whether the menu opens downward (mobile header) or to the right (sidebar, at the bottom).
+// In both cases it floats over the content, so it carries `.glass`; opening it
+// upward left it inside the sidebar, with nothing behind it to blur.
+// Close on outside tap: `useOutsideClose`, not a backdrop (the header is .glass).
 const MENU_PLACEMENT = {
   bottom: 'top-full right-0 mt-1',
   right: 'left-full bottom-0 ml-1',
@@ -111,7 +111,7 @@ function MoreOptions({ actions, placement = 'bottom', className, label }) {
   );
 }
 
-// Sidebar fija en md+ (reemplaza header + tab bar inferior de móvil).
+// Fixed sidebar on md+ (replaces the mobile header + bottom tab bar).
 function Sidebar({ menuActions }) {
   useLang();
   return (
@@ -195,9 +195,9 @@ function Layout({ children }) {
               key={to}
               to={to}
               end={end}
-              // El label activo usa --accent-glass, no --accent: sobre el glass puede
-              // quedar una barra sólida del Dashboard (Cell fill=--d-prot) y ahí el
-              // acento normal cae a 3.3:1.
+              // The active label uses --accent-glass, not --accent: a solid Dashboard
+              // bar (Cell fill=--d-prot) may end up under the glass, and there the
+              // normal accent drops to 3.3:1.
               className={({ isActive }) =>
                 `flex-1 flex flex-col items-center gap-0.5 py-2 min-h-[44px] press ${
                   isActive ? 'text-accent-glass' : 'text-text-2'
@@ -219,8 +219,8 @@ function Layout({ children }) {
   );
 }
 
-// Rutas fuera del tab bar (p. ej. /oauth/consent) no llevan Layout: son de una sola
-// pantalla, sin nav. `withLayout` lo decide el caller según la ruta.
+// Routes outside the tab bar (e.g. /oauth/consent) do not get Layout: they are
+// single-screen, with no nav. The caller decides `withLayout` based on the route.
 function RequireAuth({ session, children, withLayout = true }) {
   const location = useLocation();
   if (session === undefined) return null;
@@ -235,8 +235,8 @@ export default function App() {
 
   useEffect(watchSystem, []);
 
-  // Precarga en idle los chunks lazy de las demás tabs: el primer cambio de
-  // sección no espera la descarga del bundle (solo el fetch de sus datos).
+  // Preloads the lazy chunks of the other tabs at idle: the first section switch
+  // does not wait for the bundle download (only for the fetch of its data).
   useEffect(() => {
     if (!session) return;
     const warm = () => {

@@ -2,15 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Nutrimetry — paleta "Petróleo": tinta verdeazulada + acento turquesa.
-   El acento no ocupa el hue de ningún dato: por eso los carbohidratos viven en
-   índigo (--d-carb) y no en el azul del acento. Las luminosidades se resolvieron
-   en OKLCH contra --surface-2 (el fondo más adverso de cada tema): ningún par
-   texto/fondo baja de 4.5:1. */
+/* Nutrimetry — "Petróleo" palette: blue-green ink + turquoise accent.
+   The accent never occupies the hue of any data color: that is why carbohydrates
+   live in indigo (--d-carb) and not in the accent's blue. Luminosities were
+   resolved in OKLCH against --surface-2 (the most adverse background of each
+   theme): no text/background pair drops below 4.5:1. */
 :root {
-  /* Sin esto el navegador pinta los controles NATIVOS (checkbox, scrollbar, el
-     calendario de <input type=date>) en claro: un checkbox sin marcar salía como
-     un cuadro blanco sólido sobre el tema oscuro. */
+  /* Without this the browser paints NATIVE controls (checkbox, scrollbar, the
+     calendar of <input type=date>) in light mode: an unchecked checkbox rendered
+     as a solid white box on the dark theme. */
   color-scheme: dark;
   --bg: #071010;
   --surface: #101A1A;
@@ -21,8 +21,8 @@
   --text-2: #9CB2B1;
   --text-3: #7A8F8E;
   --accent: #069C92;
-  --accent-deep: #028078; /* turquesa profundo: 4.6:1 con --on-accent sobre botones */
-  --accent-glass: #3CB8AE; /* mismo hue, +0.09 L: 4.6:1 sobre .glass con cualquier dato detrás */
+  --accent-deep: #028078; /* deep turquoise: 4.6:1 with --on-accent on buttons */
+  --accent-glass: #3CB8AE; /* same hue, +0.09 L: 4.6:1 on .glass with any data color behind */
   --on-accent: #F7FBFB;
   --ok: #4F9B53;
   --warn: #B97F2C;
@@ -33,9 +33,9 @@
   --d-fat: #AA8621;
 }
 
-/* Tema claro. El turquesa brillante pierde contraste sobre blanco, así que
-   --accent baja de luminancia; los colores de datos conservan el hue y hacen lo
-   mismo. Ningún par foreground/background queda bajo 4.5:1. */
+/* Light theme. The bright turquoise loses contrast on white, so --accent drops
+   in luminance; the data colors keep their hue and do the same. No
+   foreground/background pair falls below 4.5:1. */
 :root[data-theme='light'] {
   color-scheme: light;
   --bg: #F3F9F9;
@@ -48,7 +48,7 @@
   --text-3: #5C7070;
   --accent: #047972;
   --accent-deep: #058179;
-  --accent-glass: #076F69; /* mismo hue, -0.03 L: 4.6:1 sobre .glass con cualquier dato detrás */
+  --accent-glass: #076F69; /* same hue, -0.03 L: 4.6:1 on .glass with any data color behind */
   --on-accent: #F8FDFD;
   --ok: #2E7C35;
   --warn: #966104;
@@ -67,7 +67,7 @@ html, body {
 body {
   font-family: 'Inter', sans-serif;
   font-size: 16px;
-  /* Sin menú de long-press (callout iOS / barra de selección Android) fuera de los campos. */
+  /* No long-press menu (iOS callout / Android selection bar) outside input fields. */
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
@@ -83,16 +83,16 @@ input, textarea, select, [contenteditable] {
   font-variant-numeric: tabular-nums;
 }
 
-/* Apertura de modales/sheets: backdrop con fade y card subiendo desde abajo.
-   prefers-reduced-motion las anula vía el override global de animation-duration. */
+/* Modal/sheet opening: backdrop with fade and card rising from below.
+   prefers-reduced-motion cancels them via the global animation-duration override. */
 @keyframes fade-in {
   from { opacity: 0; }
 }
 @keyframes sheet-in {
   from { opacity: 0; transform: translateY(16px); }
 }
-/* Card que se despliega en su sitio (editor inline lg+): mismo lenguaje que el
-   sheet-in de móvil, pero sutil (no sube 16 px, solo se asienta). */
+/* Card that unfolds in place (inline editor at lg+): same language as the
+   mobile sheet-in, but subtle (it does not rise 16 px, it just settles). */
 @keyframes reveal-in {
   from { opacity: 0; transform: translateY(-6px); }
 }
@@ -104,8 +104,8 @@ input, textarea, select, [contenteditable] {
   .reveal-in { animation: reveal-in 0.2s ease-out; }
   .input { @apply min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent; }
 
-  /* Material del cromo que el contenido cruza por debajo (header y tab bar móviles).
-     Nunca sobre datos: el fondo que se cuela bajaría el contraste del número. */
+  /* Material for the chrome the content passes underneath (mobile header and tab bar).
+     Never over data: the background bleeding through would lower the number's contrast. */
   .glass {
     background: color-mix(in srgb, var(--surface) 72%, transparent);
     backdrop-filter: blur(16px) saturate(1.4);
@@ -113,7 +113,7 @@ input, textarea, select, [contenteditable] {
   }
 }
 
-/* En claro el texto es oscuro: necesita más opacidad o el contenido de abajo lo ensucia. */
+/* In light mode the text is dark: it needs more opacity or the content underneath muddies it. */
 :root[data-theme='light'] .glass {
   background: color-mix(in srgb, var(--surface) 82%, transparent);
 }
@@ -122,12 +122,12 @@ input, textarea, select, [contenteditable] {
   .glass { background: var(--surface); }
 }
 
-/* Vasos de agua (Hoy): líquido translúcido con brillo especular. TODO el
-   efecto vive en el llenado (.water-liquid-rise, 0.5 s): el nivel sube y la
-   ola gira mientras tanto, desvaneciéndose al final. Después, nada — en
-   reposo la ola queda oculta (opacity 0 en ::before) y la superficie plana.
-   Decorativo: el dato (ml) vive en el encabezado de la card, nunca aquí.
-   prefers-reduced-motion lo anula vía el override global de animation-*. */
+/* Water glasses (Hoy page): translucent liquid with a specular highlight. The
+   ENTIRE effect lives in the fill (.water-liquid-rise, 0.5 s): the level rises
+   and the wave rotates meanwhile, fading out at the end. Afterwards, nothing —
+   at rest the wave stays hidden (opacity 0 on ::before) and the surface flat.
+   Decorative: the data value (ml) lives in the card header, never here.
+   prefers-reduced-motion cancels it via the global animation-* override. */
 @keyframes water-rise {
   from { transform: translateY(100%); }
 }
@@ -149,8 +149,8 @@ input, textarea, select, [contenteditable] {
   );
 }
 .water-liquid::before {
-  /* ola: cuadrado redondeado girando casi sumergido — al rotar, sus esquinas
-     asoman ~6px sobre la superficie y la hacen ondular */
+  /* wave: rounded square spinning almost submerged — as it rotates, its corners
+     peek ~6px above the surface and make it undulate */
   content: '';
   position: absolute;
   top: -8px;
@@ -159,10 +159,10 @@ input, textarea, select, [contenteditable] {
   aspect-ratio: 1;
   border-radius: 42%;
   background: color-mix(in srgb, var(--d-carb) 28%, transparent);
-  opacity: 0; /* solo visible durante el llenado */
+  opacity: 0; /* only visible during the fill */
 }
 .water-liquid::after {
-  /* brillo especular estilo liquid glass */
+  /* liquid-glass-style specular highlight */
   content: '';
   position: absolute;
   inset: 0;
@@ -172,7 +172,7 @@ input, textarea, select, [contenteditable] {
   animation: water-rise 0.5s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 .water-liquid-rise::before {
-  animation: water-wave 0.5s linear; /* misma duración que la subida: terminan juntas */
+  animation: water-wave 0.5s linear; /* same duration as the rise: they finish together */
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -183,12 +183,12 @@ input, textarea, select, [contenteditable] {
   }
 }
 
-/* Informe PDF (Dashboard → Exportar → Informe del periodo). Vista previa en
-   pantalla (overlay + papel) para que el usuario revise ANTES de guardar;
-   "Guardar PDF" llama window.print(). Portal como hermano de #root: en print
-   se oculta la app entera (y el cromo del overlay) sin ocultar el informe.
-   El JS fuerza data-theme='light' (papel) mientras la vista previa está
-   abierta y lo restaura al cerrarla. */
+/* PDF report (Dashboard → "Exportar" → "Informe del periodo"). On-screen
+   preview (overlay + paper) so the user reviews BEFORE saving;
+   "Guardar PDF" calls window.print(). Portal as a sibling of #root: in print
+   the entire app (and the overlay chrome) is hidden without hiding the report.
+   The JS forces data-theme='light' (paper) while the preview is open and
+   restores it on close. */
 #print-report {
   width: 720px;
   background: #fff;
@@ -202,8 +202,8 @@ input, textarea, select, [contenteditable] {
   html, body { background: #fff; }
   #root { display: none; }
   #print-actions { display: none; }
-  /* overflow visible: si el overlay conserva su scroll, la impresión solo
-     captura el primer viewport y recorta el resto del informe. */
+  /* overflow visible: if the overlay keeps its scroll, printing only
+     captures the first viewport and clips the rest of the report. */
   #print-overlay {
     position: static;
     overflow: visible;

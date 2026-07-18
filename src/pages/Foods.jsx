@@ -22,7 +22,7 @@ import PortionsEditor from '../components/PortionsEditor.jsx';
 
 const FDC_KEY = import.meta.env.VITE_FDC_KEY;
 
-// ponytail: matchMedia en vez de resize-observer propio; mismo patrón que Today.jsx.
+// ponytail: matchMedia instead of a custom resize observer; same pattern as Today.jsx.
 function useIsLgUp() {
   const [isLg, setIsLg] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
   useEffect(() => {
@@ -38,13 +38,13 @@ function hasWarning(f) {
   return kcalSuspicious(f) || macrosImplausible(f) || componentsInconsistent(f);
 }
 
-// El aviso ⚠ solo se pinta si el usuario NO lo ha revisado: `reviewed_at` no apaga el
-// cálculo (sigue en el form), solo deja de gritar en la lista. Guardar el alimento lo
-// limpia (ver handleSave), así una edición de valores vuelve a exponer el aviso.
-// Los alimentos del catálogo base (owner null) NUNCA avisan: el usuario no puede
-// editarlos en sitio (marcarlos "revisado" solo crearía una copia y dejaría el base
-// avisando), y disparan falsos positivos (p. ej. cacao 228 kcal, correcto pero Atwater
-// sobreestima por la fibra). Su copia propia sí participa del flujo de revisión.
+// The ⚠ warning is only rendered if the user has NOT reviewed it: `reviewed_at` does not
+// disable the computation (it remains in the form), it merely stops flagging it in the list.
+// Saving the food clears it (see handleSave), so any edit of the values re-exposes the warning.
+// Base-catalog foods (owner null) NEVER warn: the user cannot edit them in place
+// (marking them "reviewed" would only create a copy and leave the base food still
+// warning), and they trigger false positives (e.g. cocoa at 228 kcal, correct, but Atwater
+// overestimates due to the fiber). The user's own copy does participate in the review flow.
 function pendingWarning(f) {
   return f.owner != null && hasWarning(f) && !f.reviewed_at;
 }
@@ -61,20 +61,20 @@ const EMPTY_FOOD = {
 
 export default function Foods() {
   useLang();
-  // SWR: pinta el cache de sesión al instante y el load() de fondo refresca.
+  // SWR: paints the session cache instantly while the background load() refreshes it.
   const [foods, setFoods] = useState(() => cacheGet('foods') || []);
   const [loading, setLoading] = useState(() => !cacheGet('foods'));
   const [query, setQuery] = useState('');
   const [importing, setImporting] = useState(false);
   const location = useLocation();
-  // alta desde Hoy: /foods con state.newFood abre el form ya prellenado
+  // creation initiated from Today: /foods with state.newFood opens the form pre-filled
   const [editing, setEditing] = useState(() =>
     location.state?.newFood ? { ...EMPTY_FOOD, ...location.state.newFood } : null
   ); // null = list view, object = form view
   const [toast, showToast] = useToast();
   const [userId, setUserId] = useState(null);
-  const [favs, setFavs] = useState([]); // prefs.data.fav_micros: micros promovidos fuera de "Más micros"
-  const [undoData, setUndoData] = useState(null); // { food, timer } tras un borrado, para "Deshacer"
+  const [favs, setFavs] = useState([]); // prefs.data.fav_micros: micros promoted out of "Más micros"
+  const [undoData, setUndoData] = useState(null); // { food, timer } after a deletion, for "Undo"
   const isLg = useIsLgUp();
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
@@ -87,12 +87,12 @@ export default function Foods() {
     return () => clearTimeout(t);
   }, [query]);
 
-  // ponytail: limpia el history state para que un refresh no reabra el form
+  // ponytail: clears the history state so that a refresh does not reopen the form
   useEffect(() => {
     if (location.state?.newFood) window.history.replaceState({}, '');
   }, []);
 
-  // Atajos lg+: "/" enfoca el buscador (si el foco no está en un input), Esc cierra el panel.
+  // lg+ shortcuts: "/" focuses the search box (if focus is not on an input), Esc closes the panel.
   useEffect(() => {
     function onKeyDown(e) {
       if (e.key === 'Escape') {
@@ -125,14 +125,14 @@ export default function Foods() {
   async function toggleFav(key) {
     const next = favs.includes(key) ? favs.filter((k) => k !== key) : [...favs, key];
     setFavs(next);
-    // merge sobre data existente para no pisar water_glass_ml y demás prefs
+    // merge over the existing data so as not to overwrite water_glass_ml and other prefs
     const { data } = await supabase.from('prefs').select('data').maybeSingle();
     await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), fav_micros: next } });
   }
 
   async function load() {
-    // Solo se cachea la lista base (sin búsqueda): es la vista con la que se
-    // llega al tab. El skeleton solo aparece si no hay nada que pintar.
+    // Only the base list (no search) is cached: it is the view shown when landing
+    // on the tab. The skeleton only appears when there is nothing to paint.
     const isBase = !query.trim();
     if (!(isBase && cacheGet('foods'))) setLoading(true);
     let req = supabase.from('foods').select('*').order('name');
@@ -140,8 +140,8 @@ export default function Foods() {
     const { data, error } = await req;
     if (error) { showToast(t('No se pudieron cargar los alimentos — revisa tu conexión.')); setLoading(false); return; }
     let hits = data;
-    // Búsqueda semántica de respaldo: solo si hay pocos hits por ilike. Nunca debe
-    // romper la búsqueda normal — embedText ya devuelve null ante cualquier fallo.
+    // Semantic fallback search: only when ilike yields few hits. It must never
+    // break the normal search — embedText already returns null on any failure.
     if (!isBase && GEMINI_KEY && query.trim().length >= 3 && data.length < 8) {
       try {
         const vec = await embedText(query.trim());
@@ -150,7 +150,7 @@ export default function Foods() {
           hits = mergeFoodResults(hits, semantic, 8);
         }
       } catch {
-        // ignorado: se queda con los hits de ilike
+        // ignored: keeps the ilike hits
       }
     }
     const list = hits.filter((f) => !isWaterSentinel(f));
@@ -172,8 +172,8 @@ export default function Foods() {
         .map((p) => ({ name: p.name.trim(), grams: Number(p.grams) })),
       density_g_ml: Number(food.density_g_ml) > 0 ? Number(food.density_g_ml) : null,
       source: food.source,
-      // Solo el botón "Marcar revisado" del form manda un timestamp; cualquier otro
-      // guardado lo deja en null y el aviso ⚠ vuelve a aparecer.
+      // Only the form's "Marcar revisado" button sends a timestamp; any other
+      // save leaves it null and the ⚠ warning reappears.
       reviewed_at: food.reviewed_at || null,
     };
     const { data: saved, error } = food.id
@@ -187,14 +187,14 @@ export default function Foods() {
     showToast(t('Guardado.'));
     setEditing(null);
     load();
-    // Embedding para búsqueda semántica: fire-and-forget, nunca bloquea el guardado.
+    // Embedding for semantic search: fire-and-forget, never blocks the save.
     embedText(saved.name.trim() + (saved.brand?.trim() ? ' ' + saved.brand.trim() : '')).then((e) => {
       if (e) supabase.from('foods').update({ embedding: JSON.stringify(e) }).eq('id', saved.id);
     });
   }
 
-  // Borrado sin confirmación (swipe en la lista y botón "Borrar" del form):
-  // optimista + toast "Deshacer" 5 s que reinserta el alimento. Homologado con Hoy.
+  // Deletion without confirmation (swipe in the list and the form's "Borrar" button):
+  // optimistic + 5 s "Undo" toast that re-inserts the food. Consistent with Today.
   async function handleDelete(id) {
     const food = foods.find((f) => f.id === id);
     setEditing(null);
@@ -220,13 +220,13 @@ export default function Foods() {
   async function handleUndo() {
     if (!undoData) return;
     clearTimeout(undoData.timer);
-    const { id, ...rest } = undoData.food; // reinsertar sin el id; nada lo referencia (era borrable → sin registros)
+    const { id, ...rest } = undoData.food; // re-insert without the id; nothing references it (it was deletable → no entries)
     setUndoData(null);
     const { error } = await supabase.from('foods').insert(rest);
     if (!error) load();
   }
 
-  // <lg: reemplazo de página completa, sin cambios respecto a lo existente.
+  // <lg: full-page replacement, unchanged from the existing behavior.
   if (editing && !isLg) {
     return (
       <div className="px-4 py-4">
@@ -247,7 +247,7 @@ export default function Foods() {
     setSortKey(key);
   }
 
-  // Solo sources con al menos un alimento: no ofrecer filtros que darían lista vacía.
+  // Only sources with at least one food: do not offer filters that would yield an empty list.
   const sourceOptions = [...new Set(foods.map((f) => f.source).filter(Boolean))].sort();
 
   let visibleFoods = foods;
@@ -266,7 +266,7 @@ export default function Foods() {
       return 0;
     });
   } else if (query.trim()) {
-    // catálogo base (usda) al final, solo con búsqueda activa y sin sort explícito
+    // base catalog (usda) last, only with an active search and no explicit sort
     visibleFoods = [...visibleFoods].sort((a, b) => (a.source === 'usda') - (b.source === 'usda'));
   }
 
@@ -280,12 +280,12 @@ export default function Foods() {
         />
       )}
       <div className="flex flex-col gap-4 lg:col-start-1">
-        {/* En lg+ el alta va por el panel derecho ("＋ Nuevo alimento" del estado vacío);
-            en <lg por el FAB. Sin botón de cabecera para no duplicar. */}
+        {/* On lg+ creation goes through the right panel ("＋ Nuevo alimento" in the empty state);
+            on <lg through the FAB. No header button, to avoid duplication. */}
         <h1 className="font-display text-xl">{t('Alimentos')}</h1>
 
-        {/* Buscador en su propia fila; en lg+ la columna maestra (5/12) no da ancho
-            para search + importar + 2 filtros en una sola línea (se recortaban). */}
+        {/* Search box on its own row; on lg+ the master column (5/12) lacks the width
+            for search + import + 2 filters on a single line (they were getting clipped). */}
         <div className="flex flex-col gap-2">
           <div className="relative">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-3" />
@@ -358,7 +358,7 @@ export default function Foods() {
           </div>
         )}
 
-        {/* <lg: cards + swipe. Misma lista filtrada/ordenada que la tabla lg+ (visibleFoods). */}
+        {/* <lg: cards + swipe. Same filtered/sorted list as the lg+ table (visibleFoods). */}
         {!loading && foods.length > 0 && (
           <div className="flex flex-col gap-4 lg:hidden">
             {visibleFoods.map((f) => (
@@ -390,7 +390,7 @@ export default function Foods() {
           </div>
         )}
 
-        {/* lg+: tabla ordenable con hover-actions. */}
+        {/* lg+: sortable table with hover actions. */}
         {!loading && foods.length > 0 && (
           <div className="hidden lg:block rounded-2xl border border-border overflow-x-auto">
             <table className="w-full text-sm">
@@ -401,8 +401,8 @@ export default function Foods() {
                   <SortTh label={t('P')} sortKey="protein_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
                   <SortTh label={t('C')} sortKey="carbs_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
                   <SortTh label={t('G')} sortKey="fat_g" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
-                  {/* Origen fuera de la tabla: aun con la columna maestra al 50% no hay
-                      ancho para 7 columnas. El origen se ve en la ficha del panel. */}
+                  {/* Source is kept out of the table: even with the master column at 50% there is
+                      no width for 7 columns. The source is visible in the panel's detail card. */}
                   <th className="px-3 py-2 text-center w-16">⚠</th>
                 </tr>
               </thead>
@@ -415,9 +415,9 @@ export default function Foods() {
                       editing?.id === f.id ? 'bg-surface-2 ring-1 ring-inset ring-accent' : ''
                     }`}
                   >
-                    {/* max-w-0 + w-full: la columna absorbe el sobrante. line-clamp-2:
-                        1 línea cuando hay ancho, 2 como máximo al estrecharse (nombre
-                        completo en la ficha del panel y en title) — nunca 6 líneas. */}
+                    {/* max-w-0 + w-full: the column absorbs the leftover width. line-clamp-2:
+                        1 line when there is width, at most 2 as it narrows (full name in
+                        the panel's detail card and in title) — never 6 lines. */}
                     <td className="px-3 py-2 max-w-0 w-full">
                       <div className="font-medium line-clamp-2" title={f.name}>{f.name}</div>
                       {f.brand && <div className="text-xs text-text-3 truncate" title={f.brand}>{f.brand}</div>}
@@ -460,7 +460,7 @@ export default function Foods() {
         )}
       </div>
 
-      {/* Panel derecho (lg+): ficha/editor, master-detail. */}
+      {/* Right panel (lg+): detail card/editor, master-detail. */}
       <div className="hidden lg:block lg:col-start-2 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
         {editing ? (
           <div className="rounded-2xl bg-surface border border-border p-6">
@@ -511,8 +511,8 @@ export default function Foods() {
   );
 }
 
-// Requeridos SIEMPRE con la mejor estimación disponible (null solo si es imposible
-// dar cifra fundada). El resto de micros: solo con dato fiable, si no null.
+// Required fields are ALWAYS filled with the best available estimate (null only when a
+// well-founded figure is impossible). The remaining micros: only with reliable data, otherwise null.
 const REQUIRED_MICROS = ['sodio_mg', 'potasio_mg', 'magnesio_mg'];
 const REQUIRED_KEYS = ['kcal', 'protein_g', 'carbs_g', 'fat_g', ...REQUIRED_MICROS];
 const MACRO_LABELS = { kcal: 'Kcal', protein_g: 'Proteína', carbs_g: 'Carbs', fat_g: 'Grasa' };
@@ -523,7 +523,7 @@ function labelFor(key) {
 
 const NUMERIC_KEYS = ['kcal', 'protein_g', 'carbs_g', 'fat_g'];
 
-// winner gana en todo campo que traiga; filler solo rellena lo que winner no tenga.
+// winner wins on every field it carries; filler only fills in what winner lacks.
 function fillAll(winner, filler) {
   if (!filler) return winner;
   const out = { ...winner, micros: { ...filler.micros, ...winner.micros } };
@@ -535,8 +535,8 @@ function fillAll(winner, filler) {
   return out;
 }
 
-// winner gana en todo lo que traiga; filler solo rellena los REQUERIDOS que falten
-// (no se dejan pasar otros micros especulativos de filler cuando winner es autoritativo).
+// winner wins on everything it carries; filler only fills in the missing REQUIRED fields
+// (no other speculative micros from filler are let through when winner is authoritative).
 function fillRequired(winner, filler) {
   if (!filler) return winner;
   const out = { ...winner, micros: { ...winner.micros } };
@@ -551,9 +551,9 @@ function fillRequired(winner, filler) {
   return out;
 }
 
-// Campos donde a y b (ambos con dato numérico) difieren >25% relativo al mayor.
-// Solo cuenta si ambos superan DISCREPANCY_MIN (evita marcar 0.2 vs 0.3). Efímero,
-// solo para el aviso UI de etiqueta vs OFF — nada de esto se persiste.
+// Fields where a and b (both with numeric data) differ by >25% relative to the larger one.
+// Only counts if both exceed DISCREPANCY_MIN (avoids flagging 0.2 vs 0.3). Ephemeral,
+// solely for the label-vs-OFF UI warning — none of this is persisted.
 const DISCREPANCY_MIN = 5;
 
 function findDiscrepancies(a, b) {
@@ -579,8 +579,8 @@ function missingRequired(obj) {
   }).map(labelFor);
 }
 
-// Un 0 devuelto por la fuente no llena el input (anti-spam visual): campo vacío +
-// placeholder "0". Semánticamente idéntico a omitirlo (un micro ausente pesa 0).
+// A 0 returned by the source does not fill the input (visual anti-spam): empty field +
+// placeholder "0". Semantically identical to omitting it (an absent micro weighs 0).
 function stripZeros(obj) {
   const zeros = new Set();
   const cleaned = { ...obj, micros: { ...obj.micros } };
@@ -614,9 +614,9 @@ function resultBadgeText(r) {
 
 function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   useLang();
-  // density de la DB (numeric) puede venir como string: se normaliza para que el select matchee.
-  // Al editar, los 0 almacenados (kcal/macros/micros) arrancan vacíos con placeholder "0" (mismo
-  // patrón que el prefill de IA): un 0 no aporta info nueva y así se ve qué falta por revisar.
+  // density from the DB (numeric) may arrive as a string: it is normalized so the select matches.
+  // When editing, stored 0s (kcal/macros/micros) start out empty with placeholder "0" (same
+  // pattern as the AI prefill): a 0 adds no new information, and this way it is visible what remains to review.
   const { cleaned: initialForm, zeros: initialZeros } = stripZeros({
     ...EMPTY_FOOD,
     ...food,
@@ -624,12 +624,12 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     portions: food.portions || [],
   });
   const [form, setForm] = useState(initialForm);
-  const [basis, setBasis] = useState('100'); // cantidad (en basisUnit) a la que refieren los valores capturados
-  const [basisUnit, setBasisUnit] = useState('g'); // 'g'|'ml' — base del formulario, NUNCA se asume 1 g/ml
+  const [basis, setBasis] = useState('100'); // amount (in basisUnit) that the captured values refer to
+  const [basisUnit, setBasisUnit] = useState('g'); // 'g'|'ml' — the form's basis, 1 g/ml is NEVER assumed
 
-  // La DB siempre guarda por 100 g: si el usuario capturó por otra base, se escala al guardar.
-  // Si la base es ml, primero se convierte a gramos con la densidad elegida (nunca supuesta).
-  // Porciones y densidad son absolutas, no se escalan. null = bloqueado, falta densidad.
+  // The DB always stores per 100 g: if the user captured against another basis, it is scaled on save.
+  // If the basis is ml, it is first converted to grams using the chosen density (never assumed).
+  // Portions and density are absolute, they are not scaled. null = blocked, density missing.
   function normalizeTo100(f) {
     const b = Number(basis);
     if (!b || b <= 0) return f;
@@ -651,7 +651,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
       micros: Object.fromEntries(Object.entries(f.micros).map(([k, v]) => [k, round(Number(v) * s, 3)])),
     };
   }
-  // true = el usuario eligió "Otro…" en líquido (densidad manual aunque esté vacía)
+  // true = the user chose "Otro…" for liquid (manual density even if empty)
   const [densityOther, setDensityOther] = useState(
     food.density_g_ml > 0 && !DENSITY_PRESETS.some((p) => p.value === Number(food.density_g_ml))
   );
@@ -659,18 +659,18 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const [aiFiles, setAiFiles] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
-  const [aiZeros, setAiZeros] = useState(initialZeros); // claves cuyo valor (inicial o de prefill IA) fue 0 → placeholder, no valor
-  const [aiResult, setAiResult] = useState(null); // { source, name, confidence } para la línea de resultado
-  const [aiMissing, setAiMissing] = useState([]); // labels de requeridos sin dato fiable
-  const [fdcChips, setFdcChips] = useState([]); // hasta 6 coincidencias FDC (de usda_query o búsqueda manual)
+  const [aiZeros, setAiZeros] = useState(initialZeros); // keys whose value (initial or from AI prefill) was 0 → placeholder, not a value
+  const [aiResult, setAiResult] = useState(null); // { source, name, confidence } for the result line
+  const [aiMissing, setAiMissing] = useState([]); // labels of required fields lacking reliable data
+  const [fdcChips, setFdcChips] = useState([]); // up to 6 FDC matches (from usda_query or manual search)
   const [usdaQuery, setUsdaQuery] = useState('');
   const [usdaLoading, setUsdaLoading] = useState(false);
   const [usdaError, setUsdaError] = useState('');
-  const [labelMismatch, setLabelMismatch] = useState([]); // labels donde etiqueta y OFF difieren >25%, solo UI
-  const [sweeteners, setSweeteners] = useState([]); // edulcorantes detectados por OFF (presencia, no cantidad), solo UI
+  const [labelMismatch, setLabelMismatch] = useState([]); // labels where the nutrition label and OFF differ by >25%, UI only
+  const [sweeteners, setSweeteners] = useState([]); // sweeteners detected by OFF (presence, not amount), UI only
 
-  // Tocar cualquier campo invalida la revisión previa: los valores ya no son los que el
-  // usuario confirmó, así que el aviso ⚠ se re-arma en el acto (y handleSave lo persiste).
+  // Touching any field invalidates the prior review: the values are no longer the ones the
+  // user confirmed, so the ⚠ warning re-arms immediately (and handleSave persists it).
   function setField(key, value) {
     setForm((f) => ({ ...f, reviewed_at: null, [key]: value }));
   }
@@ -698,10 +698,10 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     setAiResult({ source, name: resultName, confidence });
   }
 
-  // Si la base es 100 ml: el form se queda en base ml con los números declarados tal
-  // cual (verificables contra el envase); la densidad de Gemini solo prefija el select.
-  // La conversión a 100 g ocurre al guardar (normalizeTo100); sin densidad el guardado
-  // queda bloqueado hasta que el usuario elija una.
+  // If the basis is 100 ml: the form stays in ml basis with the declared numbers as-is
+  // (verifiable against the packaging); Gemini's density only pre-selects the dropdown.
+  // The conversion to 100 g happens on save (normalizeTo100); without a density the save
+  // remains blocked until the user chooses one.
   function applyPrefillWithBasis(merged, source, resultName, confidence, basisStr, densityHint) {
     if (basisStr === '100ml') {
       const density = Number(densityHint) > 0 ? Number(densityHint) : 0;
@@ -729,9 +729,9 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         const off = await fetchOFF(eanTyped);
         if (!off) throw new Error(t('EAN no encontrado en Open Food Facts.'));
         setSweeteners(off.sweeteners || []);
-        // EAN tecleado directo: sin Gemini no hay densidad conocida, así que un OFF
-        // por 100 ml solo puede dejar el form en base ml a la espera de que el
-        // usuario elija densidad (ver normalizeTo100).
+        // EAN typed in directly: without Gemini there is no known density, so an OFF
+        // product per 100 ml can only leave the form in ml basis, waiting for the
+        // user to choose a density (see normalizeTo100).
         applyPrefillWithBasis(off, 'off', off.name, null, off.per, null);
       } else {
         const gemini = await estimateFood(aiText, aiFiles);
@@ -743,8 +743,8 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         setFdcChips(fdcMatches);
         setSweeteners(off?.sweeteners || []);
         if (gemini.mode === 'etiqueta') {
-          // Comparar etiqueta vs OFF solo si ambas están en la misma base; si no, se omite
-          // (nunca se compara cruzado g vs ml).
+          // Compare label vs OFF only if both are on the same basis; otherwise it is skipped
+          // (never compared cross-basis g vs ml).
           setLabelMismatch(off && gemini.basis === off.per ? findDiscrepancies(gemini, off) : []);
           applyPrefillWithBasis(fillAll(gemini, off), 'etiqueta', null, gemini.confidence, gemini.basis, gemini.density_g_ml);
         } else if (off) {
@@ -794,23 +794,23 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const kcalCalc = kcalFromMacros(form);
   const hasMacros = form.protein_g !== '' || form.carbs_g !== '' || form.fat_g !== '';
   const suspicious = form.kcal !== '' && hasMacros && kcalSuspicious(form);
-  // Plausibilidad SIEMPRE sobre valores normalizados a 100 g: con base ≠ 100 g
-  // (p. ej. "por 30 g" o por 100 ml) los umbrales absolutos quedarían mal escalados.
+  // Plausibility is ALWAYS evaluated on values normalized to 100 g: with a basis ≠ 100 g
+  // (e.g. "per 30 g" or per 100 ml) the absolute thresholds would be mis-scaled.
   const normForCheck = normalizeTo100(form) ?? form;
   const implausible = macrosImplausible(normForCheck);
   const inconsistent = componentsInconsistent(normForCheck);
   const warned = Boolean(suspicious || implausible || inconsistent);
-  // kcal vacío → se guarda el cálculo por macros (el placeholder que ve el usuario)
+  // empty kcal → the macro-based computation (the placeholder the user sees) is saved
   const submitValues = () => normalizeTo100({ ...form, kcal: form.kcal === '' ? kcalCalc : form.kcal });
-  // Alimento del catálogo base (owner null): guardar SIEMPRE crea una copia propia
-  // (sin id → handleSave toma la rama insert; el server asigna owner = auth.uid()).
+  // Base-catalog food (owner null): saving ALWAYS creates the user's own copy
+  // (no id → handleSave takes the insert branch; the server assigns owner = auth.uid()).
   const isBaseFood = food.owner === null;
   const save = (values) => onSave(isBaseFood ? { ...values, id: undefined } : values);
   const hiddenMicros = MICROS.slice(MICROS_DEFAULT);
   const basisDensity = Number(form.density_g_ml) || 0;
   const basisBlocked = basisUnit === 'ml' && !(basisDensity > 0);
-  // Hint mudo del equivalente en unidades US: la composición se captura en g/ml (estándar
-  // de etiquetas), pero al usuario US le mostramos a cuánto equivale su base. Solo display.
+  // Silent hint with the US-units equivalent: composition is captured in g/ml (labeling
+  // standard), but the US user is shown what their basis is equivalent to. Display only.
   const isUS = useUnits() === 'us';
 
   return (
@@ -859,8 +859,8 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         </AiDataCard>
       )}
 
-      {/* ponytail: buscador manual de USDA desactivado a petición del usuario. Los chips
-          USDA de `usda_query` (Gemini) siguen activos. Para reactivarlo, descomentar.
+      {/* ponytail: manual USDA search disabled at the user's request. The USDA chips
+          from `usda_query` (Gemini) remain active. To re-enable it, uncomment.
       {!form.id && FDC_KEY && (
         <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
           <p className="text-sm text-text-2 flex items-center gap-2">
@@ -908,7 +908,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (basisBlocked) return; // botón ya deshabilitado; guarda por si el submit llega por Enter
+          if (basisBlocked) return; // button already disabled; safeguard in case the submit arrives via Enter
           save(submitValues());
         }}
         className="flex flex-col gap-4"
@@ -1022,7 +1022,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           ))}
         </div>
 
-        {/* lg+: obligatorios full-width arriba, resto de micros por categoría en columnas balanceadas (masonry CSS), sin acordeón. */}
+        {/* lg+: required fields full-width on top, remaining micros by category in balanced columns (CSS masonry), no accordion. */}
         <div className="hidden lg:block">
           <p className="text-xs text-text-3 pb-3">{t('★ = favorito, se promueve arriba en móvil.')}</p>
           <div className="grid grid-cols-3 xl:grid-cols-4 gap-3">
@@ -1060,10 +1060,10 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
               />
             ))}
           </div>
-          {/* Categoría a ancho completo + campos en rejilla. El masonry por grupo
-              (`columns-2` + `break-inside-avoid`) dejaba una columna enorme y la otra
-              casi vacía: con Vitaminas (18), Edulcorantes (18) y Aminoácidos (19) el
-              grupo no puede partirse y las columnas nunca se balancean. */}
+          {/* Full-width category + fields in a grid. Per-group masonry
+              (`columns-2` + `break-inside-avoid`) left one huge column and the other
+              nearly empty: with Vitamins (18), Sweeteners (18) and Amino acids (19) the
+              group cannot be split and the columns never balance. */}
           <div className="mt-4 flex flex-col gap-4">
             {microGroups(MICROS.filter((m) => !REQUIRED_MICROS.includes(m.key))).map(({ cat, items }) => (
               <div key={cat}>
@@ -1089,9 +1089,9 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         {form.kcal === '' && hasMacros && (
           <p className="text-xs text-text-3">{t('Si dejas Kcal vacío, se guardará el cálculo por macros (≈ %n).').replace('%n', kcalCalc)}</p>
         )}
-        {/* Avisos ⚠: si el usuario ya revisó estos valores y los dio por buenos, se
-            degradan a una línea muda (nunca desaparecen del todo). Tocar cualquier campo
-            limpia reviewed_at y los devuelve a su forma completa. */}
+        {/* ⚠ warnings: if the user has already reviewed these values and accepted them, they
+            degrade to a muted line (they never disappear entirely). Touching any field
+            clears reviewed_at and restores them to their full form. */}
         {!form.reviewed_at && suspicious && (
           <p className="text-sm text-warn" role="status">
             ⚠ {t('%n kcal no cuadran con los macros (≈ %m kcal por Atwater). El alimento quedará marcado para revisión.')
@@ -1250,7 +1250,7 @@ function NumberField({ label, value, onChange, placeholder }) {
   );
 }
 
-// Micro oculto/favorito: campo numérico con estrella para promoverlo fuera de "Más micros".
+// Hidden/favorite micro: numeric field with a star to promote it out of "Más micros".
 function MicroField({ m, fav, value, onChange, onToggleFav, placeholder }) {
   const label = t(m.label);
   return (

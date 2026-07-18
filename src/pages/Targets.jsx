@@ -10,21 +10,21 @@ import ConfirmSheet from '../components/ConfirmSheet.jsx';
 import UndoToast from '../components/UndoToast.jsx';
 import PageSkeleton from '../components/PageSkeleton.jsx';
 
-// ===== Helpers puros (agrupación §2.1, fechas §5) =====
-// dow 0=domingo (contrato de la columna). Orden visual de despliegue Lun→Dom.
+// ===== Pure helpers (grouping §2.1, dates §5) =====
+// dow 0=Sunday (column contract). Visual display order Mon→Sun.
 const DOW_SHORT_ES = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 const DOW_SHORT_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const dowShort = () => (getLang() === 'en' ? DOW_SHORT_EN : DOW_SHORT_ES);
 const VISUAL_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
-// Tailwind v3 no genera clases de opacidad sobre tokens var() (bg-x/20 = no-op),
-// así que los tintes con alfa van por color-mix inline.
+// Tailwind v3 does not generate opacity classes over var() tokens (bg-x/20 = no-op),
+// so alpha tints are applied via inline color-mix.
 const tint = (token, pct) => `color-mix(in srgb, var(${token}) ${pct}%, transparent)`;
 
 let _uid = 0;
 const uid = () => `g${++_uid}`;
 
-// Firma de un día por igualdad profunda de {kcal, macros, micros} para agrupar.
+// Signature of a day by deep equality of {kcal, macros, micros}, used for grouping.
 function rowSig(r) {
   return JSON.stringify({
     kcal: numOrNull(r?.kcal),
@@ -35,8 +35,8 @@ function rowSig(r) {
   });
 }
 
-// week: filas indexadas por dow 0..6 (o null). Agrupa recorriendo en orden
-// visual Lun→Dom, así cada grupo trae `dows` ya ordenado para los chips.
+// week: rows indexed by dow 0..6 (or null). Groups by iterating in visual
+// Mon→Sun order, so each group carries `dows` already sorted for the chips.
 function groupWeek(week) {
   const groups = [];
   for (const dow of VISUAL_ORDER) {
@@ -51,8 +51,8 @@ function groupWeek(week) {
   return groups;
 }
 
-// Chips de un grupo: rango contiguo en orden visual → un chip «LUN – VIE»;
-// si no, chips individuales. Sábado→Domingo es contiguo (VISUAL_ORDER acaba en 0).
+// Chips for a group: a contiguous range in visual order → a single «LUN – VIE» chip;
+// otherwise, individual chips. Saturday→Sunday is contiguous (VISUAL_ORDER ends at 0).
 function chipLabels(dows) {
   const idxs = dows.map((d) => VISUAL_ORDER.indexOf(d)).sort((a, b) => a - b);
   const contiguous = idxs.every((v, i) => i === 0 || v === idxs[i - 1] + 1);
@@ -67,8 +67,8 @@ function daysBetween(aIso, bIso) {
   return Math.round((new Date(bIso + 'T00:00:00') - new Date(aIso + 'T00:00:00')) / 86400000);
 }
 
-// «12 may» / «1 oct 2026» (año solo si difiere del actual). Date con T00:00:00
-// para evitar el desfase UTC (patrón de weekdayOf).
+// «12 may» / «1 oct 2026» (year only when it differs from the current one). Date
+// built with T00:00:00 to avoid the UTC offset (weekdayOf pattern).
 function fmtShort(iso) {
   const d = new Date(iso + 'T00:00:00');
   const s = d.toLocaleDateString(locale(), { day: 'numeric', month: 'short' }).replace(/\./g, '');
@@ -76,7 +76,7 @@ function fmtShort(iso) {
   return y === new Date().getFullYear() ? s : `${s} ${y}`;
 }
 
-// «Mié 8 jul» para las cards de override.
+// «Mié 8 jul» for the override cards.
 function fmtDow(iso) {
   const d = new Date(iso + 'T00:00:00');
   let wd = d.toLocaleDateString(locale(), { weekday: 'short' }).replace(/\./g, '');
@@ -84,7 +84,7 @@ function fmtDow(iso) {
   return `${wd} ${fmtShort(iso)}`;
 }
 
-// «Miércoles 8 de julio» (+ « de AAAA» si no es el año actual) para el meta del override.
+// «Miércoles 8 de julio» (+ « de AAAA» when it is not the current year) for the override meta.
 function fmtFull(iso) {
   const d = new Date(iso + 'T00:00:00');
   let s = d.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' });
@@ -103,7 +103,7 @@ const relDaysLabel = (n) =>
       ? t('en %n %d').replace('%n', n).replace('%d', dayWord(n))
       : t('hace %n %d').replace('%n', -n).replace('%d', dayWord(-n));
 
-// Valores de una fila DB → objeto editable (null → '' para los inputs).
+// Values of a DB row → editable object (null → '' for the inputs).
 function valuesOf(row) {
   return {
     kcal: row?.kcal ?? '',
@@ -133,7 +133,7 @@ function friendly(error, dupMsg) {
   return error.message || t('No se pudo guardar.');
 }
 
-// lg+ cambia sheet→edición/alta inline (§A.2, §A.3 de la propuesta desktop).
+// lg+ switches sheet→inline editing/creation (§A.2, §A.3 of the desktop proposal).
 function useLgUp() {
   const [lg, setLg] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
   useEffect(() => {
@@ -145,22 +145,22 @@ function useLgUp() {
   return lg;
 }
 
-// ===== Página =====
+// ===== Page =====
 export default function Targets() {
   useLang();
-  // SWR: pinta el cache de sesión al instante y el load() de fondo refresca.
-  // La clave 'targets' se comparte con Hoy (misma query select('*')).
+  // SWR: paints the session cache instantly while the background load() refreshes.
+  // The 'targets' key is shared with Today (same select('*') query).
   const [targets, setTargets] = useState(() => cacheGet('targets') || []);
   const [loading, setLoading] = useState(() => !cacheGet('targets'));
   const [userId, setUserId] = useState(null);
   const [toast, showToast] = useToast();
-  const [undoOverride, setUndoOverride] = useState(null); // { row, timer } tras borrar una fecha específica, para "Deshacer"
-  const [sheet, setSheet] = useState(null); // unión discriminada por .type
-  const [vigVer, setVigVer] = useState(0); // fuerza remontar la card vigente a lectura tras guardar
+  const [undoOverride, setUndoOverride] = useState(null); // { row, timer } after deleting a specific date, for the "Undo" action
+  const [sheet, setSheet] = useState(null); // discriminated union by .type
+  const [vigVer, setVigVer] = useState(0); // forces the current-phase card to remount into read mode after saving
   const lgUp = useLgUp();
-  const [expandedVf, setExpandedVf] = useState(null); // fase programada en edición inline (lg+)
-  const [expandedOverrideId, setExpandedOverrideId] = useState(null); // override en edición inline (lg+)
-  const [newOverrideInline, setNewOverrideInline] = useState(false); // alta de override inline (lg+)
+  const [expandedVf, setExpandedVf] = useState(null); // scheduled phase in inline editing (lg+)
+  const [expandedOverrideId, setExpandedOverrideId] = useState(null); // override in inline editing (lg+)
+  const [newOverrideInline, setNewOverrideInline] = useState(false); // inline override creation (lg+)
   const programadaRowRefs = useRef(new Map());
   const overrideRowRefs = useRef(new Map());
   const newOverrideBtnRef = useRef(null);
@@ -182,7 +182,7 @@ export default function Targets() {
     requestAnimationFrame(() => newOverrideBtnRef.current?.focus());
   }
 
-  // Esc colapsa la edición/alta inline (lg+) sin guardar; foco vuelve a la fila.
+  // Esc collapses the inline editing/creation (lg+) without saving; focus returns to the row.
   useEffect(() => {
     function onKeyDown(e) {
       if (e.key !== 'Escape') return;
@@ -221,9 +221,9 @@ export default function Targets() {
   const labelOf = (vf) => phaseRows.find((t) => t.valid_from === vf && t.label)?.label || '';
   const descOf = (vf) => phaseRows.find((t) => t.valid_from === vf && t.description)?.description || '';
   const goalOf = (vf) => phaseRows.find((t) => t.valid_from === vf && t.goal)?.goal || '';
-  const faseFor = (day) => resolveTarget(phaseRows, day); // resolución sobre fase (excluye overrides)
+  const faseFor = (day) => resolveTarget(phaseRows, day); // resolution against phase rows (excludes overrides)
 
-  // ---- persistencia ----
+  // ---- persistence ----
   function afterVigenteSave() {
     setSheet(null);
     setVigVer((v) => v + 1);
@@ -264,9 +264,9 @@ export default function Targets() {
     load();
     return null;
   }
-  // Única edición posible sobre una fase previa: su meta. Los valores no se
-  // tocan (reescribirlos recalcularía la adherencia histórica), pero sin esto
-  // el histórico nunca podría filtrarse por régimen en el Dashboard.
+  // The only edit allowed on a past phase: its goal. The values are never
+  // touched (rewriting them would recompute historical adherence), but without
+  // this the history could never be filtered by regimen in the Dashboard.
   async function saveGoal(vf, goal) {
     await supabase.from('targets').update({ goal: goal || null }).eq('valid_from', vf).not('dow', 'is', null);
     load();
@@ -296,7 +296,7 @@ export default function Targets() {
   }
   async function deleteOverride(id) {
     const row = targets.find((tg) => tg.id === id);
-    setTargets((ts) => ts.filter((t) => t.id !== id)); // optimista, sin confirmación (§2.3): la red es el "Deshacer"
+    setTargets((ts) => ts.filter((t) => t.id !== id)); // optimistic, without confirmation (§2.3): the safety net is the "Undo"
     const { error } = await supabase.from('targets').delete().eq('id', id);
     if (error) {
       load();
@@ -309,8 +309,8 @@ export default function Targets() {
     });
   }
 
-  // Reinserta el override con los mismos campos que escribe saveOverride (sin id:
-  // la fila se recrea, nada la referencia).
+  // Reinserts the override with the same fields saveOverride writes (without id:
+  // the row is recreated; nothing references it).
   async function undoDeleteOverride() {
     if (!undoOverride) return;
     clearTimeout(undoOverride.timer);
@@ -329,7 +329,7 @@ export default function Targets() {
 
       <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:gap-6 lg:items-start">
         <div className="flex flex-col gap-6">
-          {/* Fase vigente (hero) */}
+          {/* Current phase (hero) */}
           {vigenteVf ? (
             <PhaseCard
               key={`vig-${vigenteVf}-${vigVer}`}
@@ -342,7 +342,7 @@ export default function Targets() {
               nextVf={nextVfOf(vigenteVf)}
               onSave={(draft) => {
                 setSheet({ type: 'decision', draft });
-                return null; // abre hoja de decisión; no persiste aún
+                return null; // opens the decision sheet; does not persist yet
               }}
             />
           ) : (
@@ -358,7 +358,7 @@ export default function Targets() {
             </div>
           )}
 
-          {/* Fases programadas */}
+          {/* Scheduled phases */}
           <section className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-medium">{t('Fases programadas')}</h2>
@@ -452,7 +452,7 @@ export default function Targets() {
           </section>
         </div>
 
-        {/* Fechas específicas */}
+        {/* Specific dates */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-medium">{t('Fechas específicas')}</h2>
@@ -560,7 +560,7 @@ export default function Targets() {
         </section>
       </div>
 
-      {/* ===== Hojas ===== */}
+      {/* ===== Sheets ===== */}
       {sheet?.type === 'phase' && (
         <Sheet onClose={() => setSheet(null)}>
           <PhaseCard
@@ -658,7 +658,7 @@ export default function Targets() {
   );
 }
 
-// ===== Card de fase (lectura + edición), espejo entre vigente y hojas (§2.1, §3) =====
+// ===== Phase card (read + edit), mirrored between the current-phase hero and the sheets (§2.1, §3) =====
 function PhaseCard({ variant, validFrom, label = '', description = '', goal = '', week, nextVf, copyWeek, initialEditing = false, forceCollapse = false, onSave, onCancel }) {
   const today = todayISO();
   const editable = variant === 'vigente' || variant === 'programada' || variant === 'new';
@@ -805,7 +805,7 @@ function PhaseCard({ variant, validFrom, label = '', description = '', goal = ''
   );
 }
 
-// ===== Card de fecha específica (override) =====
+// ===== Specific-date card (override) =====
 function OverrideCard({ variant, override, faseFor, initialEditing = false, forceCollapse = false, onSave, onCancel }) {
   const today = todayISO();
   const [editing, setEditing] = useState(initialEditing);
@@ -944,7 +944,7 @@ function PhaseMeta({ variant, validFrom, nextVf, today }) {
       </div>
     );
   }
-  // vigente
+  // 'vigente' variant (current phase)
   const N = daysBetween(validFrom, today) + 1;
   const M = nextVf ? daysBetween(validFrom, nextVf) : null;
   const pct = M ? Math.min(100, Math.max(0, (N / M) * 100)) : 0;
@@ -1137,8 +1137,8 @@ function TextField({ label, value, onChange, placeholder }) {
   );
 }
 
-// Meta de la fase: el filtro por régimen del Dashboard lee esta columna, así que
-// "Sin especificar" ('' → null) es un valor legítimo, no un default silencioso.
+// Phase goal: the Dashboard's regimen filter reads this column, so
+// "Sin especificar" ('' → null) is a legitimate value, not a silent default.
 function GoalField({ value, onChange }) {
   return (
     <div className="flex flex-col gap-1">
@@ -1169,7 +1169,7 @@ function DateField({ label, value, onChange }) {
   );
 }
 
-// Bottom sheet (scrim ~72 %, borde superior 20 px, handle 36×4, cierre por tap en el scrim).
+// Bottom sheet (scrim ~72 %, 20 px top radius, 36×4 handle, closed by tapping the scrim).
 function Sheet({ children, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center backdrop-in" style={{ background: 'rgba(0,0,0,0.72)' }} onClick={onClose}>

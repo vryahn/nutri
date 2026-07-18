@@ -1,7 +1,7 @@
-// api/mcp.js — servidor MCP remoto de Nutrimetry (Streamable HTTP, stateless).
-// Transporte + auth (JWT de Supabase Auth vía JWKS) + llamadas a Supabase con RLS
-// como ÚNICO filtro de autorización (nunca service_role). La lógica pura (validadores,
-// avisos, fork/update, cálculo de recetas) vive en src/lib/mcp.js.
+// api/mcp.js — Nutrimetry remote MCP server (Streamable HTTP, stateless).
+// Transport + auth (Supabase Auth JWT via JWKS) + Supabase calls with RLS
+// as the ONLY authorization filter (never service_role). The pure logic (validators,
+// warnings, fork/update, recipe computation) lives in src/lib/mcp.js.
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createClient } from '@supabase/supabase-js';
@@ -27,9 +27,9 @@ const RESOURCE_METADATA_URL = 'https://nutri.vryahn.com/.well-known/oauth-protec
 
 const JWKS = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks.json`));
 
-// Devuelve el uid (claim `sub`) del JWT si es válido, o null. iss/aud fijos: los
-// tokens del OAuth server y los del password grant comparten ambos claims (ver docs
-// Supabase oauth-server/token-security: aud por defecto = 'authenticated').
+// Returns the JWT's uid (`sub` claim) if valid, or null. Fixed iss/aud: tokens
+// from the OAuth server and those from the password grant share both claims (see the
+// Supabase oauth-server/token-security docs: default aud = 'authenticated').
 async function verifyToken(authHeader) {
   if (!authHeader?.startsWith('Bearer ')) return null;
   try {
@@ -53,7 +53,7 @@ function toolResult(summary, structured) {
 const portionSchema = z.object({ name: z.string().min(1), grams: z.number().positive() });
 const microsSchema = z.record(z.string(), z.number());
 
-// ── Llamadas a Supabase (I/O). La validación/decisión vive en src/lib/mcp.js. ──
+// ── Supabase calls (I/O). Validation/decision logic lives in src/lib/mcp.js. ──
 
 async function searchCatalog(supabase, uid, query, limit) {
   const like = `%${query}%`;
@@ -118,8 +118,8 @@ async function logEntry(supabase, { food_id, recipe_id, item, grams, label, day 
   if (!food_id && !recipe_id && !item) {
     throw new Error('se requiere food_id, recipe_id o item');
   }
-  // Firma de la migración 016 (log_entry_by_id): ids explícitos con prioridad
-  // p_food_id > p_recipe_id > p_item; el match por nombre prefiere lo propio.
+  // Signature from migration 016 (log_entry_by_id): explicit ids with priority
+  // p_food_id > p_recipe_id > p_item; name matching prefers the user's own items.
   const params = { p_grams: grams };
   if (item != null) params.p_item = item;
   if (label != null) params.p_label = label;
@@ -230,7 +230,7 @@ async function createRecipe(supabase, uid, input) {
     .from('recipe_items')
     .insert(input.items.map((i) => ({ recipe_id: recipe.id, food_id: i.food_id, grams: i.grams })));
   if (itemsErr) {
-    // ponytail: sin transacción real vía REST — rollback best-effort de la receta huérfana.
+    // ponytail: no real transaction over REST — best-effort rollback of the orphaned recipe.
     await supabase.from('recipes').delete().eq('id', recipe.id);
     throw new Error(itemsErr.message);
   }
@@ -284,9 +284,9 @@ async function updateFood(supabase, uid, foodId, patch) {
   return { forked: false, ...data, warnings };
 }
 
-// log_measurement: merge sobre body_metrics (unique owner,day — misma tabla que la
-// tab Medidas). Merge en vez de upsert ciego: una medición parcial no pisa las
-// claves ya guardadas ese día (prioridad del proyecto: no perder datos).
+// log_measurement: merge onto body_metrics (unique owner,day — same table as the
+// Medidas tab). Merge instead of a blind upsert: a partial measurement does not
+// overwrite the keys already saved that day (project priority: never lose data).
 async function logMeasurement(supabase, uid, { day, metrics }) {
   assertValidBodyMetrics(metrics);
   const d = day || todayISO();
@@ -315,7 +315,7 @@ async function getMeasurements(supabase, { from, to }) {
   return data;
 }
 
-// ── Servidor MCP: una instancia nueva por request (stateless) ──────────────
+// ── MCP server: a fresh instance per request (stateless) ───────────────────
 
 function buildServer(supabase, uid) {
   const server = new McpServer(

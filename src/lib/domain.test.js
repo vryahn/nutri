@@ -35,11 +35,11 @@ describe('agregación temporal de gráficas custom', () => {
   });
 
   it('bucketRows agrupa por semana ISO (lunes) y reduce', () => {
-    // 2026-07-06 = lunes; 06..12 = una semana; 13 = semana siguiente
+    // 2026-07-06 = Monday; 06..12 = one week; 13 = next week
     const daily = ['2026-07-06', '2026-07-08', '2026-07-12', '2026-07-13'].map((day, i) => ({ day, x: i + 1 }));
     const suma = bucketRows(daily, ['x'], 'semana', 'suma');
     expect(suma.map((r) => r.day)).toEqual(['2026-07-06', '2026-07-13']);
-    expect(suma[0].x).toBe(1 + 2 + 3); // 06,08,12 caen en la semana del 06
+    expect(suma[0].x).toBe(1 + 2 + 3); // 06,08,12 fall in the week of the 06th
     expect(suma[1].x).toBe(4); // 13
     expect(suma[0].label).toBe('07-06');
     const prom = bucketRows(daily, ['x'], 'semana', 'promedio');
@@ -60,7 +60,7 @@ describe('agregación temporal de gráficas custom', () => {
     ]);
     const s = buildDashSeries(['2026-07-06', '2026-07-07', '2026-07-08'], [DASH_VARS_BY_KEY.kcal], nutByDay, new Map(), 'semana', 'suma');
     expect(s).toHaveLength(1);
-    expect(s[0].kcal).toBe(3800); // 07-07 no registrado → null, ignorado
+    expect(s[0].kcal).toBe(3800); // 07-07 not logged → null, ignored
   });
 
   it('kind: nutrición flow, medidas/derivadas stock', () => {
@@ -74,11 +74,11 @@ describe('agregación temporal de gráficas custom', () => {
 describe('gráficas personalizadas del Dashboard', () => {
   const nutByDay = new Map([
     ['2026-07-01', { day: '2026-07-01', kcal: 2000, protein_g: 150, micros: { sodio_mg: 1800 } }],
-    // 07-02 no registrado (sin fila) → nutrición debe dar null, no 0
+    // 07-02 not logged (no row) → nutrition must yield null, not 0
   ]);
   const bodyByDay = new Map([
     ['2026-07-01', { day: '2026-07-01', metrics: { peso_kg: 57.5, grasa_pct: 20, cintura_cm: 82 } }],
-    // 07-02 sin medición → body null (serie dispersa)
+    // 07-02 with no measurement → body null (sparse series)
   ]);
   const dates = ['2026-07-01', '2026-07-02'];
 
@@ -93,7 +93,7 @@ describe('gráficas personalizadas del Dashboard', () => {
     const vars = [DASH_VARS_BY_KEY.protein_g, DASH_VARS_BY_KEY.peso_kg, DASH_VARS_BY_KEY.sodio_mg];
     const s = buildDashSeries(dates, vars, nutByDay, bodyByDay);
     expect(s[0]).toMatchObject({ protein_g: 150, peso_kg: 57.5, sodio_mg: 1800 });
-    // día no registrado → nutrición null (no 0 falso); sin medición → body null
+    // unlogged day → nutrition null (no false 0); no measurement → body null
     expect(s[1]).toMatchObject({ protein_g: null, peso_kg: null, sodio_mg: null });
   });
 
@@ -101,7 +101,7 @@ describe('gráficas personalizadas del Dashboard', () => {
     const s = buildDashSeries(dates, [DASH_VARS_BY_KEY.imc], nutByDay, bodyByDay, 'dia', 'promedio', 175);
     expect(s[0].imc).toBeCloseTo(57.5 / (1.75 * 1.75), 1);
     expect(s[1].imc).toBeNull();
-    // sin altura de Perfil → derivadas null aunque haya peso/grasa del día
+    // no Profile height → derived values null even with the day's weight/fat
     const sinAltura = buildDashSeries(dates, [DASH_VARS_BY_KEY.imc], nutByDay, bodyByDay);
     expect(sinAltura[0].imc).toBeNull();
   });
@@ -360,11 +360,11 @@ describe('classifyDiana (banda asimétrica por régimen)', () => {
     expect(classifyKcal(2000 * 1.20, 2000)).toBe('danger'); // compat wrapper
   });
   it('déficit: el exceso pesa más que el defecto', () => {
-    // −12% en déficit sigue en ok (defecto tolerado hasta −15%)
+    // −12% under a deficit is still ok (shortfall tolerated down to −15%)
     expect(classifyDiana(2000 * 0.88, 2000, 'deficit')).toBe('ok');
-    // +12% en déficit ya es warn (exceso ok solo hasta +8%)
+    // +12% under a deficit is already warn (overshoot ok only up to +8%)
     expect(classifyDiana(2000 * 1.12, 2000, 'deficit')).toBe('warn');
-    // +20% en déficit es danger (warn de exceso hasta +18%)
+    // +20% under a deficit is danger (overshoot warn up to +18%)
     expect(classifyDiana(2000 * 1.20, 2000, 'deficit')).toBe('danger');
   });
   it('volumen: el defecto pesa más que el exceso (espejo)', () => {
@@ -390,7 +390,7 @@ describe('classifyFloor / classifyBand / classifyCeiling', () => {
   it('techo: en/bajo el límite ok, +10% warn, más danger', () => {
     expect(classifyCeiling(20, 25)).toBe('ok');
     expect(classifyCeiling(25, 25)).toBe('ok');
-    expect(classifyCeiling(30, 25)).toBe('danger'); // azúcar añadido 30 vs 25 = +20%
+    expect(classifyCeiling(30, 25)).toBe('danger'); // added sugar 30 vs 25 = +20%
     expect(classifyCeiling(27, 25)).toBe('warn'); // +8%
   });
 });
@@ -404,7 +404,7 @@ describe('sodio dual (piso 1500 + techo 2300)', () => {
     expect(classifySodium(2000, true)).toBe('ok');
     expect(classifySodium(1200, true)).toBe('danger'); // bajo piso
     expect(classifySodium(2600, true)).toBe('danger'); // sobre techo
-    expect(classifySodium(2000, false)).toBe(null); // sin registros
+    expect(classifySodium(2000, false)).toBe(null); // no entries
   });
   it('sodiumIsLow / sodiumIsHigh respetan hasEntries', () => {
     expect(sodiumIsLow(1200, true)).toBe(true);

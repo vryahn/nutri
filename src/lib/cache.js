@@ -1,7 +1,7 @@
-// Cache de sesión en memoria (stale-while-revalidate casero): cada página pinta
-// al instante lo último que vio y su refetch de fondo actualiza al llegar. Solo
-// datos del usuario autenticado; App.jsx lo vacía al cerrar sesión. No persiste
-// (recargar la PWA = memoria limpia), así que nunca cruza usuarios ni sesiones.
+// In-memory session cache (homegrown stale-while-revalidate): each page instantly
+// paints the last thing it saw, and its background refetch updates on arrival. Only
+// data belonging to the authenticated user; App.jsx clears it on sign-out. It does
+// not persist (reloading the PWA = clean memory), so it never crosses users or sessions.
 const store = new Map();
 
 export const cacheGet = (key) => store.get(key);

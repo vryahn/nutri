@@ -1,5 +1,5 @@
-// Skeleton genérico de página: bloques pulsantes con la silueta de cards.
-// Reemplaza los "Cargando…" de texto (Targets, Dashboard, fallback de Suspense).
+// Generic page skeleton: pulsing blocks with the silhouette of cards.
+// Replaces the plain-text "Cargando…" placeholders (Targets, Dashboard, Suspense fallback).
 export default function PageSkeleton({ blocks = 3 }) {
   return (
     <div className="px-4 py-4 flex flex-col gap-3" aria-busy="true">

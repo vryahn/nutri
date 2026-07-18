@@ -2,19 +2,19 @@ import { useState } from 'react';
 import { round } from '../lib/domain.js';
 import { t, useLang, useUnits, gToOz, ozToG, mlToFlOz, flOzToMl } from '../lib/i18n.js';
 
-// Cantidad de un registro: siempre reporta GRAMOS via onGrams (la DB solo conoce gramos).
-// Si el food tiene densidad, permite capturar en ml (ml × densidad → g).
-// Con units='us' las mismas dos bases se capturan en oz / fl oz (mismo contrato onGrams).
-// Cada chip de porción SUMA sus gramos (2 taps de «vaso» = 2 vasos).
-// `placeholder` (opcional): gramos ya registrados, para editar sin perder el valor si
-// el campo se deja vacío. `required` (default true): AddEntrySheet no tiene valor
-// previo que conservar, así que sigue exigiendo el campo.
+// Amount for an entry: always reports GRAMS via onGrams (the DB only knows grams).
+// If the food has a density, it allows capturing in ml (ml × density → g).
+// With units='us' the same two bases are captured in oz / fl oz (same onGrams contract).
+// Each portion chip ADDS its grams (2 taps on «vaso» = 2 glasses).
+// `placeholder` (optional): grams already logged, so editing does not lose the value if
+// the field is left empty. `required` (default true): AddEntrySheet has no previous
+// value to preserve, so it keeps requiring the field.
 export default function AmountField({ grams, onGrams, meta, placeholder, required = true }) {
   useLang();
   const units = useUnits();
   const isUS = units === 'us';
   const [unit, setUnit] = useState(isUS ? 'oz' : 'g');
-  const [alt, setAlt] = useState(''); // valor capturado en ml o fl oz
+  const [alt, setAlt] = useState(''); // value captured in ml or fl oz
   const density = Number(meta?.density_g_ml) || 0;
   const portions = meta?.portions || [];
   const usesAlt = unit === 'ml' || unit === 'floz';

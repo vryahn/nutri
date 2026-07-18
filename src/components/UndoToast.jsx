@@ -1,7 +1,7 @@
 import { t, useLang } from '../lib/i18n.js';
 
-// Toast de borrado con acción "Deshacer" (5 s). Estilo y mecánica idénticos al
-// de Hoy; extraído para Alimentos y Recetas (Hoy conserva su copia inline).
+// Deletion toast with an "Undo" action (5 s). Style and mechanics identical to
+// the one in Today; extracted for Foods and Recipes (Today keeps its inline copy).
 export default function UndoToast({ message, onUndo }) {
   useLang();
   return (

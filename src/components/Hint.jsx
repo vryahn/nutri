@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
-// Tooltip de causa, hover (desktop) + tap (táctil), misma implementación.
-// position:fixed evita el clipping de cards con overflow-hidden y se clampa
-// al viewport a 375 px. Usado en ≥5 lugares del Dashboard para explicar todo
-// dato faltante, deshabilitado o recortado — nunca un guion mudo.
+// Cause tooltip, hover (desktop) + tap (touch), same implementation for both.
+// position:fixed avoids clipping by cards with overflow-hidden, and the tooltip
+// is clamped to the viewport at 375 px. Used in ≥5 places in the Dashboard to
+// explain every missing, disabled, or trimmed datum — never a silent dash.
 export default function Hint({ text, children }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);

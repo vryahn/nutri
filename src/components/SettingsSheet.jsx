@@ -44,10 +44,10 @@ function Section({ tag, tagCls, title, children }) {
   );
 }
 
-// Configuración: editor de las bandas de gracia de adherencia (lo que se construyó
-// en domain.js). Guardar aplica al instante (setActiveBands notifica a Hoy y
-// Dashboard) y persiste en prefs.data.adherence_bands. El sodio queda de solo
-// lectura: su piso 1500 mg es regla médica, no configurable.
+// Settings: editor for the adherence grace bands (the machinery built in
+// domain.js). Saving applies instantly (setActiveBands notifies Hoy and
+// Dashboard) and persists to prefs.data.adherence_bands. Sodium stays
+// read-only: its 1500 mg floor is a medical rule, not configurable.
 export default function SettingsSheet({ onClose }) {
   const [bands, setBands] = useState(() => structuredClone(getActiveBands()));
   const [reg, setReg] = useState('default');
@@ -59,7 +59,7 @@ export default function SettingsSheet({ onClose }) {
     const n = structuredClone(b);
     const dd = n.diana[reg];
     dd[key] = p / 100;
-    // warn nunca por dentro de ok: banda warn ⊇ banda ok.
+    // warn never inside ok: warn band ⊇ ok band.
     dd.warnUnder = Math.max(dd.warnUnder, dd.okUnder);
     dd.warnOver = Math.max(dd.warnOver, dd.okOver);
     dd.okUnder = Math.min(dd.okUnder, dd.warnUnder);

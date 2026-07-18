@@ -1,8 +1,8 @@
-// Carga en bloque desde la UI (alimentos, registros, ingredientes de receta).
-// Funciones puras + un fetch de catálogo; la UI vive en components/ImportSheet.jsx
-// y en el editor de Recetas. Reúsa los validadores de dominio para que lo
-// importado herede los mismos ⚠ que la captura manual: la precisión gana, nada
-// se guarda en silencio.
+// Bulk import from the UI (foods, entries, recipe ingredients).
+// Pure functions + one catalog fetch; the UI lives in components/ImportSheet.jsx
+// and in the Recipes editor. Reuses the domain validators so that imported data
+// inherits the same ⚠ warnings as manual capture: accuracy wins, nothing is
+// saved silently.
 import { supabase } from './supabase.js';
 import {
   MICROS, BODY_METRICS, BODY_METRIC_MAX,
@@ -10,19 +10,19 @@ import {
 } from './domain.js';
 
 export const MICRO_KEYS = MICROS.map((m) => m.key);
-// Cabeceras canónicas del CSV de alimentos (base + una columna por micro).
+// Canonical headers of the foods CSV (base columns + one column per micro).
 export const FOODS_TEMPLATE_HEADERS = [
   'name', 'brand', 'kcal', 'protein_g', 'carbs_g', 'fat_g', 'density_g_ml', 'source', ...MICRO_KEYS,
 ];
 
 export const BODY_METRIC_KEYS = BODY_METRICS.map((m) => m.key);
-// Cabeceras del CSV de medidas (día + una columna por medida + nota).
+// Headers of the measurements CSV (day + one column per measurement + note).
 export const BODY_TEMPLATE_HEADERS = ['day', ...BODY_METRIC_KEYS, 'note'];
 
-// --- CSV (RFC 4180 mínimo: comillas, comas y saltos escapados) ------------
-// ponytail: parser propio de ~30 líneas en vez de sumar papaparse al stack cerrado.
+// --- CSV (minimal RFC 4180: quotes, escaped commas and line breaks) ------------
+// ponytail: an in-house ~30-line parser instead of adding papaparse to the closed stack.
 export function parseCSV(text) {
-  const s = (text || '').replace(/^\uFEFF/, ''); // BOM de Excel
+  const s = (text || '').replace(/^\uFEFF/, ''); // Excel BOM
   const rows = [];
   let field = '', row = [], inQuotes = false;
   const pushRow = () => {
@@ -50,13 +50,13 @@ export function parseCSV(text) {
   return { headers, rows: objs };
 }
 
-// --- Emparejado por nombre (compartido por registros e ingredientes) -------
+// --- Name matching (shared by entries and ingredients) -------
 export function normName(str) {
   return (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// Exacto → prefijo único → subcadena única. Ambiguo o sin match = null: nunca
-// se adivina un alimento equivocado (regla de precisión); el usuario resuelve.
+// Exact → unique prefix → unique substring. Ambiguous or no match = null: a
+// wrong food is never guessed (accuracy rule); the user resolves it.
 export function matchFood(name, foods) {
   const n = normName(name);
   if (!n) return null;
@@ -76,7 +76,7 @@ function matchLabel(name, labels) {
   return labels.find((l) => normName(l.name) === n) || null;
 }
 
-// --- Alimentos desde CSV ---------------------------------------------------
+// --- Foods from CSV --------------------------------------------------------
 function foodWarnings(f) {
   const w = [];
   if (kcalSuspicious(f)) w.push('kcal');
@@ -92,7 +92,7 @@ export function foodsFromCSV(rows) {
     for (const k of MICRO_KEYS) {
       if (r[k] !== undefined && r[k] !== '') {
         const x = Number(r[k]);
-        if (!Number.isNaN(x) && x !== 0) micros[k] = x; // un 0 pesa igual que ausente en las vistas SQL
+        if (!Number.isNaN(x) && x !== 0) micros[k] = x; // a 0 weighs the same as an absent key in the SQL views
       }
     }
     const payload = {
@@ -104,17 +104,17 @@ export function foodsFromCSV(rows) {
       source: (r.source || 'manual').trim() || 'manual',
       portions: [],
     };
-    // kcal vacío → se calcula de los macros (mismo default que FoodForm al guardar).
+    // Empty kcal → computed from the macros (same default FoodForm applies on save).
     const kcalRaw = (r.kcal ?? '').toString().trim();
     payload.kcal = kcalRaw === '' ? kcalFromMacros(payload) : num(kcalRaw);
     return { payload, warnings: foodWarnings(payload), valid: !!payload.name };
   });
 }
 
-// --- Registros (entries) desde CSV -----------------------------------------
+// --- Entries from CSV ------------------------------------------------------
 function normalizeDay(v) {
   const s = (v || '').trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null; // ponytail: solo ISO; otros formatos si aparecen
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null; // ponytail: ISO only; other formats if they ever show up
 }
 
 export function entriesFromCSV(rows, foods, labels) {
@@ -137,9 +137,9 @@ export function entriesFromCSV(rows, foods, labels) {
   });
 }
 
-// --- Medidas corporales desde CSV ------------------------------------------
-// Alias de columnas de apps de báscula/trackers (inglés) → clave canónica de
-// BODY_METRICS, para que un export de Renpho/Withings/Cronometer entre sin editar.
+// --- Body measurements from CSV --------------------------------------------
+// Column aliases from scale/tracker apps (English) → canonical BODY_METRICS
+// key, so a Renpho/Withings/Cronometer export imports without editing.
 const BODY_ALIASES = {
   weight: 'peso_kg', peso: 'peso_kg',
   body_fat: 'grasa_pct', bodyfat: 'grasa_pct', body_fat_pct: 'grasa_pct', fat: 'grasa_pct', grasa: 'grasa_pct',
@@ -150,22 +150,22 @@ const BODY_ALIASES = {
   visceral: 'grasa_visceral', visceral_fat: 'grasa_visceral',
   bmr: 'metabolismo_basal_kcal',
   waist: 'cintura_cm', hip: 'cadera_cm', hips: 'cadera_cm', chest: 'pecho_cm', neck: 'cuello_cm',
-  // Laterales por lado: alias en inglés left_/right_ (una sola palabra sería ambigua).
+  // Per-side laterals: English left_/right_ aliases (a single word would be ambiguous).
   right_biceps: 'biceps_der_cm', left_biceps: 'biceps_izq_cm',
   right_arm: 'biceps_der_cm', left_arm: 'biceps_izq_cm',
   left_leg: 'pierna_izq_cm', right_leg: 'pierna_der_cm',
   left_thigh: 'pierna_izq_cm', right_thigh: 'pierna_der_cm',
   left_calf: 'pantorrilla_izq_cm', right_calf: 'pantorrilla_der_cm',
-  // Segmental de bioimpedancia (columnas típicas de exports BIA): magra = FFM.
+  // Bioimpedance segmental data (typical BIA export columns): magra = FFM (fat-free mass).
   ffm_trunk: 'magra_tronco_kg', ffm_arm_l: 'magra_brazo_izq_kg', ffm_arm_r: 'magra_brazo_der_kg',
   ffm_leg_l: 'magra_pierna_izq_kg', ffm_leg_r: 'magra_pierna_der_kg',
   fat_trunk: 'grasa_tronco_kg', fat_arm_l: 'grasa_brazo_izq_kg', fat_arm_r: 'grasa_brazo_der_kg',
   fat_leg_l: 'grasa_pierna_izq_kg', fat_leg_r: 'grasa_pierna_der_kg',
 };
 
-// Encabezado en inglés preferido por clave canónica, para la plantilla y el ejemplo
-// en modo EN. Cada clave tiene forma inglesa, así que la plantilla EN vuelve a
-// entrar por los alias de arriba. Fallback a la clave si faltara alguna.
+// Preferred English header per canonical key, for the template and the example
+// in EN mode. Every key has an English form, so the EN template re-enters
+// through the aliases above. Falls back to the key if any were missing.
 export const BODY_HEADERS_EN = {
   day: 'day', note: 'note',
   peso_kg: 'weight', grasa_pct: 'body_fat', musculo_kg: 'muscle', agua_pct: 'body_water',
@@ -182,9 +182,9 @@ export const BODY_HEADERS_EN = {
 };
 export const BODY_TEMPLATE_HEADERS_EN = BODY_TEMPLATE_HEADERS.map((h) => BODY_HEADERS_EN[h] || h);
 
-// Una fila = un día. Mapea columnas (clave canónica o alias) a `metrics`, hereda
-// el ⚠ "fuera de rango" de BODY_METRIC_MAX (misma política de precisión que la
-// captura manual). `valid` = día ISO + al menos una medida numérica ≥ 0.
+// One row = one day. Maps columns (canonical key or alias) to `metrics`, inherits
+// the "fuera de rango" (out of range) ⚠ from BODY_METRIC_MAX (same accuracy policy
+// as manual capture). `valid` = ISO day + at least one numeric measurement ≥ 0.
 export function bodyMetricsFromCSV(rows) {
   return rows.map((r) => {
     const day = normalizeDay(r.day || r.date || r.fecha || '');
@@ -214,10 +214,10 @@ export function bodyMetricsFromCSV(rows) {
   });
 }
 
-// --- Ingredientes de receta desde texto pegado -----------------------------
-// Una línea = "120 g arroz", "arroz, 120", "arroz 120g". Toma el número con
-// unidad si existe, si no el último número de la línea (las cantidades suelen ir
-// al final); el resto es el nombre.
+// --- Recipe ingredients from pasted text -----------------------------------
+// One line = "120 g arroz", "arroz, 120", "arroz 120g". Takes the number with a
+// unit if present, otherwise the last number on the line (amounts usually come
+// at the end); the rest is the name.
 export function parseIngredientLines(text, foods) {
   return (text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((line) => {
     const nums = [...line.matchAll(/(\d+(?:[.,]\d+)?)\s*(g|gr|grs|gramos|ml)?\b/gi)];
@@ -232,8 +232,8 @@ export function parseIngredientLines(text, foods) {
   });
 }
 
-// Catálogo con los campos que necesita el emparejado y el total en vivo de
-// Recetas (para registros basta el id, pero traer todo cuesta lo mismo con ~150 filas).
+// Catalog with the fields required by name matching and the live total in
+// Recipes (entries only need the id, but fetching everything costs the same with ~150 rows).
 export async function fetchFoodsForImport() {
   const { data } = await supabase
     .from('foods')

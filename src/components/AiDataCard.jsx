@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Sparkles, ImagePlus, X, Loader2 } from 'lucide-react';
 import { t, useLang } from '../lib/i18n.js';
 
-// Card "Datos con IA" compartida por FoodForm y RecipeForm: texto/fotos (hasta 2:
-// p. ej. frente del empaque + tabla nutrimental) → botón "Obtener datos".
-// La fila de fotos se parte en mitades: cada foto tomada es una miniatura
-// (tap = quitarla) y, mientras quepa otra, la mitad restante es el botón de
-// añadir; con el cupo lleno el botón desaparece — el límite se ve, no se dice.
-// `children` = líneas de resultado específicas de cada form (badge, avisos),
-// renderizadas entre el error y el hint de cierre.
+// "Datos con IA" card shared by FoodForm and RecipeForm: text/photos (up to 2:
+// e.g. front of the package + nutrition facts table) → "Obtener datos" button.
+// The photo row is split into halves: each captured photo is a thumbnail
+// (tap = remove it) and, while another one still fits, the remaining half is the
+// add button; once the quota is full the button disappears — the limit is shown, not stated.
+// `children` = result lines specific to each form (badge, warnings),
+// rendered between the error and the closing hint.
 const MAX_PHOTOS = 2;
 
 export default function AiDataCard({
@@ -21,7 +21,7 @@ export default function AiDataCard({
   function onDrop(e) {
     e.preventDefault();
     setDragOver(false);
-    if (loading) return; // petición en curso: card bloqueada
+    if (loading) return; // request in progress: card is locked
     const imgs = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
     if (imgs.length) onFiles([...files, ...imgs].slice(0, MAX_PHOTOS));
   }
@@ -79,7 +79,7 @@ export default function AiDataCard({
                 className="hidden"
                 onChange={(e) => {
                   onFiles([...files, ...Array.from(e.target.files)].slice(0, MAX_PHOTOS));
-                  e.target.value = ''; // permite re-elegir el mismo archivo tras quitarlo
+                  e.target.value = ''; // allows re-selecting the same file after removing it
                 }}
               />
             </label>

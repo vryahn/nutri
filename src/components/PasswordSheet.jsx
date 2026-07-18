@@ -4,11 +4,11 @@ import { supabase } from '../lib/supabase.js';
 import { t } from '../lib/i18n.js';
 import Sheet from './Sheet.jsx';
 
-const MIN = 6; // mínimo por defecto de Supabase Auth
+const MIN = 6; // Supabase Auth default minimum
 const inputCls = 'h-[42px] w-full rounded-xl bg-black/25 border border-border pl-3 pr-11 text-sm text-text placeholder:text-text-3 focus:border-accent-deep outline-none';
 
-// Campo de contraseña con toggle de visibilidad. autoComplete="new-password"
-// para que el gestor ofrezca guardar/generar y no autocomplete la actual.
+// Password field with visibility toggle. autoComplete="new-password"
+// so the password manager offers to save/generate instead of autofilling the current one.
 function PwdField({ label, value, onChange, show, onToggle }) {
   return (
     <label className="flex flex-col gap-1.5">
@@ -34,9 +34,9 @@ function PwdField({ label, value, onChange, show, onToggle }) {
   );
 }
 
-// Cambio de contraseña de la sesión activa: supabase.auth.updateUser({ password }).
-// NO es el reset self-service por email (fuera de alcance §11) — este exige sesión
-// abierta. La sesión ya está autenticada, así que no se re-pide la actual.
+// Password change for the active session: supabase.auth.updateUser({ password }).
+// This is NOT the self-service email reset (out of scope, §11) — this one requires an
+// open session. The session is already authenticated, so the current password is not re-requested.
 export default function PasswordSheet({ onClose }) {
   const [pwd, setPwd] = useState('');
   const [confirm, setConfirm] = useState('');

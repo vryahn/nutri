@@ -95,7 +95,7 @@ describe('bodyMetricsFromCSV', () => {
     const { rows } = parseCSV(headers.join(',') + '\n' + values.join(','));
     const [b] = bodyMetricsFromCSV(rows);
     const metricCols = headers.filter((h) => h !== 'day' && h !== 'note');
-    expect(Object.keys(b.row.metrics)).toHaveLength(metricCols.length); // ninguna columna se pierde
+    expect(Object.keys(b.row.metrics)).toHaveLength(metricCols.length); // no column is lost
   });
   it('fecha inválida o sin medidas = fila descartable', () => {
     expect(bodyMetricsFromCSV(parseCSV('day,peso_kg\n07/07/2026,80').rows)[0]).toMatchObject({ valid: false, warnings: expect.arrayContaining(['fecha']) });

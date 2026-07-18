@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { scoreCase, compareToBaseline } from './score.js';
 
-// Caso base reutilizable: manzana estimada, kcal 63 + un micro.
+// Reusable base case: estimated apple, kcal 63 + one micro.
 function appleCase(overrides) {
   return {
     id: 'apple',
@@ -13,7 +13,7 @@ function appleCase(overrides) {
     ...overrides,
   };
 }
-// got mínimo con los 7 requeridos numéricos (para no arrastrar fallos ajenos al aserto).
+// Minimal got with the 7 required fields numeric (to avoid dragging in failures unrelated to the assertion).
 function got(over = {}) {
   return {
     mode: 'estimacion', basis: '100g', ai_model: 'gemini:test',
@@ -25,13 +25,13 @@ function got(over = {}) {
 
 describe('scoreCase — tolerancia por modo', () => {
   it('estimacion ±30 %: kcal 63 → 47 pasa, 44 falla', () => {
-    // 63*0.30 = 18.9 → [44.1, 81.9]. 47 dentro, 44 fuera.
+    // 63*0.30 = 18.9 → [44.1, 81.9]. 47 inside, 44 outside.
     expect(scoreCase(appleCase(), got({ kcal: 47 })).fields.kcal.pass).toBe(true);
     expect(scoreCase(appleCase(), got({ kcal: 44 })).fields.kcal.pass).toBe(false);
   });
 
   it('micros estimacion ±40 %: potasio 109 → 65 pasa, 60 falla', () => {
-    // 109*0.40 = 43.6 → [65.4, 152.6]. 65 fuera (65<65.4)... 66 dentro.
+    // 109*0.40 = 43.6 → [65.4, 152.6]. 65 outside (65<65.4)... 66 inside.
     expect(scoreCase(appleCase(), got({ micros: { sodio_mg: 1, potasio_mg: 66, magnesio_mg: 5 } })).fields.potasio_mg.pass).toBe(true);
     expect(scoreCase(appleCase(), got({ micros: { sodio_mg: 1, potasio_mg: 60, magnesio_mg: 5 } })).fields.potasio_mg.pass).toBe(false);
   });
@@ -45,10 +45,10 @@ describe('scoreCase — tolerancia por modo', () => {
   it('etiqueta: kcal max(2%,2), resto max(2%,0.5)', () => {
     const c = { id: 'lbl', expected: { mode: 'etiqueta', basis: '100g', values: { kcal: 100, protein_g: 10, micros: {} } } };
     const g = { mode: 'etiqueta', basis: '100g', kcal: 100, protein_g: 10, carbs_g: 0, fat_g: 0, micros: { sodio_mg: 0, potasio_mg: 0, magnesio_mg: 0 } };
-    // kcal tol = max(2,2)=2: 102 pasa, 103 falla.
+    // kcal tol = max(2,2)=2: 102 passes, 103 fails.
     expect(scoreCase(c, { ...g, kcal: 102 }).fields.kcal.pass).toBe(true);
     expect(scoreCase(c, { ...g, kcal: 103 }).fields.kcal.pass).toBe(false);
-    // protein tol = max(0.2,0.5)=0.5: 10.5 pasa, 10.6 falla.
+    // protein tol = max(0.2,0.5)=0.5: 10.5 passes, 10.6 fails.
     expect(scoreCase(c, { ...g, protein_g: 10.5 }).fields.protein_g.pass).toBe(true);
     expect(scoreCase(c, { ...g, protein_g: 10.6 }).fields.protein_g.pass).toBe(false);
   });
@@ -64,16 +64,16 @@ describe('scoreCase — override, requeridos, extras, mode', () => {
   it('requerido no numérico (null/"") falla aunque no haya GT', () => {
     const c = { id: 'x', expected: { mode: 'estimacion', basis: '100g', values: {} } };
     const r = scoreCase(c, got({ sodio_mg: undefined, micros: { potasio_mg: 109, magnesio_mg: 5 } }));
-    expect(r.fields.sodio_mg.pass).toBe(false); // ausente del jsonb → no numérico
-    expect(r.fields.kcal.pass).toBe(true); // numérico, sin GT → pasa
+    expect(r.fields.sodio_mg.pass).toBe(false); // absent from the jsonb → not numeric
+    expect(r.fields.kcal.pass).toBe(true); // numeric, no GT → passes
   });
 
   it('strict_extras: micro fuera del GT = fallo extra; requeridos exentos', () => {
     const c = appleCase({ strict_extras: true });
     const r = scoreCase(c, got({ micros: { sodio_mg: 1, potasio_mg: 109, magnesio_mg: 5, eritritol_mg: 800 } }));
     expect(r.extras).toContain('eritritol_mg');
-    expect(r.extras).not.toContain('sodio_mg'); // requerido, exento
-    expect(r.total).toBeGreaterThan(r.passed); // el extra baja el score
+    expect(r.extras).not.toContain('sodio_mg'); // required, exempt
+    expect(r.total).toBeGreaterThan(r.passed); // the extra lowers the score
   });
 
   it('mode distinto → todo el caso falla', () => {
@@ -125,14 +125,14 @@ describe('compareToBaseline', () => {
     const mk = (n) => Array.from({ length: n }, (_, i) => `x${i}`);
     const run = (n) => [{ id: 'a', fields: {}, extras: mk(n) }];
     const base0 = [{ id: 'a', fields: {}, extras: [] }];
-    // 0 → umbral 3: 3 extras tolerado, 4 regresión.
+    // 0 → threshold 3: 3 extras tolerated, 4 is a regression.
     expect(compareToBaseline(base0, run(3)).regressions).toHaveLength(0);
     expect(compareToBaseline(base0, run(4)).regressions.some((r) => r.field === 'extras')).toBe(true);
-    // 60 → umbral 93: variación fina tolerada, salto grande gatea.
+    // 60 → threshold 93: fine variation tolerated, a big jump gates.
     const base60 = [{ id: 'a', fields: {}, extras: mk(60) }];
     expect(compareToBaseline(base60, run(90)).regressions).toHaveLength(0);
     expect(compareToBaseline(base60, run(94)).regressions.some((r) => r.field === 'extras')).toBe(true);
-    // Baseline viejo sin campo extras no revienta.
+    // An old baseline without the extras field does not blow up.
     expect(compareToBaseline([{ id: 'a', fields: {} }], run(0)).regressions).toHaveLength(0);
   });
 });

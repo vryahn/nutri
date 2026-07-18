@@ -1,13 +1,13 @@
-// Clientes de fuentes externas de datos nutricionales, por 100 g, mapeados a las
-// claves EXACTAS de MICROS (src/lib/domain.js). Solo fetch, sin dependencias nuevas.
+// Clients for external nutrition data sources, per 100 g, mapped to the EXACT
+// MICROS keys (src/lib/domain.js). fetch only, no new dependencies.
 import { MICROS, round } from './domain.js';
 
 const FDC_KEY = import.meta.env.VITE_FDC_KEY;
 
 // --- Open Food Facts ---
 
-// E-números de edulcorantes (INS/Codex) → nombre ES. OFF los expone en additives_tags
-// aunque la etiqueta rara vez declara los mg: sirve para AVISAR de su presencia.
+// Sweetener E-numbers (INS/Codex) → Spanish name. OFF exposes them in additives_tags
+// even though the label rarely declares the mg: used to WARN about their presence.
 const SWEETENER_ADDITIVES = {
   e420: 'sorbitol', e421: 'manitol', e953: 'isomalt', e965: 'maltitol', e966: 'lactitol',
   e967: 'xilitol', e968: 'eritritol', e964: 'poliglicitol',
@@ -17,8 +17,8 @@ const SWEETENER_ADDITIVES = {
   e969: 'advantamo',
 };
 
-// Lista de edulcorantes detectados en un producto OFF, por su additives_tags
-// (p. ej. 'en:e955' o 'en:e960c'). Devuelve [{ code, name }] sin duplicados.
+// List of sweeteners detected in an OFF product, via its additives_tags
+// (e.g. 'en:e955' or 'en:e960c'). Returns [{ code, name }] without duplicates.
 export function sweetenerAdditives(product) {
   const out = [];
   const seen = new Set();
@@ -56,10 +56,10 @@ export function mapOFF(p) {
     name: p.product_name || '',
     brand: (p.brands || '').split(',')[0].trim(),
     kcal: '', protein_g: '', carbs_g: '', fat_g: '', micros: {},
-    // nutrition_data_per: base declarada por el producto ('100g' o '100ml'); OFF no
-    // convierte, solo etiqueta — verificado en vivo con jugos franceses (100ml real).
+    // nutrition_data_per: basis declared by the product ('100g' or '100ml'); OFF does
+    // not convert, it only labels — verified live with real French juices (actual 100ml).
     per: p.nutrition_data_per === '100ml' ? '100ml' : '100g',
-    // Edulcorantes detectados por aditivo (presencia, no cantidad): la UI avisa.
+    // Sweeteners detected by additive (presence, not amount): the UI warns.
     sweeteners: sweetenerAdditives(p),
   };
 
@@ -74,17 +74,17 @@ export function mapOFF(p) {
   if (n['trans-fat_100g'] != null) m.grasa_trans_g = round(n['trans-fat_100g'], 2);
   if (n.sugars_100g != null) m.azucar_g = round(n.sugars_100g, 2);
   if (n.fiber_100g != null) m.fibra_g = round(n.fiber_100g, 2);
-  // OFF normaliza sodio/potasio/magnesio/calcio/hierro a gramos (campo *_unit = "g").
+  // OFF normalizes sodium/potassium/magnesium/calcium/iron to grams (field *_unit = "g").
   if (n.sodium_100g != null) m.sodio_mg = round(n.sodium_100g * 1000, 1);
   else if (n.salt_100g != null) m.sodio_mg = round((n.salt_100g / 2.5) * 1000, 1);
   if (n.potassium_100g != null) m.potasio_mg = round(n.potassium_100g * 1000, 1);
   if (n.magnesium_100g != null) m.magnesio_mg = round(n.magnesium_100g * 1000, 1);
   if (n.calcium_100g != null) m.calcio_mg = round(n.calcium_100g * 1000, 1);
   if (n.iron_100g != null) m.hierro_mg = round(n.iron_100g * 1000, 2);
-  // OFF da la cafeína en gramos (verificado en vivo: caffeine_unit "g"), como los minerales.
+  // OFF reports caffeine in grams (verified live: caffeine_unit "g"), like the minerals.
   if (n.caffeine_100g != null) m.cafeina_mg = round(n.caffeine_100g * 1000, 1);
-  // Campos extendidos de OFF, ya en la unidad del dominio (gramos). Población dispersa:
-  // una clave ausente simplemente no se asigna (nunca guarda un dato equivocado).
+  // Extended OFF fields, already in the domain unit (grams). Sparsely populated:
+  // an absent key is simply not assigned (a wrong value is never stored).
   if (n.polyols_100g != null) m.polioles_g = round(n.polyols_100g, 2);
   if (n.starch_100g != null) m.almidon_g = round(n.starch_100g, 2);
   if (n.fructose_100g != null) m.fructosa_g = round(n.fructose_100g, 2);
@@ -101,10 +101,10 @@ export function mapOFF(p) {
 }
 
 // --- USDA FoodData Central ---
-// Foundation/SR Legacy vienen por 100 g. Verificado contra la API real (avocado,
-// butter): los ids y unitName de abajo coinciden con la respuesta.
+// Foundation/SR Legacy come per 100 g. Verified against the real API (avocado,
+// butter): the ids and unitName values below match the response.
 const FDC_MAP = {
-  1003: 'protein_g', 1005: 'carbs_g', 1004: 'fat_g', // 1008 (kcal) se maneja aparte, ver KCAL_IDS
+  1003: 'protein_g', 1005: 'carbs_g', 1004: 'fat_g', // 1008 (kcal) is handled separately, see KCAL_IDS
   1258: 'grasa_sat_g', 1257: 'grasa_trans_g', 2000: 'azucar_g', 1235: 'azucar_anadido_g', 1079: 'fibra_g',
   1093: 'sodio_mg', 1092: 'potasio_mg', 1090: 'magnesio_mg', 1087: 'calcio_mg', 1089: 'hierro_mg',
   1051: 'agua_ml', 1018: 'alcohol_g', 1253: 'colesterol_mg',
@@ -114,7 +114,7 @@ const FDC_MAP = {
   1095: 'zinc_mg', 1091: 'fosforo_mg', 1103: 'selenio_mcg', 1098: 'cobre_mg', 1101: 'manganeso_mg',
   1100: 'yodo_mcg', 1096: 'cromo_mcg', 1102: 'molibdeno_mcg', 1099: 'fluoruro_mcg',
   1107: 'beta_caroteno_mcg', 1122: 'licopeno_mcg', 1123: 'luteina_zeaxantina_mcg',
-  // --- Ampliación (ids verificados en vivo contra la API de FDC) ---
+  // --- Expansion (ids verified live against the FDC API) ---
   1007: 'ceniza_g', 1009: 'almidon_g',
   1010: 'sacarosa_g', 1011: 'glucosa_g', 1012: 'fructosa_g', 1075: 'galactosa_g', 1013: 'lactosa_g', 1014: 'maltosa_g',
   1057: 'cafeina_mg', 1058: 'teobromina_mg',
@@ -123,17 +123,17 @@ const FDC_MAP = {
   1283: 'fitosteroles_mg',
   1292: 'grasa_mono_g', 1293: 'grasa_poli_g',
   1404: 'ala_g', 1278: 'epa_g', 1272: 'dha_g', 1269: 'la_g', 1271: 'aa_g',
-  // Aminoácidos (FDC ids 1210-1228)
+  // Amino acids (FDC ids 1210-1228)
   1210: 'triptofano_g', 1211: 'treonina_g', 1212: 'isoleucina_g', 1213: 'leucina_g', 1214: 'lisina_g',
   1215: 'metionina_g', 1216: 'cistina_g', 1217: 'fenilalanina_g', 1218: 'tirosina_g', 1219: 'valina_g',
   1220: 'arginina_g', 1221: 'histidina_g', 1222: 'alanina_g', 1223: 'acido_aspartico_g', 1224: 'acido_glutamico_g',
   1225: 'glicina_g', 1226: 'prolina_g', 1227: 'serina_g', 1228: 'hidroxiprolina_g',
-  // omega3_g/omega6_g totales y fibra soluble/insoluble: sin id único fiable en FDC →
-  // se dejan a etiqueta/Gemini/captura manual (no se mapean aquí para no adivinar).
+  // Total omega3_g/omega6_g and soluble/insoluble fiber: no single reliable FDC id →
+  // left to label/Gemini/manual capture (not mapped here to avoid guessing).
 };
-// Los alimentos Foundation NO traen el id 1008 (Energy) que sí usa SR Legacy — solo
-// los factores Atwater 2047/2048. Se aceptan como kcal con prioridad: 1008 (directo)
-// > 2048 (Atwater específico del alimento) > 2047 (Atwater genérico 4-4-9).
+// Foundation foods do NOT carry id 1008 (Energy), which SR Legacy does use — only
+// the Atwater factors 2047/2048. All are accepted as kcal with priority: 1008 (direct)
+// > 2048 (food-specific Atwater) > 2047 (generic 4-4-9 Atwater).
 const KCAL_IDS = { 1008: 3, 2048: 2, 2047: 1 };
 const NUMERIC_MACRO_KEYS = ['protein_g', 'carbs_g', 'fat_g'];
 const EXPECTED_UNIT = {
@@ -141,17 +141,17 @@ const EXPECTED_UNIT = {
   ...Object.fromEntries(MICROS.map((m) => [m.key, m.unit])),
 };
 
-// FDC devuelve el agua en g (unitName "g"); 1 g de agua ≈ 1 ml, se acepta 1:1.
+// FDC returns water in g (unitName "g"); 1 g of water ≈ 1 ml, accepted 1:1.
 export function toDomainUnit(amount, apiUnit, domainUnit) {
   if (apiUnit === domainUnit) return amount;
   if (apiUnit === 'g' && domainUnit === 'mg') return amount * 1000;
   if (apiUnit === 'mg' && domainUnit === 'µg') return amount * 1000;
   if (apiUnit === 'g' && domainUnit === 'ml') return amount;
-  return null; // unidad no convertible: se descarta, nunca se guarda en unidad equivocada
+  return null; // non-convertible unit: discarded, never stored in the wrong unit
 }
 
-// Solo alimentos genéricos (Foundation/SR Legacy) — nunca productos de marca
-// (Branded devolvería variantes de EE. UU., pérdida de precisión para México).
+// Generic foods only (Foundation/SR Legacy) — never branded products
+// (Branded would return US variants, a loss of accuracy for Mexico).
 export async function searchFDC(query) {
   if (!FDC_KEY) return [];
   const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=6&api_key=${FDC_KEY}`;
@@ -166,9 +166,9 @@ export async function searchFDC(query) {
   return (data.foods || []).map((f) => ({ fdcId: f.fdcId, description: f.description, dataType: f.dataType }));
 }
 
-// --- Traducción EN→ES (MyMemory, gratis, sin key, CORS abierto) ---
-// Solo ayuda visual para elegir la variante USDA correcta; NUNCA entra a la DB
-// (el alimento se guarda con el nombre en español que ya trae el flujo).
+// --- EN→ES translation (MyMemory, free, no key, open CORS) ---
+// Visual aid only, to pick the correct USDA variant; it NEVER enters the DB
+// (the food is saved with the Spanish name the flow already carries).
 const _trCache = new Map();
 export async function translateEnEs(text) {
   if (!text) return text;
@@ -184,7 +184,7 @@ export async function translateEnEs(text) {
       if (t && data.responseStatus === 200) out = t;
     }
   } catch {
-    // ponytail: MyMemory free tier ~1000 palabras/día; fallback a inglés, subir a key propia si la cuota molesta
+    // ponytail: MyMemory free tier is ~1000 words/day; falls back to English, upgrade to an own key if the quota becomes a problem
   }
   _trCache.set(text, out);
   return out;

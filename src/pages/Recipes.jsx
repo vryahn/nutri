@@ -18,7 +18,7 @@ import { fetchFoodsForImport, parseIngredientLines } from '../lib/importer.js';
 const FDC_KEY = import.meta.env.VITE_FDC_KEY;
 const SOURCE_LABELS = { manual: 'Manual', gemini: 'IA', ia_personal: 'IA personal' };
 
-// ponytail: matchMedia en vez de resize-observer propio; mismo patrón que Today.jsx.
+// ponytail: matchMedia instead of a custom resize observer; same pattern as Today.jsx.
 function useIsLgUp() {
   const [isLg, setIsLg] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
   useEffect(() => {
@@ -32,14 +32,14 @@ function useIsLgUp() {
 
 export default function Recipes() {
   useLang();
-  // SWR: pinta el cache de sesión al instante y el load() de fondo refresca.
+  // SWR: paints the session cache instantly while the background load() refreshes it.
   const [recipes, setRecipes] = useState(() => cacheGet('recipes') || []);
   const [loading, setLoading] = useState(() => !cacheGet('recipes'));
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState(null); // null | {} | recipe
   const [toast, showToast] = useToast();
-  const [undoData, setUndoData] = useState(null); // { recipe, items, timer } tras un borrado, para "Deshacer"
-  const [favMicros, setFavMicros] = useState([]); // prefs.data.fav_micros, para el preview extendido lg+
+  const [undoData, setUndoData] = useState(null); // { recipe, items, timer } after a deletion, for "Undo"
+  const [favMicros, setFavMicros] = useState([]); // prefs.data.fav_micros, for the extended lg+ preview
   const isLg = useIsLgUp();
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
@@ -55,7 +55,7 @@ export default function Recipes() {
     loadPrefs();
   }, []);
 
-  // Atajos lg+: "/" enfoca el buscador (si el foco no está en un input), Esc cierra el panel.
+  // lg+ shortcuts: "/" focuses the search box (if focus is not on an input), Esc closes the panel.
   useEffect(() => {
     function onKeyDown(e) {
       if (e.key === 'Escape') {
@@ -79,8 +79,8 @@ export default function Recipes() {
   }
 
   async function load() {
-    // Solo se cachea la lista base (sin búsqueda): es la vista con la que se
-    // llega al tab. El skeleton solo aparece si no hay nada que pintar.
+    // Only the base list (no search) is cached: it is the view shown when landing
+    // on the tab. The skeleton only appears when there is nothing to paint.
     const isBase = !query.trim();
     if (!(isBase && cacheGet('recipes'))) setLoading(true);
     let req = supabase.from('recipes').select('*').order('name');
@@ -148,8 +148,8 @@ export default function Recipes() {
     load();
   }
 
-  // Borrado sin confirmación (swipe y botón "Borrar"): optimista + "Deshacer" 5 s
-  // que reinserta la receta y sus ingredientes. Homologado con Hoy.
+  // Deletion without confirmation (swipe and the "Borrar" button): optimistic + 5 s "Undo"
+  // that re-inserts the recipe and its ingredients. Consistent with Today.
   async function handleDelete(id) {
     const recipe = recipes.find((r) => r.id === id);
     const { data: items } = await supabase.from('recipe_items').select('food_id, grams').eq('recipe_id', id);
@@ -185,7 +185,7 @@ export default function Recipes() {
     load();
   }
 
-  // <lg: reemplazo de página completa, sin cambios respecto a lo existente.
+  // <lg: full-page replacement, unchanged from the existing behavior.
   if (editing && !isLg) {
     return (
       <div className="px-4 py-4">
@@ -216,7 +216,7 @@ export default function Recipes() {
       let bv = b[sortKey];
       if (typeof av === 'string') av = av.toLowerCase();
       if (typeof bv === 'string') bv = bv.toLowerCase();
-      // null siempre al final, sin importar la dirección (kcal100 puede faltar).
+      // null always last, regardless of direction (kcal100 may be missing).
       if (av == null && bv == null) return 0;
       if (av == null) return 1;
       if (bv == null) return -1;
@@ -229,8 +229,8 @@ export default function Recipes() {
   return (
     <div className="px-4 py-4 flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-6 lg:items-start">
       <div className="flex flex-col gap-4 lg:col-start-1">
-        {/* En lg+ el alta va por el panel derecho ("＋ Nueva receta" del estado vacío);
-            en <lg por el FAB. Sin botón de cabecera para no duplicar. */}
+        {/* On lg+ creation goes through the right panel ("＋ Nueva receta" in the empty state);
+            on <lg through the FAB. No header button, to avoid duplication. */}
         <h1 className="font-display text-xl">{t('Recetas')}</h1>
 
         <div className="flex flex-col lg:flex-row gap-2">
@@ -278,7 +278,7 @@ export default function Recipes() {
           </div>
         )}
 
-        {/* <lg: cards + swipe. Sin filtro por fuente (control solo lg+), la búsqueda ya filtra. */}
+        {/* <lg: cards + swipe. No source filter (control is lg+ only), the search already filters. */}
         {!loading && recipes.length > 0 && (
           <div className="flex flex-col gap-4 lg:hidden">
             {recipes.map((r) => (
@@ -300,7 +300,7 @@ export default function Recipes() {
           </div>
         )}
 
-        {/* lg+: tabla ordenable con hover-actions, homóloga a Alimentos. */}
+        {/* lg+: sortable table with hover actions, mirroring Foods. */}
         {!loading && recipes.length > 0 && (
           <div className="hidden lg:block rounded-2xl border border-border overflow-x-auto">
             <table className="w-full text-sm">
@@ -352,7 +352,7 @@ export default function Recipes() {
         )}
       </div>
 
-      {/* Panel derecho (lg+): editor, master-detail. */}
+      {/* Right panel (lg+): editor, master-detail. */}
       <div className="hidden lg:block lg:col-start-2 lg:sticky lg:top-6">
         {editing ? (
           <div className="rounded-2xl bg-surface border border-border p-6">
@@ -403,15 +403,15 @@ export default function Recipes() {
   );
 }
 
-// Quita la cantidad tecleada (si hay) del texto, para el cortocircuito anti-duplicados
-// y para no ensuciar el nombre buscado con "350ml" etc.
+// Removes the typed amount (if any) from the text, for the anti-duplicate short-circuit
+// and to avoid polluting the searched name with "350ml" etc.
 function stripAmountText(text) {
   return text.replace(/\d+(?:[.,]\d+)?\s*(ml|l|g|gr|kg)\b/i, '').trim();
 }
 
-// recipe_items tiene PK compuesta (recipe_id, food_id): dos ingredientes de texto
-// distinto pueden resolver al mismo alimento (alias + db_match, o dos búsquedas
-// manuales). Sumar gramos en vez de duplicar evita el 409 al guardar.
+// recipe_items has a composite PK (recipe_id, food_id): two ingredients with different
+// text can resolve to the same food (alias + db_match, or two manual searches).
+// Summing grams instead of duplicating avoids the 409 on save.
 function mergeIngredient(ingredients, food, grams, procedencia, isNew = false, fromAi = false) {
   const idx = ingredients.findIndex((i) => i.food.id === food.id);
   if (idx === -1) return [...ingredients, { food, grams, procedencia, isNew, fromAi }];
@@ -434,7 +434,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   const [aiError, setAiError] = useState('');
   const [aiResult, setAiResult] = useState(null); // { confidence, kcalTotalEstimate }
   const [dupMatches, setDupMatches] = useState([]);
-  const [confirmNew, setConfirmNew] = useState(false); // gate de guardado: confirmar alta de alimentos staged
+  const [confirmNew, setConfirmNew] = useState(false); // save gate: confirm the creation of staged foods
   const [saveError, setSaveError] = useState('');
   const [pasteText, setPasteText] = useState('');
   const [pasteMsg, setPasteMsg] = useState('');
@@ -456,7 +456,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
         .select('id, name, kcal, protein_g, carbs_g, fat_g, micros, density_g_ml, portions, source')
         .ilike('name', `%${query.trim()}%`)
         .limit(8);
-      // catálogo base (usda) al final, estable
+      // base catalog (usda) last, stable order
       setResults([...(data || [])].sort((a, b) => (a.source === 'usda') - (b.source === 'usda')));
     }, 250);
     return () => clearTimeout(t);
@@ -479,8 +479,8 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     setForm((f) => ({ ...f, ingredients: f.ingredients.filter((_, i) => i !== index) }));
   }
 
-  // Pega varias líneas ("200 g arroz") y añade en bloque las que emparejan con el
-  // catálogo; las sin coincidencia se reportan para agregarlas a mano arriba.
+  // Paste multiple lines ("200 g arroz") and bulk-add the ones that match the
+  // catalog; those without a match are reported so they can be added manually above.
   async function addPastedIngredients() {
     const catalog = (await fetchFoodsForImport()).filter((f) => !isWaterSentinel(f));
     const parsed = parseIngredientLines(pasteText, catalog);
@@ -497,7 +497,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     );
   }
 
-  // --- Datos con IA: descomposición en ingredientes ---
+  // --- "Datos con IA" (AI data): decomposition into ingredients ---
 
   async function handleAiSubmit() {
     if (!aiText.trim() && aiFiles.length === 0) return;
@@ -552,9 +552,9 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       totalG = Number(result.total_weight_g);
     }
 
-    // Ingredientes con match de catálogo/alias → food real (fila compacta). Sin match →
-    // card staged (isNew) prefilleada con los nutrientes de respaldo de la IA, editable y
-    // con guardado individual. Prioridad: alias/catálogo > IA (la card ofrece USDA como swap).
+    // Ingredients with a catalog/alias match → real food (compact row). No match →
+    // staged card (isNew) pre-filled with the AI's fallback nutrients, editable and
+    // individually savable. Priority: alias/catalog > AI (the card offers USDA as a swap).
     let aiCatalog = [];
     const staged = [];
     for (const ing of result.ingredients) {
@@ -591,10 +591,10 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       });
     }
 
-    // Re-ejecutar "Obtener datos" REEMPLAZA lo derivado de IA (fromAi); solo sobrevive lo
-    // añadido a mano por el usuario. Evita la acumulación al presionar varias veces.
-    // ponytail: lo guardado individualmente conserva fromAi, así el re-tap también lo
-    // reemplaza (queda en el catálogo, no se pierde) y no hay doble conteo de gramos.
+    // Re-running "Obtener datos" REPLACES what was AI-derived (fromAi); only what the
+    // user added manually survives. Prevents accumulation from pressing it several times.
+    // ponytail: individually saved items keep fromAi, so a re-tap also replaces them
+    // (they remain in the catalog, nothing is lost) and there is no double-counting of grams.
     setForm((f) => {
       let next = f.ingredients.filter((i) => !i.fromAi);
       for (const r of aiCatalog) next = mergeIngredient(next, r.food, r.grams, r.procedencia, false, true);
@@ -617,7 +617,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), ingredient_aliases: aliases } });
   }
 
-  // Edición inline de una card staged (nombre/kcal/macros); el preview reacciona al vuelo.
+  // Inline editing of a staged card (name/kcal/macros); the preview reacts on the fly.
   function setIngredientFood(index, patch) {
     setForm((f) => ({
       ...f,
@@ -625,8 +625,8 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     }));
   }
 
-  // Swap de una card staged a un alimento REAL del catálogo: sale de modo edición (fila
-  // compacta). Aprende alias del nombre original. Conserva fromAi (lo derivado de IA).
+  // Swap of a staged card to a REAL catalog food: it leaves edit mode (compact row).
+  // Learns an alias from the original name. Keeps fromAi (the AI-derived flag).
   function swapIngredientToCatalog(index, food, learn) {
     const nameEs = form.ingredients[index]?.name_es;
     setForm((f) => {
@@ -637,8 +637,8 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     if (learn && nameEs) learnAlias(nameEs, food.id);
   }
 
-  // Swap a datos USDA: sigue staged (isNew) y editable, prefill con valores por 100 g de
-  // USDA; el nombre en español del flujo se conserva.
+  // Swap to USDA data: remains staged (isNew) and editable, pre-filled with USDA's
+  // per-100 g values; the Spanish name from the flow is preserved.
   function swapIngredientToUsda(index, detail) {
     setForm((f) => ({
       ...f,
@@ -648,8 +648,8 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     }));
   }
 
-  // Inserta un alimento staged (sin id) y devuelve la fila real. Compartido por el
-  // guardado individual y el guardado de la receta. Null si falla el insert.
+  // Inserts a staged food (no id) and returns the real row. Shared by the individual
+  // save and the recipe save. Null if the insert fails.
   async function persistNewFood(food) {
     const payload = {
       name: food.name,
@@ -682,7 +682,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   const preview = computeRecipePer100g(form.ingredients, form.cooked_weight_g);
   const previewMicros = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favMicros.includes(m.key)) && m.key !== 'agua_ml');
 
-  // Avisos deterministas del flujo IA, nunca bloqueantes.
+  // Deterministic warnings of the AI flow, never blocking.
   const sumGrams = form.ingredients.reduce((s, i) => s + (Number(i.grams) || 0), 0);
   const totalGNum = Number(form.cooked_weight_g) || 0;
   const massDiffRatio = totalGNum > 0 && sumGrams > 0 ? Math.abs(sumGrams - totalGNum) / totalGNum : 0;
@@ -708,8 +708,8 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     }));
   }
 
-  // Alimentos staged (elegidos de USDA/IA) aún no persistidos. Se crean al confirmar
-  // el guardado de la receta; el usuario también puede guardarlos uno a uno antes.
+  // Staged foods (chosen from USDA/AI) not yet persisted. They are created upon
+  // confirming the recipe save; the user can also save them one by one beforehand.
   const newFoods = form.ingredients.filter((i) => i.isNew);
 
   async function handleSaveClick() {
@@ -727,7 +727,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       }
       const saved = await persistNewFood(ing.food);
       if (!saved) {
-        // Conserva los ya creados como no-nuevos para que un reintento no los duplique.
+        // Keeps the already-created ones as non-new so that a retry does not duplicate them.
         setForm((f) => ({ ...f, ingredients: [...resolved, ...f.ingredients.slice(idx)] }));
         setSaveError(t('No se pudo crear un alimento nuevo. Intenta de nuevo.'));
         return;
@@ -937,7 +937,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
             </p>
           )}
 
-          {/* <lg: preview solo macros, en flujo normal debajo del form. */}
+          {/* <lg: macros-only preview, in normal flow below the form. */}
           {preview && (
             <div className="lg:hidden rounded-2xl bg-surface border border-border p-4">
               <p className="text-sm text-text-3 mb-2">{t('Preview por 100 g')}</p>
@@ -951,7 +951,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
           )}
         </div>
 
-        {/* lg+: preview sticky a la derecha, extendido con micros visibles/favoritos. */}
+        {/* lg+: sticky preview on the right, extended with visible/favorite micros. */}
         {preview && (
           <div className="hidden lg:block lg:sticky lg:top-6 rounded-2xl bg-surface border border-border p-4">
             <p className="text-sm text-text-3 mb-2">{t('Preview por 100 g')}</p>
@@ -1029,16 +1029,16 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   );
 }
 
-// Card de un alimento nuevo (staged, isNew) del flujo IA: permanece en modo edición
-// —nombre, kcal y macros por 100 g editables (prefill de respaldo)— hasta que el usuario
-// lo guarda con ⤓ (queda como fila compacta). USDA se busca y traduce de inmediato al
-// montar y se ofrece como swap; el catálogo (match manual) tiene prioridad sobre la IA.
+// Card for a new food (staged, isNew) from the AI flow: it stays in edit mode
+// —name, kcal and per-100 g macros editable (fallback prefill)— until the user
+// saves it with ⤓ (it becomes a compact row). USDA is searched and translated immediately
+// on mount and offered as a swap; the catalog (manual match) takes priority over the AI.
 function StagedIngredientCard({ ing, onFood, onGrams, onSave, onRemove, onSwapCatalog, onSwapUsda }) {
   useLang();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [fdcChips, setFdcChips] = useState([]);
-  const [translated, setTranslated] = useState({}); // { [fdcId]: descripción_es }
+  const [translated, setTranslated] = useState({}); // { [fdcId]: Spanish description }
   const [saving, setSaving] = useState(false);
   const { food } = ing;
 
@@ -1053,13 +1053,13 @@ function StagedIngredientCard({ ing, onFood, onGrams, onSave, onRemove, onSwapCa
         .select('id, name, kcal, protein_g, carbs_g, fat_g, micros, density_g_ml, portions, source')
         .ilike('name', `%${query.trim()}%`)
         .limit(8);
-      // catálogo base (usda) al final, estable
+      // base catalog (usda) last, stable order
       setResults([...(data || [])].sort((a, b) => (a.source === 'usda') - (b.source === 'usda')));
     }, 250);
     return () => clearTimeout(t);
   }, [query]);
 
-  // USDA de inmediato al montar: busca y traduce sin que el usuario lo pida.
+  // USDA immediately on mount: searches and translates without the user asking.
   useEffect(() => {
     if (!ing.usda_query || !FDC_KEY) return;
     let alive = true;

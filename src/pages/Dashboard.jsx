@@ -72,8 +72,8 @@ import {
 } from '../lib/domain.js';
 import { t, useLang, getLang, useUnits, fmtMl, useAdherenceBands } from '../lib/i18n.js';
 
-// Calculo homologado del selector (Parte A). 'suma'/'promedio' siempre
-// disponibles con ≥1 día registrado; los avanzados requieren más días.
+// Unified calculation set for the selector (Part A). 'suma'/'promedio' are always
+// available with ≥1 registered day; the advanced ones require more days.
 const CALC_BASIC = [
   { key: 'suma', label: 'Suma' },
   { key: 'promedio', label: 'Promedio' },
@@ -107,7 +107,7 @@ const CALC_ADVANCED = [
 ];
 const CALC_ALL = [...CALC_BASIC, ...CALC_ADVANCED];
 
-// Motivo (string) por el que una opción de cálculo está deshabilitada, o null si aplica.
+// Reason (string) why a calculation option is disabled, or null if it applies.
 // ctx: { diasRegistrados, diasConObjetivo, diasCompletosFull, diasParcialesFull,
 //        diasCompletosPhase, diasParcialesPhase, crossesPhases }
 function calcDisabledReason(opt, ctx) {
@@ -122,7 +122,7 @@ function calcDisabledReason(opt, ctx) {
     if (opt.needsObjetivo && ctx.diasConObjetivo < 1) return t('Primero fija tus objetivos en Metas.');
     return null;
   }
-  // mediana, stddev, tendencia — inmunes a fases: sobre la fase vigente si el rango cruza >1.
+  // mediana, stddev, tendencia — immune to phase mixing: computed over the current phase if the range spans >1.
   if (ctx.diasCompletosPhase < opt.minDias) {
     return ctx.crossesPhases
       ? t('Necesitas al menos %n días completos en la fase actual. Llevas %a.')
@@ -133,9 +133,9 @@ function calcDisabledReason(opt, ctx) {
   return null;
 }
 
-// Estadísticos de una métrica (macro o micro). Suma/Promedio sobre todos los
-// días registrados del rango (semántica sin cambios); mediana/σ/tendencia
-// sobre `advancedDays` (días completos, y de la fase vigente si aplica — Fix 5).
+// Statistics for a metric (macro or micro). Sum/Average over all registered
+// days in the range (unchanged semantics); median/σ/trend over
+// `advancedDays` (complete days, and from the current phase when applicable — Fix 5).
 function computeMetricStats(registeredDays, advancedDays, key) {
   const xsAll = registeredDays.map((d) => d.values[key]);
   const n = xsAll.length;
@@ -158,8 +158,8 @@ function computeMetricStats(registeredDays, advancedDays, key) {
   };
 }
 
-// Objetivo diario resuelto para `key` sobre los días del rango que tienen un
-// target con ese valor definido (Fix 1). n=0 ⇒ de verdad no hay objetivo.
+// Daily objective resolved for `key` over the days in the range that have a
+// target with that value defined (Fix 1). n=0 ⇒ there is truly no objective.
 function objectiveStatsOf(vals) {
   const n = vals.length;
   return { sum: sum(vals), avg: n ? sum(vals) / n : 0, median: n ? median(vals) : null, n };
@@ -169,10 +169,10 @@ function computeObjectiveStats(chartData, key) {
   return objectiveStatsOf(withKey.map((d) => Number(d.targetMicros[key])));
 }
 
-// [valor, detalle, objetivo, %] del CSV de resumen para una métrica, con los
-// MISMOS ms/objStats/bayes que pinta la pantalla — solo cambia el formato:
-// números pelones (la unidad va en su propia columna) para que el CSV sea
-// parseable en hoja de cálculo. Celda vacía = sin dato, igual que el '–' en UI.
+// [value, detail, objective, %] of the summary CSV for a metric, using the
+// SAME ms/objStats/bayes the screen renders — only the format changes:
+// bare numbers (the unit goes in its own column) so the CSV is
+// parseable in a spreadsheet. Empty cell = no data, same as the '–' in the UI.
 function summaryCells(calcMode, ms, objStats, b) {
   const pct = (num, den) => (num != null && objStats.n && den > 0 ? `${Math.round((num / den) * 100)}%` : '');
   const obj = (v) => (objStats.n && v != null ? round(v, 2) : '');
@@ -198,8 +198,8 @@ function summaryCells(calcMode, ms, objStats, b) {
   }
 }
 
-// Macros del CSV de resumen: su objetivo vive en campos planos de chartData
-// (no en targetMicros como los micros).
+// Macros for the summary CSV: their objective lives in flat fields of chartData
+// (not in targetMicros like the micros).
 const SUMMARY_MACROS = [
   { key: 'kcal', label: 'Kcal', unit: 'kcal', field: 'targetKcal' },
   { key: 'protein_g', label: 'Proteína', unit: 'g', field: 'proteinFloor' },
@@ -207,8 +207,8 @@ const SUMMARY_MACROS = [
   { key: 'fat_g', label: 'Grasa', unit: 'g', field: 'targetFat' },
 ];
 
-// Fix 3: ceros estructurales — un 0 exacto casi siempre significa "sin dato
-// de este micro en el alimento", no "consumo cero".
+// Fix 3: structural zeros — an exact 0 almost always means "no data for
+// this micro in the food", not "zero intake".
 function structuralZeroInfo(registeredDays, key) {
   const m = registeredDays.length;
   if (!m) return { warn: false, n: 0, m: 0 };
@@ -216,13 +216,13 @@ function structuralZeroInfo(registeredDays, key) {
   return { warn: n / m > STRUCTURAL_ZERO_FRACTION, n, m };
 }
 
-// Campo de `chartData` con el objetivo diario de cada métrica de dos colas.
+// `chartData` field holding the daily objective for each two-tailed metric.
 const BAYES_TARGET_FIELD = { kcal: 'targetKcal', carbs_g: 'targetCarbs', fat_g: 'targetFat' };
 
-// Adherencia bayesiana (Fix 4, Fix 1): kcal/carbs/grasa con tolerancia de dos
-// colas BAYES_KCAL_TOL; proteína y micros con objetivo diario resuelto se
-// tratan como piso (≥); sodio con su piso fijo. `days` ya viene filtrado a
-// días completos (no llama a `registrado`/completitud aquí).
+// Bayesian adherence (Fix 4, Fix 1): kcal/carbs/fat with the two-tailed
+// tolerance BAYES_KCAL_TOL; protein and micros with a resolved daily objective
+// are treated as a floor (≥); sodium with its fixed floor. `days` arrives already
+// filtered to complete days (it does not call `registrado`/completeness here).
 function bayesForMetric(days, key) {
   let applicable;
   if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') {
@@ -236,13 +236,13 @@ function bayesForMetric(days, key) {
     applicable = withTarget.map((d) => d.values.protein_g >= d.proteinFloor);
   } else if (key === 'sodio_mg') {
     if (!days.length) return null;
-    // Dual: cumple el día si el sodio cae en el rango médico [piso, techo].
+    // Dual: the day complies if sodium falls within the medical range [floor, ceiling].
     applicable = days.map((d) => d.values.sodio_mg >= SODIUM_FLOOR_MG && d.values.sodio_mg <= SODIUM_CEILING_MG);
   } else {
     const withTarget = days.filter((d) => d.targetMicros != null && d.targetMicros[key] != null);
     if (!withTarget.length) return null;
-    // techo (grasa sat., trans, azúcar añadido, alcohol, colesterol): cumple si NO
-    // rebasa el objetivo; el resto de micros es piso (llegar o pasar).
+    // 'techo' (ceiling — sat. fat, trans, added sugar, alcohol, cholesterol): complies if it
+    // does NOT exceed the objective; the remaining micros are a floor (reach or surpass).
     const isCeiling = nutrientKind(key) === 'techo';
     applicable = withTarget.map((d) => {
       const v = Number(d.values[key] || 0);
@@ -253,11 +253,11 @@ function bayesForMetric(days, key) {
   return bayesAdherence(applicable.filter(Boolean).length, applicable.length);
 }
 
-// Texto único de "falta el objetivo": bayesCell lo compara para decidir el primary.
+// Single "objective missing" text: bayesCell compares against it to decide the primary.
 const NO_TARGET_HINT_ES = 'Aún no tienes objetivo para este nutriente. Ponlo en la pestaña Metas.';
 const NO_TARGET_HINT = () => t(NO_TARGET_HINT_ES);
 
-// Motivo por el que bayesForMetric devolvió null, para el Hint de la celda.
+// Reason why bayesForMetric returned null, for the cell's Hint.
 function bayesUnavailableReason(days, key) {
   if (!days.length) return t('No registraste nada en este periodo.');
   if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') {
@@ -269,7 +269,7 @@ function bayesUnavailableReason(days, key) {
   return days.some((d) => d.targetMicros?.[key] != null) ? null : NO_TARGET_HINT();
 }
 
-// Criterio de éxito de un día, declarado para que el % de adherencia sea auditable.
+// Success criterion for a day, stated so the adherence % is auditable.
 function bayesCriterionHint(key) {
   if (key === 'sodio_mg') {
     const loc = getLang() === 'en' ? 'en-US' : 'es-MX';
@@ -286,8 +286,8 @@ function bayesCriterionHint(key) {
   return t('Cuenta como día cumplido si llegaste a tu objetivo o lo pasaste.');
 }
 
-// { primary, secondary, hint, degraded } de la celda de adherencia bayesiana.
-// hint siempre declara el criterio de éxito (disponible) o la causa concreta (no disponible).
+// { primary, secondary, hint, degraded } for the Bayesian adherence cell.
+// hint always states the success criterion (available) or the concrete cause (unavailable).
 function bayesCell(days, key) {
   const b = bayesForMetric(days, key);
   if (b) {
@@ -302,9 +302,9 @@ function bayesCell(days, key) {
   return { primary: reason === NO_TARGET_HINT() ? t('Sin objetivo') : '–', secondary: null, hint: reason, degraded: true };
 }
 
-// { primary, secondary } de una métrica según el cálculo elegido. unit incluye
-// el espacio inicial (ej. ' mg') o '' si no aplica. secondary es null si el
-// modo no tiene un segundo valor (suma/promedio/tendencia) o si no hay dato.
+// { primary, secondary } for a metric according to the chosen calculation. unit includes
+// the leading space (e.g. ' mg') or '' if not applicable. secondary is null if the
+// mode has no second value (suma/promedio/tendencia) or if there is no data.
 function formatMetric(calcMode, ms, unit, decimals) {
   switch (calcMode) {
     case 'suma':
@@ -328,9 +328,9 @@ function formatMetric(calcMode, ms, unit, decimals) {
   }
 }
 
-// { primary, secondary, hint, degraded } mostrado para una métrica: en modo
-// bayes usa la celda de adherencia (hint siempre declara el criterio o la
-// causa), en el resto delega en formatMetric (sin hint).
+// { primary, secondary, hint, degraded } displayed for a metric: in bayes
+// mode it uses the adherence cell (hint always states the criterion or the
+// cause); in the other modes it delegates to formatMetric (no hint).
 function metricDisplay(calcMode, ms, bayesInfo, unit, decimals) {
   if (calcMode === 'bayes') {
     if (!bayesInfo) return { primary: '–', secondary: null, hint: null, degraded: false };
@@ -339,12 +339,12 @@ function metricDisplay(calcMode, ms, bayesInfo, unit, decimals) {
   return { ...formatMetric(calcMode, ms, unit, decimals), hint: null, degraded: false };
 }
 
-// Agua para la tarjeta/informe del Dashboard: mismo cálculo por modo que
-// macros/micros (computeMetricStats/bayesCell), pero formateado con fmtMl
-// (respeta unidades US) y conservando su barra de progreso. Devuelve
-// { primary, secondary, targetStr, barWidth }. Los modos de nivel
-// (suma/promedio/mediana) traen objetivo comparable y barra; σ/tendencia son
-// dispersión (sin objetivo ni barra); bayes ya es un % (barra = adherencia).
+// Water for the Dashboard card/report: same per-mode calculation as
+// macros/micros (computeMetricStats/bayesCell), but formatted with fmtMl
+// (honors US units) and keeping its progress bar. Returns
+// { primary, secondary, targetStr, barWidth }. The level modes
+// (suma/promedio/mediana) carry a comparable objective and a bar; σ/trend are
+// dispersion (no objective, no bar); bayes is already a % (bar = adherence).
 function waterView(calcMode, ms, objStats, b) {
   const mk = (primary, secondary, targetStr, barWidth) => ({ primary, secondary, targetStr, barWidth });
   const tgtStr = (tgt) => (objStats.n > 0 && tgt != null ? fmtMl(tgt) : null);
@@ -372,9 +372,9 @@ function waterView(calcMode, ms, objStats, b) {
   }
 }
 
-// Frase interpretativa en lenguaje llano para la card de resumen, basada en
-// kcal (representativa de las 4 métricas mostradas ahí). null = no renderizar
-// nada (stat sin dato todavía, o modo sin lectura propia como suma/promedio).
+// Plain-language interpretive sentence for the summary card, based on
+// kcal (representative of the 4 metrics shown there). null = render nothing
+// (stat with no data yet, or a mode with no reading of its own such as suma/promedio).
 function plainLanguage(calcMode, ms, bayesInfo) {
   if (calcMode === 'mediana') {
     if (ms.median == null) return null;
@@ -402,9 +402,9 @@ function plainLanguage(calcMode, ms, bayesInfo) {
   return null;
 }
 
-// Texto de una celda { primary, secondary, hint } para la tabla de micros:
-// una sola cadena "primary (secondary)", el paréntesis en un span sin salto
-// para que, si envuelve, parta en el espacio antes de "(" y no a media cifra.
+// Text of a { primary, secondary, hint } cell for the micros table:
+// a single "primary (secondary)" string, the parenthetical in a no-wrap span
+// so that, if it wraps, it breaks at the space before "(" and not mid-figure.
 function MetricCellText({ display }) {
   const { primary, secondary, hint } = display;
   const primaryEl = hint ? <Hint text={hint}>{primary}</Hint> : primary;
@@ -416,7 +416,7 @@ function MetricCellText({ display }) {
   );
 }
 
-// Primary + secondary en dos líneas, para KPI cards y la card de resumen.
+// Primary + secondary on two lines, for the KPI cards and the summary card.
 function MetricLines({ display, className = '' }) {
   const { primary, secondary, hint } = display;
   return (
@@ -427,7 +427,7 @@ function MetricLines({ display, className = '' }) {
   );
 }
 
-// Objetivo mostrado en la tabla de micros, según el modo (Fix 1).
+// Objective shown in the micros table, according to the mode (Fix 1).
 function objetivoCell(calcMode, objStats, unit) {
   if (objStats.n === 0) {
     return <Hint text={NO_TARGET_HINT()}>–</Hint>;
@@ -439,7 +439,7 @@ function objetivoCell(calcMode, objStats, unit) {
   return '–';
 }
 
-// % mostrado en la tabla de micros, según el modo (Fix 1). Bayes ya ES un %.
+// % shown in the micros table, according to the mode (Fix 1). Bayes already IS a %.
 function pctCell(calcMode, ms, objStats) {
   if (calcMode === 'suma') return objStats.n && objStats.sum > 0 ? `${Math.round((ms.sum / objStats.sum) * 100)}%` : '–';
   if (calcMode === 'promedio') return objStats.n && objStats.avg > 0 ? `${Math.round((ms.avg / objStats.avg) * 100)}%` : '–';
@@ -481,10 +481,10 @@ const dowShort = () => (getLang() === 'en' ? DOW_SHORT_EN : DOW_SHORT_ES);
 
 const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// ponytail: techo de 5 años. Teclear el año en el input de fecha del rango custom
-// pasa por fechas válidas pero absurdas ('0202-07-01'): sin cota, el bucle genera
-// cientos de miles de días y congela la pestaña. Rango inválido o imposible = vacío,
-// nunca truncado: media página de datos silenciosamente incompletos sería peor.
+// ponytail: 5-year cap. Typing the year into the custom range date input
+// passes through valid-but-absurd dates ('0202-07-01'): without a bound, the loop
+// generates hundreds of thousands of days and freezes the tab. Invalid or impossible
+// range = empty, never truncated: half a page of silently incomplete data would be worse.
 const MAX_RANGE_DAYS = 1830;
 function datesInRange(start, end) {
   if (!start || !end || start > end) return [];
@@ -499,7 +499,7 @@ function datesInRange(start, end) {
   return dates;
 }
 
-// Rango previo de igual longitud, inmediatamente anterior a [start, end].
+// Previous range of equal length, immediately preceding [start, end].
 function prevRangeOf(start, end) {
   const length = datesInRange(start, end).length;
   const prevEnd = addDaysISO(start, -1);
@@ -507,13 +507,13 @@ function prevRangeOf(start, end) {
   return { prevStart, prevEnd };
 }
 
-// Claves de micros a 0 por defecto (un micro ausente del jsonb pesa 0);
-// agua_ml se excluye porque tiene su propia sección y no entra al selector.
+// Micro keys defaulted to 0 (a micro absent from the jsonb weighs 0);
+// agua_ml is excluded because it has its own section and does not enter the selector.
 const MICROS_ZERO = Object.fromEntries(MICROS.filter((m) => m.key !== 'agua_ml').map((m) => [m.key, 0]));
 
-// Nutrientes graficables en la card "Tendencia por nutriente" (macros + todos los
-// micros). `tgt(d)` extrae el objetivo diario del punto de chartData: los macros
-// viven en campos planos, los micros en targetMicros. `unit` incluye el espacio inicial.
+// Nutrients plottable in the "Tendencia por nutriente" card (macros + all
+// micros). `tgt(d)` extracts the daily objective from the chartData point: macros
+// live in flat fields, micros in targetMicros. `unit` includes the leading space.
 const TREND_NUTRIENTS = [
   { key: 'kcal', label: 'Kcal', unit: '', dec: 0, tgt: (d) => d.targetKcal },
   { key: 'protein_g', label: 'Proteína', unit: ' g', dec: 0, tgt: (d) => d.proteinFloor },
@@ -528,8 +528,8 @@ const TREND_NUTRIENTS = [
   })),
 ];
 
-// Totales/promedios/serie diaria para un rango. Pura: se usa dos veces
-// (rango actual y rango previo para las deltas de las KPI).
+// Totals/averages/daily series for a range. Pure: it is used twice
+// (current range and previous range for the KPI deltas).
 function computeStats(dates, dailyTotals, targets) {
   const byDay = new Map(dailyTotals.map((d) => [d.day, d]));
   const consumido = { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
@@ -579,13 +579,13 @@ function computeStats(dates, dailyTotals, targets) {
       targetCarbs: target?.carbs_g ?? null,
       targetFat: target?.fat_g ?? null,
       targetMicros: target?.micros ?? null,
-      goal: target?.goal ?? null, // régimen del día: sesga la banda de kcal (diana)
+      goal: target?.goal ?? null, // day's regimen: biases the kcal band (diana)
       protein: registrado ? protein_g : null,
       proteinFloor: target?.protein_g ?? null,
       sodio: registrado ? sodio : null,
       registrado,
-      // Serie plana por métrica (macros + micros), para los cálculos avanzados
-      // del selector (Parte A). null si el día no tiene registro.
+      // Flat per-metric series (macros + micros), for the selector's advanced
+      // calculations (Part A). null if the day has no record.
       values: registrado ? { kcal, protein_g, carbs_g, fat_g, ...MICROS_ZERO, ...(row?.micros || {}) } : null,
     };
   });
@@ -601,8 +601,8 @@ function computeStats(dates, dailyTotals, targets) {
   return { consumido, objetivo, microsConsumido, microsObjetivo, diasRegistrados, avgSodio, promedio, chartData };
 }
 
-// MA-7: ventana de 7 días calendario, promediada solo entre los días con
-// registro dentro de esa ventana (los sin registro no cuentan ni como 0).
+// MA-7: 7-calendar-day window, averaged only over the days with a record
+// inside that window (days without a record do not count even as 0).
 function withMovingAverage(chartData) {
   return chartData.map((d, i) => {
     const windowSlice = chartData.slice(Math.max(0, i - 6), i + 1);
@@ -612,9 +612,9 @@ function withMovingAverage(chartData) {
   });
 }
 
-// Semanas lun–dom que cubren [start, end] (puede sobresalir por ambos lados).
+// Mon–Sun weeks covering [start, end] (may overhang on both sides).
 function buildWeeks(start, end) {
-  const startDow = weekdayOf(start); // 0=domingo..6=sábado
+  const startDow = weekdayOf(start); // 0=Sunday..6=Saturday
   const offset = startDow === 0 ? 6 : startDow - 1;
   let cursor = addDaysISO(start, -offset);
   const weeks = [];
@@ -673,7 +673,7 @@ function csvCell(v) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-// Descarga `lines` como CSV (BOM para que Excel abra UTF-8 sin preguntar).
+// Downloads `lines` as CSV (BOM so Excel opens UTF-8 without prompting).
 function downloadCSV(lines, filename) {
   const csv = '﻿' + lines.join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -690,9 +690,9 @@ function pctDelta(curr, prev) {
   return ((curr - prev) / prev) * 100;
 }
 
-// Estado de vista persistido en localStorage (por dispositivo, no en prefs):
-// sobrevive recarga sin escritura remota. `initial` se usa si no hay nada
-// guardado o el JSON está corrupto.
+// View state persisted in localStorage (per device, not in prefs):
+// survives a reload without a remote write. `initial` is used if nothing is
+// stored or the JSON is corrupted.
 function usePersistentState(key, initial) {
   const [value, setValue] = useState(() => {
     try {
@@ -711,77 +711,77 @@ function usePersistentState(key, initial) {
 const PRESET_LABELS_EN = { hoy: 'Today', semana: 'Week', mes: 'Month', trimestre: 'Quarter', año: 'Year' };
 const presetLabel = (p) => (getLang() === 'en' ? PRESET_LABELS_EN[p.key] : p.label);
 
-// Identidad de un rango guardado. Los que ya viven en localStorage no traen id:
-// caen a su clave vieja (fechas), que para ellos sigue siendo única.
+// Identity of a saved range. Ranges already living in localStorage carry no id:
+// they fall back to their old key (dates), which for them is still unique.
 const rangeId = (r) => r.id ?? `${r.start}_${r.end}`;
 
 export default function Dashboard() {
   useLang();
   useUnits();
-  useAdherenceBands(); // re-pinta al cambiar las bandas en Configuración
+  useAdherenceBands(); // re-renders when the bands change in Settings
   const [preset, setPreset] = usePersistentState('nutri.dash.preset', 'semana'); // 'hoy'|…|'año'|'custom'|'fase'
   const [phaseSel, setPhaseSel] = usePersistentState('nutri.dash.phaseSel', { kind: 'actual' }); // {kind:'actual'|'previa'} | {kind:'goal', goal}
   const [customStart, setCustomStart] = usePersistentState('nutri.dash.customStart', addDaysISO(todayISO(), -6));
   const [customEnd, setCustomEnd] = usePersistentState('nutri.dash.customEnd', todayISO());
-  // Rangos guardados: [{id,start,end,name?}]. end:null = ABIERTO (hasta hoy) — no
-  // se puede congelar una fecha o el rango envejecería en silencio.
+  // Saved ranges: [{id,start,end,name?}]. end:null = OPEN-ENDED (up to today) — a
+  // date cannot be frozen or the range would silently grow stale.
   const [savedRanges, setSavedRanges] = usePersistentState('nutri.dash.savedRanges', []);
-  const [activeRangeId, setActiveRangeId] = usePersistentState('nutri.dash.activeRangeId', null); // rango guardado abierto; null = custom manual
-  const [rangeName, setRangeName] = useState(''); // nombre opcional al guardar un rango
-  const [editKey, setEditKey] = useState(null); // id del rango en edición; null = no se está editando
-  const [rollingEnd, setRollingEnd] = useState(false); // checkbox "Hasta hoy" del formulario
-  const [undoRange, setUndoRange] = useState(null); // { range, index, prevActiveId, timer } tras borrar, para "Deshacer"
+  const [activeRangeId, setActiveRangeId] = usePersistentState('nutri.dash.activeRangeId', null); // currently open saved range; null = manual custom
+  const [rangeName, setRangeName] = useState(''); // optional name when saving a range
+  const [editKey, setEditKey] = useState(null); // id of the range being edited; null = not editing
+  const [rollingEnd, setRollingEnd] = useState(false); // form's "Hasta hoy" (up to today) checkbox
+  const [undoRange, setUndoRange] = useState(null); // { range, index, prevActiveId, timer } after a delete, for "Deshacer" (undo)
   const [dailyTotals, setDailyTotals] = useState([]);
   const [prevDailyTotals, setPrevDailyTotals] = useState([]);
-  const [historyTotals, setHistoryTotals] = useState([]); // daily_totals(day,kcal) últimos 90 días, para completitud
-  const [bodyRows, setBodyRows] = useState([]); // body_metrics(day,metrics) del rango, para "Mis gráficas"
+  const [historyTotals, setHistoryTotals] = useState([]); // daily_totals(day,kcal) for the last 90 days, for completeness
+  const [bodyRows, setBodyRows] = useState([]); // body_metrics(day,metrics) for the range, for "Mis gráficas"
   const [targets, setTargets] = useState([]);
   const [favs, setFavs] = useState([]); // prefs.data.fav_micros
-  const [dashboards, setDashboards] = useState([]); // prefs.data.dashboards: gráficas personalizadas
-  const [tab, setTab] = usePersistentState('nutri.dash.tab', 'estandar'); // 'estandar' | 'graficas' — pestaña activa
+  const [dashboards, setDashboards] = useState([]); // prefs.data.dashboards: custom charts
+  const [tab, setTab] = usePersistentState('nutri.dash.tab', 'estandar'); // 'estandar' | 'graficas' — active tab
   const [waterFoodId, setWaterFoodId] = useState(null);
-  const [itemRows, setItemRows] = useState([]); // entry_nutrients del rango, para "Top alimentos"
+  const [itemRows, setItemRows] = useState([]); // entry_nutrients for the range, for "Top alimentos"
   const [topMetric, setTopMetric] = useState('kcal');
   const [csvNotice, setCsvNotice] = useState('');
   const [toast, showToast] = useToast();
   const [loading, setLoading] = useState(true);
   const [refetching, setRefetching] = useState(false);
-  // Skeleton solo en la 1ª carga: cambiar de rango no debe desmontar la página
-  // (desmontaba el propio formulario del rango y cerraba el date picker).
+  // Skeleton only on the 1st load: changing the range must not unmount the page
+  // (it used to unmount the range's own form and close the date picker).
   const loadedOnce = useRef(false);
   const [calcMode, setCalcMode] = usePersistentState('nutri.dash.calcMode', 'promedio');
   const [trendKey, setTrendKey] = usePersistentState('nutri.dash.trendKey', 'protein_g');
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [printing, setPrinting] = useState(false); // monta #print-report y dispara window.print()
+  const [printing, setPrinting] = useState(false); // mounts #print-report and triggers window.print()
   const [askOpen, setAskOpen] = useState(false);
-  const [askHistory, setAskHistory] = useState([]); // [{q,a,clamped}], solo en memoria — sin hilo conversacional
+  const [askHistory, setAskHistory] = useState([]); // [{q,a,clamped}], memory only — no conversational thread
   const [askQuestion, setAskQuestion] = useState('');
   const [askLoading, setAskLoading] = useState(false);
 
   const today = todayISO();
-  // El Dashboard analiza días TERMINADOS: el día en curso (a medias hasta la
-  // cena) contaminaría promedios, completitud y la card Días. Solo el preset
-  // 'hoy' lee el día actual; todo lo demás ancla en ayer.
+  // The Dashboard analyzes FINISHED days: the day in progress (halfway through
+  // until dinner) would contaminate averages, completeness, and the Días card. Only the
+  // 'hoy' preset reads the current day; everything else anchors on yesterday.
   const lastClosed = addDaysISO(today, -1);
-  const presetDef = PRESETS.find((p) => p.key === preset) || PRESETS[1]; // 'custom'/'fase' caen a semana
+  const presetDef = PRESETS.find((p) => p.key === preset) || PRESETS[1]; // 'custom'/'fase' fall back to 'semana'
 
-  // Rango guardado abierto (si lo hay). Sin uno, el custom es manual y el
-  // formulario es la única vista posible: si no, no habría cómo editarlo.
+  // Open saved range (if any). Without one, the custom range is manual and the
+  // form is the only possible view: otherwise there would be no way to edit it.
   const activeRange = savedRanges.find((r) => rangeId(r) === activeRangeId) || null;
   const showRangeForm = !activeRange || editKey !== null;
-  // El fin abierto se RESUELVE en cada render, no se lee de disco: por eso el
-  // mismo rango vale un día más mañana.
+  // The open end is RESOLVED on every render, not read from disk: that's why the
+  // same range is worth one more day tomorrow.
   const openEnded = showRangeForm ? rollingEnd : activeRange.end == null;
   const effectiveEnd = openEnded ? today : customEnd;
 
-  // Fases con al menos un día cerrado, con el fin recortado a ayer. Las
-  // programadas o iniciadas hoy no tienen días cerrados: no entran al selector.
+  // Phases with at least one closed day, with the end trimmed to yesterday. Phases
+  // scheduled or started today have no closed days: they do not enter the selector.
   const phases = phaseList(targets)
     .filter((p) => p.vf <= lastClosed)
     .map((p) => ({ ...p, ongoing: !p.end || p.end >= today, end: p.end && p.end < lastClosed ? p.end : lastClosed }));
 
-  // Selección de fase → conjunto de días. 'actual'/'previa' son un intervalo
-  // contiguo; una meta es la UNIÓN de todas sus fases (no contigua).
+  // Phase selection → set of days. 'actual'/'previa' are a contiguous interval;
+  // a goal is the UNION of all its phases (non-contiguous).
   const selectedPhases =
     preset !== 'fase'
       ? []
@@ -805,17 +805,17 @@ export default function Dashboard() {
   const clampedCustomEnd = effectiveEnd > lastClosed ? lastClosed : effectiveEnd;
   const start = phaseMode ? phaseDays[0] : preset === 'custom' ? customStart : addDaysISO(anchor, -(presetDef.days - 1));
   const end = phaseMode ? phaseDays[phaseDays.length - 1] : preset === 'custom' ? clampedCustomEnd : anchor;
-  // Recorte explícito de una selección del usuario → se declara la causa.
+  // Explicit trimming of a user selection → the cause is declared.
   const excludesToday =
     preset === 'custom' ? effectiveEnd >= today : phaseMode ? selectedPhases.some((p) => p.ongoing) : false;
 
   useEffect(() => {
-    // SWR: si este rango ya se vio en la sesión, pinta el cache al instante
-    // (sin skeleton) y el load() de fondo actualiza al llegar.
+    // SWR: if this range has already been seen in the session, paint the cache
+    // instantly (no skeleton) and the background load() updates it on arrival.
     const cached = cacheGet(`dash:${start}:${end}`);
     if (cached) applyData(cached);
-    // Teclear una fecha en el rango custom pasa por fechas intermedias válidas
-    // (0202-…, 2020-…): sin debounce cada una dispara las 7 queries de load().
+    // Typing a date into the custom range passes through valid intermediate dates
+    // (0202-…, 2020-…): without debounce, each one triggers load()'s 7 queries.
     const timer = setTimeout(load, cached || !loadedOnce.current ? 0 : 250);
     return () => clearTimeout(timer);
   }, [start, end]);
@@ -835,10 +835,10 @@ export default function Dashboard() {
     setRefetching(false);
   }
 
-  // Persiste las gráficas personalizadas en prefs.data.dashboards vía merge_prefs
-  // (migración 014): merge atómico server-side en 1 round-trip con auth.uid() —
-  // sin depender del userId del cliente (getUser por red podía dejarlo null y
-  // descartar el guardado en silencio) y sin read-modify-write que pise otras claves.
+  // Persists the custom charts to prefs.data.dashboards via merge_prefs
+  // (migration 014): an atomic server-side merge in 1 round-trip with auth.uid() —
+  // without depending on the client's userId (a network getUser could leave it null and
+  // silently drop the save) and without a read-modify-write that would clobber other keys.
   async function saveDashboards(next) {
     setDashboards(next);
     cacheSet(`dash:${start}:${end}`, { ...(cacheGet(`dash:${start}:${end}`) || {}), dashboards: next });
@@ -846,7 +846,7 @@ export default function Dashboard() {
     if (error) showToast(t('No se pudo guardar la gráfica — reintenta.'));
   }
 
-  // Rangos custom guardados (localStorage, per-device como el propio custom range).
+  // Saved custom ranges (localStorage, per-device just like the custom range itself).
   const rangeInvalid = !rollingEnd && customStart > customEnd;
   function saveCurrentRange() {
     if (rangeInvalid) return;
@@ -859,8 +859,8 @@ export default function Dashboard() {
     setActiveRangeId(id);
     setEditKey(null);
   }
-  // Aplicar = abrir en solo lectura. customEnd guarda la fecha con la que se
-  // editaría si el rango es abierto: el input de Fin necesita un valor.
+  // Apply = open in read-only mode. customEnd stores the date that would be used
+  // to edit it if the range is open-ended: the End input needs a value.
   function applyRange(r) {
     setCustomStart(r.start);
     setCustomEnd(r.end ?? lastClosed);
@@ -874,7 +874,7 @@ export default function Dashboard() {
     applyRange(r);
     setEditKey(rangeId(r));
   }
-  // Custom manual: sin rango activo, showRangeForm queda en true por sí solo.
+  // Manual custom: with no active range, showRangeForm stays true on its own.
   function newRange() {
     setActiveRangeId(null);
     setEditKey(null);
@@ -882,12 +882,12 @@ export default function Dashboard() {
     setRollingEnd(false);
     setPreset('custom');
   }
-  // Borrar es inmediato + "Deshacer" 5 s (mismo patrón que Foods/Recipes): una
-  // confirmación cobraría peaje en cada borrado correcto; el undo, solo en los errados.
+  // Delete is immediate + "Deshacer" (undo) for 5 s (same pattern as Foods/Recipes): a
+  // confirmation would charge a toll on every correct delete; the undo only costs on the mistaken ones.
   function deleteRange(r) {
     const index = savedRanges.findIndex((x) => rangeId(x) === rangeId(r));
     if (index < 0) return;
-    if (undoRange) clearTimeout(undoRange.timer); // un borrado seguido pisa el anterior
+    if (undoRange) clearTimeout(undoRange.timer); // a delete right after another overwrites the previous one
     setSavedRanges(savedRanges.filter((x) => rangeId(x) !== rangeId(r)));
     setUndoRange({
       range: r,
@@ -902,7 +902,7 @@ export default function Dashboard() {
     if (!undoRange) return;
     clearTimeout(undoRange.timer);
     const next = [...savedRanges];
-    next.splice(undoRange.index, 0, undoRange.range); // vuelve a SU posición, no al final
+    next.splice(undoRange.index, 0, undoRange.range); // goes back to ITS OWN position, not to the end
     setSavedRanges(next);
     if (undoRange.prevActiveId === rangeId(undoRange.range)) applyRange(undoRange.range);
     setUndoRange(null);
@@ -913,7 +913,7 @@ export default function Dashboard() {
     else if (!cacheGet(`dash:${start}:${end}`)) setRefetching(true);
     setCsvNotice('');
     const { prevStart, prevEnd } = prevRangeOf(start, end);
-    const historyEnd = addDaysISO(todayISO(), -1); // hoy a medias no entra a la mediana de completitud
+    const historyEnd = addDaysISO(todayISO(), -1); // today, only half-elapsed, does not enter the completeness median
     const historyStart = addDaysISO(historyEnd, -89);
     const results = await Promise.all([
       supabase.from('daily_totals').select('*').gte('day', start).lte('day', end),
@@ -944,10 +944,10 @@ export default function Dashboard() {
     }));
   }
 
-  // "Pregúntale a tu bitácora": planner (IA) → SQL (Supabase) → generación
-  // (IA) con citas. Cada pregunta es independiente (sin hilo conversacional);
-  // el par se agrega al historial en memoria del sheet. Nunca lanza: cualquier
-  // fallo del pipeline cae en el mensaje de error como respuesta del par.
+  // "Pregúntale a tu bitácora" (ask your log): planner (AI) → SQL (Supabase) → generation
+  // (AI) with citations. Each question is independent (no conversational thread);
+  // the pair is appended to the sheet's in-memory history. It never throws: any
+  // pipeline failure falls back to the error message as the pair's answer.
   async function submitAsk() {
     const q = askQuestion.trim();
     if (!q || askLoading) return;
@@ -963,8 +963,8 @@ export default function Dashboard() {
           : Promise.resolve({ data: null, error: null }),
       ]);
       if (e1 || e2) throw e1 || e2;
-      // targets ya está cargado sin filtro de fecha (query de load()): resolver
-      // aquí evita un round-trip extra idéntico al que ya hizo el Dashboard.
+      // targets is already loaded with no date filter (load()'s query): resolving
+      // it here avoids an extra round-trip identical to the one the Dashboard already made.
       const targetByDay = Object.fromEntries(
         datesInRange(plan.date_from, plan.date_to).map((d) => [d, resolveTarget(targets, d)]),
       );
@@ -1011,15 +1011,15 @@ export default function Dashboard() {
     downloadCSV(lines, `nutri_entries_${rangeSlug()}.csv`);
   }
 
-  // Sufijo de archivo compartido por ambos exports: fase seleccionada o rango.
+  // File suffix shared by both exports: selected phase or range.
   function rangeSlug() {
     return phaseMode ? `fase_${phaseSel.kind === 'goal' ? phaseSel.goal : phaseSel.kind}` : `${start}_${end}`;
   }
 
-  // Resumen procesado del periodo: una fila por métrica con la operación
-  // ACTIVA del selector — los mismos números que pinta la pantalla (mismos
-  // ms/objStats vía computeMetricStats/computeObjectiveStats/bayesForMetric).
-  // Sin agua_ml: igual que la tabla de micros, el agua no va en esta lista.
+  // Processed period summary: one row per metric with the selector's ACTIVE
+  // operation — the same numbers the screen renders (same
+  // ms/objStats via computeMetricStats/computeObjectiveStats/bayesForMetric).
+  // Without agua_ml: just like the micros table, water does not go in this list.
   function exportResumenCSV() {
     setCsvNotice('');
     if (!registeredDays.length) {
@@ -1042,8 +1042,8 @@ export default function Dashboard() {
     downloadCSV(lines, `nutri_resumen_${calcMode}_${rangeSlug()}.csv`);
   }
 
-  // Informe PDF: mismo guard que los CSV; el PDF lo genera el navegador
-  // ("Guardar como PDF" del diálogo de impresión) — cero dependencias.
+  // PDF report: same guard as the CSVs; the PDF is generated by the browser
+  // ("Guardar como PDF" in the print dialog) — zero dependencies.
   function exportInforme() {
     setCsvNotice('');
     if (!registeredDays.length) {
@@ -1053,11 +1053,11 @@ export default function Dashboard() {
     setPrinting(true);
   }
 
-  // Mientras la vista previa del informe está abierta: tema claro (papel) y
-  // nombre del archivo en document.title (el diálogo lo usa al guardar el
-  // PDF). El flip es en <html> entero; el scrim opaco (bg-black) oculta la app
-  // de fondo volteada a claro. La impresión NO es automática: el usuario revisa
-  // y toca "Guardar PDF".
+  // While the report's preview is open: light theme (paper) and the
+  // file name in document.title (the dialog uses it when saving the
+  // PDF). The flip applies to the entire <html>; the opaque scrim (bg-black) hides the
+  // background app flipped to light. Printing is NOT automatic: the user reviews
+  // and taps "Guardar PDF".
   useEffect(() => {
     if (!printing) return;
     const html = document.documentElement;
@@ -1072,21 +1072,21 @@ export default function Dashboard() {
     };
   }, [printing]);
 
-  // En modo fase `dates` puede ser no contiguo (unión de fases con la misma
-  // meta): las queries siguen siendo por [start, end] y `dateSet` recorta en
-  // cliente todo lo que se indexa por día suelto (items, semanas, heatmap).
+  // In phase mode `dates` can be non-contiguous (union of phases with the same
+  // goal): the queries are still by [start, end], and `dateSet` trims client-side
+  // everything indexed by individual day (items, weeks, heatmap).
   const dates = phaseMode ? phaseDays : datesInRange(start, end);
   const dateSet = new Set(dates);
-  // Mapas day→fila para las gráficas personalizadas (nutrición densa, medidas dispersas).
+  // day→row maps for the custom charts (dense nutrition data, sparse measurements).
   const nutByDay = new Map(dailyTotals.map((d) => [d.day, d]));
   const bodyByDay = new Map(bodyRows.map((d) => [d.day, d]));
   const rangeItems = phaseMode ? itemRows.filter((r) => dateSet.has(r.day)) : itemRows;
   const stats = computeStats(dates, dailyTotals, targets);
   const diasConObjetivo = dates.filter((d) => resolveTarget(targets, d)).length;
 
-  // Completitud de día inferida (tri-estado, al vuelo): etiquetas distintas
-  // por día (para el atracón único) y mediana de kcal de los últimos 90 días
-  // (umbral robusto personal).
+  // Inferred day completeness (tri-state, on the fly): distinct labels
+  // per day (for the one-off binge) and median kcal of the last 90 days
+  // (personal robust threshold).
   const mealsCountByDay = new Map();
   for (const r of rangeItems) {
     const s = mealsCountByDay.get(r.day) || new Set();
@@ -1108,11 +1108,11 @@ export default function Dashboard() {
     }),
   }));
 
-  // Fases de objetivo (Fix 5): si el rango cruza >1 fase, los cálculos
-  // avanzados (mediana/σ/tendencia, NO bayes) se restringen a la fase vigente.
-  // En modo fase el recorte NO aplica: el usuario pidió explícitamente ese
-  // conjunto de fases, recortarlo a la última vaciaría el filtro. El Hint
-  // declara que las fases unidas tienen objetivos distintos.
+  // Target phases (Fix 5): if the range spans >1 phase, the advanced
+  // calculations (mediana/σ/tendencia, NOT bayes) are restricted to the current phase.
+  // In phase mode the trimming does NOT apply: the user explicitly asked for that
+  // set of phases, trimming it to the last one would empty the filter. The Hint
+  // states that the merged phases have different objectives.
   const phaseSegments = targetPhases(targets, dates);
   const realPhases = phaseSegments.filter((p) => p.vf != null);
   const crossesPhases = realPhases.length > 1;
@@ -1133,13 +1133,13 @@ export default function Dashboard() {
     diasParcialesFull,
     diasCompletosPhase: advancedDays.length,
     diasParcialesPhase,
-    crossesPhases: activePhaseDays != null, // solo cuando el recorte a la fase vigente está activo
+    crossesPhases: activePhaseDays != null, // only when the trim to the current phase is active
   };
 
-  // Si el cálculo activo deja de cumplir su mínimo al cambiar de rango, cae
-  // automáticamente a Promedio (o Suma si tampoco cumple). Se ignora mientras
-  // carga (dailyTotals aún vacío) para no confundir "sin datos todavía" con
-  // "rango sin registros".
+  // If the active calculation stops meeting its minimum when the range changes, it
+  // automatically falls back to Promedio (or Suma if that doesn't qualify either).
+  // This is ignored while loading (dailyTotals still empty), so as not to confuse "no
+  // data yet" with "range with no records".
   useEffect(() => {
     if (loading) return;
     const opt = CALC_ALL.find((o) => o.key === calcMode);
@@ -1152,14 +1152,14 @@ export default function Dashboard() {
 
   const { prevStart, prevEnd } = prevRangeOf(start, end);
   const prevStats = computeStats(datesInRange(prevStart, prevEnd), prevDailyTotals, targets);
-  // Unir varias fases no deja un "periodo previo" con sentido: la ventana
-  // anterior al primer día cae dentro de otro régimen. Se oculta la delta.
+  // Merging several phases leaves no "periodo previo" (previous period) that makes sense: the
+  // window before the first day falls within a different regimen. The delta is hidden.
   const showDelta = !unionMode && prevStats.diasRegistrados >= 1 && (calcMode === 'suma' || calcMode === 'promedio');
 
   const kcalChart = withMovingAverage(chartData);
 
-  // Card "Tendencia por nutriente": serie diaria de la métrica elegida + su
-  // objetivo diario (si existe). connectNulls salta los días sin registro.
+  // "Tendencia por nutriente" card: daily series of the chosen metric + its
+  // daily objective (if it exists). connectNulls skips days with no record.
   const trendMeta = TREND_NUTRIENTS.find((n) => n.key === trendKey) || TREND_NUTRIENTS[1];
   const trendData = chartData.map((d) => {
     const tg = trendMeta.tgt(d);
@@ -1172,8 +1172,8 @@ export default function Dashboard() {
   const trendHasData = trendData.some((d) => d.val != null);
   const trendHasTarget = trendData.some((d) => d.target != null);
   const dayInfo = new Map(chartData.map((d) => [d.day, d]));
-  // Régimen del periodo para sesgar la banda de kcal (diana): el del último día
-  // del rango seleccionado (la fase/meta vigente en él). null = banda estricta.
+  // Period regimen used to bias the kcal band (diana): the one from the last day
+  // of the selected range (the phase/goal in effect on it). null = strict band.
   const periodGoal = chartData.length ? chartData[chartData.length - 1].goal : null;
   const weeks = buildWeeks(start, end).filter((w) => w.some((d) => dateSet.has(d)));
   const proteinWeekly = weeklyProteinData(weeks, dateSet, dayInfo);
@@ -1204,8 +1204,8 @@ export default function Dashboard() {
   const isPhaseScopedMode = calcMode === 'mediana' || calcMode === 'stddev' || calcMode === 'tendencia';
   const plainKcalPhrase = plainLanguage(calcMode, msKcal, bKcal);
 
-  // Streamgraph de macros (kcal por macro, por día); fallback de barra 100%
-  // apilada cuando el rango tiene <3 días con registro.
+  // Macro streamgraph (kcal per macro, per day); falls back to a 100%
+  // stacked bar when the range has <3 days with a record.
   const macroStreamData = chartData.map((d) => ({
     label: d.label,
     prot: d.values ? d.values.protein_g * 4 : 0,
@@ -1214,8 +1214,8 @@ export default function Dashboard() {
   }));
   const macroTotalKcal = stats.consumido.protein_g * 4 + stats.consumido.carbs_g * 4 + stats.consumido.fat_g * 9;
 
-  // Radar "huella nutricional": micros de MICROS_DEFAULT con objetivo > 0,
-  // % del objetivo según Suma-vs-objetivo del rango (fijo, no cambia con el selector).
+  // "Huella nutricional" radar: MICROS_DEFAULT micros with objective > 0,
+  // % of the objective per the range's Suma-vs-objective (fixed, does not change with the selector).
   const radarData = MICROS.slice(0, MICROS_DEFAULT)
     .filter((m) => m.key !== 'agua_ml' && stats.microsObjetivo[m.key] > 0)
     .map((m) => ({
@@ -1231,9 +1231,9 @@ export default function Dashboard() {
   const targetDays = chartData.filter((d) => d.targetKcal != null);
   const avgTargetKcal = targetDays.length ? targetDays.reduce((s, d) => s + d.targetKcal, 0) / targetDays.length : null;
 
-  // Fila del informe PDF: mismos ms/objStats/bayes que pantalla y CSV de
-  // resumen (summaryCells), solo cambia el formato. Celda vacía → '—' con su
-  // causa declarada en el pie del informe, nunca un guion mudo.
+  // PDF report row: same ms/objStats/bayes as the screen and the summary
+  // CSV (summaryCells), only the format changes. Empty cell → '—' with its
+  // cause stated in the report's footer, never a silent dash.
   function informeRow(m) {
     const ms = computeMetricStats(registeredDays, advancedDays, m.key);
     const objStats = m.field
@@ -1269,11 +1269,11 @@ export default function Dashboard() {
     </thead>
   );
 
-  // Informe PDF (portal a <body>, hermano de #root: en @media print se oculta
-  // la app entera sin ocultar el informe). Se abre como vista previa en
-  // pantalla — el usuario revisa el papel ANTES de guardar; "Guardar PDF"
-  // llama window.print(). Los Hints de pantalla no existen en papel: sus
-  // causas van como notas al pie. Sin hint en los Stat por lo mismo.
+  // PDF report (portal to <body>, sibling of #root: under @media print the
+  // entire app is hidden without hiding the report). It opens as an on-screen
+  // preview — the user reviews the paper BEFORE saving; "Guardar PDF"
+  // calls window.print(). The on-screen Hints do not exist on paper: their
+  // causes go as footnotes instead. No hint on the Stat components, for the same reason.
   const noHint = (d) => ({ ...d, hint: null });
   function renderInforme() {
     const visibles = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favs.includes(m.key)) && m.key !== 'agua_ml');
@@ -1281,19 +1281,19 @@ export default function Dashboard() {
     const sodiumLow = sodiumIsLow(stats.avgSodio, stats.diasRegistrados > 0);
     const sodiumHigh = sodiumIsHigh(stats.avgSodio, stats.diasRegistrados > 0);
     return (
-      // Sin backdrop-blur en el scrim: backdrop-filter convertiría al overlay
-      // en containing block de la barra fixed y la barra panearía con el papel.
-      // Scrim opaco (bg-black): el JS voltea data-theme='light' en <html> entero
-      // para que el informe salga en claro (papel); un scrim translúcido dejaba
-      // asomar la app de fondo volteada a claro. Opaco = preview de impresión
-      // limpio, sin filtración.
+      // No backdrop-blur on the scrim: backdrop-filter would turn the overlay
+      // into the containing block of the fixed bar, and the bar would pan along with the paper.
+      // Opaque scrim (bg-black): the JS flips data-theme='light' on the entire <html>
+      // so the report renders in light mode (paper); a translucent scrim let the
+      // background app, flipped to light, show through. Opaque = a clean print
+      // preview, with no bleed-through.
       <div
         id="print-overlay"
         onClick={() => setPrinting(false)}
         className="fixed inset-0 z-50 overflow-auto bg-black backdrop-in"
       >
-        {/* Barra de acciones anclada al viewport (fixed dentro del overlay, que
-            cubre toda la pantalla): visible aunque el papel panee en móvil. */}
+        {/* Action bar anchored to the viewport (fixed inside the overlay, which
+            covers the entire screen): visible even if the paper pans on mobile. */}
         <div
           id="print-actions"
           onClick={(e) => e.stopPropagation()}
@@ -1312,8 +1312,8 @@ export default function Dashboard() {
             {t('Guardar PDF')}
           </button>
         </div>
-        {/* w-fit + mx-auto: centrado en desktop; en móvil (papel 720px > viewport)
-            el overlay panea horizontal — es un documento, no una página de la app. */}
+        {/* w-fit + mx-auto: centered on desktop; on mobile (720px paper > viewport)
+            the overlay pans horizontally — it's a document, not an app page. */}
         <div onClick={(e) => e.stopPropagation()} className="w-fit mx-auto mt-16 mb-4 px-4">
           <div id="print-report" className="text-text">
         <header className="flex items-center gap-3 pb-3 border-b-2 border-accent">
@@ -1363,10 +1363,10 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Mediana/Bayes son estadísticos de distribución/adherencia: el heatmap
-            (adherencia por día, mismo componente que la pantalla) los cuenta
-            mejor que la línea de magnitud. Suma/Promedio/σ/tendencia son
-            magnitud/dispersión/dirección del valor crudo → línea. */}
+        {/* Mediana/Bayes are distribution/adherence statistics: the heatmap
+            (adherence per day, the same component as the screen) captures them
+            better than a magnitude line. Suma/Promedio/σ/tendencia are
+            magnitude/dispersion/direction of the raw value → line chart. */}
         {calcMode === 'mediana' || calcMode === 'bayes' ? (
           <section className="mt-4">
             <p className="text-sm text-text-3 mb-2">{t('Adherencia (kcal por día)')}</p>
@@ -1448,12 +1448,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* El botón de fases vive FUERA del scroller: su popover no puede quedar
-          recortado por el overflow-x de la fila de presets. */}
+      {/* The phase button lives OUTSIDE the scroller: its popover must not get
+          clipped by the preset row's overflow-x. */}
       <div className="flex items-center gap-2">
-        {/* Fade en el borde derecho: sin él, los pills se rebanan en seco contra el
-            botón Fases y el corte lee como un recuadro. El pr-6 da aire al final del
-            scroll para que el último pill no quede bajo el degradado. */}
+        {/* Fade on the right edge: without it, the pills get cut off sharply against the
+            Fases button and the cut reads like a rectangle. The pr-6 gives breathing room at the end of the
+            scroll so the last pill doesn't end up under the gradient. */}
         <div
           className="flex gap-2 overflow-x-auto pb-1 pr-6 flex-1 min-w-0"
           style={{ maskImage: 'linear-gradient(to right, #000 calc(100% - 24px), transparent)' }}
@@ -1511,8 +1511,8 @@ export default function Dashboard() {
         </p>
       )}
 
-      {/* Rango guardado abierto: solo se LEE. Editar y borrar viven únicamente en
-          el menú — administrar el objeto no es tarea de la vista de datos. */}
+      {/* Open saved range: read-only here. Editing and deleting live exclusively in
+          the menu — managing the object is not the data view's job. */}
       {preset === 'custom' && !showRangeForm && (
         <p className="font-mono text-xs text-text-3">
           {customStart} → {clampedCustomEnd} · {t('%d días').replace('%d', dates.length)}
@@ -1575,8 +1575,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Pestañas: reorganizan las dos secciones bajo el mismo selector de
-          temporalidad, que gobierna el rango de ambas. Una visible a la vez. */}
+      {/* Tabs: reorganize the two sections under the same time-range selector,
+          which governs the range for both. One visible at a time. */}
       <div role="tablist" className="flex gap-2">
         {[
           { key: 'estandar', label: t('Análisis estándar') },
@@ -1609,9 +1609,9 @@ export default function Dashboard() {
 
       {tab === 'estandar' && (
       <>
-      {/* Fila de cálculo: gobierna SOLO el análisis estándar (KPIs, resumen,
-          micros, export) — por eso vive dentro de esta sección, no arriba de las
-          gráficas custom (que tienen su propia agregación por gráfica). */}
+      {/* Calculation row: governs ONLY the standard analysis (KPIs, summary,
+          micros, export) — that's why it lives inside this section, not above the
+          custom charts (which have their own per-chart aggregation). */}
       <div className="flex gap-2 overflow-x-auto pb-1">
         {CALC_BASIC.map((opt) => {
           const reason = calcDisabledReason(opt, calcCtx);
@@ -2071,10 +2071,10 @@ export default function Dashboard() {
   );
 }
 
-// Sheet de "Pregúntale a tu bitácora": lista de pares pregunta/respuesta de
-// la sesión (sin hilo conversacional, cada pregunta se procesa sola) + input.
-// Nota de IA fija en el footer del Sheet compartido (regla del repo: cierre
-// al tocar fuera + stopPropagation ya los da Sheet.jsx).
+// "Pregúntale a tu bitácora" sheet: list of the session's question/answer
+// pairs (no conversational thread, each question is processed on its own) + input.
+// Fixed AI notice in the shared Sheet's footer (repo rule: closing on outside
+// tap + stopPropagation are already provided by Sheet.jsx).
 function AskLogSheet({ history, question, onQuestion, onSubmit, loading, onClose }) {
   return (
     <Sheet
@@ -2116,14 +2116,14 @@ function AskLogSheet({ history, question, onQuestion, onSubmit, loading, onClose
   );
 }
 
-// Selector de fases: 'actual'/'previa' (un intervalo) y las 4 metas (unión de
-// todas las fases con esa meta). Flota sobre el contenido → `.glass`, y el
-// acento sobre glass es --accent-glass, nunca --accent. Toda opción sin datos
-// se deshabilita con su causa concreta, nunca desaparece.
-// Menú de exportación: dos alcances (registros crudos vs resumen procesado).
-// El subtítulo de cada opción declara si la operación del selector participa
-// — siempre visible, no detrás de hover (mobile-first) — y el título del
-// resumen la nombra ("Resumen del periodo — Promedio").
+// Phase selector: 'actual'/'previa' (one interval) and the 4 goals (union of
+// all phases with that goal). It floats over the content → `.glass`, and the
+// accent over glass is --accent-glass, never --accent. Every option with no data
+// is disabled with its concrete cause, never removed.
+// Export menu: two scopes (raw records vs. processed summary).
+// Each option's subtitle states whether the selector's operation applies
+// — always visible, never behind hover (mobile-first) — and the summary's
+// title names it ("Resumen del periodo — Promedio").
 function ExportMenu({ calcLabel, onRaw, onResumen, onInforme }) {
   const [open, setOpen] = useState(false);
   const ref = useOutsideClose(open, setOpen);
@@ -2177,14 +2177,14 @@ function ExportMenu({ calcLabel, onRaw, onResumen, onInforme }) {
   );
 }
 
-// Menú Custom: activa el rango personalizado y lista los guardados. ÚNICO lugar
-// donde se edita o borra un rango — la vista de datos solo los lee. Anclado con
-// useOutsideClose + glass, fuera del scroller de presets (su overflow-x
-// recortaría el popover), igual que PhaseMenu.
+// Custom Menu: activates the custom range and lists the saved ones. The ONLY place
+// where a range is edited or deleted — the data view only reads them. Anchored with
+// useOutsideClose + glass, outside the presets scroller (its overflow-x
+// would clip the popover), just like PhaseMenu.
 function CustomMenu({ active, label, savedRanges, activeId, onPersonalizado, onApply, onEdit, onDelete }) {
   const [open, setOpen] = useState(false);
   const ref = useOutsideClose(open, setOpen);
-  const fmt = (r) => `${r.start.slice(5)} → ${r.end ? r.end.slice(5) : t('Hoy')}`; // MM-DD, como el eje de los charts
+  const fmt = (r) => `${r.start.slice(5)} → ${r.end ? r.end.slice(5) : t('Hoy')}`; // MM-DD, like the charts' axis
 
   return (
     <div className="relative shrink-0" ref={ref}>
@@ -2199,8 +2199,8 @@ function CustomMenu({ active, label, savedRanges, activeId, onPersonalizado, onA
         <span className="shrink-0">{open ? '▴' : '▾'}</span>
       </button>
       {open && (
-        // w-64 es el máximo que cabe: el popover se ancla al borde derecho del
-        // disparador (x≈264 a 375 px), y 288 px se salían por la izquierda.
+        // w-64 is the max that fits: the popover anchors to the trigger's right
+        // edge (x≈264 at 375 px), and 288 px would spill off the left.
         <div className="absolute z-50 top-full right-0 mt-1 w-64 rounded-xl border border-border p-1 shadow-lg glass">
           <button
             onClick={() => {
@@ -2270,7 +2270,7 @@ function PhaseMenu({ phases, selection, active, label, onSelect }) {
   const ref = useOutsideClose(open, setOpen);
   const actual = phases[phases.length - 1] || null;
   const previa = phases[phases.length - 2] || null;
-  const fmt = (p) => `${p.label || t('Sin nombre')} · ${p.vf.slice(5)} → ${p.end.slice(5)}`; // MM-DD, como el eje de los charts
+  const fmt = (p) => `${p.label || t('Sin nombre')} · ${p.vf.slice(5)} → ${p.end.slice(5)}`; // MM-DD, like the charts' axis
 
   const items = [
     {
@@ -2381,9 +2381,9 @@ function AdherenceHeatmap({ weeks, dateSet, dayInfo }) {
   );
 }
 
-// Visibles: los MICROS_DEFAULT primeros + favoritos (prefs). El resto solo si
-// tienen dato consumido u objetivo, plegados en "Más micros". El agua nunca
-// va aquí: tiene su propia sección arriba.
+// Visible: the first MICROS_DEFAULT + favorites (prefs). The rest only if
+// they have consumed data or an objective, collapsed under "Más micros". Water never
+// goes here: it has its own section above.
 function MicrosTable({
   favs,
   microsConsumido,
@@ -2414,9 +2414,9 @@ function MicrosTable({
     const consumidoDisplay = metricDisplay(calcMode, ms, bayesInfo, ` ${m.unit}`, 1);
     const sodiumDanger = m.key === 'sodio_mg' && (sodiumIsLow(avgSodio, diasRegistrados > 0) || sodiumIsHigh(avgSodio, diasRegistrados > 0));
     const degraded = consumidoDisplay.degraded;
-    // Semáforo de fila: techo (no rebasar) y piso (alcanzar), solo en modos con
-    // par consumido/objetivo comparable. Sodio va por su ruta dual (sodiumDanger);
-    // el resto de micros ('meta') queda neutro — tabla de datos, no todo semáforo.
+    // Row status light: 'techo' (ceiling — must not be exceeded) and 'piso' (floor — must be reached), only in modes with
+    // a comparable consumed/objective pair. Sodium follows its own dual route (sodiumDanger);
+    // the rest of the micros ('meta') stay neutral — a data table, not everything needs a status light.
     const kind = nutrientKind(m.key);
     const cmpPair = { suma: [ms.sum, objStats.sum], promedio: [ms.avg, objStats.avg], mediana: [ms.median, objStats.median] }[calcMode];
     let rowStatus = null;
@@ -2498,8 +2498,8 @@ function Stat({ label, display, color }) {
   );
 }
 
-// Mini-sparkline SVG propio (sin Recharts, evita ResponsiveContainers extra).
-// null si hay <2 puntos con dato.
+// Custom mini-sparkline SVG (no Recharts, avoids extra ResponsiveContainers).
+// null if there are <2 points with data.
 function Sparkline({ values, color }) {
   const pts = values.map((v, i) => ({ i, v })).filter((p) => p.v != null);
   if (pts.length < 2) return null;
