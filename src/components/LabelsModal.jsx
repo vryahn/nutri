@@ -9,7 +9,7 @@ export default function LabelsModal({ onClose }) {
   useLang();
   const [labels, setLabels] = useState([]);
   const [name, setName] = useState('');
-  const [undoLabel, setUndoLabel] = useState(null); // { id, timer } tras archivar una etiqueta, para "Deshacer"
+  const [undoLabel, setUndoLabel] = useState(null); // { id, timer } after archiving a label, for "Deshacer"
 
   useEffect(() => {
     load();
@@ -18,7 +18,7 @@ export default function LabelsModal({ onClose }) {
   async function load() {
     const { data } = await supabase.from('meal_labels').select('*').is('archived_at', null).order('sort_order');
     if (data) setLabels(data);
-    // Hoy renderiza secciones por etiqueta sin remontarse cuando este modal cambia algo.
+    // The Today page renders its per-label sections without remounting when this modal changes something.
     window.dispatchEvent(new Event('labels-changed'));
   }
 
@@ -28,9 +28,10 @@ export default function LabelsModal({ onClose }) {
     if (!nm) return;
     const maxOrder = labels.reduce((m, l) => Math.max(m, l.sort_order ?? 0), 0);
     const { error } = await supabase.from('meal_labels').insert({ name: nm, sort_order: maxOrder + 1 });
-    // 23505 = choca el unique (owner, name) con una etiqueta ARCHIVADA (las vivas ya
-    // están en la lista). Revivirla en vez de crear otra fila devuelve sus registros
-    // históricos a esta sección, que es de donde salieron. RLS acota el eq('name').
+    // 23505 = collision on the unique (owner, name) constraint with an ARCHIVED label
+    // (live ones are already in the list). Reviving it instead of creating another row
+    // returns its historical entries to this section, which is where they came from.
+    // RLS scopes the eq('name').
     if (error?.code === '23505') {
       await supabase.from('meal_labels').update({ archived_at: null, sort_order: maxOrder + 1 }).eq('name', nm);
     }
@@ -43,10 +44,10 @@ export default function LabelsModal({ onClose }) {
     load();
   }
 
-  // Archivar, no borrar: la FK entries.meal_label_id es ON DELETE SET NULL, así que
-  // un delete reescribiría todos los registros históricos de la etiqueta. Archivada,
-  // desaparece de la lista y sus registros caen en "Sin etiqueta" (groupByLabel rutea
-  // ahí cualquier id que no esté en labels) — mismo efecto visible, reversible.
+  // Archive, do not delete: the FK entries.meal_label_id is ON DELETE SET NULL, so
+  // a delete would rewrite all of the label's historical entries. Once archived, it
+  // disappears from the list and its entries fall under "Sin etiqueta" (groupByLabel
+  // routes any id absent from labels there) — same visible effect, reversible.
   async function archive(id) {
     const { error } = await supabase.from('meal_labels').update({ archived_at: new Date().toISOString() }).eq('id', id);
     if (error) return;

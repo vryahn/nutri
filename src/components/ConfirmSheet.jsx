@@ -1,17 +1,17 @@
 import { useState } from 'react';
 import { t } from '../lib/i18n.js';
 
-// Confirmación in-app que reemplaza a window.confirm: scrim con blur que cierra
-// al tocar fuera (regla del proyecto) y card .glass. Sobre glass el acento debe
-// ir en --accent-glass; aquí no hace falta — solo texto normal y botón danger
-// sólido, que no pierde contraste con el fondo colándose.
+// In-app confirmation that replaces window.confirm: blurred scrim that closes
+// on tap outside (project rule) plus a .glass card. On glass, accent color must
+// use --accent-glass; not needed here — only regular text and a solid danger
+// button, which does not lose contrast against the background bleeding through.
 export default function ConfirmSheet({ title, body, confirmLabel, danger = true, onConfirm, onClose }) {
   const [busy, setBusy] = useState(false);
   return (
     <div
       onClick={(e) => {
-        // stopPropagation: puede vivir anidado en otro modal (LabelsModal) — el tap
-        // en este scrim no debe burbujear y cerrar también al padre.
+        // stopPropagation: this sheet may be nested inside another modal (LabelsModal) —
+        // a tap on this scrim must not bubble up and close the parent as well.
         e.stopPropagation();
         onClose();
       }}

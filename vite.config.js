@@ -9,8 +9,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: false,
-      // /about es la landing estática: sin esto el SW instalado la
-      // reescribiría al shell del app en los clientes con PWA.
+      // /about is the static landing page: without this, the installed SW
+      // would rewrite it to the app shell on clients with the PWA.
       workbox: { navigateFallbackDenylist: [/^\/about/] },
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {

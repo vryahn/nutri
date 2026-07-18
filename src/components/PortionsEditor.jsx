@@ -2,14 +2,14 @@ import { X } from 'lucide-react';
 import { t, useUnits, gToOz, ozToG, mlToFlOz, flOzToMl } from '../lib/i18n.js';
 import { round } from '../lib/domain.js';
 
-// Editor de porciones custom [{name, grams}] — chips que SUMAN gramos al registrar.
-// Compartido por FoodForm (Alimentos) y RecipeForm (Recetas). La DB solo conoce gramos;
-// `density` (g/ml del propio food, 0 si no aplica) habilita un toggle de unidad por fila
-// (g/ml en métrico, oz/fl oz en US), igual que AmountField — sin densidad, comportamiento
-// idéntico al de siempre (peso: g en métrico, oz en US, sin toggle). Cada fila lleva los
-// transitorios `unit`/`amount` (string tal cual tecleado, para no reescribir el input al
-// convertir mientras se teclea); `grams` sigue siendo el único campo canónico — el caller
-// lo descarta junto con unit/amount al guardar.
+// Editor for custom portions [{name, grams}] — chips that ADD grams when logging.
+// Shared by FoodForm (Alimentos) and RecipeForm (Recetas). The DB only knows grams;
+// `density` (g/ml of the food itself, 0 if not applicable) enables a per-row unit toggle
+// (g/ml in metric, oz/fl oz in US), same as AmountField — without density, the behavior
+// is identical to the historical one (weight: g in metric, oz in US, no toggle). Each row
+// carries the transient fields `unit`/`amount` (string exactly as typed, so the input is
+// not rewritten by conversion while typing); `grams` remains the only canonical field —
+// the caller discards the transients unit/amount when saving.
 export default function PortionsEditor({ portions, onChange, density = 0 }) {
   const isUS = useUnits() === 'us';
   const hasVol = Number(density) > 0;

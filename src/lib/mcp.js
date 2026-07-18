@@ -1,6 +1,6 @@
-// src/lib/mcp.js — lógica PURA del servidor MCP remoto (api/mcp.js la importa).
-// Sin supabase ni I/O aquí: validadores, avisos, decisión fork/update y respuesta
-// de recetas. Reusa domain.js — los mismos criterios que la UI (FoodForm/Recipes).
+// src/lib/mcp.js — PURE logic for the remote MCP server (api/mcp.js imports it).
+// No supabase or I/O here: validators, warnings, fork/update decision, and the
+// recipe response. Reuses domain.js — the same criteria as the UI (FoodForm/Recipes).
 import {
   MICROS,
   BODY_METRICS,
@@ -15,7 +15,7 @@ import {
 export const MICRO_KEYS = new Set(MICROS.map((m) => m.key));
 export const BODY_METRIC_KEYS = new Set(BODY_METRICS.map((m) => m.key));
 
-// Validación DURA: claves de micros fuera de MICROS bloquean el guardado.
+// HARD validation: micro keys outside MICROS block the save.
 export function assertValidMicros(micros) {
   if (!micros) return;
   const bad = Object.keys(micros).filter((k) => !MICRO_KEYS.has(k));
@@ -26,7 +26,7 @@ export function assertValidMicros(micros) {
   }
 }
 
-// Validación DURA: números finitos ≥ 0 (null/undefined = campo ausente, se permite).
+// HARD validation: finite numbers ≥ 0 (null/undefined = absent field, allowed).
 export function assertNonNegative(fields) {
   for (const [k, v] of Object.entries(fields)) {
     if (v == null) continue;
@@ -34,7 +34,7 @@ export function assertNonNegative(fields) {
   }
 }
 
-// Validación DURA de portions: [{name: string, grams: number > 0}].
+// HARD validation of portions: [{name: string, grams: number > 0}].
 export function assertValidPortions(portions) {
   if (portions == null) return;
   if (!Array.isArray(portions)) throw new Error('portions debe ser un array [{name, grams}]');
@@ -45,8 +45,8 @@ export function assertValidPortions(portions) {
   }
 }
 
-// Validación DURA de medidas corporales: claves EXACTAS de BODY_METRICS y valores
-// numéricos finitos ≥ 0 (misma política que los micros: claves libres se rechazan).
+// HARD validation of body measurements: EXACT keys from BODY_METRICS and finite
+// numeric values ≥ 0 (same policy as micros: free-form keys are rejected).
 export function assertValidBodyMetrics(metrics) {
   if (!metrics || typeof metrics !== 'object' || Array.isArray(metrics) || !Object.keys(metrics).length) {
     throw new Error('metrics debe ser un objeto no vacío {clave: número}');
@@ -58,14 +58,14 @@ export function assertValidBodyMetrics(metrics) {
   assertNonNegative(metrics);
 }
 
-// Aviso SUAVE: valores sobre la cota fisiológica (BODY_METRIC_MAX) — no bloquea.
+// SOFT warning: values above the physiological ceiling (BODY_METRIC_MAX) — does not block.
 export function bodyMetricWarnings(metrics) {
   return Object.entries(metrics)
     .filter(([k, v]) => BODY_METRIC_MAX[k] != null && v > BODY_METRIC_MAX[k])
     .map(([k, v]) => `${k}: ${v} supera la cota fisiológica (${BODY_METRIC_MAX[k]}) — revisa unidades.`);
 }
 
-// Avisos SUAVES — mismos criterios que FoodForm (Foods.jsx): nunca bloquean el guardado.
+// SOFT warnings — same criteria as FoodForm (Foods.jsx): they never block the save.
 export function buildWarnings(food) {
   const warnings = [];
   if (kcalSuspicious(food)) warnings.push('Las kcal declaradas no cuadran con los macros (Atwater).');
@@ -75,23 +75,23 @@ export function buildWarnings(food) {
   return warnings;
 }
 
-// Kcal por defecto cuando viene ausente/vacía al crear un food.
+// Default kcal when it arrives absent/empty while creating a food.
 export function resolveKcal(food) {
   return food.kcal != null && food.kcal !== '' ? Number(food.kcal) : kcalFromMacros(food);
 }
 
-// update_food: decide fork vs update. 'fork' si el food no es propio (owner !== uid,
-// incluye owner NULL del catálogo base — migración 015). Si es propio: 'update-portions'
-// cuando el ÚNICO campo tocado es portions (no cambia source), o 'update' en cualquier
-// otro caso (source pasa a 'ia_personal').
+// update_food: decides fork vs update. 'fork' if the food is not the user's own
+// (owner !== uid, including the base catalog's NULL owner — migration 015). If it is
+// the user's own: 'update-portions' when the ONLY touched field is portions (source
+// does not change), or 'update' in any other case (source becomes 'ia_personal').
 export function decideUpdatePath(ownerOfFood, uid, changedFields) {
   if (ownerOfFood !== uid) return 'fork';
   const onlyPortions = changedFields.length > 0 && changedFields.every((f) => f === 'portions');
   return onlyPortions ? 'update-portions' : 'update';
 }
 
-// create_recipe: valores por 100 g + warnings. Misma fórmula que la vista SQL
-// recipe_per_100g (computeRecipePer100g la replica) — si una cambia, cambia la otra.
+// create_recipe: values per 100 g + warnings. Same formula as the SQL view
+// recipe_per_100g (computeRecipePer100g replicates it) — if one changes, change the other.
 export function recipeResponse(items, cookedWeightG) {
   const per100g = computeRecipePer100g(items, cookedWeightG);
   if (!per100g) throw new Error('cooked_weight_g o items inválidos (peso resultante <= 0)');

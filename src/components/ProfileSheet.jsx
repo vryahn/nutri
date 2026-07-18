@@ -13,10 +13,10 @@ const SEXES = [
   { key: 'x', label: 'Prefiero no decir' },
 ];
 
-const VP = 240; // lado del viewport de recorte en px (pantalla)
-const OUT = 512; // lado del JPEG cuadrado que se sube (el círculo del Avatar lo recorta)
+const VP = 240; // side length of the crop viewport in px (on screen)
+const OUT = 512; // side length of the square JPEG that gets uploaded (the Avatar circle crops it)
 
-// Campo de texto/numérico controlado (mismo look que el resto de la app).
+// Controlled text/numeric field (same look as the rest of the app).
 function Field({ label, children }) {
   return (
     <label className="flex flex-col gap-1.5">
@@ -27,11 +27,11 @@ function Field({ label, children }) {
 }
 const inputCls = 'h-[42px] rounded-xl bg-black/25 border border-border px-3 text-sm text-text placeholder:text-text-3 focus:border-accent-deep outline-none';
 
-// Editor de recorte: el usuario mueve (arrastra) y acerca (slider) la imagen
-// dentro de un círculo; al guardar se hornea el cuadrado visible a OUT×OUT JPEG.
-// Así el Avatar sigue con object-cover sin lógica de posición por render.
+// Crop editor: the user moves (drags) and zooms (slider) the image
+// inside a circle; on save, the visible square is baked to an OUT×OUT JPEG.
+// This way the Avatar keeps using object-cover with no per-render positioning logic.
 function Cropper({ img, onCancel, onDone }) {
-  const cover = Math.max(VP / img.naturalWidth, VP / img.naturalHeight); // escala mínima que cubre
+  const cover = Math.max(VP / img.naturalWidth, VP / img.naturalHeight); // minimum scale that covers
   const [zoom, setZoom] = useState(1);
   const [pos, setPos] = useState({ x: (VP - img.naturalWidth * cover) / 2, y: (VP - img.naturalHeight * cover) / 2 });
   const drag = useRef(null);
@@ -39,12 +39,12 @@ function Cropper({ img, onCancel, onDone }) {
   const scale = cover * zoom;
   const w = img.naturalWidth * scale;
   const h = img.naturalHeight * scale;
-  // Mantiene la imagen cubriendo el viewport (sin huecos).
+  // Keeps the image covering the viewport (no gaps).
   const clamp = (x, y) => ({ x: Math.min(0, Math.max(VP - w, x)), y: Math.min(0, Math.max(VP - h, y)) });
 
   const onPointerDown = (e) => {
     drag.current = { px: e.clientX, py: e.clientY, ...pos };
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* puntero sintético (pruebas): el pan no lo necesita */ }
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* synthetic pointer (tests): panning does not need it */ }
   };
   const onPointerMove = (e) => {
     if (!drag.current) return;
@@ -53,9 +53,9 @@ function Cropper({ img, onCancel, onDone }) {
   const onPointerUp = () => { drag.current = null; };
 
   const onZoom = (z) => {
-    // Acerca respecto al centro del viewport para no descuadrar el encuadre.
+    // Zooms relative to the viewport center so the framing does not drift.
     const s0 = cover * zoom, s1 = cover * z;
-    const fx = (VP / 2 - pos.x) / s0, fy = (VP / 2 - pos.y) / s0; // punto natural bajo el centro
+    const fx = (VP / 2 - pos.x) / s0, fy = (VP / 2 - pos.y) / s0; // natural-coordinate point under the center
     const nx = VP / 2 - fx * s1, ny = VP / 2 - fy * s1;
     const nw = img.naturalWidth * s1, nh = img.naturalHeight * s1;
     setZoom(z);
@@ -65,7 +65,7 @@ function Cropper({ img, onCancel, onDone }) {
   const bake = () => {
     const c = document.createElement('canvas');
     c.width = OUT; c.height = OUT;
-    // Región fuente = lo que cae dentro del viewport, en px naturales de la imagen.
+    // Source region = what falls inside the viewport, in the image's natural px.
     const sx = -pos.x / scale, sy = -pos.y / scale, side = VP / scale;
     c.getContext('2d').drawImage(img, sx, sy, side, side, 0, 0, OUT, OUT);
     c.toBlob((blob) => onDone(blob), 'image/jpeg', 0.85);
@@ -109,17 +109,17 @@ function Cropper({ img, onCancel, onDone }) {
 
 export default function ProfileSheet({ avatarUrl, onClose }) {
   const [form, setForm] = useState(() => ({ ...getProfile() }));
-  const [localUrl, setLocalUrl] = useState(avatarUrl); // preview inmediato tras subir
+  const [localUrl, setLocalUrl] = useState(avatarUrl); // immediate preview after uploading
   const [uploading, setUploading] = useState(false);
-  const [trash, setTrash] = useState([]); // paths del storage a borrar AL GUARDAR (borrarlos antes rompía el avatar si el usuario cancelaba)
-  const [cropImg, setCropImg] = useState(null); // Image en edición, o null
+  const [trash, setTrash] = useState([]); // storage paths to delete ON SAVE (deleting them earlier broke the avatar if the user cancelled)
+  const [cropImg, setCropImg] = useState(null); // Image being edited, or null
   const [showPwd, setShowPwd] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   async function onPickFile(fileList) {
     const file = Array.from(fileList || [])[0];
     if (!file || !file.type.startsWith('image/')) return;
-    setCropImg(await loadImage(URL.createObjectURL(file))); // abre el recortador
+    setCropImg(await loadImage(URL.createObjectURL(file))); // opens the cropper
   }
 
   async function uploadBlob(blob) {
@@ -133,7 +133,7 @@ export default function ProfileSheet({ avatarUrl, onClose }) {
       const path = `${uid}/avatar/${crypto.randomUUID()}.jpg`;
       const { error } = await supabase.storage.from('body-photos').upload(path, blob, { contentType: 'image/jpeg' });
       if (error) return;
-      if (form.avatar_path) setTrash((ts) => [...ts, form.avatar_path]); // la anterior se limpia al guardar
+      if (form.avatar_path) setTrash((ts) => [...ts, form.avatar_path]); // the previous one is cleaned up on save
       set('avatar_path', path);
       const { data } = await supabase.storage.from('body-photos').createSignedUrl(path, 3600);
       setLocalUrl(data?.signedUrl || null);
@@ -149,14 +149,14 @@ export default function ProfileSheet({ avatarUrl, onClose }) {
   }
 
   const save = () => {
-    // Solo strings/valores limpios; campos vacíos/null se descartan para no guardar ''.
-    // avatar_path=null se descarta aquí, y como setProfile REEMPLAZA el perfil, borrar la foto persiste.
+    // Only clean strings/values; empty/null fields are discarded so '' is never saved.
+    // avatar_path=null is discarded here, and since setProfile REPLACES the profile, removing the photo persists.
     const clean = {};
     for (const [k, v] of Object.entries(form)) if (v !== '' && v != null) clean[k] = v;
     setProfile(clean);
-    // ponytail: los JPEG reemplazados o quitados se borran solo al confirmar. Si el
-    // usuario sube uno nuevo y cancela la hoja, ese archivo queda huérfano en el
-    // bucket (fuga aceptada: borrar el viejo antes de guardar dejaba el avatar roto).
+    // ponytail: replaced or removed JPEGs are deleted only on confirm. If the
+    // user uploads a new one and cancels the sheet, that file is left orphaned in the
+    // bucket (accepted leak: deleting the old one before saving left the avatar broken).
     if (trash.length) supabase.storage.from('body-photos').remove(trash);
     onClose();
   };

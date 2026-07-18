@@ -25,8 +25,8 @@ import {
 const HISTORY_DAYS = 180;
 const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// Persistencia por dispositivo (localStorage), igual que el Dashboard: sobrevive
-// recarga sin escritura remota.
+// Per-device persistence (localStorage), same as the Dashboard: survives
+// a reload without any remote write.
 function usePersistentState(key, initial) {
   const [value, setValue] = useState(() => {
     try {
@@ -49,22 +49,22 @@ export default function Body() {
   const sleepH = useSleepThreshold();
   const [date, setDate] = useState(todayISO());
   const [userId, setUserId] = useState(null);
-  const [favs, setFavs] = useState([]); // prefs.data.fav_body: medidas promovidas fuera de "Más medidas"
-  const [values, setValues] = useState({}); // strings por clave, para los inputs
+  const [favs, setFavs] = useState([]); // prefs.data.fav_body: metrics promoted out of the "Más medidas" section
+  const [values, setValues] = useState({}); // strings keyed by metric key, for the inputs
   const [note, setNote] = useState('');
-  const [photos, setPhotos] = useState([]); // rutas en el bucket body-photos del día
-  const [photoUrls, setPhotoUrls] = useState({}); // ruta -> signed URL (efímera)
+  const [photos, setPhotos] = useState([]); // paths in the body-photos bucket for the day
+  const [photoUrls, setPhotoUrls] = useState({}); // path -> signed URL (ephemeral)
   const [uploading, setUploading] = useState(false);
   const [photoDrag, setPhotoDrag] = useState(false);
-  const [history, setHistory] = useState([]); // filas {day, metrics} últimos HISTORY_DAYS
+  const [history, setHistory] = useState([]); // {day, metrics} rows for the last HISTORY_DAYS
   const [showMore, setShowMore] = useState(false);
   const [trendKey, setTrendKey] = usePersistentState('nutri.body.trendKey', 'peso_kg');
   const [savedFlash, setSavedFlash] = useState(false);
   const [importing, setImporting] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [toast, showToast] = useToast();
-  const [confirmPhoto, setConfirmPhoto] = useState(null); // path de la foto pendiente de confirmar su borrado
-  const [undoRow, setUndoRow] = useState(null); // { day, row: {metrics,note,photo_paths}, timer }: fila borrada al vaciar todos sus campos
+  const [confirmPhoto, setConfirmPhoto] = useState(null); // path of the photo whose deletion is pending confirmation
+  const [undoRow, setUndoRow] = useState(null); // { day, row: {metrics,note,photo_paths}, timer }: row deleted after clearing all of its fields
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
@@ -73,8 +73,8 @@ export default function Body() {
     });
   }, []);
 
-  // Promueve/retira una medida de "Más medidas" (patrón fav_micros). Merge sobre
-  // data existente para no pisar el resto de prefs.
+  // Promotes/demotes a metric from "Más medidas" (fav_micros pattern). Merges over
+  // the existing data so the rest of prefs is not overwritten.
   async function toggleFav(key) {
     const next = favs.includes(key) ? favs.filter((k) => k !== key) : [...favs, key];
     setFavs(next);
@@ -83,13 +83,13 @@ export default function Body() {
     await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), fav_body: next } });
   }
 
-  // Publica "Importar" en el menú "Más opciones" del layout (mismo patrón que Hoy).
+  // Publishes "Importar" in the layout's "Más opciones" menu (same pattern as Today).
   useEffect(() => {
     setSectionMenu([{ key: 'importar', label: t('Importar'), icon: Upload, onClick: () => setImporting(true) }]);
     return () => setSectionMenu([]);
   }, []);
 
-  // Carga la fila del día seleccionado (reloadKey la refresca tras importar).
+  // Loads the row for the selected day (reloadKey refreshes it after importing).
   useEffect(() => {
     let alive = true;
     supabase
@@ -109,8 +109,8 @@ export default function Body() {
     };
   }, [date, reloadKey]);
 
-  // Signed URLs para las miniaturas (bucket privado: sin URL firmada no se ven).
-  // Se regeneran al cambiar el set de fotos o de día.
+  // Signed URLs for the thumbnails (private bucket: not visible without a signed URL).
+  // Regenerated whenever the photo set or the day changes.
   useEffect(() => {
     let alive = true;
     if (!photos.length) {
@@ -149,9 +149,9 @@ export default function Body() {
     const metrics = cleanNumericMap(nextValues);
     const noteTrim = (nextNote ?? '').trim();
     const photoPaths = nextPhotos ?? [];
-    // Sin medidas, nota ni fotos → no dejar una fila vacía en la DB. Borrado de UN
-    // registro = optimista + Undo (política de borrado del proyecto): se captura la
-    // fila antes de borrarla para poder reinsertarla tal cual.
+    // No metrics, note, or photos → do not leave an empty row in the DB. Deleting ONE
+    // record = optimistic + Undo (the project's deletion policy): the row is captured
+    // before deleting it so it can be reinserted verbatim.
     if (Object.keys(metrics).length === 0 && !noteTrim && photoPaths.length === 0) {
       const { data: prevRow } = await supabase
         .from('body_metrics')
@@ -177,8 +177,8 @@ export default function Body() {
     loadHistory();
   }
 
-  // Reinserta la fila capturada por persist() antes de borrarla. Si sigue en el
-  // mismo día, también refresca el formulario visible (si no, solo la DB/historial).
+  // Reinserts the row captured by persist() before it was deleted. If still on the
+  // same day, it also refreshes the visible form (otherwise, only the DB/history).
   async function undoDeleteRow() {
     if (!undoRow) return;
     clearTimeout(undoRow.timer);
@@ -203,9 +203,9 @@ export default function Body() {
   const setField = (key, raw) => setValues((v) => ({ ...v, [key]: raw }));
   const commit = () => persist(values, note, photos);
 
-  // Checkpoint booleano (Sueño): marcar guarda el umbral vigente como valor (el flag
-  // se autoexplica si el umbral cambia luego); desmarcar lo borra. Persiste al toque
-  // — el <button> no tiene onBlur, así que se envía el mapa nuevo, no el de la closure.
+  // Boolean checkpoint (Sleep): checking stores the current threshold as the value (the
+  // flag stays self-explanatory if the threshold changes later); unchecking clears it.
+  // Persists on tap — the <button> has no onBlur, so the new map is sent, not the closure's.
   const toggleCheck = (m) => {
     const on = !((values[m.key] ?? '') !== '' && Number(values[m.key]) > 0);
     const next = { ...values, [m.key]: on ? String(sleepH) : '' };
@@ -213,8 +213,8 @@ export default function Body() {
     persist(next, note, photos);
   };
 
-  // Comprime cliente (JPEG ~1280px) y sube al bucket privado en {uid}/{uuid}.jpg —
-  // el primer segmento = uid es lo que aísla al usuario en el RLS de storage.objects.
+  // Compresses client-side (JPEG ~1280px) and uploads to the private bucket at {uid}/{uuid}.jpg —
+  // the first segment = uid is what isolates the user in the storage.objects RLS.
   async function uploadPhotos(fileList) {
     const files = Array.from(fileList || []);
     if (!files.length || !userId) return;
@@ -254,8 +254,8 @@ export default function Body() {
 
   const isToday = date === todayISO();
 
-  // Función que devuelve JSX (NO un componente): usarlo como <Field/> lo remontaría
-  // en cada tecleo (nueva identidad de función por render) y el input perdería foco.
+  // Function that returns JSX (NOT a component): using it as <Field/> would remount it
+  // on every keystroke (new function identity per render) and the input would lose focus.
   const fieldFor = (m, showStar = false) => {
     const raw = values[m.key] ?? '';
     const isFav = favs.includes(m.key);
@@ -323,11 +323,11 @@ export default function Body() {
   const defaults = BODY_METRICS.slice(0, BODY_METRICS_DEFAULT);
   const extra = BODY_METRICS.slice(BODY_METRICS_DEFAULT);
   const favMetrics = extra.filter((m) => favs.includes(m.key));
-  // Grasa% solo se captura en días de bioimpedancia; para que las derivadas
-  // salgan en cualquier día pesado, se arrastra la última lectura conocida del
-  // historial cuando el día no la trae (no se persiste, solo alimenta el cálculo
-  // con el peso del día). La altura NO es medida del día: viene del Perfil
-  // (prefs.data.profile.height_cm). El caption declara qué insumos se heredaron.
+  // Body-fat % is only captured on bioimpedance days; so that the derived metrics
+  // show up on any weighed day, the last known reading from the history is carried
+  // forward when the day lacks one (not persisted; it only feeds the computation
+  // together with the day's weight). Height is NOT a daily metric: it comes from the
+  // Profile (prefs.data.profile.height_cm). The caption declares which inputs were inherited.
   const { height_cm } = useProfile();
   const lastOf = (key) => [...history].reverse().find((r) => r.metrics?.[key] != null)?.metrics[key] ?? null;
   const inherit = (key) => ((values[key] ?? '') !== '' ? values[key] : lastOf(key));
@@ -340,7 +340,7 @@ export default function Body() {
 
   return (
     <div className="px-4 pt-4 pb-20 flex flex-col gap-4 lg:max-w-3xl lg:mx-auto">
-      {/* Navegación de fecha (mismo patrón que Hoy) */}
+      {/* Date navigation (same pattern as Today) */}
       <div className="flex items-center justify-between">
         <button onClick={() => setDate(addDaysISO(date, -1))} className="p-2 press" aria-label={t('Día anterior')}>
           <ChevronLeft size={22} />
@@ -365,7 +365,7 @@ export default function Body() {
         </button>
       </div>
 
-      {/* Captura del día */}
+      {/* Day capture */}
       <section className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <p className="text-sm text-text-3">{t('Medidas del día')}</p>
@@ -376,7 +376,7 @@ export default function Body() {
           {favMetrics.map((m) => fieldFor(m, true))}
         </div>
 
-        {/* Derivadas de solo lectura: se calculan de peso/grasa/altura, no se guardan. */}
+        {/* Read-only derived metrics: computed from weight/fat/height, never stored. */}
         {showDerived && (
           <div className="flex flex-col gap-2">
             <p className="text-xs text-text-3 pt-1">{t('Derivadas')}</p>
@@ -445,7 +445,7 @@ export default function Body() {
         </label>
       </section>
 
-      {/* Fotos de progreso */}
+      {/* Progress photos */}
       <section
         onDragOver={(e) => { e.preventDefault(); setPhotoDrag(true); }}
         onDragLeave={(e) => { e.preventDefault(); setPhotoDrag(false); }}
@@ -492,7 +492,7 @@ export default function Body() {
         </label>
       </section>
 
-      {/* Tendencia */}
+      {/* Trend */}
       <section className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm text-text-3">{t('Tendencia')}</p>

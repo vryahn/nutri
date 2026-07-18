@@ -1,8 +1,8 @@
 import { Component } from 'react';
 import * as Sentry from '@sentry/react';
 
-// Texto fijo bilingüe: si algo se rompió a este nivel, no hay garantía de que
-// i18n (o cualquier otro contexto) siga siendo seguro de usar.
+// Fixed bilingual text: if something broke at this level, there is no guarantee
+// that i18n (or any other context) is still safe to use.
 export default class ErrorBoundary extends Component {
   state = { hasError: false };
 

@@ -12,8 +12,8 @@ import TargetsWizard from './TargetsWizard.jsx';
 
 const THEME_META = { system: { icon: Monitor, label: 'Auto' }, light: { icon: Sun, label: 'Claro' }, dark: { icon: Moon, label: 'Oscuro' } };
 
-// Avatar del perfil: foto firmada del bucket privado o, si no hay, el logo de la app.
-// El icono ya trae su propio fondo (#071010) a sangre, así que llena el círculo. `size` en px.
+// Profile avatar: signed photo from the private bucket or, if none exists, the app logo.
+// The icon already carries its own full-bleed background (#071010), so it fills the circle. `size` in px.
 export function Avatar({ url, size = 34, className = '' }) {
   return (
     <span className={`flex-none rounded-full overflow-hidden block ${className}`} style={{ width: size, height: size }}>
@@ -22,11 +22,11 @@ export function Avatar({ url, size = 34, className = '' }) {
   );
 }
 
-// Menú de usuario: un avatar reemplaza el racimo de iconos del chrome. Abre un
-// panel glass (identidad + tema rápido + Perfil / Idioma / Configuración / salir).
-// El dropdown es `absolute` (como MoreOptions): dentro del header .glass un
-// backdrop `fixed` se anclaría al header, no a la pantalla. Las sheets SÍ son
-// pantalla completa, así que van por portal a <body> — fuera de ese ancestro.
+// User menu: an avatar replaces the cluster of icons in the chrome. It opens a
+// glass panel (identity + quick theme + Profile / Language / Settings / sign out).
+// The dropdown is `absolute` (like MoreOptions): inside the .glass header a
+// `fixed` backdrop would anchor to the header, not the screen. The sheets ARE
+// full-screen, so they render through a portal to <body> — outside that ancestor.
 export default function UserMenu({ placement = 'bottom', className, showLabel = false }) {
   useLang();
   const profile = useProfile();
@@ -41,7 +41,7 @@ export default function UserMenu({ placement = 'bottom', className, showLabel = 
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email || ''));
   }, []);
 
-  // Firma la foto de avatar (bucket privado). Se re-firma si cambia la ruta.
+  // Signs the avatar photo (private bucket). Re-signed whenever the path changes.
   useEffect(() => {
     let alive = true;
     if (!profile.avatar_path) { setAvatarUrl(null); return; }

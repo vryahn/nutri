@@ -79,8 +79,8 @@ describe('toDomainUnit', () => {
 });
 
 describe('fetchFDC: prioridad de kcal 1008 > 2048 > 2047', () => {
-  // FDC_KEY se lee de import.meta.env al cargar el módulo: hay que stubear el
-  // env y reimportar (vi.resetModules) para que la constante tome el valor nuevo.
+  // FDC_KEY is read from import.meta.env at module load: the env must be stubbed
+  // and the module re-imported (vi.resetModules) so the constant picks up the new value.
   beforeEach(() => {
     vi.resetModules();
     vi.stubEnv('VITE_FDC_KEY', 'test-key');

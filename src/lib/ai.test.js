@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 
-// i18n.js (importado por ai.js) lee localStorage al cargar el módulo (detección
-// de idioma) — en el entorno 'node' de vitest no existe; se stubea mínimamente
-// y se importa dinámico después, en vez de sumar jsdom como dependencia nueva.
+// i18n.js (imported by ai.js) reads localStorage at module load time (language
+// detection) — it does not exist in vitest's 'node' environment; it is minimally stubbed
+// and the import is done dynamically afterwards, instead of adding jsdom as a new dependency.
 let toJsonSchema, parseAmount, l2normalize, sanitizeAskPlan, formatAskContext;
 beforeAll(async () => {
   globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
@@ -82,7 +82,7 @@ describe('sanitizeAskPlan', () => {
   it('fechas ausentes -> últimos 30 días terminando hoy', () => {
     const out = sanitizeAskPlan({}, TODAY, VALID);
     expect(out.date_to).toBe(TODAY);
-    expect(out.date_from).toBe('2026-06-16'); // 30 días incl. hoy
+    expect(out.date_from).toBe('2026-06-16'); // 30 days incl. today
     expect(out.clamped).toBe(false);
   });
 
@@ -176,6 +176,6 @@ describe('formatAskContext', () => {
     expect(lines.at(-1)).toBe('(recortado a 400 alimentos de 401)');
     const itemLines = lines.filter((l) => l.startsWith('2026-07-01,Item'));
     expect(itemLines).toHaveLength(400);
-    expect(itemLines[0]).toBe('2026-07-01,Item400,100,400'); // mayor kcal primero
+    expect(itemLines[0]).toBe('2026-07-01,Item400,100,400'); // highest kcal first
   });
 });

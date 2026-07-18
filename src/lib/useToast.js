@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
-// Toast efímero (3 s). Comportamiento idéntico al patrón que reemplaza:
-// un toast nuevo pisa al anterior sin limpiar su timeout (inofensivo).
+// Ephemeral toast (3 s). Behavior identical to the pattern it replaces:
+// a new toast overwrites the previous one without clearing its timeout (harmless).
 export function useToast() {
   const [toast, setToast] = useState('');
   function showToast(msg) {

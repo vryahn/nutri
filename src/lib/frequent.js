@@ -1,11 +1,11 @@
 import { supabase } from './supabase.js';
 
-// Elementos frecuentes: conteo simple en ventana de 30 días, top 8, gramos =
-// moda dentro de la ventana. Ventana y métrica elegidas por backtest sobre los
-// registros reales (2026-07): 30d por etiqueta gana a 20d, a decay exponencial
-// y a la métrica anterior (últimos 1000 registros) en hit rate del top-8.
-// Caché a nivel módulo: una sola query por sesión (prefetch al montar Hoy);
-// las listas por etiqueta se derivan en cliente de las mismas filas.
+// Frequent items: simple count over a 30-day window, top 8, grams =
+// mode within the window. Window and metric chosen by backtest over the
+// real entries (2026-07): 30d per label beats 20d, exponential decay,
+// and the previous metric (last 1000 entries) in top-8 hit rate.
+// Module-level cache: a single query per session (prefetched when Today mounts);
+// the per-label lists are derived client-side from the same rows.
 const WINDOW_DAYS = 30;
 let cache = null; // Promise<rows>
 
@@ -25,15 +25,15 @@ export function prefetchFrequent() {
   load();
 }
 
-// Tras insertar un registro: invalida y recarga en background.
+// After inserting an entry: invalidate and reload in the background.
 export function refreshFrequent() {
   cache = null;
   return load();
 }
 
-// Top 8 más registrados (dedup food/receta, gramos default = moda), filtrando
-// agua; si hay etiqueta, acota a esa etiqueta. Lee del caché: abrir el sheet
-// no dispara red si el prefetch ya corrió.
+// Top 8 most logged (dedup by food/recipe, default grams = mode), filtering out
+// water; if a label is given, restrict to that label. Reads from the cache: opening
+// the sheet triggers no network request if the prefetch already ran.
 export async function getFrequent(labelId, waterFoodId) {
   const rows = await load();
   const byKey = new Map();

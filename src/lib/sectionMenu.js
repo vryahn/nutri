@@ -1,7 +1,7 @@
-// ponytail: store módulo-nivel para que la página activa (hoy solo Today)
-// publique las acciones del botón "Más opciones" que vive en App.jsx, sin
-// levantar el estado de la página al layout. Mismo espíritu que el evento
-// `labels-changed`. Cada acción: { key, label, icon, onClick }.
+// ponytail: module-level store so the active page (currently only Today)
+// publishes the actions for the "Más opciones" button that lives in App.jsx,
+// without lifting page state up to the layout. Same spirit as the
+// `labels-changed` event. Each action: { key, label, icon, onClick }.
 let actions = [];
 const subs = new Set();
 

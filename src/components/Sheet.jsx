@@ -1,9 +1,9 @@
 import { t } from '../lib/i18n.js';
 
-// Shell de hoja modal: scrim que cierra al tocar fuera (regla del proyecto) +
-// card .glass anclada abajo en móvil / centrada en desktop, con scroll propio.
-// stopPropagation en la card para que el tap dentro no cierre. Usado por las
-// sheets del menú de usuario (Perfil, Idioma, Configuración).
+// Modal sheet shell: scrim that closes on tap outside (project rule) +
+// .glass card anchored to the bottom on mobile / centered on desktop, with its own scroll.
+// stopPropagation on the card so that a tap inside does not close it. Used by the
+// user menu sheets (Perfil, Idioma, Configuración).
 export default function Sheet({ title, onClose, children, footer }) {
   return (
     <div

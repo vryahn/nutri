@@ -1,7 +1,7 @@
-// Claves EXACTAS del jsonb `micros` (claves libres fragmentarían las sumas).
-// El orden es contrato de UI: los primeros MICROS_DEFAULT visibles en FoodForm
-// y orden de la tabla del Dashboard. Las claves jamás se renombran.
-// `cat` agrupa los micros ocultos al desplegarlos (FoodForm y Dashboard).
+// EXACT keys of the `micros` jsonb (free-form keys would fragment the sums).
+// The order is a UI contract: the first MICROS_DEFAULT are visible in FoodForm
+// and set the order of the Dashboard table. The keys are never renamed.
+// `cat` groups the hidden micros when they are expanded (FoodForm and Dashboard).
 export const MICROS = [
   { key: 'grasa_sat_g', label: 'Grasa sat.', unit: 'g', cat: 'Lípidos' },
   { key: 'grasa_trans_g', label: 'Grasa trans', unit: 'g', cat: 'Lípidos' },
@@ -15,7 +15,7 @@ export const MICROS = [
   { key: 'hierro_mg', label: 'Hierro', unit: 'mg', cat: 'Minerales' },
   { key: 'agua_ml', label: 'Agua', unit: 'ml', cat: 'Otros' },
   { key: 'alcohol_g', label: 'Alcohol', unit: 'g', cat: 'Otros' },
-  // — ocultos por defecto; el usuario los promueve con prefs.data.fav_micros —
+  // — hidden by default; the user promotes them via prefs.data.fav_micros —
   { key: 'colesterol_mg', label: 'Colesterol', unit: 'mg', cat: 'Lípidos' },
   { key: 'vit_a_mcg', label: 'Vit. A', unit: 'µg', cat: 'Vitaminas' },
   { key: 'vit_c_mg', label: 'Vit. C', unit: 'mg', cat: 'Vitaminas' },
@@ -43,11 +43,11 @@ export const MICROS = [
   { key: 'licopeno_mcg', label: 'Licopeno', unit: 'µg', cat: 'Antioxidantes' },
   { key: 'luteina_zeaxantina_mcg', label: 'Luteína + Zeaxantina', unit: 'µg', cat: 'Antioxidantes' },
 
-  // --- Ampliación paridad Cronometer + seguimiento médico (todas ocultas por
-  // defecto, promovibles como favorito igual que el resto). Las vistas SQL suman
-  // el jsonb genéricamente (jsonb_each_text): claves nuevas NO requieren migración. ---
+  // --- Expansion for Cronometer parity + medical tracking (all hidden by
+  // default, promotable as favorites like the rest). The SQL views sum the
+  // jsonb generically (jsonb_each_text): new keys do NOT require a migration. ---
 
-  // Carbohidratos detallados
+  // Detailed carbohydrates
   { key: 'fibra_soluble_g', label: 'Fibra soluble', unit: 'g', cat: 'Carbohidratos' },
   { key: 'fibra_insoluble_g', label: 'Fibra insoluble', unit: 'g', cat: 'Carbohidratos' },
   { key: 'almidon_g', label: 'Almidón', unit: 'g', cat: 'Carbohidratos' },
@@ -59,7 +59,7 @@ export const MICROS = [
   { key: 'maltosa_g', label: 'Maltosa', unit: 'g', cat: 'Carbohidratos' },
   { key: 'alulosa_g', label: 'Alulosa', unit: 'g', cat: 'Carbohidratos' },
 
-  // Edulcorantes — polialcoholes (declarados en g en la etiqueta)
+  // Sweeteners — polyols (declared in g on the label)
   { key: 'polioles_g', label: 'Polialcoholes (total)', unit: 'g', cat: 'Edulcorantes' },
   { key: 'eritritol_g', label: 'Eritritol', unit: 'g', cat: 'Edulcorantes' },
   { key: 'xilitol_g', label: 'Xilitol', unit: 'g', cat: 'Edulcorantes' },
@@ -68,7 +68,7 @@ export const MICROS = [
   { key: 'manitol_g', label: 'Manitol', unit: 'g', cat: 'Edulcorantes' },
   { key: 'isomalt_g', label: 'Isomalt', unit: 'g', cat: 'Edulcorantes' },
   { key: 'lactitol_g', label: 'Lactitol', unit: 'g', cat: 'Edulcorantes' },
-  // Edulcorantes — alta intensidad (mg; solo con dato declarado/publicado, nunca estimado)
+  // Sweeteners — high-intensity (mg; only with declared/published data, never estimated)
   { key: 'aspartame_mg', label: 'Aspartamo', unit: 'mg', cat: 'Edulcorantes' },
   { key: 'sucralosa_mg', label: 'Sucralosa', unit: 'mg', cat: 'Edulcorantes' },
   { key: 'acesulfame_k_mg', label: 'Acesulfamo K', unit: 'mg', cat: 'Edulcorantes' },
@@ -80,7 +80,7 @@ export const MICROS = [
   { key: 'advantame_mg', label: 'Advantamo', unit: 'mg', cat: 'Edulcorantes' },
   { key: 'taumatina_mg', label: 'Taumatina', unit: 'mg', cat: 'Edulcorantes' },
 
-  // Lípidos detallados
+  // Detailed lipids
   { key: 'grasa_mono_g', label: 'Grasa monoinsaturada', unit: 'g', cat: 'Lípidos' },
   { key: 'grasa_poli_g', label: 'Grasa poliinsaturada', unit: 'g', cat: 'Lípidos' },
   { key: 'omega3_g', label: 'Omega-3', unit: 'g', cat: 'Lípidos' },
@@ -92,20 +92,20 @@ export const MICROS = [
   { key: 'aa_g', label: 'AA (omega-6)', unit: 'g', cat: 'Lípidos' },
   { key: 'fitosteroles_mg', label: 'Fitosteroles', unit: 'mg', cat: 'Lípidos' },
 
-  // Vitaminas detalladas
+  // Detailed vitamins
   { key: 'retinol_mcg', label: 'Retinol', unit: 'µg', cat: 'Vitaminas' },
   { key: 'tocoferol_beta_mg', label: 'β-tocoferol', unit: 'mg', cat: 'Vitaminas' },
   { key: 'tocoferol_gamma_mg', label: 'γ-tocoferol', unit: 'mg', cat: 'Vitaminas' },
   { key: 'tocoferol_delta_mg', label: 'δ-tocoferol', unit: 'mg', cat: 'Vitaminas' },
 
-  // Antioxidantes
+  // Antioxidants
   { key: 'alfa_caroteno_mcg', label: 'α-caroteno', unit: 'µg', cat: 'Antioxidantes' },
   { key: 'beta_criptoxantina_mcg', label: 'β-criptoxantina', unit: 'µg', cat: 'Antioxidantes' },
 
-  // Minerales
+  // Minerals
   { key: 'fluoruro_mcg', label: 'Fluoruro', unit: 'µg', cat: 'Minerales' },
 
-  // Otros
+  // Others
   { key: 'cafeina_mg', label: 'Cafeína', unit: 'mg', cat: 'Otros' },
   { key: 'teobromina_mg', label: 'Teobromina', unit: 'mg', cat: 'Otros' },
   { key: 'ceniza_g', label: 'Ceniza', unit: 'g', cat: 'Otros' },
@@ -113,7 +113,7 @@ export const MICROS = [
   { key: 'oxalato_mg', label: 'Oxalato', unit: 'mg', cat: 'Otros' },
   { key: 'fitato_mg', label: 'Fitato', unit: 'mg', cat: 'Otros' },
 
-  // Aminoácidos
+  // Amino acids
   { key: 'triptofano_g', label: 'Triptófano', unit: 'g', cat: 'Aminoácidos' },
   { key: 'treonina_g', label: 'Treonina', unit: 'g', cat: 'Aminoácidos' },
   { key: 'isoleucina_g', label: 'Isoleucina', unit: 'g', cat: 'Aminoácidos' },
@@ -135,13 +135,13 @@ export const MICROS = [
   { key: 'hidroxiprolina_g', label: 'Hidroxiprolina', unit: 'g', cat: 'Aminoácidos' },
 ];
 
-export const MICROS_DEFAULT = 8; // grasa sat/trans, azúcares, fibra, sodio, potasio, magnesio
+export const MICROS_DEFAULT = 8; // sat/trans fat, sugars, fiber, sodium, potassium, magnesium
 
-// Orden de despliegue de los grupos de micros ocultos.
+// Display order of the hidden micro groups.
 const CAT_ORDER = ['Lípidos', 'Carbohidratos', 'Edulcorantes', 'Vitaminas', 'Minerales', 'Antioxidantes', 'Aminoácidos', 'Otros'];
 
-// Agrupa una lista de micros por categoría, en CAT_ORDER y sin grupos vacíos.
-// Devuelve [{ cat, items }]. Usada por FoodForm y la tabla del Dashboard.
+// Groups a list of micros by category, in CAT_ORDER order and with no empty groups.
+// Returns [{ cat, items }]. Used by FoodForm and the Dashboard table.
 export function microGroups(list) {
   return CAT_ORDER.flatMap((cat) => {
     const items = list.filter((m) => m.cat === cat);
@@ -149,18 +149,18 @@ export function microGroups(list) {
   });
 }
 
-// Kcal teóricas: Atwater (prot 4 + carbs 4 + grasa 9 + alcohol 7) con la fibra
-// a 2 kcal/g (NOM-051/UE): carbs_g es TOTAL (incluye fibra), así que se resta
-// 2 kcal por gramo de fibra. Placeholder y default del campo kcal en FoodForm.
+// Theoretical kcal: Atwater (protein 4 + carbs 4 + fat 9 + alcohol 7) with fiber
+// at 2 kcal/g (NOM-051/EU): carbs_g is the TOTAL (includes fiber), so 2 kcal are
+// subtracted per gram of fiber. Placeholder and default of the kcal field in FoodForm.
 export function kcalFromMacros(f) {
   const m = f.micros || {};
-  // Polialcoholes aportan ~2.4 kcal/g, no 4: carbs_g (total) ya los cuenta a 4, así
-  // que se corrige la diferencia (1.6 kcal/g). Sin esto, un producto sin azúcar
-  // endulzado con polioles dispara un falso ⚠ de kcal. Usa el total declarado o,
-  // si falta, la suma de los polioles individuales.
-  // ponytail: eritritol real es ~0 kcal/g; se trata a 2.4 como el resto — la
-  // tolerancia de kcalSuspicious (25 %) absorbe la diferencia salvo en productos
-  // casi puros de eritritol, poco comunes; afinar a 0 si aparece el caso.
+  // Polyols provide ~2.4 kcal/g, not 4: carbs_g (total) already counts them at 4,
+  // so the difference (1.6 kcal/g) is corrected. Without this, a sugar-free product
+  // sweetened with polyols triggers a false kcal ⚠. Uses the declared total or,
+  // if it is missing, the sum of the individual polyols.
+  // ponytail: real erythritol is ~0 kcal/g; it is treated at 2.4 like the rest — the
+  // kcalSuspicious tolerance (25 %) absorbs the difference except in nearly pure
+  // erythritol products, which are uncommon; refine to 0 if the case arises.
   const polioles = Number(m.polioles_g || 0) ||
     (Number(m.eritritol_g || 0) + Number(m.xilitol_g || 0) + Number(m.sorbitol_g || 0) +
       Number(m.maltitol_g || 0) + Number(m.manitol_g || 0) + Number(m.isomalt_g || 0) +
@@ -175,17 +175,17 @@ export function kcalFromMacros(f) {
   );
 }
 
-// Kcal declaradas incompatibles con los macros → el alimento requiere revisión
-// (auditable después por el usuario o una IA vía API; se calcula al vuelo, no se persiste).
-// Tolerancia: 25 % o 20 kcal — cubre redondeos de etiqueta, fibra y polioles.
+// Declared kcal incompatible with the macros → the food requires review
+// (auditable later by the user or an AI via the API; computed on the fly, not persisted).
+// Tolerance: 25 % or 20 kcal — covers label rounding, fiber and polyols.
 export function kcalSuspicious(f) {
   const expected = kcalFromMacros(f);
   return Math.abs(Number(f.kcal || 0) - expected) > Math.max(20, expected * 0.25);
 }
 
-// Cotas fisiológicas máximas por micro, por 100 g (~1.5x el alimento más denso
-// conocido): atrapan SOLO errores de unidades ×1000, no valores altos legítimos
-// ni alimentos fortificados. Claves ausentes de la tabla = sin cota.
+// Maximum physiological bounds per micro, per 100 g (~1.5x the densest known
+// food): they catch ONLY ×1000 unit errors, not legitimately high values
+// nor fortified foods. Keys absent from the table = no bound.
 export const MICRO_MAX = {
   sodio_mg: 40000, potasio_mg: 16000, magnesio_mg: 1200, calcio_mg: 3500,
   hierro_mg: 190, zinc_mg: 120, fosforo_mg: 3000, selenio_mcg: 3000,
@@ -193,25 +193,25 @@ export const MICRO_MAX = {
   colesterol_mg: 4700,
   vit_a_mcg: 15000, vit_c_mg: 3000, vit_d_mcg: 400, vit_e_mg: 250, vit_k_mcg: 2600,
   vit_b12_mcg: 160, vit_b9_mcg: 6000,
-  // Nunca se venden en forma pura como alimento: una cota generosa solo atrapa el
-  // error de unidades ×1000, sin marcar valores altos legítimos (espinaca ~1000 mg
-  // oxalato/100 g, salvado ~5000 mg fitato/100 g). Los edulcorantes y la cafeína SÍ
-  // pueden venir casi puros (endulzante de mesa, cafeína en polvo): se dejan sin
-  // cota adrede — un ⚠ falso sobre un dato médico es peor que no marcar.
+  // Never sold in pure form as food: a generous bound only catches the ×1000
+  // unit error, without flagging legitimately high values (spinach ~1000 mg
+  // oxalate/100 g, bran ~5000 mg phytate/100 g). Sweeteners and caffeine CAN
+  // come nearly pure (tabletop sweetener, caffeine powder): they are left without
+  // a bound on purpose — a false ⚠ on medical data is worse than not flagging.
   oxalato_mg: 20000, fitato_mg: 20000,
 };
 
-// Claves EXACTAS del jsonb `body_metrics.metrics` (medidas corporales, migración 012).
-// Mismo contrato que MICROS: el orden es contrato de UI (los primeros
-// BODY_METRICS_DEFAULT visibles; el resto oculto salvo favoritos del usuario en
-// prefs.data.fav_body, patrón de fav_micros); las claves jamás se renombran.
-// Valores numéricos; `cat` agrupa la sección extendida. `type:'check'` = checkpoint
-// booleano (Sueño): se guarda el umbral de horas usado como valor (autoexplica el
-// flag si el umbral cambia luego), NUNCA un 1 pelón; ausente = no se marcó.
+// EXACT keys of the `body_metrics.metrics` jsonb (body measurements, migration 012).
+// Same contract as MICROS: the order is a UI contract (the first
+// BODY_METRICS_DEFAULT are visible; the rest hidden except the user's favorites in
+// prefs.data.fav_body, following the fav_micros pattern); the keys are never renamed.
+// Numeric values; `cat` groups the extended section. `type:'check'` = boolean
+// checkpoint (Sleep): the hour threshold in use is stored as the value (making the
+// flag self-explanatory if the threshold changes later), NEVER a bare 1; absent = not checked.
 export const BODY_METRICS = [
   { key: 'peso_kg', label: 'Peso', unit: 'kg', cat: 'Composición' },
   { key: 'sueno_corto', label: 'Sueño', type: 'check', cat: 'Composición' },
-  // — ocultas (el usuario las promueve a favoritas, patrón fav_micros) —
+  // — hidden (the user promotes them to favorites, fav_micros pattern) —
   { key: 'grasa_pct', label: 'Grasa corporal', unit: '%', cat: 'Composición' },
   { key: 'musculo_kg', label: 'Masa muscular', unit: 'kg', cat: 'Composición' },
   { key: 'agua_pct', label: 'Agua corporal', unit: '%', cat: 'Composición' },
@@ -229,7 +229,7 @@ export const BODY_METRICS = [
   { key: 'pierna_der_cm', label: 'Pierna derecha', unit: 'cm', cat: 'Circunferencias' },
   { key: 'pantorrilla_izq_cm', label: 'Pantorrilla izquierda', unit: 'cm', cat: 'Circunferencias' },
   { key: 'pantorrilla_der_cm', label: 'Pantorrilla derecha', unit: 'cm', cat: 'Circunferencias' },
-  // — segmental (bioimpedancia): masa magra y grasa por segmento, no derivable —
+  // — segmental (bioimpedance): lean mass and fat per segment, not derivable —
   { key: 'magra_tronco_kg', label: 'Magra tronco', unit: 'kg', cat: 'Segmental' },
   { key: 'magra_brazo_izq_kg', label: 'Magra brazo izq.', unit: 'kg', cat: 'Segmental' },
   { key: 'magra_brazo_der_kg', label: 'Magra brazo der.', unit: 'kg', cat: 'Segmental' },
@@ -241,10 +241,10 @@ export const BODY_METRICS = [
   { key: 'grasa_pierna_izq_kg', label: 'Grasa pierna izq.', unit: 'kg', cat: 'Segmental' },
   { key: 'grasa_pierna_der_kg', label: 'Grasa pierna der.', unit: 'kg', cat: 'Segmental' },
 ];
-export const BODY_METRICS_DEFAULT = 2; // peso + sueño siempre visibles
+export const BODY_METRICS_DEFAULT = 2; // weight + sleep always visible
 
-// Limpia un mapa {clave: valor} a solo números finitos ≥ 0 (para persistir medidas
-// corporales): '' o basura se descartan — nunca se guarda un dato inventado.
+// Cleans a {key: value} map down to only finite numbers ≥ 0 (for persisting body
+// measurements): '' or garbage is discarded — an invented value is never stored.
 export function cleanNumericMap(obj) {
   const out = {};
   for (const [k, v] of Object.entries(obj || {})) {
@@ -255,8 +255,8 @@ export function cleanNumericMap(obj) {
   return out;
 }
 
-// Cotas fisiológicas máximas por medida: atrapan errores de dedo (kg↔g, punto
-// decimal), no valores altos legítimos. Clave ausente = sin cota. Al vuelo, no persistida.
+// Maximum physiological bounds per measurement: they catch typing errors (kg↔g,
+// decimal point), not legitimately high values. Absent key = no bound. On the fly, not persisted.
 export const BODY_METRIC_MAX = {
   peso_kg: 500, grasa_pct: 80, musculo_kg: 120, agua_pct: 90, hueso_kg: 12,
   grasa_visceral: 60, metabolismo_basal_kcal: 6000, agua_l: 80,
@@ -269,11 +269,11 @@ export const BODY_METRIC_MAX = {
   grasa_pierna_izq_kg: 20, grasa_pierna_der_kg: 20,
 };
 
-// Composición derivada de peso/grasa (de la medición) + altura (del Perfil,
-// prefs.data.profile.height_cm — la altura NO es una medida del día): se calcula
-// al vuelo, NUNCA se persiste (misma política que kcal). Solo lectura en Medidas.
-// `formula` alimenta el Hint "?". derivedBodyMetrics devuelve null por clave si
-// faltan sus insumos.
+// Body composition derived from weight/fat (from the measurement) + height (from the
+// Profile, prefs.data.profile.height_cm — height is NOT a daily measurement): computed
+// on the fly, NEVER persisted (same policy as kcal). Read-only in the Medidas tab.
+// `formula` feeds the "?" Hint. derivedBodyMetrics returns null per key when its
+// inputs are missing.
 export const DERIVED_BODY = [
   { key: 'ffm_kg', label: 'Masa libre de grasa', unit: 'kg', formula: 'peso × (1 − grasa% / 100)' },
   { key: 'imc', label: 'IMC', unit: 'kg/m²', formula: 'peso / altura² (altura del Perfil, en m)' },
@@ -292,16 +292,16 @@ export function derivedBodyMetrics(m, heightCm) {
   };
 }
 
-// ── Gráficas personalizadas del Dashboard ────────────────────────────────────
-// Catálogo unificado de variables graficables en el tiempo: nutrición
-// (daily_totals: macros como columna + micros en el jsonb `micros`), medidas
-// corporales (body_metrics.metrics jsonb) y derivadas (IMC/FFM/FFMI, al vuelo).
-// `source` dice de dónde sale la serie; `unit` agrupa en ejes. NO requiere
-// migración: reúsa MICROS/BODY_METRICS/DERIVED_BODY. El sueño (type:'check') no
-// es una serie numérica → se excluye. Todas las claves son únicas entre fuentes.
-// kind: 'flow' = ingesta acumulable (nutrición: sumar tiene sentido) · 'stock' =
-// nivel/estado (medidas y derivadas: sumar peso/cintura no significa nada). Rige
-// qué reductores ofrece el constructor (Suma solo en flow-puro).
+// ── Dashboard custom charts ──────────────────────────────────────────────────
+// Unified catalog of variables plottable over time: nutrition
+// (daily_totals: macros as columns + micros in the `micros` jsonb), body
+// measurements (body_metrics.metrics jsonb) and derived ones (IMC/FFM/FFMI, on the fly).
+// `source` states where the series comes from; `unit` groups into axes. Requires NO
+// migration: reuses MICROS/BODY_METRICS/DERIVED_BODY. Sleep (type:'check') is not
+// a numeric series → it is excluded. All keys are unique across sources.
+// kind: 'flow' = accumulable intake (nutrition: summing makes sense) · 'stock' =
+// level/state (measurements and derived: summing weight/waist means nothing). Governs
+// which reducers the builder offers (Sum only for pure-flow).
 export const DASH_VAR_MACROS = [
   { key: 'kcal', label: 'Kcal', unit: 'kcal', source: 'nut', cat: 'Macros', kind: 'flow' },
   { key: 'protein_g', label: 'Proteína', unit: 'g', source: 'nut', cat: 'Macros', kind: 'flow' },
@@ -316,21 +316,21 @@ export const DASH_VARS = [
 ];
 export const DASH_VARS_BY_KEY = Object.fromEntries(DASH_VARS.map((v) => [v.key, v]));
 
-export const DASH_MAX_VARS = 4; // legibilidad: más de 4 series se vuelven ruido
-export const DASH_MAX_UNITS = 2; // 2 ejes (izq/der), como Cronometer (Peso kg + Cintura cm)
+export const DASH_MAX_VARS = 4; // readability: more than 4 series turn into noise
+export const DASH_MAX_UNITS = 2; // 2 axes (left/right), as in Cronometer (weight kg + waist cm)
 
-// Unidades distintas de un conjunto de variables, en orden de aparición y
-// recortadas a DASH_MAX_UNITS: [unidadIzq, unidadDer?]. El constructor bloquea
-// una 3ª unidad; aquí, por robustez, la extra cae al eje izquierdo.
+// Distinct units of a set of variables, in order of appearance and
+// trimmed to DASH_MAX_UNITS: [leftUnit, rightUnit?]. The builder blocks a
+// 3rd unit; here, for robustness, the extra one falls back to the left axis.
 export function axisUnits(vars) {
   const units = [];
   for (const v of vars) if (v && !units.includes(v.unit)) units.push(v.unit);
   return units.slice(0, DASH_MAX_UNITS);
 }
 
-// Valor de una variable para un día. Nutrición: null si el día no se registró
-// (kcal ≤ 0) — no se grafica un 0 falso; un 0 real de un día registrado sí vale.
-// Medidas: null si ese día no hubo medición (serie dispersa → connectNulls).
+// Value of a variable for a given day. Nutrition: null if the day was not logged
+// (kcal ≤ 0) — a false 0 is not plotted; a real 0 on a logged day does count.
+// Measurements: null if there was no measurement that day (sparse series → connectNulls).
 export function dashVarValue(v, nut, registered, body, derived) {
   if (!v) return null;
   if (v.source === 'nut') return registered ? Number(nut?.[v.key] || 0) : null;
@@ -340,7 +340,7 @@ export function dashVarValue(v, nut, registered, body, derived) {
   return null;
 }
 
-// Objetivo del día para una variable (solo nutrición lo tiene). Body/derived → null.
+// Target of the day for a variable (only nutrition has one). Body/derived → null.
 export function dashVarTarget(v, target) {
   if (!v || !target) return null;
   if (v.source === 'nut') return target[v.key] ?? null;
@@ -348,11 +348,11 @@ export function dashVarTarget(v, target) {
   return null;
 }
 
-// ── Agregación temporal de las gráficas custom ───────────────────────────────
-// Los modos globales (Suma/Promedio/…) resumen el rango a UN escalar y gobiernan
-// el análisis estándar. Una serie temporal se agrega por BUCKET (día, semana ISO
-// o mes), reduciendo cada bucket. 'auto' deriva el bucket del largo del rango
-// para que un año no pinte 365 puntos de ruido.
+// ── Temporal aggregation of the custom charts ────────────────────────────────
+// The global modes (Sum/Average/…) summarize the range into ONE scalar and govern
+// the standard analysis. A time series is aggregated by BUCKET (day, ISO week
+// or month), reducing each bucket. 'auto' derives the bucket from the range length
+// so that a year does not paint 365 points of noise.
 export const DASH_AGGS = ['auto', 'dia', 'semana', 'mes'];
 export const DASH_REDUCERS = ['promedio', 'suma', 'mediana'];
 
@@ -365,32 +365,32 @@ export function resolveAgg(agg, rangeLen) {
   return !agg || agg === 'auto' ? autoAgg(rangeLen) : agg;
 }
 
-// Lunes ISO de la semana de `iso` (weekdayOf: 0=domingo).
+// ISO Monday of the week containing `iso` (weekdayOf: 0=Sunday).
 function mondayOf(iso) {
   const d = weekdayOf(iso);
   return addDaysISO(iso, d === 0 ? -6 : 1 - d);
 }
 function bucketKey(day, agg) {
   if (agg === 'mes') return day.slice(0, 7); // YYYY-MM
-  if (agg === 'semana') return mondayOf(day); // lunes ISO (YYYY-MM-DD)
+  if (agg === 'semana') return mondayOf(day); // ISO Monday (YYYY-MM-DD)
   return day;
 }
 function bucketLabel(key, agg) {
-  return agg === 'mes' ? key : key.slice(5); // YYYY-MM o MM-DD
+  return agg === 'mes' ? key : key.slice(5); // YYYY-MM or MM-DD
 }
 
-// Reduce los valores no nulos de un bucket. Bucket sin datos → null (connectNulls).
+// Reduces the non-null values of a bucket. Bucket without data → null (connectNulls).
 export function reduceBucket(vals, reducer) {
   const xs = vals.filter((v) => v != null).map(Number);
   if (xs.length === 0) return null;
   if (reducer === 'suma') return round(sum(xs), 2);
   if (reducer === 'mediana') return round(median(xs), 2);
-  return round(sum(xs) / xs.length, 2); // promedio
+  return round(sum(xs) / xs.length, 2); // average ('promedio')
 }
 
-// Agrupa filas diarias [{day, [key]}] en buckets y las reduce. agg='dia' pasa
-// derecho (solo re-etiqueta). Todas las claves de bucket ordenan lexicográfico.
-// Se usa para las series de datos y para la del objetivo (mismo bucketing).
+// Groups daily rows [{day, [key]}] into buckets and reduces them. agg='dia' passes
+// straight through (only re-labels). All bucket keys sort lexicographically.
+// Used for the data series and for the target series (same bucketing).
 export function bucketRows(dailyRows, keys, agg, reducer) {
   if (agg === 'dia') return dailyRows.map((r) => ({ ...r, label: r.day.slice(5) }));
   const buckets = new Map();
@@ -407,10 +407,10 @@ export function bucketRows(dailyRows, keys, agg, reducer) {
   });
 }
 
-// Serie temporal para una gráfica custom, ya agregada: filas {day, label,
-// [key]:valor|null} por variable. agg='dia' = una fila por día del rango (default,
-// preserva la semántica previa); semana/mes agrupan y reducen. nutByDay/bodyByDay
-// son Map(day→fila).
+// Time series for a custom chart, already aggregated: rows {day, label,
+// [key]:value|null} per variable. agg='dia' = one row per day of the range (default,
+// preserves the previous semantics); week/month group and reduce. nutByDay/bodyByDay
+// are Map(day→row).
 export function buildDashSeries(dates, vars, nutByDay, bodyByDay, agg = 'dia', reducer = 'promedio', heightCm = null) {
   const daily = dates.map((day) => {
     const nut = nutByDay.get(day);
@@ -424,10 +424,10 @@ export function buildDashSeries(dates, vars, nutByDay, bodyByDay, agg = 'dia', r
   return bucketRows(daily, vars.map((v) => v.key), agg, reducer);
 }
 
-// Chequeo físico grueso por 100 g: proteína+carbs+grasa+alcohol+agua no pueden
-// superar ~105 g (100 g de porción + margen de redondeo/etiqueta); ningún macro
-// por separado puede superar 100 g; ningún micro puede superar su cota en MICRO_MAX.
-// Se calcula al vuelo (como kcalSuspicious), no se persiste.
+// Coarse physical check per 100 g: protein+carbs+fat+alcohol+water cannot
+// exceed ~105 g (100 g of portion + rounding/label margin); no individual macro
+// may exceed 100 g; no micro may exceed its bound in MICRO_MAX.
+// Computed on the fly (like kcalSuspicious), not persisted.
 export function macrosImplausible(f) {
   const p = Number(f.protein_g || 0);
   const c = Number(f.carbs_g || 0);
@@ -443,15 +443,15 @@ export function macrosImplausible(f) {
   return false;
 }
 
-// Desigualdades de composición entre micros y macros (holgura +0.5 g por redondeos).
-// Solo evalúa una desigualdad cuando AMBOS operandos son numéricos — un dato ausente
-// no cuenta como 0, para no marcar falsos positivos. Al vuelo, nunca persistida.
-// Devuelve la FRASE de la primera desigualdad rota (para mostrarla al usuario) o null.
-// Cadena → truthy, null → falsy: los usos como booleano siguen funcionando igual.
-// ponytail: sin check de aminoácidos vs proteína — la suma de aminoácidos casi siempre
-// choca con la proteína Kjeldahl (N×6.25) o viene declarada por 100 g de proteína, no de
-// producto; era falso positivo garantizado en toda proteína en polvo. Reactivar solo si
-// se normaliza la base de los aminoácidos a la del producto.
+// Composition inequalities between micros and macros (+0.5 g slack for rounding).
+// An inequality is only evaluated when BOTH operands are numeric — a missing datum
+// does not count as 0, to avoid flagging false positives. On the fly, never persisted.
+// Returns the PHRASE of the first broken inequality (to show it to the user) or null.
+// String → truthy, null → falsy: boolean-style usages keep working unchanged.
+// ponytail: no amino-acids-vs-protein check — the sum of amino acids almost always
+// clashes with Kjeldahl protein (N×6.25) or is declared per 100 g of protein, not of
+// product; it was a guaranteed false positive on every protein powder. Reactivate only
+// if the amino acid basis is normalized to that of the product.
 export function componentsInconsistent(f) {
   const m = f.micros || {};
   const num = (v) => (v === '' || v == null ? null : Number(v));
@@ -464,8 +464,8 @@ export function componentsInconsistent(f) {
   const azucarAnadido = num(m.azucar_anadido_g);
   const fibra = num(m.fibra_g);
 
-  // Suma de las claves presentes (null si ninguna): un dato ausente no cuenta como 0,
-  // así una suma parcial siempre queda por debajo del total y nunca es falso positivo.
+  // Sum of the keys present (null if none): a missing datum does not count as 0,
+  // so a partial sum always stays below the total and is never a false positive.
   const sumPresent = (...ks) => {
     const vals = ks.map((k) => num(m[k])).filter((v) => v != null);
     return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
@@ -495,9 +495,9 @@ export function componentsInconsistent(f) {
   return null;
 }
 
-// Mueve la etiqueta en `index` una posición (dir -1|1) y devuelve las filas
-// {id, sort_order} a persistir, reindexando 0..n-1. Reindexar (y no hacer swap)
-// corrige las labels creadas por la RPC log_entry, que quedan todas con sort_order 0.
+// Moves the label at `index` one position (dir -1|1) and returns the
+// {id, sort_order} rows to persist, reindexing 0..n-1. Reindexing (instead of swapping)
+// fixes labels created by the log_entry RPC, which all end up with sort_order 0.
 export function reorderLabels(labels, index, dir) {
   const j = index + dir;
   if (j < 0 || j >= labels.length) return [];
@@ -507,7 +507,7 @@ export function reorderLabels(labels, index, dir) {
 }
 
 export function todayISO() {
-  return new Date().toLocaleDateString('sv-SE'); // yyyy-mm-dd en hora local
+  return new Date().toLocaleDateString('sv-SE'); // yyyy-mm-dd in local time
 }
 
 export function addDaysISO(iso, delta) {
@@ -516,10 +516,11 @@ export function addDaysISO(iso, delta) {
   return d.toLocaleDateString('sv-SE');
 }
 
-// Ventana para la "moda de gramos" de Recientes en Hoy: si hay fase de objetivos
-// vigente y lleva ≥7 días corridos, se limita a la fase (refleja el patrón actual
-// de porciones); antes de esa semana no hay muestra suficiente → ventana de 40 días.
-// phaseVfs = valid_from distintos de filas dow; today = ISO yyyy-mm-dd.
+// Window for the "mode of grams" of Recents in Today: if there is a target phase
+// in force and it has run for ≥7 consecutive days, the window is limited to the phase
+// (reflects the current portion pattern); before that week there is not enough
+// sample → 40-day window.
+// phaseVfs = distinct valid_from values of dow rows; today = ISO yyyy-mm-dd.
 export function recentWindowStart(phaseVfs, today) {
   const vigente = [...phaseVfs].filter((vf) => vf <= today).sort().pop() || null;
   if (vigente && addDaysISO(vigente, 7) <= today) return vigente;
@@ -527,11 +528,11 @@ export function recentWindowStart(phaseVfs, today) {
 }
 
 export function weekdayOf(iso) {
-  return new Date(`${iso}T00:00:00`).getDay(); // 0=domingo, coincide con dow
+  return new Date(`${iso}T00:00:00`).getDay(); // 0=Sunday, matches dow
 }
 
-// Resolución de objetivo para una fecha (§4.4): override por day si existe;
-// si no, la fila dow=weekday(F) con mayor valid_from <= F.
+// Target resolution for a date (§4.4): the per-day override if it exists;
+// otherwise, the dow=weekday(F) row with the highest valid_from <= F.
 export function resolveTarget(targets, dateISO) {
   const exact = targets.find((t) => t.day === dateISO);
   if (exact) return exact;
@@ -541,9 +542,9 @@ export function resolveTarget(targets, dateISO) {
   return candidates.reduce((best, t) => (t.valid_from > best.valid_from ? t : best));
 }
 
-// —— Construcción de filas de fase (targets) ——————————————————————————
-// Movidos desde Targets.jsx para reutilizarlos en el asistente de metas
-// (TargetsWizard). Comportamiento idéntico: null-safe, micros ordenados.
+// —— Phase row construction (targets) ————————————————————————————————
+// Moved out of Targets.jsx for reuse in the goals wizard
+// (TargetsWizard). Identical behavior: null-safe, sorted micros.
 export const numOrNull = (v) => (v === '' || v == null ? null : Number(v));
 
 export function cleanMicros(m) {
@@ -556,7 +557,7 @@ export function cleanMicros(m) {
   return out;
 }
 
-// Expande los grupos del draft a las 7 filas dow (siempre 7). groups:
+// Expands the draft groups into the 7 dow rows (always 7). groups:
 // [{ dows:[0-6], values:{ kcal, protein_g, carbs_g, fat_g, micros } }].
 export function draftToRows(groups, { validFrom, label, description, goal, owner }) {
   const byDow = {};
@@ -585,18 +586,18 @@ export function draftToRows(groups, { validFrom, label, description, goal, owner
   return rows;
 }
 
-// —— Semántica de adherencia nutricional ——————————————————————————————
-// El rango de gracia NO es simétrico ni igual para todo nutriente. Cada uno cae
-// en un arquetipo (nutrientKind) que decide color y "cumplido":
-//   diana  — objetivo con banda de gracia; el régimen la sesga (déficit castiga el
-//            exceso, volumen el defecto). Solo kcal.
-//   piso   — mínimo a alcanzar; el exceso es inocuo, el defecto = danger. Proteína.
-//   rango  — banda simétrica a ambos lados del objetivo. Carbs y grasa (reparto,
-//            no diana calórica): más laxa que kcal.
-//   techo  — máximo a no rebasar; el defecto es inocuo, el exceso = danger. Grasa
-//            saturada/trans, azúcar añadido, alcohol, colesterol.
-//   sodio  — dual: piso médico fijo (SODIUM_FLOOR_MG) + techo (SODIUM_CEILING_MG).
-//   meta   — default (resto de micros): llegar al RDA; warn si <, exceso inocuo.
+// —— Nutritional adherence semantics —————————————————————————————————
+// The grace range is NOT symmetric nor identical for every nutrient. Each one falls
+// into an archetype (nutrientKind) that decides its color and "met" status:
+//   diana  — target with a grace band; the regimen skews it ('deficit' penalizes
+//            the excess, 'volumen' the shortfall). Only kcal.
+//   piso   — minimum to reach; excess is harmless, shortfall = danger. Protein.
+//   rango  — symmetric band on both sides of the target. Carbs and fat (a split,
+//            not a caloric target): laxer than kcal.
+//   techo  — maximum not to exceed; shortfall is harmless, excess = danger. Saturated/
+//            trans fat, added sugar, alcohol, cholesterol.
+//   sodio  — dual: fixed medical floor (SODIUM_FLOOR_MG) + ceiling (SODIUM_CEILING_MG).
+//   meta   — default (rest of the micros): reach the RDA; warn if <, excess harmless.
 export const NUTRIENT_KIND = {
   kcal: 'diana',
   protein_g: 'piso',
@@ -613,14 +614,14 @@ export function nutrientKind(key) {
   return NUTRIENT_KIND[key] || 'meta';
 }
 
-// Anchos de banda de gracia, como fracción del objetivo. Valores por defecto
-// (clínicos); pensados para que un futuro menú de usuario los sobrescriba — por
-// eso viven como constante nombrada y no como números incrustados en cada
-// clasificador. Cambiar aquí recolorea toda la app (color se calcula al vuelo).
+// Grace band widths, as a fraction of the target. Default (clinical)
+// values; designed so a future user menu can override them — that is
+// why they live as a named constant and not as numbers embedded in each
+// classifier. Changing them here recolors the whole app (color is computed on the fly).
 export const ADHERENCE_BANDS = {
-  // diana (kcal): tolerancias firmadas [defecto, exceso] por régimen. Sin régimen
-  // conserva la banda estricta histórica (±5 ok / ±15 warn) para no cambiar el
-  // significado establecido cuando la fase no declara meta.
+  // diana (kcal): signed tolerances [shortfall, excess] per regimen. Without a regimen
+  // it keeps the historical strict band (±5 ok / ±15 warn) so as not to change the
+  // established meaning when the phase declares no goal.
   diana: {
     default: { okUnder: 0.05, okOver: 0.05, warnUnder: 0.15, warnOver: 0.15 },
     mantenimiento: { okUnder: 0.10, okOver: 0.10, warnUnder: 0.20, warnOver: 0.20 },
@@ -628,17 +629,17 @@ export const ADHERENCE_BANDS = {
     deficit: { okUnder: 0.15, okOver: 0.08, warnUnder: 0.25, warnOver: 0.18 },
     volumen: { okUnder: 0.08, okOver: 0.15, warnUnder: 0.18, warnOver: 0.25 },
   },
-  // rango (carbs, grasa): banda simétrica alrededor del objetivo.
+  // rango (carbs, fat): symmetric band around the target.
   rango: { ok: 0.15, warn: 0.30 },
-  // techo: holgura por encima del límite antes de warn / danger.
+  // techo: slack above the limit before warn / danger.
   techo: { warn: 0.10 },
 };
 
-// Bandas activas: los DEFAULT de arriba, o los del usuario si tiene override
-// (menú Configuración → prefs.data.adherence_bands). Estado de módulo puro (sin
-// React ni supabase, para no contaminar domain.js): la capa de UI persiste y
-// notifica. Los clasificadores leen SIEMPRE `activeBands`, así editar en
-// Configuración recolorea Hoy y Dashboard sin tocar cada llamada.
+// Active bands: the DEFAULTs above, or the user's if they have an override
+// (Settings menu → prefs.data.adherence_bands). Pure module-level state (no
+// React or supabase, so as not to pollute domain.js): the UI layer persists and
+// notifies. Classifiers ALWAYS read `activeBands`, so editing in
+// Settings recolors Today and Dashboard without touching each call site.
 let activeBands = ADHERENCE_BANDS;
 const bandSubs = new Set();
 
@@ -653,7 +654,7 @@ function mergeDeep(base, ov) {
   return out;
 }
 
-// Aplica overrides parciales sobre los DEFAULT (null/vacío = vuelve a default).
+// Applies partial overrides on top of the DEFAULTs (null/empty = back to default).
 export function setActiveBands(overrides) {
   activeBands = overrides && Object.keys(overrides).length ? mergeDeep(ADHERENCE_BANDS, overrides) : ADHERENCE_BANDS;
   bandSubs.forEach((fn) => fn());
@@ -666,28 +667,28 @@ export function subscribeBands(fn) {
   return () => bandSubs.delete(fn);
 }
 
-// diana: objetivo con banda de gracia asimétrica según el régimen de la fase.
+// diana: target with an asymmetric grace band according to the phase regimen.
 export function classifyDiana(consumed, target, goal) {
   if (!target) return null;
   const b = activeBands.diana[goal] || activeBands.diana.default;
-  const diff = (consumed - target) / target; // firmado: + = exceso, − = defecto
+  const diff = (consumed - target) / target; // signed: + = excess, − = shortfall
   if (diff >= -b.okUnder && diff <= b.okOver) return 'ok';
   if (diff >= -b.warnUnder && diff <= b.warnOver) return 'warn';
   return 'danger';
 }
 
-// Compat: kcal sin régimen conocido = banda estricta histórica (diana default).
+// Compat: kcal without a known regimen = historical strict band (diana default).
 export function classifyKcal(consumed, target) {
   return classifyDiana(consumed, target, null);
 }
 
-// piso: mínimo a alcanzar (proteína). Exceso inocuo, defecto = danger.
+// piso: minimum to reach (protein). Excess harmless, shortfall = danger.
 export function classifyFloor(consumed, target) {
   if (!target) return null;
   return consumed >= target ? 'ok' : 'danger';
 }
 
-// rango: banda simétrica a ambos lados del objetivo (carbs, grasa).
+// rango: symmetric band on both sides of the target (carbs, fat).
 export function classifyBand(consumed, target) {
   if (!target) return null;
   const diff = Math.abs(consumed - target) / target;
@@ -696,8 +697,8 @@ export function classifyBand(consumed, target) {
   return 'danger';
 }
 
-// techo: el objetivo es un máximo a no rebasar (grasa sat., trans, azúcar añadido,
-// alcohol, colesterol; y el techo de sodio). Bajo el techo = ok; el exceso pesa.
+// techo: the target is a maximum not to exceed (saturated fat, trans fat, added sugar,
+// alcohol, cholesterol; and the sodium ceiling). Below the ceiling = ok; excess counts.
 export function classifyCeiling(consumed, ceiling) {
   if (!ceiling) return null;
   if (consumed <= ceiling) return 'ok';
@@ -706,7 +707,7 @@ export function classifyCeiling(consumed, ceiling) {
 }
 
 export const SODIUM_FLOOR_MG = 1500;
-export const SODIUM_CEILING_MG = 2300; // UL / valor diario de referencia (FDA).
+export const SODIUM_CEILING_MG = 2300; // UL / daily reference value (FDA).
 
 export function sodiumIsLow(sodiumMg, hasEntries) {
   return hasEntries && sodiumMg < SODIUM_FLOOR_MG;
@@ -716,18 +717,18 @@ export function sodiumIsHigh(sodiumMg, hasEntries) {
   return hasEntries && sodiumMg > SODIUM_CEILING_MG;
 }
 
-// Semáforo dual de sodio: danger fuera del rango [piso, techo], ok dentro.
+// Dual sodium traffic light: danger outside the [floor, ceiling] range, ok inside.
 export function classifySodium(sodiumMg, hasEntries) {
   if (!hasEntries) return null;
   return sodiumMg < SODIUM_FLOOR_MG || sodiumMg > SODIUM_CEILING_MG ? 'danger' : 'ok';
 }
 
-// "Alto en" por registro (criterio FDA: ≥20% del valor diario de referencia).
+// "High in" per entry (FDA criterion: ≥20% of the daily reference value).
 export const SODIUM_HIGH_MG = 460;
 export const POTASSIUM_HIGH_MG = 940;
 
-// Alimento-centinela de agua (ver Today.jsx): kcal 0 y micros = solo {agua_ml}. Se
-// oculta del CRUD de Alimentos, se gestiona solo desde la tarjeta de agua en Hoy.
+// Water sentinel food (see Today.jsx): kcal 0 and micros = only {agua_ml}. It is
+// hidden from the Foods CRUD and managed only from the water card in Today.
 export function isWaterSentinel(f) {
   const keys = Object.keys(f.micros || {});
   return f.kcal === 0 && keys.length === 1 && keys[0] === 'agua_ml';
@@ -738,33 +739,33 @@ export function round(n, decimals) {
   return Math.round(n * f) / f;
 }
 
-// Mínimos de días registrados para habilitar cada cálculo avanzado del
-// Dashboard (constantes nombradas, no números mágicos en el JSX).
+// Minimum numbers of logged days required to enable each advanced Dashboard
+// calculation (named constants, no magic numbers in the JSX).
 export const MIN_DIAS_MEDIANA = 3;
 export const MIN_DIAS_STDDEV = 2;
 export const MIN_DIAS_TENDENCIA = 3;
 export const MIN_DIAS_BAYES = 3;
 
-// Un día registrado cuenta como "sin dato" (0 estructural) para un micro si
-// más de esta fracción de los días usados trae exactamente 0 — el 0 casi
-// siempre significa "el alimento no traía ese dato", no "consumo cero".
+// A logged day counts as "no data" (structural 0) for a micro if more
+// than this fraction of the days used carries exactly 0 — the 0 almost
+// always means "the food lacked that datum", not "zero intake".
 export const STRUCTURAL_ZERO_FRACTION = 0.5;
 
-// Tolerancia de éxito de kcal para adherencia bayesiana (más laxa que el
-// semáforo classifyKcal ±5%, que es intencionalmente estricto para la UI).
+// Kcal success tolerance for Bayesian adherence (laxer than the classifyKcal
+// ±5% traffic light, which is intentionally strict for the UI).
 export const BAYES_KCAL_TOL = 0.10;
 
-// Completitud de día inferida (§ prompt): umbral robusto personal.
-export const KCAL_HARD_FLOOR = 500; // NHANES: <500 kcal = parcial siempre
-export const COMPLETE_RATIO = 0.6; // fracción de la mediana (o del objetivo)
-export const HIST_MIN_DAYS = 7; // mínimo de historial para usar la mediana
-export const MIN_MEALS_SIGNAL = 3; // señal de comidas solo si lo típico es ≥3
+// Inferred day completeness (§ prompt): personal robust threshold.
+export const KCAL_HARD_FLOOR = 500; // NHANES: <500 kcal = always partial
+export const COMPLETE_RATIO = 0.6; // fraction of the median (or of the target)
+export const HIST_MIN_DAYS = 7; // minimum history to use the median
+export const MIN_MEALS_SIGNAL = 3; // meals signal only if the typical count is ≥3
 
-// Tri-estado de completitud de un día: 'completo' | 'parcial' | 'sin_registro'
-// | 'sin_evaluar'. Pura, nada se persiste — recalibra retroactivamente gratis.
-// historyKcals: kcal de daily_totals de los últimos 90 días (puede incluir 0s).
-// mealsCount: etiquetas distintas ese día. typicalMeals: mediana de etiquetas
-// distintas/día entre los días registrados del rango.
+// Tri-state completeness of a day: 'completo' | 'parcial' | 'sin_registro'
+// | 'sin_evaluar'. Pure, nothing is persisted — it recalibrates retroactively for free.
+// historyKcals: kcal from daily_totals for the last 90 days (may include 0s).
+// mealsCount: distinct labels that day. typicalMeals: median of distinct
+// labels/day among the logged days of the range.
 export function dayCompleteness({ kcal, targetKcal, historyKcals, mealsCount, typicalMeals }) {
   if (kcal <= 0) return 'sin_registro';
   if (kcal < KCAL_HARD_FLOOR) return 'parcial';
@@ -781,8 +782,8 @@ export function dayCompleteness({ kcal, targetKcal, historyKcals, mealsCount, ty
   return 'sin_evaluar';
 }
 
-// Meta (régimen) de una fase. Las claves son el CHECK de `targets.goal`
-// (migración 010); una fase sin meta marcada tiene goal = null.
+// Goal (regimen) of a phase. The keys are the CHECK of `targets.goal`
+// (migration 010); a phase without a marked goal has goal = null.
 export const PHASE_GOALS = [
   { key: 'deficit', label: 'Déficit' },
   { key: 'volumen', label: 'Volumen' },
@@ -792,10 +793,10 @@ export const PHASE_GOALS = [
 
 export const goalLabel = (goal) => PHASE_GOALS.find((g) => g.key === goal)?.label || null;
 
-// Fases de objetivo como intervalos cerrados: [{ vf, end, label, goal }] en
-// orden cronológico. `end` = día antes del siguiente valid_from, o null en la
-// última (abierta). label/goal se escriben iguales en las 7 filas dow de la
-// fase, así que basta la primera fila que los traiga.
+// Target phases as closed intervals: [{ vf, end, label, goal }] in
+// chronological order. `end` = the day before the next valid_from, or null in the
+// last one (open-ended). label/goal are written identically in the 7 dow rows of
+// the phase, so the first row carrying them suffices.
 export function phaseList(targets) {
   const rows = targets.filter((t) => t.dow != null);
   const vfs = [...new Set(rows.map((t) => t.valid_from))].sort();
@@ -807,13 +808,13 @@ export function phaseList(targets) {
   }));
 }
 
-// Segmenta `dates` en fases de objetivo por generación de valid_from de las
-// filas dow de `targets` (§Fix 5) — NO por cambio del valor diario del
-// objetivo: un ciclo semanal de carb cycling comparte un único valid_from y
-// por lo tanto es UNA fase aunque el valor diario varíe por día de semana.
-// Las filas day=F puntuales (overrides) se ignoran para esta segmentación.
-// Devuelve [{ vf, days }] en orden cronológico; vf es null para el tramo
-// (si existe) anterior a la primera fila dow aplicable.
+// Segments `dates` into target phases by valid_from generation of the dow
+// rows of `targets` (§Fix 5) — NOT by change of the daily target value:
+// a weekly carb-cycling cycle shares a single valid_from and is
+// therefore ONE phase even though the daily value varies by weekday.
+// One-off day=F rows (overrides) are ignored for this segmentation.
+// Returns [{ vf, days }] in chronological order; vf is null for the stretch
+// (if any) preceding the first applicable dow row.
 export function targetPhases(targets, dates) {
   const vfs = [...new Set(targets.filter((t) => t.dow != null).map((t) => t.valid_from))].sort();
   const activeVF = (day) => {
@@ -852,7 +853,7 @@ export function median(xs) {
   return quantile(xs, 0.5);
 }
 
-// Desviación estándar muestral (n−1). Requiere ≥2 puntos.
+// Sample standard deviation (n−1). Requires ≥2 points.
 export function stddev(xs) {
   if (xs.length < 2) return null;
   const mean = sum(xs) / xs.length;
@@ -860,7 +861,7 @@ export function stddev(xs) {
   return Math.sqrt(variance);
 }
 
-// Coeficiente de variación (%). null si <2 puntos o media 0.
+// Coefficient of variation (%). null if <2 points or mean 0.
 export function cv(xs) {
   if (xs.length < 2) return null;
   const mean = sum(xs) / xs.length;
@@ -868,9 +869,9 @@ export function cv(xs) {
   return (stddev(xs) / mean) * 100;
 }
 
-// Pendiente de regresión lineal simple (mínimos cuadrados) sobre pares
-// {x, y} con x = offset de día calendario (no índice consecutivo de registro):
-// con huecos (lun, mar, sáb) el sábado es x=2, no x=2 tras compactar huecos.
+// Simple linear regression slope (least squares) over {x, y} pairs
+// with x = calendar-day offset (not the consecutive log index):
+// with gaps (Mon, Tue, Sat) Saturday is x=2, not x=2 after compacting gaps.
 export function olsSlope(points) {
   const n = points.length;
   if (n < 2) return null;
@@ -884,7 +885,7 @@ export function olsSlope(points) {
   return den === 0 ? 0 : num / den;
 }
 
-// Aproximación de Lanczos para ln(Gamma(x)) — usada por la beta incompleta.
+// Lanczos approximation of ln(Gamma(x)) — used by the incomplete beta.
 function logGamma(x) {
   const g = 7;
   const c = [
@@ -900,7 +901,7 @@ function logGamma(x) {
   return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
 }
 
-// Fracción continua de la beta incompleta (Numerical Recipes).
+// Continued fraction of the incomplete beta (Numerical Recipes).
 function betacf(x, a, b) {
   const MAXIT = 200, EPS = 3e-7, FPMIN = 1e-30;
   const qab = a + b, qap = a + 1, qam = a - 1;
@@ -931,7 +932,7 @@ function betacf(x, a, b) {
   return h;
 }
 
-// Función beta incompleta regularizada I_x(a,b), determinista, sin dependencias.
+// Regularized incomplete beta function I_x(a,b), deterministic, dependency-free.
 function regularizedIncompleteBeta(x, a, b) {
   if (x <= 0) return 0;
   if (x >= 1) return 1;
@@ -942,7 +943,7 @@ function regularizedIncompleteBeta(x, a, b) {
   return 1 - (bt * betacf(1 - x, b, a)) / b;
 }
 
-// Inversa de I_x(a,b) por bisección: el cuantil p de una Beta(a,b).
+// Inverse of I_x(a,b) by bisection: the p quantile of a Beta(a,b).
 function betaQuantile(p, a, b) {
   let lo = 0, hi = 1;
   for (let i = 0; i < 100; i++) {
@@ -953,8 +954,8 @@ function betaQuantile(p, a, b) {
   return (lo + hi) / 2;
 }
 
-// Adherencia bayesiana: prior Beta(1,1), posterior Beta(1+s, 1+n−s).
-// Media posterior cerrada + intervalo de credibilidad 95% (P2.5–P97.5).
+// Bayesian adherence: Beta(1,1) prior, Beta(1+s, 1+n−s) posterior.
+// Closed-form posterior mean + 95% credible interval (P2.5–P97.5).
 export function bayesAdherence(successes, n) {
   const a = 1 + successes;
   const b = 1 + n - successes;
@@ -965,9 +966,9 @@ export function bayesAdherence(successes, n) {
   };
 }
 
-// Dígito verificador GS1 (EAN-8/12/13/14): desde la derecha, peso 1,3,1,3…
-// (el propio dígito de control pesa 1). Suma total debe ser múltiplo de 10.
-// Longitudes fuera de este set (permitidas por extractEan en Foods.jsx) pasan sin chequeo.
+// GS1 check digit (EAN-8/12/13/14): from the right, weights 1,3,1,3…
+// (the check digit itself weighs 1). The total sum must be a multiple of 10.
+// Lengths outside this set (allowed by extractEan in Foods.jsx) pass without checking.
 const EAN_CHECKSUM_LENGTHS = [8, 12, 13, 14];
 
 export function eanChecksumValid(digits) {
@@ -977,7 +978,7 @@ export function eanChecksumValid(digits) {
   return sum % 10 === 0;
 }
 
-// Replica en cliente la vista SQL nutri.recipe_per_100g (§4.3).
+// Client-side replica of the SQL view nutri.recipe_per_100g (§4.3).
 export function computeRecipePer100g(ingredients, cookedWeightG) {
   const totalGrams = ingredients.reduce((sum, i) => sum + Number(i.grams || 0), 0);
   const weight = Number(cookedWeightG) > 0 ? Number(cookedWeightG) : totalGrams;
@@ -1006,8 +1007,8 @@ export function computeRecipePer100g(ingredients, cookedWeightG) {
   };
 }
 
-// Fusiona resultados de búsqueda ilike (primary) con los de match_foods (semantic):
-// primary conserva su orden y va primero, semantic solo aporta ids nuevos, recortado a max.
+// Merges ilike search results (primary) with those from match_foods (semantic):
+// primary keeps its order and goes first, semantic only contributes new ids, trimmed to max.
 export function mergeFoodResults(primary, semantic, max = 8) {
   const seen = new Set((primary || []).map((f) => f.id));
   const extra = (semantic || []).filter((f) => !seen.has(f.id));

@@ -9,24 +9,24 @@ import { t, useLang, getLang, locale } from '../lib/i18n.js';
 import Sheet from './Sheet.jsx';
 import ConfirmSheet from './ConfirmSheet.jsx';
 
-// Asistente por pasos para configurar una fase de metas (7 filas dow) + fechas
-// especiales (overrides). Reúsa draftToRows/domain.js: produce EXACTAMENTE las
-// mismas filas que el editor de Metas. No configura márgenes de adherencia
-// (esos se derivan del `goal` en classifyDiana) — solo los explica.
+// Step-by-step wizard to configure a targets phase (7 dow rows) + special
+// dates (overrides). Reuses draftToRows/domain.js: it produces EXACTLY the
+// same rows as the Targets editor. It does not configure adherence margins
+// (those are derived from `goal` in classifyDiana) — it only explains them.
 
 const STEP_COUNT = 8; // 0..7
 
-// dow 0=domingo (contrato de columna). Orden visual Lun→Dom.
+// dow 0=Sunday (column contract). Visual order Mon→Sun.
 const VISUAL_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const DOW_SHORT_ES = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 const DOW_SHORT_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const dowShort = (d) => (getLang() === 'en' ? DOW_SHORT_EN : DOW_SHORT_ES)[d];
 
-// Colores de los 3 tipos de día: tokens de datos existentes (theme-aware), solo
-// como diferenciador visual dentro del asistente (no se persisten).
+// Colors for the 3 day types: existing data tokens (theme-aware), used only
+// as a visual differentiator within the wizard (they are not persisted).
 const GROUP_COLORS = ['var(--d-prot)', 'var(--d-carb)', 'var(--d-fat)'];
 
-// Agua/electrolitos prefijados por régimen (editables). Referencias, no dogma.
+// Water/electrolytes prefilled per regime (editable). Reference values, not dogma.
 const ELECTRO_DEFAULTS = {
   deficit: { agua_ml: 3500, potasio_mg: 3200, magnesio_mg: 350 },
   volumen: { agua_ml: 3200, potasio_mg: 3000, magnesio_mg: 350 },
@@ -34,7 +34,7 @@ const ELECTRO_DEFAULTS = {
 };
 const electroFor = (goal) => ELECTRO_DEFAULTS[goal] || ELECTRO_DEFAULTS._;
 
-// Matiz del régimen sobre los márgenes (los ajusta classifyDiana automáticamente).
+// Regime nuance on the margins (classifyDiana adjusts them automatically).
 const goalNuance = (goal) =>
   goal === 'deficit'
     ? t('En déficit tolera menos el exceso de calorías.')
@@ -55,31 +55,31 @@ export default function TargetsWizard({ onClose }) {
   const [error, setError] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // Fases y overrides existentes (para el resumen del paso 0 y detectar sobrescritura).
+  // Existing phases and overrides (for the step 0 summary and to detect overwrites).
   const [existing, setExisting] = useState({ phases: [], vfs: new Set(), days: new Set() });
 
-  // Paso 1
+  // Step 1
   const [goal, setGoal] = useState('');
   const [label, setLabel] = useState('');
   const [validFrom, setValidFrom] = useState(todayISO());
   const [description, setDescription] = useState('');
 
-  // Paso 2: cada dow → índice de grupo 0..2 (todos arrancan en 0).
+  // Step 2: each dow → group index 0..2 (all start at 0).
   const [dayGroup, setDayGroup] = useState(() => ({ 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }));
   const [groupNames, setGroupNames] = useState(() => [t('Entreno'), t('Entreno largo'), t('Descanso')]);
 
-  // Paso 3
+  // Step 3
   const [groupValues, setGroupValues] = useState(() => ({
     0: { kcal: '', protein_g: '', carbs_g: '', fat_g: '' },
     1: { kcal: '', protein_g: '', carbs_g: '', fat_g: '' },
     2: { kcal: '', protein_g: '', carbs_g: '', fat_g: '' },
   }));
 
-  // Paso 4 y 5 (micros aplicados a TODOS los tipos de día)
+  // Steps 4 and 5 (micros applied to ALL day types)
   const [electro, setElectro] = useState(() => ({ ...electroFor('') }));
   const [ceilings, setCeilings] = useState({ grasa_sat_g: '', azucar_anadido_g: '', alcohol_g: '' });
 
-  // Paso 6: overrides
+  // Step 6: overrides
   const [overrides, setOverrides] = useState([]); // { day, label, kcal, protein_g, carbs_g, fat_g }
 
   // Carga inicial de fases/overrides existentes.
@@ -100,7 +100,7 @@ export default function TargetsWizard({ onClose }) {
     return () => { alive = false; };
   }, []);
 
-  // Prefijar agua/electrolitos al elegir régimen (sobrescribe: el régimen manda el default).
+  // Prefill water/electrolytes when a regime is chosen (overwrites: the regime sets the default).
   useEffect(() => { setElectro({ ...electroFor(goal) }); }, [goal]);
 
   const daysInGroup = (gi) => VISUAL_ORDER.filter((d) => dayGroup[d] === gi);
@@ -115,8 +115,8 @@ export default function TargetsWizard({ onClose }) {
     [existing.vfs, today]
   );
 
-  // Filas finales (memo para reusarlas en el resumen y el guardado).
-  const microsRaw = { ...electro, ...ceilings }; // strings; cleanMicros descarta vacíos y numera
+  // Final rows (memoized to reuse them in the summary and on save).
+  const microsRaw = { ...electro, ...ceilings }; // strings; cleanMicros drops empties and coerces to numbers
   const groups = activeGroupIdxs.map((gi) => ({
     dows: daysInGroup(gi),
     values: { ...groupValues[gi], micros: microsRaw },
@@ -137,7 +137,7 @@ export default function TargetsWizard({ onClose }) {
   const phaseConflict = existing.vfs.has(validFrom);
   const needsConfirm = phaseConflict || overrideConflicts.length > 0;
 
-  // Validación mínima para avanzar.
+  // Minimal validation to advance.
   const canNext = () => {
     if (step === 1) return !!validFrom;
     if (step === 3) return activeGroupIdxs.every((gi) => Number(groupValues[gi].kcal) > 0);
@@ -187,7 +187,7 @@ export default function TargetsWizard({ onClose }) {
 
   const onSaveClick = () => (needsConfirm ? setConfirmOpen(true) : doSave());
 
-  // ---- Footer por paso ----
+  // ---- Per-step footer ----
   const footer = saved ? (
     <button onClick={onClose} className="w-full min-h-[46px] rounded-xl bg-accent-deep text-on-accent font-medium press">
       {t('Cerrar')}
@@ -300,7 +300,7 @@ function StepDots({ step }) {
   );
 }
 
-// ===== Paso 0: intro + fases existentes =====
+// ===== Step 0: intro + existing phases =====
 function StepIntro({ phases, vigenteVf }) {
   return (
     <div className="flex flex-col gap-3">
@@ -332,7 +332,7 @@ function StepIntro({ phases, vigenteVf }) {
   );
 }
 
-// ===== Paso 1: régimen y fechas =====
+// ===== Step 1: regime and dates =====
 function StepRegime({ goal, setGoal, label, setLabel, validFrom, setValidFrom, description, setDescription }) {
   const chips = [{ key: '', label: 'Sin régimen' }, ...PHASE_GOALS];
   return (
@@ -371,7 +371,7 @@ function StepRegime({ goal, setGoal, label, setLabel, validFrom, setValidFrom, d
   );
 }
 
-// ===== Paso 2: patrón semanal =====
+// ===== Step 2: weekly pattern =====
 function StepPattern({ dayGroup, setDayGroup, groupNames, setGroupNames, activeGroupIdxs }) {
   const cycle = (d) => setDayGroup((dg) => ({ ...dg, [d]: (dg[d] + 1) % 3 }));
   return (
@@ -419,7 +419,7 @@ function StepPattern({ dayGroup, setDayGroup, groupNames, setGroupNames, activeG
   );
 }
 
-// ===== Paso 3: kcal y macros por tipo de día =====
+// ===== Step 3: kcal and macros per day type =====
 function StepMacros({ activeGroupIdxs, daysInGroup, groupNames, groupValues, setGV }) {
   return (
     <div className="flex flex-col gap-3">
@@ -447,7 +447,7 @@ function StepMacros({ activeGroupIdxs, daysInGroup, groupNames, groupValues, set
   );
 }
 
-// ===== Paso 4: agua y electrolitos =====
+// ===== Step 4: water and electrolytes =====
 function StepWater({ electro, setElectro }) {
   const set = (k, v) => setElectro((e) => ({ ...e, [k]: v }));
   return (
@@ -469,7 +469,7 @@ function StepWater({ electro, setElectro }) {
   );
 }
 
-// ===== Paso 5: techos opcionales =====
+// ===== Step 5: optional ceilings =====
 function StepCeilings({ ceilings, setCeilings }) {
   const set = (k, v) => setCeilings((c) => ({ ...c, [k]: v }));
   return (
@@ -492,7 +492,7 @@ function StepCeilings({ ceilings, setCeilings }) {
   );
 }
 
-// ===== Paso 6: fechas especiales =====
+// ===== Step 6: special dates =====
 function StepSpecialDates({ overrides, setOverrides }) {
   const today = todayISO();
   const add = () => setOverrides((o) => [...o, { day: today, label: '', kcal: '', protein_g: '', carbs_g: '', fat_g: '' }]);
@@ -525,7 +525,7 @@ function StepSpecialDates({ overrides, setOverrides }) {
   );
 }
 
-// ===== Paso 7: resumen =====
+// ===== Step 7: summary =====
 function StepSummary({ label, goal, validFrom, description, activeGroupIdxs, daysInGroup, groupNames, groupValues, electro, ceilings, overridePayloads, phaseConflict }) {
   return (
     <div className="flex flex-col gap-3">

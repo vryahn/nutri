@@ -4,8 +4,8 @@ import Sheet from './Sheet.jsx';
 
 const LANGS = [{ key: 'es', flag: '🇲🇽', label: 'Español' }, { key: 'en', flag: '🇺🇸', label: 'English' }];
 
-// Idioma y unidades. Aplican al instante (setLang/setUnits ya persisten en
-// prefs y notifican a toda la app) — no hace falta botón Guardar.
+// Language and units. They take effect instantly (setLang/setUnits already
+// persist to prefs and notify the entire app) — no Save button is needed.
 export default function RegionSheet({ onClose }) {
   const lang = useLang();
   const units = useUnits();

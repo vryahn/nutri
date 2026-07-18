@@ -1,34 +1,35 @@
-# evals — golden set de la extracción con IA
+# evals — golden set for the AI extraction
 
-Regresiones puntuadas de la ruta `estimateFoodFromParts` (`src/lib/ai.js`, cascada
-Gemini→Mistral que transcribe etiquetas o estima valores por 100 g). Sirve para saber si un
-cambio de prompt/modelo/schema/normalización **empeora** la extracción antes de pushear.
+Scored regression tests for the `estimateFoodFromParts` path (`src/lib/ai.js`, the
+Gemini→Mistral cascade that transcribes labels or estimates values per 100 g). Their purpose is
+to know whether a prompt/model/schema/normalization change **degrades** the extraction before
+pushing.
 
-## Correr
+## Running
 
 ```sh
-npm run eval                      # corre los casos, puntúa, compara vs baseline.json
-UPDATE_BASELINE=1 npm run eval    # además reescribe baseline.json desde esta corrida
+npm run eval                      # runs the cases, scores them, compares vs baseline.json
+UPDATE_BASELINE=1 npm run eval    # also rewrites baseline.json from this run
 ```
 
-Necesita `VITE_GEMINI_KEY` (o `VITE_MISTRAL_KEY`) en `.env`. Sin ninguna key: skip limpio, no
-falla.
+Requires `VITE_GEMINI_KEY` (or `VITE_MISTRAL_KEY`) in `.env`. With no key at all: clean skip, no
+failure.
 
-**Presupuesto de cuota (crítico):** el free tier de Gemini es **20 requests/día/modelo**. Cada
-corrida = 1 request por caso (hoy 7 → 7/20). No corras el eval en loop: es una herramienta
-**deliberada de antes/después** de un cambio de prompt, no un check continuo. ~2 corridas/día caben
-en el presupuesto. Si lo agotas, el 429 no recupera hasta el reset diario (medianoche Pacific). **Nunca corre en CI** (cuesta cuota y no es determinista): config aparte
-(`vitest.eval.config.js`), fuera del include de `npm test`. El scoring sí se testea en CI vía
-`score.test.js` (sin red).
+**Quota budget (critical):** the Gemini free tier is **20 requests/day/model**. Each
+run = 1 request per case (currently 7 → 7/20). Do not run the eval in a loop: it is a
+**deliberate before/after tool** for a prompt change, not a continuous check. ~2 runs/day fit
+within the budget. If you exhaust it, the 429 does not recover until the daily reset (midnight Pacific). **It never runs in CI** (it costs quota and is not deterministic): separate config
+(`vitest.eval.config.js`), outside the include of `npm test`. The scoring itself is tested in CI via
+`score.test.js` (no network).
 
-Salida: tabla por caso (id, modelo que respondió, `passed/total`, campos fallados con esperado
-vs got), `evals/last-run.json` (gitignoreado) y comparación vs `baseline.json`. Cualquier
-**regresión** hace fallar el suite: par caso/campo que pasaba y ahora falla, caso READY del
-baseline ausente en la corrida (los skipped por foto local ausente NO cuentan), o conteo de
-extras (alucinaciones) que crece más allá de `1.5× + 3` vs el baseline — la identidad de los
-micros inventados varía entre corridas, el conteo es la señal estable.
+Output: a table per case (id, model that answered, `passed/total`, failed fields with expected
+vs got), `evals/last-run.json` (gitignored), and a comparison against `baseline.json`. Any
+**regression** fails the suite: a case/field pair that passed and now fails, a READY case from the
+baseline absent from the run (cases skipped due to a missing local photo do NOT count), or an
+extras (hallucinations) count growing beyond `1.5× + 3` vs the baseline — the identity of the
+invented micros varies between runs; the count is the stable signal.
 
-## Formato de caso — `cases/<id>/case.json`
+## Case format — `cases/<id>/case.json`
 
 ```json
 {
@@ -48,76 +49,77 @@ micros inventados varía entre corridas, el conteo es la señal estable.
 }
 ```
 
-- **REQUERIDOS** (`kcal, protein_g, carbs_g, fat_g` + micros `sodio_mg, potasio_mg,
-  magnesio_mg`): deben venir numéricos siempre, y dentro de tolerancia si `values` trae valor.
-- Resto de campos en `values` (incl. micros): dentro de tolerancia.
-- **Tolerancias default por modo:** `etiqueta` → `max(2 %, 0.5 u)` (kcal `max(2 %, 2)`) —
-  transcribir no es estimar; `estimacion` → ±30 % macros, ±40 % micros, con piso absoluto de
-  0.5 u (un esperado 0 no exige exactamente 0). Override por campo en `tolerances`
+- **REQUIRED fields** (`kcal, protein_g, carbs_g, fat_g` + micros `sodio_mg, potasio_mg,
+  magnesio_mg`): must always come back numeric, and within tolerance if `values` provides a value.
+- Remaining fields in `values` (incl. micros): within tolerance.
+- **Default tolerances by mode:** `etiqueta` → `max(2 %, 0.5 u)` (kcal `max(2 %, 2)`) —
+  transcribing is not estimating; `estimacion` → ±30 % macros, ±40 % micros, with an absolute
+  floor of 0.5 u (an expected 0 does not demand exactly 0). Per-field override in `tolerances`
   (`{"kcal": 0.1}` = ±10 %).
-- `strict_extras: true` (solo casos `etiqueta` con transcripción COMPLETA del empaque):
-  cualquier micro devuelto por la IA fuera de `values` = fallo "extra" (alucinación). Los 7
-  requeridos quedan exentos.
-- **Ground truth SIEMPRE real, nunca de memoria.** Para genéricos: USDA FDC
-  (`https://api.nal.usda.gov/fdc/v1/foods/search`, `SR Legacy`/`Foundation`). Anota fdcId +
-  dataType en `notes`. Ojo: los `Foundation` no traen el nutriente 1008 (Energy) — usa el factor
-  Atwater 2048/2047.
+- `strict_extras: true` (only for `etiqueta` cases with a COMPLETE transcription of the package):
+  any micro returned by the AI outside of `values` = an "extra" failure (hallucination). The 7
+  required fields are exempt.
+- **Ground truth ALWAYS real, never from memory.** For generic foods: USDA FDC
+  (`https://api.nal.usda.gov/fdc/v1/foods/search`, `SR Legacy`/`Foundation`). Record fdcId +
+  dataType in `notes`. Beware: `Foundation` entries do not include nutrient 1008 (Energy) — use
+  the Atwater factor 2048/2047.
 
-## Política de baseline
+## Baseline policy
 
-`baseline.json` se committea (es la última corrida aceptada). Se actualiza **solo
-deliberadamente** con `UPDATE_BASELINE=1 npm run eval`, y el commit explica el porqué (mejora de
-prompt, cambio de modelo, caso nuevo). Un caso semilla que falla contra FDC **no se maquilla
-bajando la tolerancia**: es señal real de calidad del modelo; se documenta en `notes` y el
-baseline captura el estado real.
+`baseline.json` is committed (it is the last accepted run). It is updated **only
+deliberately** with `UPDATE_BASELINE=1 npm run eval`, and the commit explains why (prompt
+improvement, model change, new case). A seed case that fails against FDC is **not papered over
+by lowering the tolerance**: it is a real signal of model quality; it is documented in `notes` and
+the baseline captures the real state.
 
-## Determinismo del gate
+## Gate determinism
 
-El eval fija **un solo modelo + `temperature: 0`** (`EVAL_MODEL`, default `gemini-3.5-flash` — el
-primario real de la app). Sin esto, la cascada de `ai.js` cae a otro modelo ante un 503 y el
-modelo que contesta cambia por llamada: 3.5 vs 2.5 dan números distintos y el re-run marca
-regresiones falsas. Al fijar el modelo, el baseline mide un objetivo consistente. Reintenta en
-error transitorio 5xx (3.5-flash se satura) para no morir en un 503; un 429 (cuota) NO se
-reintenta.
+The eval pins **a single model + `temperature: 0`** (`EVAL_MODEL`, default `gemini-3.5-flash` —
+the app's actual primary). Without this, the cascade in `ai.js` falls back to another model on a
+503 and the answering model changes per call: 3.5 vs 2.5 give different numbers and the re-run
+flags false regressions. By pinning the model, the baseline measures a consistent target. It
+retries on a transient 5xx error (3.5-flash gets saturated) so it does not die on a 503; a 429
+(quota) is NOT retried.
 
-**Un baseline por modelo.** El default va a `baseline.json`; cualquier otro `EVAL_MODEL` a
-`baseline.<modelo>.json` (ambos committeados). Así se cubre también el **último paso de la
-cascada, Mistral** (`mistral-small-latest`, sí hace visión — verificado), que de otro modo queda
-sin probar (incluida la traducción `toJsonSchema` Gemini→Mistral):
-`EVAL_MODEL=mistral-small-latest npm run eval` (necesita `VITE_MISTRAL_KEY`). El pin rutea a
-Gemini o Mistral según el prefijo del nombre.
+**One baseline per model.** The default goes to `baseline.json`; any other `EVAL_MODEL` goes to
+`baseline.<modelo>.json` (both committed). This also covers the **last step of the cascade,
+Mistral** (`mistral-small-latest`, which does support vision — verified), which would otherwise go
+untested (including the `toJsonSchema` Gemini→Mistral translation):
+`EVAL_MODEL=mistral-small-latest npm run eval` (requires `VITE_MISTRAL_KEY`). The pin routes to
+Gemini or Mistral based on the model name's prefix.
 
-Ojo: `mistral-small-latest` resultó **débil y no reproducible ni a temp 0** (alucina casi todo el
-panel de micros; mis-transcribe etiquetas —lee la columna "por porción", ignora valores
-declarados—; el kcal de una misma etiqueta osciló 47→37 entre corridas). Su `baseline.mistral-small-latest.json`
-es un **snapshot de calidad del último paso de la cascada, no un gate estricto**: puede marcar una
-regresión falsa por su propia varianza. Trátalo como smoke test (¿la ruta Mistral sigue viva y
-devuelve JSON válido?), no como criterio de bloqueo.
+Beware: `mistral-small-latest` turned out to be **weak and not reproducible even at temp 0** (it
+hallucinates almost the entire micros panel; mis-transcribes labels — reads the "per serving"
+column, ignores declared values —; the kcal of one and the same label oscillated 47→37 between
+runs). Its `baseline.mistral-small-latest.json` is a **quality snapshot of the cascade's last
+step, not a strict gate**: it can flag a false regression due to its own variance. Treat it as a
+smoke test (is the Mistral path still alive and returning valid JSON?), not as a blocking
+criterion.
 
-Aun con modelo fijo, la generación no es 100 % determinista: un campo de **estimación** en el
-borde de la tolerancia puede oscilar entre corridas.
+Even with a pinned model, generation is not 100 % deterministic: an **estimation** field at the
+edge of the tolerance can oscillate between runs.
 
 ## Flakiness
 
-Una corrida por defecto. Ante un fallo sospechoso, re-correr **una** vez; si el fallo persiste,
-es real (no lo tapes subiendo tolerancias). El delay de ~4 s entre casos respeta el RPM del free
-tier.
+One run by default. On a suspicious failure, re-run **once**; if the failure persists, it is real
+(do not cover it up by raising tolerances). The ~4 s delay between cases respects the free tier's
+RPM.
 
-## Añadir un caso de foto (`mode: "etiqueta"`)
+## Adding a photo case (`mode: "etiqueta"`)
 
-Las fotos son **local-only** (gitignoreadas: `evals/cases/**/*.jpg`) — el repo es público y las
-tomas suelen mostrar mano/cocina. El repo lleva la transcripción (`case.json`) y el
-`baseline.json`; las fotos viven solo en tu máquina. El runner **salta limpio** un caso cuya foto
-falte, así que un clon queda verde aunque no tenga las imágenes.
+Photos are **local-only** (gitignored: `evals/cases/**/*.jpg`) — the repo is public and the shots
+usually show a hand/kitchen. The repo carries the transcription (`case.json`) and the
+`baseline.json`; the photos live only on your machine. The runner **skips cleanly** any case whose
+photo is missing, so a clone stays green even without the images.
 
-1. Foto **frontal** de la tabla nutrimental, buena luz, sin ángulo. Comprímela a ≤1024 px lado
-   mayor y guárdala junto al `case.json` como `label.jpg`:
+1. **Front-facing** photo of the nutrition facts table, good light, no angle. Compress it to
+   ≤1024 px on the longest side and save it next to `case.json` as `label.jpg`:
    ```sh
    sips -Z 1024 origen.jpg --out evals/cases/<id>/label.jpg --setProperty formatOptions 80
    ```
-2. En `case.json`: `"photos": ["label.jpg"]`, `"mode": "etiqueta"`.
-3. Transcribe **a mano TODOS** los valores declarados del empaque a `expected.values` (por 100 g;
-   si la etiqueta declara por porción, normaliza). Transcribir todo habilita `strict_extras: true`
-   (así una alucinación de micro se detecta).
-4. `npm run eval` para ver el score, y `UPDATE_BASELINE=1 npm run eval` para fijarlo. Committea
-   `baseline.json` explicando el caso nuevo.
+2. In `case.json`: `"photos": ["label.jpg"]`, `"mode": "etiqueta"`.
+3. Transcribe **by hand ALL** the declared values from the package into `expected.values` (per
+   100 g; if the label declares per serving, normalize). Transcribing everything enables
+   `strict_extras: true` (so a micro hallucination gets detected).
+4. `npm run eval` to see the score, and `UPDATE_BASELINE=1 npm run eval` to lock it in. Commit
+   `baseline.json` explaining the new case.

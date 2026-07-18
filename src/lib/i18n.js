@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { supabase } from './supabase.js';
 import { subscribeBands, getActiveBands, setActiveBands } from './domain.js';
 
-// El string en español ES la clave — así una traducción faltante cae al
-// español (nunca rompe, nunca muestra "undefined"). Interpolación: la clave
-// lleva el marcador literal %n / %s y el caller hace .replace() tras t().
+// The Spanish string IS the key — a missing translation therefore falls back to
+// Spanish (it never breaks, never renders "undefined"). Interpolation: the key
+// carries the literal %n / %s marker and the caller performs .replace() after t().
 const EN = {
-  // Medidas corporales (Body.jsx) + tab
+  // Body measurements (Body.jsx) + tab
   Medidas: 'Body',
   'Medidas del día': "Today's measurements",
   'Más medidas ▾': 'More measurements ▾',
@@ -42,7 +42,7 @@ const EN = {
   'Pierna derecha': 'Right leg',
   'Pantorrilla izquierda': 'Left calf',
   'Pantorrilla derecha': 'Right calf',
-  // Importar medidas (ImportSheet kind='body', Body.jsx)
+  // Import measurements (ImportSheet kind='body', Body.jsx)
   'Importar medidas': 'Import measurements',
   'Sube o pega un CSV con una fila por día: una columna day (AAAA-MM-DD) y una columna por cada medida (%s…). Descarga la plantilla para ver los nombres exactos de las columnas.':
     'Upload or paste a CSV with one row per day: a day column (YYYY-MM-DD) and one column per measurement (%s…). Download the template to see the exact column names.',
@@ -57,13 +57,13 @@ const EN = {
   '%n días importados.': '%n days imported.',
   'fuera de rango': 'out of range',
   'sin medidas': 'no measurements',
-  // Dashboard: tendencia por nutriente
+  // Dashboard: trend by nutrient
   'Tendencia por nutriente': 'Trend by nutrient',
   'Elige cualquier nutriente y ve su valor día a día en el rango. La línea punteada es tu objetivo diario, si lo tienes en Metas.':
     'Pick any nutrient and see its day-by-day value over the range. The dashed line is your daily target, if you set one in Targets.',
   'Nutriente a graficar': 'Nutrient to chart',
   Macros: 'Macros',
-  // Plantillas de comida (Today.jsx)
+  // Meal templates (Today.jsx)
   Plantillas: 'Templates',
   'Plantillas de comida': 'Meal templates',
   'Aún no tienes plantillas. Guarda el día actual como una para reutilizarla en cualquier fecha.':
@@ -395,7 +395,7 @@ const EN = {
   '⚠ = micro en 0 la mayoría de los días: puede significar "no anotado", no "no consumido".':
     '⚠ = micro at 0 most days: it can mean "not logged", not "not eaten".',
   Custom: 'Custom',
-  // Rango custom guardado (Dashboard): "Hoy" ya está arriba (preset), reusa clave.
+  // Saved custom range (Dashboard): "Hoy" is already defined above (preset), reuses that key.
   Inicio: 'Start',
   Fin: 'End',
   'Hasta hoy': 'Through today',
@@ -475,7 +475,7 @@ const EN = {
   Entrar: 'Sign in',
   'Conoce el proyecto': 'About the project',
 
-  // Today.jsx — cabecera y resumen
+  // Today.jsx — header and summary
   'Día anterior': 'Previous day',
   'Día siguiente': 'Next day',
   'Elegir fecha': 'Choose date',
@@ -563,7 +563,7 @@ const EN = {
   'Más micros (%n)': 'More micros (%n)',
   g: 'g',
 
-  // Section menu (Ayer/Copiar/Pegar/Borrar día)
+  // Section menu (keys: Ayer, Copiar, Pegar, Borrar día)
   Ayer: 'Yesterday',
   Copiar: 'Copy',
   'Pegar %n': 'Paste %n',
@@ -580,10 +580,10 @@ const EN = {
   'Error al registrar agua.': 'Error logging water.',
   'Alto en sodio': 'High in sodium',
   'Alto en potasio': 'High in potassium',
-  G: 'F', // abreviatura de Grasa/Fat en las cards de Hoy
+  G: 'F', // abbreviation of Grasa/Fat on the Today cards
 
-  // MICROS (domain.js) — etiquetas traducidas en el punto de render (t(m.label)),
-  // la constante y sus claves de jsonb no se tocan.
+  // MICROS (domain.js) — labels translated at the render site (t(m.label));
+  // the constant and its jsonb keys are never touched.
   'Grasa sat.': 'Sat. fat',
   'Grasa trans': 'Trans fat',
   Azúcar: 'Sugar',
@@ -619,7 +619,7 @@ const EN = {
   'β-caroteno': 'β-carotene',
   Licopeno: 'Lycopene',
   'Luteína + Zeaxantina': 'Lutein + Zeaxanthin',
-  // — ampliación paridad Cronometer (los idénticos ES=EN se omiten: fallback) —
+  // — Cronometer-parity expansion (entries identical in ES and EN are omitted: fallback) —
   'Fibra soluble': 'Soluble fiber',
   'Fibra insoluble': 'Insoluble fiber',
   Almidón: 'Starch',
@@ -699,7 +699,7 @@ const EN = {
   Gramos: 'Grams',
   densidad: 'density',
 
-  // Categorías de MICROS (microGroups)
+  // MICROS categories (microGroups)
   Lípidos: 'Lipids',
   Carbohidratos: 'Carbohydrates',
   Edulcorantes: 'Sweeteners',
@@ -709,7 +709,7 @@ const EN = {
   Antioxidantes: 'Antioxidants',
   Otros: 'Other',
 
-  // Menú de usuario (UserMenu, Profile/Region/Settings sheets)
+  // User menu (UserMenu, Profile/Region/Settings sheets)
   'Menú de usuario': 'User menu',
   Perfil: 'Profile',
   'Idioma y unidades': 'Language and units',
@@ -765,7 +765,7 @@ const EN = {
   'Piso médico fijo, no configurable.': 'Fixed medical floor, not configurable.',
   'Secciones de comida': 'Meal sections',
 
-  // CustomChart.jsx ("Mis gráficas") — faltaban por completo
+  // CustomChart.jsx ("Mis gráficas") — previously missing entirely
   'Mis gráficas': 'My charts',
   Nueva: 'New',
   'Nueva gráfica': 'New chart',
@@ -800,13 +800,13 @@ const EN = {
   'Crea una gráfica para cruzar cualquier variable en el tiempo': 'Create a chart to cross any variable over time',
   'peso, medidas, macros, micros o derivadas — línea o barras': 'weight, measurements, macros, micros or derived — line or bars',
 
-  // Dashboard.jsx — cabecera del análisis estándar
+  // Dashboard.jsx — standard analysis header
   'Análisis estándar': 'Standard analysis',
   'radar micros · adherencia · sodio · Bayes': 'micros radar · adherence · sodium · Bayes',
   'Mostrar ▾': 'Show ▾',
   'Ocultar ▴': 'Hide ▴',
 
-  // Body.jsx — labels de BODY_METRICS (domain.js) que faltaban
+  // Body.jsx — BODY_METRICS labels (domain.js) that were missing
   IMC: 'BMI',
   'Masa libre de grasa': 'Fat-free mass',
   'Agua corporal (L)': 'Body water (L)',
@@ -821,7 +821,7 @@ const EN = {
   'Grasa pierna izq.': 'Left leg fat',
   'Grasa pierna der.': 'Right leg fat',
 
-  // Body.jsx — derivadas de solo lectura
+  // Body.jsx — read-only derived metrics
   Derivadas: 'Derived',
   'Ver fórmula': 'View formula',
   grasa: 'fat',
@@ -833,7 +833,7 @@ const EN = {
   // Today.jsx
   'Ver resumen del día': 'View day summary',
 
-  // OAuthConsent.jsx (conector MCP)
+  // OAuthConsent.jsx (MCP connector)
   'Redirigiendo…': 'Redirecting…',
   'Falta el parámetro authorization_id.': 'Missing the authorization_id parameter.',
   'No se pudo cargar la solicitud de autorización.': 'Could not load the authorization request.',
@@ -856,7 +856,7 @@ const EN = {
   Denegar: 'Deny',
   'Podrás revocar este acceso cuando quieras.': 'You can revoke this access at any time.',
 
-  // Toasts de error de carga (showToast) — antes solo en español
+  // Load-error toasts (showToast) — previously Spanish-only
   'No se pudieron cargar los objetivos — revisa tu conexión.': 'Could not load targets — check your connection.',
   'No se pudieron cargar las recetas — revisa tu conexión.': 'Could not load recipes — check your connection.',
   'No se pudieron cargar los alimentos — revisa tu conexión.': 'Could not load foods — check your connection.',
@@ -864,7 +864,7 @@ const EN = {
   'No se pudo cargar el Dashboard — revisa tu conexión.': 'Could not load the Dashboard — check your connection.',
   'No se pudo cargar el día — revisa tu conexión.': 'Could not load the day — check your connection.',
 
-  // TargetsWizard.jsx (asistente de metas)
+  // TargetsWizard.jsx (targets wizard)
   'Asistente de metas': 'Targets wizard',
   'En déficit tolera menos el exceso de calorías.': 'In a deficit it tolerates calorie surplus less.',
   'En volumen tolera menos el defecto de calorías.': 'In a bulk it tolerates calorie shortfall less.',
@@ -917,7 +917,7 @@ const EN = {
   'Fechas especiales': 'Special dates',
   Techos: 'Ceilings',
 
-  // "Pregúntale a tu bitácora" (Dashboard)
+  // "Pregúntale a tu bitácora" ("Ask your log", Dashboard)
   Preguntar: 'Ask',
   'Pregúntale a tu bitácora': 'Ask your log',
   'Respuesta generada por IA — verifica contra el Dashboard.': 'AI-generated answer — verify against the Dashboard.',
@@ -947,9 +947,9 @@ export function getLang() {
   return lang;
 }
 
-// patch-merge sobre prefs.data: es un jsonb compartido con otras prefs
-// (water_glass_ml, today_view, …), así que un upsert directo con solo
-// { lang } las borraría.
+// Patch-merge over prefs.data: it is a jsonb shared with other prefs
+// (water_glass_ml, today_view, …), so a direct upsert with only
+// { lang } would erase them.
 export async function persistPrefsKey(key, value) {
   if (!userId) return;
   const { data } = await supabase.from('prefs').select('data').maybeSingle();
@@ -964,19 +964,19 @@ export function setLang(next, { persist = true } = {}) {
   if (persist) persistPrefsKey('lang', next);
 }
 
-// Registra el usuario autenticado (para poder persistir en prefs) y aplica
-// prefs.data.lang si difiere de localStorage — gana prefs (cross-device),
-// pero sin re-escribirlo (persist:false, ya viene de ahí).
+// Registers the authenticated user (so prefs can be persisted) and applies
+// prefs.data.lang if it differs from localStorage — prefs wins (cross-device),
+// but without re-writing it (persist:false, since it already comes from there).
 export function registerLangUser(uid, prefLang) {
   userId = uid;
   if (VALID.includes(prefLang) && prefLang !== lang) setLang(prefLang, { persist: false });
 }
 
-// --- Unidades: SI (g/ml) vs US customary (oz/fl oz) --------------------
-// Solo cambia cómo se capturan/muestran CANTIDADES de alimento y agua.
-// Los nutrientes (g de proteína, mg de sodio…) nunca cambian de unidad, y la
-// DB siempre recibe gramos/ml — la conversión vive solo en display/captura,
-// mismo patrón que la densidad de AmountField.
+// --- Units: SI (g/ml) vs US customary (oz/fl oz) --------------------
+// Only changes how food and water AMOUNTS are captured/displayed.
+// Nutrients (g of protein, mg of sodium…) never change units, and the
+// DB always receives grams/ml — the conversion lives only in display/capture,
+// the same pattern as AmountField's density.
 const UNITS_KEY = 'nutri-units';
 const VALID_UNITS = ['metric', 'us'];
 const OZ_G = 28.3495;
@@ -1022,7 +1022,7 @@ function round1(n) {
   return Math.round(n * 10) / 10;
 }
 
-// Cantidad de alimento: gramos siempre en DB, oz solo en display.
+// Food amount: always grams in the DB, oz for display only.
 export function fmtG(grams) {
   const n = Number(grams) || 0;
   if (units !== 'us') return `${round1(n)} g`;
@@ -1030,7 +1030,7 @@ export function fmtG(grams) {
   return `${Math.round(oz * (oz < 1 ? 100 : 10)) / (oz < 1 ? 100 : 10)} oz`;
 }
 
-// Cantidad de agua: ml siempre en DB, fl oz solo en display.
+// Water amount: always ml in the DB, fl oz for display only.
 export function fmtMl(ml) {
   const n = Number(ml) || 0;
   if (units !== 'us') return `${round1(n)} ml`;
@@ -1070,11 +1070,11 @@ export function useLang() {
   return lang;
 }
 
-// --- Perfil del usuario (menú de usuario → Perfil) ---------------------
-// Datos personales en prefs.data.profile (jsonb, sin migración). Solo display:
-// altura/sexo/nacimiento alimentan cálculos futuros (TMB/IMC), no afectan aún la
-// exactitud de los nutrientes almacenados. La foto vive en el bucket body-photos
-// bajo {uid}/avatar/…; aquí solo se guarda su ruta (profile.avatar_path).
+// --- User profile (user menu → Profile) ---------------------
+// Personal data in prefs.data.profile (jsonb, no migration). Display only:
+// height/sex/birth date feed future calculations (BMR/BMI) and do not yet affect
+// the accuracy of the stored nutrients. The photo lives in the body-photos bucket
+// under {uid}/avatar/…; only its path is stored here (profile.avatar_path).
 let profile = {};
 const profileSubs = new Set();
 
@@ -1099,16 +1099,16 @@ export function useProfile() {
   return profile;
 }
 
-// Nombre para mostrar, derivado del perfil.
+// Display name, derived from the profile.
 export function displayName() {
   const parts = [profile.first_name, profile.last_name].filter(Boolean);
   return parts.join(' ').trim() || t('Tu perfil');
 }
 
-// --- Umbral de sueño (menú de usuario → Configuración) -----------------
-// Horas bajo las cuales el checkpoint "Sueño" de Medidas se considera "dormí poco".
-// Solo metadato de UI (prefs.data.sueno_umbral_h, sin migración); el valor marcado
-// que se guarda por día es este umbral, para que el flag se autoexplique si cambia.
+// --- Sleep threshold (user menu → Settings) -----------------
+// Hours below which the "Sueño" (Sleep) checkpoint in Body counts as "slept little".
+// UI metadata only (prefs.data.sueno_umbral_h, no migration); the flagged value
+// stored per day is this threshold, so the flag stays self-explanatory if it changes.
 let sleepThreshold = 6;
 const sleepSubs = new Set();
 export function getSleepThreshold() {
@@ -1134,9 +1134,9 @@ export function useSleepThreshold() {
   return sleepThreshold;
 }
 
-// --- Bandas de adherencia (menú de usuario → Configuración) ------------
-// El estado y la matemática viven en domain.js (puro); aquí van la persistencia
-// (prefs.data.adherence_bands), la carga y el hook de re-render para Hoy/Dashboard.
+// --- Adherence bands (user menu → Settings) ------------
+// The state and the math live in domain.js (pure); this module holds the persistence
+// (prefs.data.adherence_bands), the loading, and the re-render hook for Today/Dashboard.
 export function saveAdherenceBands(overrides) {
   setActiveBands(overrides);
   persistPrefsKey('adherence_bands', overrides || {});

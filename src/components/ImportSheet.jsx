@@ -7,9 +7,9 @@ import {
   FOODS_TEMPLATE_HEADERS, BODY_TEMPLATE_HEADERS, BODY_TEMPLATE_HEADERS_EN, BODY_HEADERS_EN,
 } from '../lib/importer.js';
 
-// Carga en bloque desde CSV pegado o archivo. kind='foods'|'entries'|'body'. Vista
-// previa con ⚠ por fila antes de commitear (regla de precisión: nada se guarda en
-// silencio). Cierra al tocar fuera (scrim onClose + stopPropagation en la card).
+// Bulk import from pasted CSV or a file. kind='foods'|'entries'|'body'. Per-row ⚠
+// preview before committing (accuracy rule: nothing is saved silently). Closes on
+// tap outside (onClose on the scrim + stopPropagation on the card).
 const PLACEHOLDER = {
   foods: 'name,kcal,protein_g,carbs_g,fat_g,sodio_mg\nAvena,389,17,66,7,2',
   entries: 'day,meal,food,grams\n2026-07-07,Desayuno,Avena,60',
@@ -19,9 +19,10 @@ const TEMPLATE = {
   body: { headers: BODY_TEMPLATE_HEADERS, file: 'nutri_medidas_plantilla.csv' },
 };
 
-// Columnas de ejemplo del copy y el placeholder de medidas. Se derivan de UNA
-// fuente: la clave canónica en ES, su alias inglés (BODY_HEADERS_EN) en EN. Así
-// los ejemplos nunca se desincronizan de la plantilla real ni se hardcodean por idioma.
+// Example columns for the body-measurements copy and placeholder. Derived from ONE
+// source: the canonical key in ES, its English alias (BODY_HEADERS_EN) in EN. This
+// way the examples never drift out of sync with the real template and are never
+// hardcoded per language.
 const BODY_EXAMPLE_KEYS = ['peso_kg', 'grasa_pct', 'cintura_cm'];
 const bodyHeader = (key, en) => (en ? BODY_HEADERS_EN[key] || key : key);
 
@@ -30,12 +31,12 @@ export default function ImportSheet({ kind, onClose, onDone }) {
   const [foods, setFoods] = useState([]);
   const [labels, setLabels] = useState([]);
   const [existingDays, setExistingDays] = useState(new Set());
-  const [bodyReplace, setBodyReplace] = useState(false); // false = complementar (default)
+  const [bodyReplace, setBodyReplace] = useState(false); // false = complement ("Complementar", default)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [dragOver, setDragOver] = useState(false);
 
-  // Registros necesitan el catálogo + etiquetas para emparejar por nombre.
+  // Entries need the catalog + meal labels to match by name.
   useEffect(() => {
     if (kind !== 'entries') return;
     let alive = true;
@@ -51,7 +52,7 @@ export default function ImportSheet({ kind, onClose, onDone }) {
     return () => { alive = false; };
   }, [kind]);
 
-  // Medidas: días ya registrados, para avisar coincidencias en la vista previa.
+  // Body measurements: days already recorded, to flag collisions in the preview.
   useEffect(() => {
     if (kind !== 'body') return;
     let alive = true;
@@ -86,8 +87,8 @@ export default function ImportSheet({ kind, onClose, onDone }) {
   function downloadTemplate() {
     const tpl = TEMPLATE[kind];
     if (!tpl) return;
-    // Plantilla en inglés para el lector EN: sus encabezados (weight, body_fat…)
-    // vuelven a entrar por los alias del importer, así el round-trip es natural.
+    // English template for the EN reader: its headers (weight, body_fat…) are
+    // accepted back in through the importer's aliases, so the round-trip is natural.
     const headers = kind === 'body' && getLang() === 'en' ? BODY_TEMPLATE_HEADERS_EN : tpl.headers;
     const blob = new Blob([headers.join(',') + '\n'], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -106,9 +107,9 @@ export default function ImportSheet({ kind, onClose, onDone }) {
     if (kind === 'body') {
       const { data: { user } } = await supabase.auth.getUser();
       let toWrite = importable.map((p) => ({ owner: user?.id, ...p.row }));
-      // Complementar: mezcla las medidas existentes de los días en conflicto (el CSV
-      // gana por clave). Una sola lectura de los días afectados; en Reemplazar el
-      // upsert sustituye la fila entera.
+      // "Complementar" (complement): merges in the existing measurements of the
+      // conflicting days (the CSV wins per key). A single read of the affected days;
+      // with "Reemplazar" (replace) the upsert substitutes the entire row.
       if (!bodyReplace && collisions.length) {
         const days = collisions.map((p) => p.row.day);
         const { data: existing } = await supabase.from('body_metrics').select('day, metrics, note').in('day', days);
@@ -152,7 +153,7 @@ export default function ImportSheet({ kind, onClose, onDone }) {
         ? t('Sube o pega un CSV con una fila por día: una columna day (AAAA-MM-DD) y una columna por cada medida (%s…). Descarga la plantilla para ver los nombres exactos de las columnas.').replace('%s', BODY_EXAMPLE_KEYS.map((k) => bodyHeader(k, getLang() === 'en')).join(', '))
         : t('Pega o sube un CSV: una fila por registro. Columnas: day (AAAA-MM-DD), meal, food, grams. El alimento se empareja por nombre con tu catálogo.');
 
-  // Ejemplo del textarea: encabezados derivados de la misma fuente (inglés en EN).
+  // Textarea example: headers derived from the same source (English in EN).
   const placeholder =
     kind === 'body'
       ? `${['day', ...BODY_EXAMPLE_KEYS].map((k) => bodyHeader(k, getLang() === 'en')).join(',')}\n2026-07-07,80.5,22,86`

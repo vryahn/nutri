@@ -28,8 +28,8 @@ import {
 } from '../lib/domain.js';
 import { t, useProfile } from '../lib/i18n.js';
 
-// Rotación de colores de datos (nunca --accent: reservado para la línea de
-// objetivo). 4 tokens = DASH_MAX_VARS, así ninguna serie repite color.
+// Data-color rotation (never --accent: reserved for the target line).
+// 4 tokens = DASH_MAX_VARS, so no series ever repeats a color.
 const SERIES_COLORS = ['var(--d-prot)', 'var(--d-carb)', 'var(--d-kcal)', 'var(--d-fat)'];
 
 const AGG_LABELS = { dia: 'Día', semana: 'Semana', mes: 'Mes' };
@@ -37,7 +37,7 @@ const RED_LABELS = { promedio: 'Promedio', suma: 'Suma', mediana: 'Mediana' };
 
 const reduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// Agrupa DASH_VARS por categoría preservando el orden de aparición
+// Groups DASH_VARS by category, preserving order of appearance
 // (Macros → micros → medidas → derivadas).
 function groupByCat(vars) {
   const m = new Map();
@@ -51,7 +51,7 @@ function groupByCat(vars) {
 const varsOf = (keys) => keys.map((k) => DASH_VARS_BY_KEY[k]).filter(Boolean);
 const defaultTitle = (keys) => varsOf(keys).map((v) => t(v.label)).join(' + ');
 
-// ── Una gráfica ──────────────────────────────────────────────────────────────
+// ── A single chart ───────────────────────────────────────────────────────────
 function CustomChart({ def, dates, nutByDay, bodyByDay, targets, onEdit, onRemove, onMove, canUp, canDown }) {
   const [menu, setMenu] = useState(false);
   const menuRef = useOutsideClose(menu, setMenu);
@@ -61,17 +61,19 @@ function CustomChart({ def, dates, nutByDay, bodyByDay, targets, onEdit, onRemov
   const leftUnit = units[0];
   const rightUnit = units[1];
 
-  const agg = resolveAgg(def.agg, dates.length); // 'auto' → día/semana/mes según rango
+  const agg = resolveAgg(def.agg, dates.length); // 'auto' → day/week/month depending on the range
   const hasStock = vars.some((v) => v.kind === 'stock');
-  // Suma sin sentido en medidas: si hay stock cae a promedio (el constructor ya
-  // la deshabilita; esto blinda defs viejos o editados a mano).
+  // Summing body measurements is meaningless: if a stock variable is present it
+  // falls back to average (the builder already disables it; this hardens old or
+  // hand-edited defs).
   const reducer = def.reducer === 'suma' && hasStock ? 'promedio' : def.reducer || 'promedio';
-  // Altura del Perfil: insumo de las derivadas (IMC/FFMI) — no es medida del día.
+  // Height from the Profile: input for the derived variables (IMC/FFMI) — it is not a per-day measurement.
   const { height_cm } = useProfile();
   const series = buildDashSeries(dates, vars, nutByDay, bodyByDay, agg, reducer, height_cm);
 
-  // Objetivo solo con UNA variable de nutrición que lo tenga. Se agrega con el
-  // MISMO bucket/reductor que los datos para que línea y objetivo sean comparables.
+  // Target only when there is exactly ONE nutrition variable that has one. It is
+  // aggregated with the SAME bucket/reducer as the data so the line and the
+  // target remain comparable.
   const single = vars.length === 1 ? vars[0] : null;
   let withTarget = series;
   let hasTarget = false;
@@ -169,7 +171,7 @@ function CustomChart({ def, dates, nutByDay, bodyByDay, targets, onEdit, onRemov
   );
 }
 
-// ── Constructor (hoja modal) ─────────────────────────────────────────────────
+// ── Builder (modal sheet) ────────────────────────────────────────────────────
 function CustomChartSheet({ initial, onSave, onClose }) {
   const [title, setTitle] = useState(initial?.title || '');
   const [type, setType] = useState(initial?.type || 'line');
@@ -180,8 +182,9 @@ function CustomChartSheet({ initial, onSave, onClose }) {
   const selected = varsOf(keys);
   const units = [...new Set(selected.map((v) => v.unit))];
   const hasStock = selected.some((v) => v.kind === 'stock');
-  // Suma solo en flow-puro. Con stock presente, el reductor efectivo es promedio
-  // (conserva la intención 'suma' en el estado por si el usuario quita la medida).
+  // Sum only for pure-flow variables. With a stock present, the effective reducer
+  // is average (the 'suma' intent is kept in state in case the user removes the
+  // measurement).
   const effReducer = reducer === 'suma' && hasStock ? 'promedio' : reducer;
   const groups = groupByCat(DASH_VARS);
 
@@ -338,9 +341,9 @@ function CustomChartSheet({ initial, onSave, onClose }) {
   );
 }
 
-// ── Sección "Mis gráficas" ───────────────────────────────────────────────────
+// ── "Mis gráficas" section ───────────────────────────────────────────────────
 export default function CustomCharts({ dashboards, onChange, dates, nutByDay, bodyByDay, targets }) {
-  const [editing, setEditing] = useState(null); // def a editar | 'new' | null
+  const [editing, setEditing] = useState(null); // def being edited | 'new' | null
 
   const save = (def) => {
     const exists = dashboards.some((d) => d.id === def.id);

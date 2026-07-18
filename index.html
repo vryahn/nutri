@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#071010" />
     <script>
-      // si editas este script, recalcula el hash CSP en vercel.json
-      // Antes del primer paint: sin esto el tema claro arranca con un flash oscuro.
-      // Resuelve 'system' a un data-theme explícito, así el CSS solo define un override.
+      // if you edit this script, recompute the CSP hash in vercel.json
+      // Before first paint: without this, the light theme starts with a dark flash.
+      // Resolves 'system' to an explicit data-theme, so the CSS only defines one override.
       (function () {
         var m = localStorage.getItem('nutri-theme') || 'system';
         var dark = m === 'dark' || (m !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);

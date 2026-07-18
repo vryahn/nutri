@@ -2,7 +2,7 @@ name: Keepalive
 
 on:
   schedule:
-    - cron: '0 6 * * 1' # todos los lunes a las 06:00 UTC
+    - cron: '0 6 * * 1' # every Monday at 06:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Supabase REST API
-        # Sin -f: el objetivo es generar tráfico contra el proyecto para evitar
-        # la pausa por inactividad, no una respuesta 2xx. Con la publishable key
-        # nueva de Supabase, /rest/v1/ responde 401 ("secret key required") mucho
-        # antes de pausarse por inactividad, pero eso ya cuenta como actividad.
+        # No -f: the goal is to generate traffic against the project to avoid
+        # the inactivity pause, not a 2xx response. With Supabase's new
+        # publishable key, /rest/v1/ responds 401 ("secret key required") long
+        # before pausing for inactivity, but that already counts as activity.
         run: |
           curl -s -o /dev/null -w "HTTP %{http_code}\n" "${{ secrets.SUPABASE_URL }}/rest/v1/" \
             -H "apikey: ${{ secrets.ANON_KEY }}"

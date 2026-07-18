@@ -2,7 +2,7 @@ name: Backup
 
 on:
   schedule:
-    - cron: '0 6 1 * *' # el día 1 de cada mes a las 06:00 UTC
+    - cron: '0 6 1 * *' # on the 1st of every month at 06:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -10,9 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Instalar cliente de Postgres 17
-        # apt trae pg_dump 16 en Ubuntu 24.04; Supabase corre Postgres 17 y pg_dump
-        # rechaza volcar un servidor más nuevo que el cliente. Usamos el repo oficial
-        # de PGDG para instalar la versión que coincide.
+        # apt ships pg_dump 16 on Ubuntu 24.04; Supabase runs Postgres 17 and pg_dump
+        # refuses to dump a server newer than the client. We use the official PGDG
+        # repository to install the matching version.
         run: |
           sudo apt-get install -y postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y

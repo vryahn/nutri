@@ -38,8 +38,8 @@ import { GEMINI_KEY, embedText } from '../lib/ai.js';
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, closestCenter, closestCorners, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
-// ponytail: matchMedia en vez de un resize-observer propio, ya cubre el único
-// breakpoint que nos interesa (lg = layout de 2 zonas vs. flujo móvil).
+// ponytail: matchMedia instead of a custom resize observer; it already covers the only
+// breakpoint we care about (lg = 2-zone layout vs. mobile flow).
 function useIsLgUp() {
   const [isLg, setIsLg] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
   useEffect(() => {
@@ -53,16 +53,16 @@ function useIsLgUp() {
 
 const statusColor = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' };
 
-// --- Configuración de la card de resumen (prefs.data.today_card) ---
-// Tres diseños ('estado' | 'objetivos' | 'mini'; las flechas de la card los
-// ciclan), cada uno con config propia:
-// - mode = variable primordial que protagoniza el diseño:
-//   'delta' = faltante absoluto (−N a la meta), 'pct' = faltante en %,
-//   'meta' = valor actual y su meta, sin delta.
-// - items = claves de nutrientes en orden visual (en 'objetivos' la posición
-//   asigna slot: 1º anillo, 2º–4º barras, resto tarjetas).
-// today_card.sync = true replica cada edición a los tres diseños. Ausente
-// todo, los defaults replican los diseños originales.
+// --- Summary card configuration (prefs.data.today_card) ---
+// Three layouts ('estado' | 'objetivos' | 'mini'; the card's arrows cycle
+// through them), each with its own config:
+// - mode = the primary variable the layout features:
+//   'delta' = absolute remainder (−N to the target), 'pct' = remainder in %,
+//   'meta' = current value and its target, no delta.
+// - items = nutrient keys in visual order (in 'objetivos' the position
+//   assigns the slot: 1st ring, 2nd–4th bars, rest tiles).
+// today_card.sync = true replicates every edit to all three layouts. When
+// everything is absent, the defaults replicate the original layouts.
 const BASE_ITEMS = ['kcal', 'protein_g', 'carbs_g', 'fat_g', 'sodio_mg', 'potasio_mg'];
 const CARD_DEFAULTS = {
   estado: { mode: 'meta', items: BASE_ITEMS },
@@ -76,24 +76,24 @@ function cardCfg(prefs, view) {
   return { ...CARD_DEFAULTS[view], ...(prefs.today_card?.[view] || {}) };
 }
 
-// Metadatos de macros (los micros salen de MICROS). El arquetipo de adherencia
-// (diana/piso/rango/techo/sodio/meta) NO se declara aquí: lo resuelve
-// nutrientKind(key) en domain.js — única fuente, para que Hoy y Dashboard no
-// diverjan. nutrientMeta lo adjunta como `kind`.
+// Macro metadata (micros come from MICROS). The adherence archetype
+// (diana/piso/rango/techo/sodio/meta) is NOT declared here: it is resolved by
+// nutrientKind(key) in domain.js — single source, so that Hoy and the Dashboard
+// do not diverge. nutrientMeta attaches it as `kind`.
 const MACRO_META = {
   kcal: { key: 'kcal', label: 'Kcal', unit: 'kcal', decimals: 0, color: 'text-d-kcal' },
   protein_g: { key: 'protein_g', label: 'Prot', unit: 'g', decimals: 1, color: 'text-d-prot' },
   carbs_g: { key: 'carbs_g', label: 'Carbs', unit: 'g', decimals: 1, color: 'text-d-carb' },
   fat_g: { key: 'fat_g', label: 'Grasa', unit: 'g', decimals: 1, color: 'text-d-fat' },
 };
-// Etiqueta corta para chips del mini (símbolo químico donde es inequívoco;
-// P/C/G = convención de los headers de sección). Resto: label completo.
+// Short label for chips in the mini layout (chemical symbol where unambiguous;
+// P/C/G = the section headers' convention). Everything else: full label.
 const SHORT_LABEL = { kcal: 'kcal', protein_g: 'P', carbs_g: 'C', fat_g: 'G', sodio_mg: 'Na', potasio_mg: 'K', magnesio_mg: 'Mg', calcio_mg: 'Ca', hierro_mg: 'Fe', zinc_mg: 'Zn' };
 
 function nutrientMeta(key) {
   const base = MACRO_META[key] || (() => {
     const m = MICROS.find((x) => x.key === key);
-    if (!m) return null; // clave vieja/desconocida en prefs: se ignora, no rompe
+    if (!m) return null; // stale/unknown key in prefs: ignored, does not break
     return { key, label: m.label, unit: m.unit, decimals: m.unit === 'g' ? 1 : 0, color: null };
   })();
   return base && { ...base, kind: nutrientKind(key) };
@@ -109,9 +109,9 @@ function targetFor(key, target) {
   return v > 0 ? Number(v) : null;
 }
 
-// Estado pintable de un nutriente: valor, meta, % y color según su arquetipo.
-// El régimen (target.goal) sesga la banda de kcal; hasFood evita marcar el sodio
-// en un día vacío.
+// Renderable state of a nutrient: value, target, % and color per its archetype.
+// The regimen (target.goal) biases the kcal band; hasFood avoids flagging sodium
+// on an empty day.
 function itemState(key, totals, target, hasFood) {
   const meta = nutrientMeta(key);
   if (!meta) return null;
@@ -130,32 +130,32 @@ function itemState(key, totals, target, hasFood) {
   return { meta, value, tgt, pct, color, goal };
 }
 
-// "En meta" según el arquetipo: dentro de la banda (diana/rango), en o sobre el
-// piso (piso/meta), en o bajo el techo (techo). Sodio se pinta aparte (dual).
+// "On target" per the archetype: within the band (diana/rango), at or above the
+// floor (piso/meta), at or below the ceiling (techo). Sodium is rendered separately (dual).
 function metFor(meta, value, tgt, goal) {
   if (tgt == null) return false;
   if (meta.kind === 'diana') return classifyDiana(value, tgt, goal) === 'ok';
   if (meta.kind === 'rango') return classifyBand(value, tgt) === 'ok';
   if (meta.kind === 'techo') return value <= tgt;
-  return value >= tgt; // piso, meta
+  return value >= tgt; // piso, meta archetypes
 }
 
-// Delta a la meta formateado según el modo: absoluto (−318) o en % (−18%).
+// Delta to the target formatted per the mode: absolute (−318) or in % (−18%).
 function deltaText(mode, delta, base, decimals) {
   const sign = delta < 0 ? '−' : '+';
   if (mode === 'pct') return `${sign}${Math.abs(Math.round((delta / base) * 100))}%`;
   return `${sign}${Math.abs(round(delta, decimals))}`;
 }
 
-// Pendientes (chips del diseño mini y del mini-resumen fijo). base = la meta
-// (o el piso de sodio) contra la que se calcula el % en modo 'pct'. El sodio
-// bajo el piso médico SIEMPRE entra, aunque el usuario lo haya quitado de sus
-// items — regla de seguridad, no configurable.
+// Pending items (chips of the mini layout and of the fixed mini-summary). base = the
+// target (or the sodium floor) against which the % is computed in 'pct' mode. Sodium
+// below the medical floor is ALWAYS included, even if the user removed it from their
+// items — safety rule, not configurable.
 function pendingFor(items, totals, target, hasFood) {
   const sodium = Number(totals.sodio_mg || 0);
   const sodLow = sodiumIsLow(sodium, hasFood);
   const sodHigh = sodiumIsHigh(sodium, hasFood);
-  // Pendiente de sodio: piso (defecto) o techo (exceso), ambos críticos y médicos.
+  // Sodium pending item: floor (deficit) or ceiling (excess), both critical and medical.
   const sodPending = () =>
     sodLow
       ? { key: 'sodio_mg', critical: true, delta: sodium - SODIUM_FLOOR_MG, base: SODIUM_FLOOR_MG }
@@ -183,14 +183,14 @@ function pendingFor(items, totals, target, hasFood) {
     }
   }
   if ((sodLow || sodHigh) && !items.includes('sodio_mg')) pending.push(sodPending());
-  // Un delta que redondea a 0 se considera cumplido: "−0" como pendiente
-  // (peor aún, crítico) contradice al dato mostrado.
+  // A delta that rounds to 0 counts as met: showing "−0" as pending
+  // (worse still, as critical) would contradict the displayed figure.
   return pending.filter((s) => Math.abs(round(s.delta, 0)) >= 1);
 }
 
-// Resumen de Hoy, diseño elegible por el usuario (prefs.today_view) y aplicado
-// a todos los tamaños de pantalla. El toggle cicla los 3 diseños; el engrane
-// abre la hoja de personalización (items + toggles por diseño).
+// Today's summary, layout selectable by the user (prefs.today_view) and applied
+// at every screen size. The toggle cycles through the 3 layouts; the gear
+// opens the customization sheet (items + per-layout toggles).
 function SummaryCard({ view, cfg, onToggleView, onConfig, ...props }) {
   const next = VIEW_CYCLE[(VIEW_CYCLE.indexOf(view) + 1) % VIEW_CYCLE.length];
   return (
@@ -230,8 +230,8 @@ function StateSummary({ cfg, totals, target, hasFood }) {
   );
 }
 
-// Diseño orientado a metas: hero con anillo (items[0]), barras (items[1..3])
-// y tarjetas (items[4..]). La posición en items asigna el slot.
+// Goal-oriented layout: hero with ring (items[0]), bars (items[1..3])
+// and tiles (items[4..]). The position within items assigns the slot.
 function GoalSummary({ cfg, totals, target, hasFood }) {
   const hero = cfg.items[0] ? itemState(cfg.items[0], totals, target, hasFood) : null;
   const rails = cfg.items.slice(1, 4).map((k) => itemState(k, totals, target, hasFood)).filter(Boolean);
@@ -304,9 +304,9 @@ function HeroRing({ state, mode }) {
   );
 }
 
-// Tarjeta de mineral/micro. El sodio conserva su semántica médica dual (piso
-// SODIUM_FLOOR_MG + techo SODIUM_CEILING_MG), no configurable; el resto sigue su
-// arquetipo (techo = no rebasar, meta = alcanzar).
+// Mineral/micro tile. Sodium keeps its dual medical semantics (floor
+// SODIUM_FLOOR_MG + ceiling SODIUM_CEILING_MG), not configurable; the rest follow
+// their archetype (techo = do not exceed, meta = reach).
 function Tile({ state, mode, hasFood }) {
   const { meta, value, tgt, color, goal } = state;
   const d = meta.decimals;
@@ -340,9 +340,9 @@ function Tile({ state, mode, hasFood }) {
   );
 }
 
-// Diseño mini como card permanente: en modo 'delta'/'pct' solo chips de lo
-// que falta (todo en meta colapsa a un ✓); en modo 'meta', el valor actual y
-// la meta de cada item.
+// Mini layout as a permanent card: in 'delta'/'pct' mode only chips for what
+// is missing (everything on target collapses to a ✓); in 'meta' mode, the current
+// value and the target of each item.
 function MiniGrid({ cfg, totals, target, hasFood }) {
   if (cfg.mode === 'meta') {
     return (
@@ -372,10 +372,10 @@ function MiniGrid({ cfg, totals, target, hasFood }) {
   );
 }
 
-// Mini-resumen fijo (<lg): visible solo cuando la card de resumen sale del
-// viewport. Muestra SOLO lo pendiente (items y modo del diseño mini) — delta
-// + etiqueta corta y punto de estado de 4px; lo cumplido no ocupa slot. Todo
-// en meta colapsa a un único ✓.
+// Fixed mini-summary (<lg): visible only when the summary card leaves the
+// viewport. Shows ONLY what is pending (items and mode of the mini layout) — delta
+// + short label and a 4px status dot; met items take no slot. Everything
+// on target collapses to a single ✓.
 function MiniStat({ mode, pending, label }) {
   const { critical, delta, base } = pending;
   return (
@@ -389,11 +389,11 @@ function MiniStat({ mode, pending, label }) {
   );
 }
 
-// El mini-resumen fijo comparte el diseño 'mini' con la card: reusa MiniGrid
-// para que TODO cambio de config (modo meta incluido, no solo pendientes) se
-// refleje idéntico al hacer scroll. Un renderizador propio divergía en 'meta'.
+// The fixed mini-summary shares the 'mini' layout with the card: it reuses MiniGrid
+// so that EVERY config change (including 'meta' mode, not just pending items) is
+// reflected identically while scrolling. A dedicated renderer used to diverge in 'meta'.
 function MiniSummary({ visible, top, cfg, totals, target, hasFood, onTap }) {
-  // Sin metas y sin registros no hay nada que resumir.
+  // With no targets and no entries there is nothing to summarize.
   if (target == null && !hasFood) return null;
   return (
     <button
@@ -411,8 +411,8 @@ function MiniSummary({ visible, top, cfg, totals, target, hasFood, onTap }) {
   );
 }
 
-// Sheet de plantillas de comida: lista las guardadas (añadir / borrar) y permite
-// guardar el día actual como una nueva. Glass + cierre al tocar el scrim (BIBLIA).
+// Meal templates sheet: lists the saved ones (add / delete) and allows saving
+// the current day as a new one. Glass + close on scrim tap (BIBLIA).
 function MealTemplatesSheet({ templates, canSave, onSave, onAdd, onDelete, onClose }) {
   const [name, setName] = useState('');
   return (
@@ -484,10 +484,10 @@ function MealTemplatesSheet({ templates, canSave, onSave, onAdd, onDelete, onClo
 export default function Today() {
   const lang = useLang();
   useUnits();
-  useAdherenceBands(); // re-pinta al cambiar las bandas en Configuración
+  useAdherenceBands(); // re-renders when the bands change in Configuración
   const [date, setDate] = useState(todayISO());
-  // SWR: pinta el cache de sesión al instante y el refetch de fondo actualiza.
-  // Entries cacheados por fecha; 'targets' se comparte con la página Metas.
+  // SWR: renders the session cache instantly and the background refetch updates it.
+  // Entries cached per date; 'targets' is shared with the Metas page.
   const [entries, setEntries] = useState(() => cacheGet(`entries:${todayISO()}`) || []);
   const [labels, setLabels] = useState(() => cacheGet('labels') || []);
   const [targets, setTargets] = useState(() => cacheGet('targets') || []);
@@ -495,44 +495,44 @@ export default function Today() {
   const [adding, setAdding] = useState(null); // { labelId } | null
   const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState(null); // entry being edited
-  // Preview "calculadora": el form de añadir/editar reporta { meta(per-100g),
-  // grams, minus(entry a reemplazar|null) }; el resumen refleja cómo quedaría el
-  // día si se guardara. Se limpia al desmontar el form (cancelar/guardar/cerrar).
+  // "Calculator" preview: the add/edit form reports { meta(per-100g),
+  // grams, minus(entry to be replaced|null) }; the summary reflects how the day
+  // would end up if saved. Cleared when the form unmounts (cancel/save/close).
   const [preview, setPreview] = useState(null);
   const [toast, showToast] = useToast();
   const [userId, setUserId] = useState(null);
   const [prefs, setPrefs] = useState({ water_glass_ml: 1000, water_food_id: null, today_view: 'estado' });
   const [waterSettingsOpen, setWaterSettingsOpen] = useState(false);
   const [cardConfigOpen, setCardConfigOpen] = useState(false);
-  // Agua optimista: ml en vuelo (insert/delete pendiente) para pintar los vasos
-  // al instante sin esperar el round-trip a Supabase. Se descuenta al resolver.
+  // Optimistic water: in-flight ml (pending insert/delete) to render the glasses
+  // instantly without waiting for the Supabase round-trip. Deducted upon resolution.
   const [pendingWaterMl, setPendingWaterMl] = useState(0);
-  const [undoData, setUndoData] = useState(null); // { entry, timer } tras un borrado, para "Deshacer"
-  const [undoTpl, setUndoTpl] = useState(null); // { list, timer }: prefs.meal_templates previo a borrar una plantilla, para "Deshacer"
-  const [activeEntry, setActiveEntry] = useState(null); // entry en arrastre (para el fantasma de DragOverlay)
-  const [dragOverSection, setDragOverSection] = useState(null); // id de etiqueta (o 'none') bajo una card en arrastre
-  const [draggingSection, setDraggingSection] = useState(null); // id de la sección en arrastre (atenúa a las demás)
-  const [quickAddKey, setQuickAddKey] = useState(0); // bump para resetear el quick-add inline tras registrar
+  const [undoData, setUndoData] = useState(null); // { entry, timer } after a delete, for "Deshacer"
+  const [undoTpl, setUndoTpl] = useState(null); // { list, timer }: prefs.meal_templates prior to deleting a template, for "Deshacer"
+  const [activeEntry, setActiveEntry] = useState(null); // entry being dragged (for the DragOverlay ghost)
+  const [dragOverSection, setDragOverSection] = useState(null); // label id (or 'none') under a dragged card
+  const [draggingSection, setDraggingSection] = useState(null); // id of the section being dragged (dims the others)
+  const [quickAddKey, setQuickAddKey] = useState(0); // bumped to reset the inline quick-add after logging
   const [quickAddInitialLabel, setQuickAddInitialLabel] = useState(null);
   const quickAddInputRef = useRef(null);
   const isLg = useIsLgUp();
-  // Mini-resumen (<lg): visible cuando la card de resumen sale del viewport.
+  // Mini-summary (<lg): visible when the summary card leaves the viewport.
   const summaryCardRef = useRef(null);
   const [miniVisible, setMiniVisible] = useState(false);
   const [miniTop, setMiniTop] = useState(0);
-  // Día copiado para "Pegar" (localStorage: sobrevive cambio de fecha y recarga).
+  // Day copied for "Pegar" (localStorage: survives date changes and reloads).
   const [copiedDay, setCopiedDay] = useState(() => localStorage.getItem('nutri.today.copiedDay') || null);
   const [confirmingDeleteDay, setConfirmingDeleteDay] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
-  // Secciones contraídas: Set de claves (String(labelId) o 'none'), persistido en
-  // localStorage — sobrevive reload sin escritura remota (ponytail: no DB).
+  // Collapsed sections: Set of keys (String(labelId) or 'none'), persisted in
+  // localStorage — survives reloads without a remote write (ponytail: no DB).
   const [collapsed, setCollapsed] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('nutri.today.collapsed') || '[]')); }
     catch { return new Set(); }
   });
-  // Al soltar una sección, el navegador dispara un click sobre el elemento donde
-  // quedó el puntero — si el drag arrancó en la zona del toggle, ese click fantasma
-  // contraería la sección recién reordenada. Ventana de gracia tras cada drag.
+  // On dropping a section, the browser fires a click on the element where the
+  // pointer ended up — if the drag started in the toggle zone, that ghost click
+  // would collapse the just-reordered section. Grace window after each drag.
   const lastSectionDragRef = useRef(0);
   function toggleCollapsed(key) {
     if (Date.now() - lastSectionDragRef.current < 250) return;
@@ -544,9 +544,9 @@ export default function Today() {
     });
   }
 
-  // MouseSensor + TouchSensor, NO PointerSensor: con touch-action pan-y (necesario
-  // para el swipe-borrar) PointerSensor no puede bloquear el scroll y iOS cancela el
-  // drag con pointercancel; TouchSensor sí hace preventDefault del touchmove al activar.
+  // MouseSensor + TouchSensor, NOT PointerSensor: with touch-action pan-y (required
+  // for swipe-to-delete) PointerSensor cannot block scrolling and iOS cancels the
+  // drag with pointercancel; TouchSensor does preventDefault the touchmove on activation.
   const DRAG_ACTIVATION = { delay: 150, tolerance: 8 };
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: DRAG_ACTIVATION }),
@@ -554,8 +554,8 @@ export default function Today() {
   );
 
   useEffect(() => {
-    // Al cambiar de fecha, pinta el cache del nuevo día ANTES del refetch —
-    // sin esto se verían los entries del día anterior mientras carga.
+    // On date change, render the new day's cache BEFORE the refetch —
+    // without this, the previous day's entries would show while loading.
     const cached = cacheGet(`entries:${date}`);
     if (cached) setEntries(cached);
     loadDay();
@@ -565,7 +565,7 @@ export default function Today() {
     const el = summaryCardRef.current;
     if (!el || typeof IntersectionObserver === 'undefined') return;
     const obs = new IntersectionObserver(([entry]) => {
-      // El header móvil es sticky: el mini-resumen se ancla justo debajo.
+      // The mobile header is sticky: the mini-summary anchors right below it.
       setMiniTop(document.querySelector('header')?.offsetHeight || 0);
       setMiniVisible(!entry.isIntersecting);
     });
@@ -578,17 +578,17 @@ export default function Today() {
     window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
   }
 
-  // Tras guardar un registro, deja la barra de su sección arriba (bajo el header
-  // sticky). setTimeout 0: espera al re-render con la entry nueva antes de medir
-  // (rAF no corre en pestañas sin frames, p. ej. en background).
+  // After saving an entry, leave its section bar at the top (below the sticky
+  // header). setTimeout 0: waits for the re-render with the new entry before
+  // measuring (rAF does not run in frameless tabs, e.g. in the background).
   function scrollToSection(labelId) {
     setTimeout(() => {
       const el = document.getElementById(labelId ? `sec-${labelId}` : 'sec-none');
       if (!el) return;
       const header = document.querySelector('header')?.offsetHeight || 0;
-      // El mini-resumen es fixed bajo el header (z-20) y puede envolver a 2
-      // filas: su altura real también tapa la barra de sección. En lg+ está
-      // display:none (offsetHeight 0), no desplaza nada.
+      // The mini-summary is fixed below the header (z-20) and may wrap onto 2
+      // rows: its actual height also covers the section bar. On lg+ it is
+      // display:none (offsetHeight 0), it offsets nothing.
       const mini = document.getElementById('mini-summary')?.offsetHeight || 0;
       const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       window.scrollTo({
@@ -602,16 +602,16 @@ export default function Today() {
     loadLabels();
     loadTargets();
     loadPrefs();
-    // Con internet lento la query de frecuentes tarda: se dispara aquí (post-login)
-    // para que abrir el sheet de añadir sea instantáneo (lee del caché).
+    // On a slow connection the frequent-items query takes a while: it is fired here
+    // (post-login) so that opening the add sheet is instant (it reads from the cache).
     prefetchFrequent();
-    // LabelsModal vive en App.jsx encima de esta página: sin remount, avisa por evento.
+    // LabelsModal lives in App.jsx above this page: no remount, it notifies via an event.
     window.addEventListener('labels-changed', loadLabels);
     return () => window.removeEventListener('labels-changed', loadLabels);
   }, []);
 
-  // Atajos de teclado lg+: ←/→ cambian de día, "/" enfoca el quick-add, Esc
-  // cierra panel/sheet — inactivos si el foco está en un campo de formulario.
+  // Keyboard shortcuts lg+: ←/→ change the day, "/" focuses the quick-add, Esc
+  // closes panel/sheet — inactive when focus is on a form field.
   useEffect(() => {
     function onKeyDown(e) {
       if (e.key === 'Escape') {
@@ -643,9 +643,9 @@ export default function Today() {
   async function savePrefs(patch) {
     const next = { ...prefs, ...patch };
     setPrefs(next);
-    // merge_prefs (migración 014): escribe SOLO las claves del patch server-side.
-    // El upsert anterior reemplazaba el jsonb completo desde este estado local
-    // parcial y podía pisar claves ajenas (p. ej. dashboards del Dashboard).
+    // merge_prefs (migration 014): writes ONLY the patch's keys server-side.
+    // The previous upsert replaced the entire jsonb from this partial local
+    // state and could clobber unrelated keys (e.g. the Dashboard's dashboards).
     await supabase.rpc('merge_prefs', { patch });
     return next;
   }
@@ -655,8 +655,8 @@ export default function Today() {
     savePrefs({ today_view: VIEW_CYCLE[(VIEW_CYCLE.indexOf(cur) + 1) % VIEW_CYCLE.length] });
   }
 
-  // Guarda un patch de config del diseño `view`; con sync activo el patch
-  // (aplicado sobre la config de ese diseño) se replica a los tres.
+  // Saves a config patch for the `view` layout; with sync enabled the patch
+  // (applied on top of that layout's config) is replicated to all three.
   function saveCardCfg(view, patch) {
     const tc = prefs.today_card || {};
     const next = { ...cardCfg(prefs, view), ...patch };
@@ -667,8 +667,8 @@ export default function Today() {
     });
   }
 
-  // Encender sync copia la config del diseño activo a los tres (punto de
-  // partida idéntico); apagarlo deja cada uno con lo último y divergen.
+  // Turning sync on copies the active layout's config to all three (identical
+  // starting point); turning it off leaves each with the latest and they diverge.
   function setCardSync(on, view) {
     const tc = prefs.today_card || {};
     const cur = cardCfg(prefs, view);
@@ -679,12 +679,12 @@ export default function Today() {
     });
   }
 
-  // El agua se registra como entries de un food "Agua" propio (micros {agua_ml:100},
-  // grams = ml). Find-or-create filtrando por owner: el catálogo es compartido en
-  // lectura y el "Agua" del otro usuario no sería editable por este.
+  // Water is logged as entries of the user's own "Agua" food (micros {agua_ml:100},
+  // grams = ml). Find-or-create filtering by owner: the catalog is shared for
+  // reading and the other user's "Agua" would not be editable by this one.
   async function getWaterFoodId() {
-    // Validar el cache: un import/limpieza del catálogo pudo borrar el food y
-    // dejar el id muerto (los inserts fallarían por FK en silencio).
+    // Validate the cache: a catalog import/cleanup may have deleted the food and
+    // left the id dead (inserts would silently fail on the FK).
     if (prefs.water_food_id) {
       const { data } = await supabase.from('foods').select('id').eq('id', prefs.water_food_id).maybeSingle();
       if (data) return data.id;
@@ -733,8 +733,8 @@ export default function Today() {
     setTargets(cacheSet('targets', data || []));
   }
 
-  // silent: refetch tras una mutación sin pasar por el skeleton — desmontar la
-  // lista colapsa la altura de la página y el navegador recorta el scroll a top.
+  // silent: refetch after a mutation without going through the skeleton — unmounting
+  // the list collapses the page height and the browser clamps the scroll to the top.
   async function loadDay(silent = false) {
     if (!silent && !cacheGet(`entries:${date}`)) setLoading(true);
     const { data, error } = await supabase
@@ -795,29 +795,29 @@ export default function Today() {
     }
     if (data?.type !== 'card') return;
     const overId = String(over.id);
-    if (overId === active.id) return; // soltó sobre sí misma
+    if (overId === active.id) return; // dropped onto itself
     const moving = entries.find((e) => e.id === data.entryId);
     if (!moving) return;
-    // Etiqueta destino: sección directa (contenedor) o la de la card sobre la que se soltó.
+    // Destination label: direct section (container) or that of the card it was dropped onto.
     const overLabel = overId.startsWith('section-')
       ? (overId === 'section-none' ? null : overId.slice('section-'.length))
       : (entries.find((e) => `card-${e.id}` === overId)?.meal_label_id ?? null);
-    // Nuevo orden global: quitar la card y reinsertarla en la posición destino.
-    // groupByLabel agrupa por meal_label_id preservando el orden del array, así que
-    // el orden global dentro de un grupo == orden visual de la sección.
+    // New global order: remove the card and reinsert it at the destination position.
+    // groupByLabel groups by meal_label_id preserving the array order, so the
+    // global order within a group == the section's visual order.
     const others = entries.filter((e) => e.id !== moving.id);
     let idx;
     if (overId.startsWith('section-')) {
-      let last = -1; // insertar tras la última card de esa etiqueta (fin de sección)
+      let last = -1; // insert after the last card of that label (end of section)
       others.forEach((e, i) => { if ((e.meal_label_id ?? null) === overLabel) last = i; });
       idx = last + 1;
     } else {
       idx = others.findIndex((e) => `card-${e.id}` === overId);
       if (idx === -1) idx = others.length;
       else {
-        // Semántica arrayMove: al arrastrar hacia abajo, la card destino ya se corrió
-        // un índice arriba dentro de `others` — insertar DESPUÉS de ella, no antes
-        // (si no, un swap adyacente hacia abajo queda igual que el orden original).
+        // arrayMove semantics: when dragging downward, the target card has already
+        // shifted one index up within `others` — insert AFTER it, not before
+        // (otherwise an adjacent downward swap ends up equal to the original order).
         const movingIdx = entries.findIndex((e) => e.id === moving.id);
         const overIdx = entries.findIndex((e) => `card-${e.id}` === overId);
         if (movingIdx < overIdx) idx += 1;
@@ -825,9 +825,9 @@ export default function Today() {
     }
     const movedEntry = { ...moving, meal_label_id: overLabel };
     const next = [...others.slice(0, idx), movedEntry, ...others.slice(idx)];
-    setEntries(next); // optimista (render usa orden del array + meal_label_id)
-    // Persistir: renumerar sort_order de las secciones afectadas (origen y destino)
-    // y el meal_label_id de la card movida.
+    setEntries(next); // optimistic (render uses the array order + meal_label_id)
+    // Persist: renumber sort_order for the affected sections (origin and destination)
+    // and the moved card's meal_label_id.
     const affected = new Set([moving.meal_label_id ?? null, overLabel]);
     const counters = new Map();
     const updates = [];
@@ -850,8 +850,8 @@ export default function Today() {
     lastSectionDragRef.current = Date.now();
   }
 
-  // Borrado unificado (swipe/hover-icon en Hoy y botón "Borrar" del editor): UI
-  // optimista + toast con "Deshacer" 5 s que reinserta el registro tal cual estaba.
+  // Unified delete (swipe/hover icon in Hoy and the editor's "Borrar" button): optimistic
+  // UI + toast with "Deshacer" for 5 s that reinserts the entry exactly as it was.
   async function deleteEntry(entry) {
     setEntries((es) => es.filter((x) => x.id !== entry.id));
     const { error } = await supabase.from('entries').delete().eq('id', entry.id);
@@ -876,9 +876,9 @@ export default function Today() {
     if (!error) loadDay(true);
   }
 
-  // Inserta en la fecha actual los registros de `sourceDay`. Reusado por "Ayer"
-  // (sourceDay = date-1) y "Pegar" (sourceDay = copiedDay). El agua no se copia:
-  // se registra con los vasos del día.
+  // Inserts `sourceDay`'s entries into the current date. Reused by "Ayer"
+  // (sourceDay = date-1) and "Pegar" (sourceDay = copiedDay). Water is not copied:
+  // it is logged with the day's glasses.
   async function copyEntriesFrom(sourceDay) {
     const { data: srcEntries } = await supabase
       .from('entries')
@@ -905,9 +905,9 @@ export default function Today() {
     showToast(t('Día copiado.'));
   }
 
-  // Plantillas de comida ("Meals" de MFP): un conjunto de alimentos guardado con
-  // nombre en prefs.data.meal_templates (sin migración) y reinsertable en cualquier
-  // fecha. El agua no entra (foodEntries ya la excluye).
+  // Meal templates (MFP's "Meals"): a set of foods saved under a name in
+  // prefs.data.meal_templates (no migration) and reinsertable on any date.
+  // Water is not included (foodEntries already excludes it).
   async function saveTemplate(name) {
     const nm = name.trim();
     if (!nm) return;
@@ -936,7 +936,7 @@ export default function Today() {
     });
   }
 
-  // La plantilla vive en un array de prefs: deshacer = reescribir el array previo.
+  // The template lives in a prefs array: undo = rewrite the previous array.
   async function undoDeleteTemplate() {
     if (!undoTpl) return;
     clearTimeout(undoTpl.timer);
@@ -945,9 +945,9 @@ export default function Today() {
     await savePrefs({ meal_templates: list });
   }
 
-  // Inserta la plantilla en la fecha actual. Filtra items cuyo alimento/receta ya
-  // no exista (una sola SELECT por tipo): un id borrado rompería el insert entero
-  // por la FK, así que se descartan y se avisa cuántos.
+  // Inserts the template on the current date. Filters out items whose food/recipe no
+  // longer exists (a single SELECT per type): a deleted id would break the entire
+  // insert via the FK, so they are discarded and the count is reported.
   async function addTemplate(tpl) {
     const foodIds = tpl.items.filter((i) => i.food_id).map((i) => i.food_id);
     const recipeIds = tpl.items.filter((i) => i.recipe_id).map((i) => i.recipe_id);
@@ -984,8 +984,8 @@ export default function Today() {
     loadDay(true);
   }
 
-  // Borra los alimentos del día (no el agua, que se lleva por vasos). Destructivo
-  // e irreversible: confirma antes con ConfirmSheet.
+  // Deletes the day's foods (not water, which is tracked by glasses). Destructive
+  // and irreversible: confirms first with ConfirmSheet.
   function handleDeleteDay() {
     const foods = entries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id));
     if (foods.length === 0) {
@@ -1007,8 +1007,8 @@ export default function Today() {
     loadDay(true);
   }
 
-  // Publica Ayer/Copiar/Pegar en el botón "Más opciones" del layout (App.jsx).
-  // "Ayer" solo con la fecha en hoy; "Pegar" solo con un día copiado.
+  // Publishes Ayer/Copiar/Pegar in the layout's "Más opciones" button (App.jsx).
+  // "Ayer" only when the date is today; "Pegar" only with a copied day.
   useEffect(() => {
     const actions = [];
     if (date === todayISO()) {
@@ -1030,9 +1030,9 @@ export default function Today() {
     return () => setSectionMenu([]);
   }, [date, copiedDay, prefs.water_food_id, entries, lang]);
 
-  // Sección "+": en lg+ no abre el sheet (reemplazado por el quick-add inline),
-  // solo prellena su etiqueta y remonta el form (foco vía autoFocus); en <lg
-  // conserva el sheet actual.
+  // Section "+": on lg+ it does not open the sheet (replaced by the inline quick-add),
+  // it only prefills its label and remounts the form (focus via autoFocus); on <lg
+  // it keeps the current sheet.
   function handleSectionAdd(labelId) {
     if (isLg) {
       setQuickAddInitialLabel(labelId);
@@ -1044,11 +1044,11 @@ export default function Today() {
 
   const waterEntries = entries.filter((e) => e.food_id && e.food_id === prefs.water_food_id);
   const foodEntries = entries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id));
-  const waterMl = waterEntries.reduce((s, e) => s + Number(e.grams), 0); // densidad 1: grams = ml
+  const waterMl = waterEntries.reduce((s, e) => s + Number(e.grams), 0); // density 1: grams = ml
 
-  // Config del diseño activo y del mini (el mini-resumen fijo la comparte).
-  // Los totales se suman una sola vez para la unión de claves usadas; sodio
-  // siempre entra (regla médica) y las claves base son gratis.
+  // Config of the active layout and of the mini (the fixed mini-summary shares it).
+  // Totals are summed once for the union of the keys in use; sodium is
+  // always included (medical rule) and the base keys come for free.
   const activeView = VIEW_CYCLE.includes(prefs.today_view) ? prefs.today_view : 'estado';
   const viewCfg = cardCfg(prefs, activeView);
   const miniCfg = cardCfg(prefs, 'mini');
@@ -1058,8 +1058,8 @@ export default function Today() {
     return acc;
   }, Object.fromEntries(totalKeys.map((k) => [k, 0])));
 
-  // Totales que ve el resumen: los reales + el delta del registro en edición
-  // (mismo escalado per-100g que AportaPanel). Sin preview, son los reales.
+  // Totals the summary sees: the real ones + the delta of the entry being edited
+  // (same per-100g scaling as AportaPanel). Without a preview, they are the real ones.
   const displayTotals = preview?.meta
     ? totalKeys.reduce((acc, k) => {
         const per100 = MACRO_META[k] ? preview.meta[k] : preview.meta.micros?.[k];
@@ -1071,9 +1071,9 @@ export default function Today() {
 
   const target = resolveTarget(targets, date);
 
-  // Strip de resumen del día para las hojas de añadir/editar (<lg): la hoja
-  // tapa la card de resumen, este strip mantiene el contexto del día a la vista.
-  // Reusa MiniGrid (idéntico al mini-resumen fijo). Null si no hay nada que resumir.
+  // Day-summary strip for the add/edit sheets (<lg): the sheet covers the
+  // summary card, so this strip keeps the day's context in view.
+  // Reuses MiniGrid (identical to the fixed mini-summary). Null if there is nothing to summarize.
   const daySummaryStrip = (target != null || foodEntries.length > 0) && (
     <div className="flex items-center gap-3">
       <span className="text-[10px] uppercase tracking-wide text-text-3 flex-none">{t('Hoy')}</span>
@@ -1118,7 +1118,7 @@ export default function Today() {
         </button>
       </div>
 
-      {/* Quick-add inline: solo lg+, reemplaza el flujo FAB+sheet. */}
+      {/* Inline quick-add: lg+ only, replaces the FAB+sheet flow. */}
       <div className="hidden lg:block lg:col-start-1">
         <div className="rounded-2xl bg-surface border border-border p-4">
           <AddEntryForm
@@ -1161,15 +1161,15 @@ export default function Today() {
         />
       </div>
 
-      {/* Rail derecho (lg+): sticky, muestra el resumen del día o el editor de la entry activa. */}
-      {/* El rail abarca las 4 filas de col-1 (grid-rows-[auto_auto_auto_1fr] en el contenedor).
-          Sin esas filas explícitas, `1/-1` colapsa a span-1 e infla la fila 1 con la altura
-          del rail (hueco en col-1). La fila 1fr absorbe el excedente del rail por abajo. */}
+      {/* Right rail (lg+): sticky, shows the day's summary or the active entry's editor. */}
+      {/* The rail spans col-1's 4 rows (grid-rows-[auto_auto_auto_1fr] on the container).
+          Without those explicit rows, `1/-1` collapses to span-1 and inflates row 1 with the
+          rail's height (gap in col-1). The 1fr row absorbs the rail's overflow at the bottom. */}
       <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-1 lg:[grid-row:1/-1] lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto">
-        {/* Resumen del día: siempre presente en el rail (lg). Al editar queda fijo
-            arriba del editor (sticky dentro del rail scrolleable) para no perder los
-            totales/metas mientras se ajusta una cantidad. bg propio para tapar el
-            editor que scrollea debajo. */}
+        {/* Day summary: always present in the rail (lg). While editing it stays pinned
+            above the editor (sticky within the scrollable rail) so the totals/targets
+            are not lost while adjusting an amount. Its own bg to cover the
+            editor scrolling underneath. */}
         <div className="hidden lg:block lg:sticky lg:top-0 lg:z-10 bg-bg rounded-2xl">
           <SummaryCard
             view={activeView}
@@ -1397,9 +1397,9 @@ export default function Today() {
   );
 }
 
-// Al arrastrar una sección solo debe colisionar con otras secciones (si no,
-// closestCorners resolvería `over` a una card interna y el reorden fallaría).
-// Al arrastrar una card, closestCorners resuelve a la card hermana o al contenedor.
+// While dragging a section it must only collide with other sections (otherwise,
+// closestCorners would resolve `over` to an inner card and the reorder would fail).
+// While dragging a card, closestCorners resolves to the sibling card or the container.
 function collisionDetectionStrategy(args) {
   if (args.active?.data?.current?.type === 'section') {
     return closestCenter({
@@ -1410,9 +1410,9 @@ function collisionDetectionStrategy(args) {
   return closestCorners(args);
 }
 
-// Una sección por cada etiqueta (aunque esté vacía), en el orden de `labels`
-// (ya vienen por sort_order); "Sin etiqueta" al final si tiene items, o mientras
-// se arrastra una card (para poder soltarla ahí y quitarle la etiqueta).
+// One section per label (even if empty), in the order of `labels`
+// (they already come by sort_order); "Sin etiqueta" at the end if it has items, or while
+// a card is being dragged (so it can be dropped there to remove its label).
 function groupByLabel(entries, labels, showEmptyNone) {
   const groups = labels.map((l) => ({ id: l.id, name: l.name, items: [] }));
   const byId = new Map(groups.map((g) => [g.id, g]));
@@ -1435,11 +1435,11 @@ function sectionTotals(items) {
   }), { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, sodio_mg: 0, potasio_mg: 0, magnesio_mg: 0 });
 }
 
-// Barra resumen = nivel 1 (total de la sección): fondo neutro; con registros, el
-// título y el borde pasan a lima (recolor discreto que la distingue de una sección
-// vacía). Macros con color + micros (Na/K/Mg, solo lg) y kcal grande a la derecha.
-// Click en la zona izquierda contrae/expande. `dragProps` = listeners de dnd-kit
-// (long-press 150 ms sobre la barra arrastra la sección; "+" hace stopPropagation).
+// Summary bar = level 1 (section total): neutral background; with entries, the
+// title and border switch to lime (a discreet recolor that distinguishes it from an
+// empty section). Colored macros + micros (Na/K/Mg, lg only) and large kcal on the right.
+// Clicking the left zone collapses/expands. `dragProps` = dnd-kit listeners
+// (a 150 ms long-press on the bar drags the section; "+" does stopPropagation).
 function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, dragProps, dragging }) {
   const tot = sectionTotals(items);
   const has = items.length > 0;
@@ -1510,10 +1510,10 @@ function SectionBar({ name, items, isOver, collapsed, onToggle, onAdd, dragProps
   );
 }
 
-// Sección de una etiqueta real: reordenable (long-press en su barra) y droppable
-// (cards de otras secciones). Al arrastrar se "levanta" como losa: el nodo externo solo
-// traslada (dnd-kit anula su transition, así que scale/rotate ahí saltarían); el interno
-// anima scale, tilt, halo de acento y sombra. Las demás secciones se atenúan (`dimmed`).
+// Section for a real label: reorderable (long-press on its bar) and droppable
+// (cards from other sections). While dragging it "lifts" like a slab: the outer node only
+// translates (dnd-kit overrides its transition, so scale/rotate there would jump); the inner
+// one animates scale, tilt, accent halo and shadow. The other sections are dimmed (`dimmed`).
 function SortableSection({ group: g, isOver, dimmed, editingId, collapsed, onToggle, onAdd, onEditEntry, onDeleteEntry }) {
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `section-${g.id}`,
@@ -1562,7 +1562,7 @@ function SortableSection({ group: g, isOver, dimmed, editingId, collapsed, onTog
   );
 }
 
-// "Sin etiqueta": no reordenable la sección, pero sus cards sí; droppable para cross-sección.
+// "Sin etiqueta": the section is not reorderable, but its cards are; droppable for cross-section moves.
 function DropOnlySection({ group: g, isOver, dimmed, editingId, collapsed, onToggle, onEditEntry, onDeleteEntry }) {
   const { setNodeRef } = useDroppable({ id: 'section-none', data: { type: 'section', labelId: null } });
   return (
@@ -1583,19 +1583,19 @@ function DropOnlySection({ group: g, isOver, dimmed, editingId, collapsed, onTog
   );
 }
 
-// Card de una ingesta: tap → editar, arrastre horizontal inmediato → swipe (borrar),
-// long-press 150 ms sin moverse → drag entre secciones (dnd-kit). El swipe vive en
-// SwipeToDelete (compartido con Objetivos); su umbral de movimiento (8 px) coincide con
-// la tolerance de dnd-kit para que ambos gestos se "auto-cancelen" de forma consistente.
-// En lg+ con puntero (hover/focus-within), iconos ✎/✕ aparecen a la derecha — capa
-// aparte (no dentro del <button> del swipe: anidar <button> rompe el HTML).
+// Intake card: tap → edit, immediate horizontal drag → swipe (delete),
+// 150 ms long-press without moving → drag between sections (dnd-kit). The swipe lives in
+// SwipeToDelete (shared with Objetivos); its movement threshold (8 px) matches
+// dnd-kit's tolerance so both gestures "auto-cancel" each other consistently.
+// On lg+ with a pointer (hover/focus-within), ✎/✕ icons appear on the right — a separate
+// layer (not inside the swipe's <button>: nesting <button> breaks the HTML).
 function SwipeCard({ entry: e, labelId, editing, onEdit, onDelete }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `card-${e.id}`,
     data: { type: 'card', entryId: e.id, labelId },
   });
-  // Transform de sortable → las cards vecinas "hacen hueco". La card activa la
-  // pinta el DragOverlay, así que no la movemos aquí (!isDragging).
+  // Sortable's transform → the neighboring cards "make room". The active card is
+  // rendered by the DragOverlay, so we do not move it here (!isDragging).
   const style = transform && !isDragging ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, transition } : undefined;
   return (
     <div style={style} className="relative group rounded-2xl">
@@ -1639,7 +1639,7 @@ function SwipeCard({ entry: e, labelId, editing, onEdit, onDelete }) {
   );
 }
 
-// Contenido interno de una card, compartido entre SwipeCard y el fantasma de DragOverlay.
+// Inner content of a card, shared between SwipeCard and the DragOverlay ghost.
 function CardBody({ entry: e }) {
   const highNa = Number(e.micros?.sodio_mg || 0) >= SODIUM_HIGH_MG;
   const highK = Number(e.micros?.potasio_mg || 0) >= POTASSIUM_HIGH_MG;
@@ -1679,15 +1679,15 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
   const isUS = units === 'us';
   const [customAmount, setCustomAmount] = useState('');
   const filled = glassMl > 0 ? Math.floor(waterMl / glassMl) : 0;
-  // Fracción del vaso en curso (índice `filled`): llena parcialmente ese vaso
-  // para que el agua sub-vaso (registro manual < un vaso) SÍ se vea.
+  // Fraction of the glass in progress (index `filled`): partially fills that glass
+  // so that sub-glass water (a manual log < one glass) IS visible.
   const frac = glassMl > 0 ? (waterMl % glassMl) / glassMl : 0;
-  // ponytail: tope de 16 vasos por si el objetivo/vaso da un número absurdo
+  // ponytail: 16-glass cap in case target/glass yields an absurd number
   const count = Math.min(Math.max(goalMl > 0 ? Math.ceil(goalMl / glassMl) : 3, filled + 1), 16);
 
-  // Al SUMAR agua (clic o manual) el líquido del vaso más alto con agua sube con
-  // ola. Se keyea en waterMl, NO en `filled`: así un add manual parcial —que no
-  // completa vaso— también anima. splash = índice del vaso animado.
+  // On ADDING water (click or manual) the liquid of the highest glass with water rises
+  // with a wave. Keyed on waterMl, NOT on `filled`: this way a partial manual add —one
+  // that does not complete a glass— also animates. splash = index of the animated glass.
   const prevWaterRef = useRef(waterMl);
   const [splash, setSplash] = useState(-1);
   useEffect(() => {
@@ -1720,7 +1720,7 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
       <div className="flex flex-wrap gap-2">
         {Array.from({ length: count }, (_, i) => {
           const isFilled = i < filled;
-          const isPartial = i === filled && frac > 0; // vaso en curso, medio lleno
+          const isPartial = i === filled && frac > 0; // glass in progress, partially full
           return (
             <button
               key={i}
@@ -1812,9 +1812,9 @@ function WaterSettingsForm({ glassMl, onSave }) {
   );
 }
 
-// Celda del grid Estado. El modo decide la variable protagonista: 'meta' =
-// valor actual (+ /meta), 'delta'/'pct' = faltante (✓ al cumplir); la línea
-// pequeña siempre ancla el contexto valor/meta.
+// Cell of the Estado grid. The mode decides the featured variable: 'meta' =
+// current value (+ /target), 'delta'/'pct' = remainder (✓ when met); the small
+// line always anchors the value/target context.
 function Stat({ state, mode }) {
   const { meta, value, tgt, color, goal } = state;
   const d = meta.decimals;
@@ -1835,9 +1835,9 @@ function Stat({ state, mode }) {
   );
 }
 
-// Fila de barra del diseño Objetivos: protagoniza la variable del modo (−N,
-// −N% o valor/meta). Cumplida la meta → check + fila atenuada; el tramo
-// vacío de la barra va en el propio color del nutriente (tenue).
+// Bar row of the Objetivos layout: it features the mode's variable (−N,
+// −N% or value/target). Target met → check + dimmed row; the empty
+// stretch of the bar uses the nutrient's own color (faint).
 function RailStat({ state, mode }) {
   const { meta, value, tgt, pct, color, goal } = state;
   const d = meta.decimals;
@@ -1872,12 +1872,12 @@ function RailStat({ state, mode }) {
   );
 }
 
-// Valores por 100 g (kcal, macros, micros) + porciones/densidad (solo foods,
-// para chips y toggle g/ml) del food o receta seleccionado.
+// Per-100 g values (kcal, macros, micros) + portions/density (foods only,
+// for chips and the g/ml toggle) of the selected food or recipe.
 function useFoodMeta(foodId, recipeId) {
   const key = foodId ? `foodmeta:${foodId}` : recipeId ? `recipemeta:${recipeId}` : null;
-  // Semilla del caché SWR: reabrir una card del mismo alimento pinta al instante
-  // (chips de porciones incluidos); el refetch de fondo corrige si cambió.
+  // SWR cache seed: reopening a card for the same food renders instantly
+  // (portion chips included); the background refetch corrects it if it changed.
   const [meta, setMeta] = useState(() => (key && cacheGet(key)) || null);
   useEffect(() => {
     setMeta((key && cacheGet(key)) || null);
@@ -1898,9 +1898,9 @@ function useFoodMeta(foodId, recipeId) {
   return meta;
 }
 
-// Núcleo de "añadir registro": buscador con recientes, cantidad y etiqueta.
-// Reutilizado por AddEntrySheet (sheet, <lg) y el quick-add inline (rail, lg+).
-// Navegación por teclado en resultados: ↓/↑ mueve la selección, Enter la confirma.
+// Core of "add entry": search box with recents, amount and label.
+// Reused by AddEntrySheet (sheet, <lg) and the inline quick-add (rail, lg+).
+// Keyboard navigation over results: ↓/↑ moves the selection, Enter confirms it.
 function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inputRef, autoFocus, onPreview }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
@@ -1917,18 +1917,18 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
     setActiveIndex(-1);
   }, [results]);
 
-  // Preview "calculadora": reporta el aporte del alimento elegido a la cantidad
-  // en curso. Sin selección/gramos/meta → null (el resumen vuelve a los reales).
+  // "Calculator" preview: reports the chosen food's contribution at the amount
+  // in progress. No selection/grams/meta → null (the summary reverts to the real totals).
   useEffect(() => {
     if (!onPreview) return;
     const g = Number(grams === '' ? presetGrams : grams);
     if (!selected || !foodMeta || !(g > 0)) onPreview(null);
     else onPreview({ meta: foodMeta, grams: g, minus: null });
   }, [selected, foodMeta, grams, presetGrams]);
-  useEffect(() => () => onPreview?.(null), []); // limpia al desmontar (cierre/registro)
+  useEffect(() => () => onPreview?.(null), []); // cleans up on unmount (close/log)
 
-  // Frecuentes desde el caché de src/lib/frequent.js (prefetch al montar Hoy):
-  // abrir el sheet no espera red, solo deriva la lista de la etiqueta activa.
+  // Frequent items from the src/lib/frequent.js cache (prefetched when Hoy mounts):
+  // opening the sheet does not wait for the network, it only derives the active label's list.
   useEffect(() => {
     let alive = true;
     getFrequent(initialLabelId, waterFoodId).then((list) => { if (alive) setFrequent(list); });
@@ -1948,8 +1948,8 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
         supabase.from('recipes').select('id,name').ilike('name', `%${q}%`).limit(8),
       ]);
       let foodHits = foods || [];
-      // Búsqueda semántica de respaldo: solo si hay pocos hits por ilike. Nunca
-      // debe romper la búsqueda normal — embedText ya devuelve null ante cualquier fallo.
+      // Semantic fallback search: only when ilike yields few hits. It must never
+      // break the normal search — embedText already returns null on any failure.
       if (GEMINI_KEY && trimmed.length >= 3 && foodHits.length < 8) {
         try {
           const vec = await embedText(trimmed);
@@ -1958,15 +1958,15 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
             foodHits = mergeFoodResults(foodHits, semantic, 8);
           }
         } catch {
-          // ignorado: se queda con los hits de ilike
+          // ignored: keeps the ilike hits
         }
       }
       const combined = [
-        // el Agua se registra desde su tarjeta, no como comida
+        // Agua is logged from its own card, not as food
         ...foodHits.filter((f) => f.id !== waterFoodId).map((f) => ({ ...f, type: 'food' })),
         ...(recipes || []).map((r) => ({ ...r, type: 'recipe' })),
       ];
-      // catálogo base (usda) al final; estable, conserva el orden dentro de cada grupo
+      // base catalog (usda) last; stable, preserves the order within each group
       combined.sort((a, b) => (a.source === 'usda') - (b.source === 'usda'));
       setResults(combined);
     }, 250);
@@ -2018,7 +2018,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
     const { error } = await supabase.from('entries').insert(payload);
     if (!error) {
       onAdded(labelId || null);
-      // Recarga en background; actualiza la lista si el form sigue montado (rail lg+).
+      // Reloads in the background; updates the list if the form is still mounted (lg+ rail).
       refreshFrequent()
         .then(() => getFrequent(initialLabelId, waterFoodId))
         .then(setFrequent)
@@ -2130,21 +2130,21 @@ function AddEntrySheet({ date, labels, waterFoodId, initialLabelId, subheader, o
   );
 }
 
-// Núcleo de "editar registro": cantidad, etiqueta y el panel "Aporta". Reutilizado
-// por EditEntrySheet (sheet, <lg) y el panel de edición inline (rail, lg+).
+// Core of "edit entry": amount, label and the "Aporta" panel. Reused
+// by EditEntrySheet (sheet, <lg) and the inline edit panel (rail, lg+).
 function EditEntryForm({ entry, labels, favMicros, onDelete, onSaved, onPreview }) {
   const [grams, setGrams] = useState('');
   const [labelId, setLabelId] = useState(entry.meal_label_id || '');
   const foodMeta = useFoodMeta(entry.food_id, entry.recipe_id);
 
-  // Preview "calculadora": sustituye el aporte guardado del registro (minus) por
-  // el de la cantidad en edición. Sin meta aún, deja los totales reales.
+  // "Calculator" preview: replaces the entry's saved contribution (minus) with
+  // that of the amount being edited. With no meta yet, leaves the real totals.
   useEffect(() => {
     if (!onPreview || !foodMeta) return;
     const g = Number(grams === '' ? entry.grams : grams);
     if (g >= 0) onPreview({ meta: foodMeta, grams: g, minus: entry });
   }, [foodMeta, grams, entry]);
-  useEffect(() => () => onPreview?.(null), []); // limpia al desmontar (cierre/guardado)
+  useEffect(() => () => onPreview?.(null), []); // cleans up on unmount (close/save)
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -2202,14 +2202,14 @@ function EditEntrySheet({ entry, labels, favMicros, subheader, onClose, onDelete
   );
 }
 
-// Panel read-only: kcal/macros/micros que aporta la cantidad actual (grams),
-// escalando los valores por 100 g del food/receta. Nunca se persiste.
+// Read-only panel: kcal/macros/micros contributed by the current amount (grams),
+// scaling the food/recipe's per-100 g values. Never persisted.
 function AportaPanel({ grams, meta, favMicros, fallback }) {
-  // Sin meta per-100g aún (fetch en vuelo): `fallback` es la fila de
-  // entry_nutrients, con valores EXACTOS para los gramos originales del registro
-  // (los calculó la vista SQL) — se muestran tal cual con factor 1, sin derivar.
-  // Si el usuario ya editó gramos antes de que llegue meta, esos valores quedan
-  // desfasados: pulse discreto hasta poder re-escalar.
+  // No per-100g meta yet (fetch in flight): `fallback` is the entry_nutrients
+  // row, with EXACT values for the entry's original grams (computed by the
+  // SQL view) — shown as-is with factor 1, without deriving.
+  // If the user already edited the grams before meta arrives, those values are
+  // stale: a discreet pulse until re-scaling is possible.
   const src = meta || fallback;
   if (!src) return null;
   const stale = !meta && Number(grams) !== Number(fallback?.grams);
@@ -2269,14 +2269,14 @@ function AportaStat({ label, value, color, unit }) {
   );
 }
 
-// Hoja de personalización del resumen. Edita el diseño ACTIVO (las flechas de
-// la card cambian de diseño; aquí solo se decide cómo mostrar los datos).
-// Todo se persiste al momento — la card detrás del scrim es el preview.
+// Summary customization sheet. Edits the ACTIVE layout (the card's arrows
+// switch layouts; here you only decide how to display the data).
+// Everything is persisted immediately — the card behind the scrim is the preview.
 function SummaryConfigSheet({ view, prefs, onPatch, onSync, onClose }) {
   const cfg = cardCfg(prefs, view);
   const sync = !!prefs.today_card?.sync;
   const addableMacros = Object.values(MACRO_META).filter((m) => !cfg.items.includes(m.key));
-  // Agua nunca en la lista de nutrientes del resumen: tiene su propia card.
+  // Water is never in the summary's nutrient list: it has its own card.
   const addableMicros = microGroups(MICROS.filter((m) => !cfg.items.includes(m.key) && m.key !== 'agua_ml'));
 
   function move(i, dir) {
@@ -2285,7 +2285,7 @@ function SummaryConfigSheet({ view, prefs, onPatch, onSync, onClose }) {
     onPatch(view, { items });
   }
 
-  // Ejemplos fijos por modo: enseñan la forma del dato, no un cálculo vivo.
+  // Fixed examples per mode: they show the shape of the datum, not a live computation.
   const MODES = [
     { id: 'delta', label: 'Faltante absoluto', example: '−318 kcal' },
     { id: 'pct', label: 'Faltante en %', example: '−18%' },
@@ -2392,9 +2392,9 @@ function CfgToggle({ label, checked, onChange }) {
 }
 
 function Sheet({ title, onClose, children, subheader }) {
-  // Backdrop cierra al tocar fuera (patrón del Sheet de Objetivos); la ✕ sería
-  // redundante aquí, así que se omite — la del editor inline (riel lg+, sin
-  // backdrop) sí se conserva porque ahí no hay tap-fuera.
+  // The backdrop closes on outside tap (the Objetivos Sheet's pattern); the ✕ would
+  // be redundant here, so it is omitted — the inline editor's one (lg+ rail, no
+  // backdrop) is kept because there is no tap-outside there.
   return (
     <div onClick={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 backdrop-in">
       <div onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-sm bg-surface-3 rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-4 max-h-[85dvh] overflow-y-auto sheet-in">
