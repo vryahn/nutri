@@ -146,6 +146,7 @@ const BODY_ALIASES = {
   muscle: 'musculo_kg', muscle_mass: 'musculo_kg', musculo: 'musculo_kg',
   water: 'agua_pct', body_water: 'agua_pct',
   body_water_l: 'agua_l', water_l: 'agua_l', tbw_l: 'agua_l',
+  height: 'altura_cm', height_cm: 'altura_cm', talla: 'altura_cm',
   bone: 'hueso_kg', bone_mass: 'hueso_kg',
   visceral: 'grasa_visceral', visceral_fat: 'grasa_visceral',
   bmr: 'metabolismo_basal_kcal',
@@ -169,7 +170,7 @@ const BODY_ALIASES = {
 export const BODY_HEADERS_EN = {
   day: 'day', note: 'note',
   peso_kg: 'weight', grasa_pct: 'body_fat', musculo_kg: 'muscle', agua_pct: 'body_water',
-  agua_l: 'body_water_l',
+  agua_l: 'body_water_l', altura_cm: 'height',
   hueso_kg: 'bone_mass', grasa_visceral: 'visceral_fat', metabolismo_basal_kcal: 'bmr',
   cintura_cm: 'waist', cadera_cm: 'hip', pecho_cm: 'chest', cuello_cm: 'neck',
   biceps_der_cm: 'right_biceps', biceps_izq_cm: 'left_biceps',

@@ -77,7 +77,7 @@ describe('gráficas personalizadas del Dashboard', () => {
     // 07-02 no registrado (sin fila) → nutrición debe dar null, no 0
   ]);
   const bodyByDay = new Map([
-    ['2026-07-01', { day: '2026-07-01', metrics: { peso_kg: 57.5, grasa_pct: 20, cintura_cm: 82 } }],
+    ['2026-07-01', { day: '2026-07-01', metrics: { peso_kg: 57.5, grasa_pct: 20, altura_cm: 175, cintura_cm: 82 } }],
     // 07-02 sin medición → body null (serie dispersa)
   ]);
   const dates = ['2026-07-01', '2026-07-02'];
@@ -97,13 +97,10 @@ describe('gráficas personalizadas del Dashboard', () => {
     expect(s[1]).toMatchObject({ protein_g: null, peso_kg: null, sodio_mg: null });
   });
 
-  it('resuelve derivadas (IMC) con las medidas del día + altura del Perfil', () => {
-    const s = buildDashSeries(dates, [DASH_VARS_BY_KEY.imc], nutByDay, bodyByDay, 'dia', 'promedio', 175);
+  it('resuelve derivadas (IMC) desde las medidas del día', () => {
+    const s = buildDashSeries(dates, [DASH_VARS_BY_KEY.imc], nutByDay, bodyByDay);
     expect(s[0].imc).toBeCloseTo(57.5 / (1.75 * 1.75), 1);
     expect(s[1].imc).toBeNull();
-    // sin altura de Perfil → derivadas null aunque haya peso/grasa del día
-    const sinAltura = buildDashSeries(dates, [DASH_VARS_BY_KEY.imc], nutByDay, bodyByDay);
-    expect(sinAltura[0].imc).toBeNull();
   });
 
   it('objetivo solo aplica a nutrición; body/derived no lo tienen', () => {
