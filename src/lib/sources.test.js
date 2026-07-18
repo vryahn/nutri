@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mapOFF, toDomainUnit, sweetenerAdditives } from './sources.js';
 
 describe('mapOFF', () => {
-  it('sodium_100g en gramos -> ×1000 a mg', () => {
+  it('sodium_100g in grams -> ×1000 to mg', () => {
     const p = {
       product_name: 'Refresco', brands: 'Marca X',
       nutriments: { 'energy-kcal_100g': 42, proteins_100g: 0, carbohydrates_100g: 10.6, fat_100g: 0, sodium_100g: 0.02 },
@@ -11,7 +11,7 @@ describe('mapOFF', () => {
     expect(mapOFF(p).micros.sodio_mg).toBe(20);
   });
 
-  it('fallback: sin sodium_100g, usa salt_100g / 2.5 × 1000', () => {
+  it('fallback: without sodium_100g, uses salt_100g / 2.5 × 1000', () => {
     const p = {
       product_name: 'Galletas', brands: '',
       nutriments: { salt_100g: 0.5 },
@@ -20,7 +20,7 @@ describe('mapOFF', () => {
     expect(mapOFF(p).micros.sodio_mg).toBe(200);
   });
 
-  it('nutrition_data_per 100ml se expone en per', () => {
+  it('nutrition_data_per 100ml is exposed in per', () => {
     const p = {
       product_name: 'Jugo', brands: '',
       nutriments: { 'energy-kcal_100g': 52 },
@@ -29,19 +29,19 @@ describe('mapOFF', () => {
     expect(mapOFF(p).per).toBe('100ml');
   });
 
-  it('nutrition_data_per ausente/distinto de 100ml -> per 100g', () => {
+  it('nutrition_data_per missing/different from 100ml -> per 100g', () => {
     const p = { product_name: 'X', brands: '', nutriments: {} };
     expect(mapOFF(p).per).toBe('100g');
   });
 
-  it('caffeine_100g en gramos -> ×1000 a mg', () => {
+  it('caffeine_100g in grams -> ×1000 to mg', () => {
     const p = { product_name: 'Energética', brands: '', nutriments: { caffeine_100g: 0.032 }, nutrition_data_per: '100g' };
     expect(mapOFF(p).micros.cafeina_mg).toBe(32);
   });
 });
 
 describe('sweetenerAdditives', () => {
-  it('detecta edulcorantes por E-número (incluye sufijos como e960c)', () => {
+  it('detects sweeteners by E-number (includes suffixes like e960c)', () => {
     const p = { additives_tags: ['en:e150d', 'en:e331', 'en:e951', 'en:e960c'] };
     const out = sweetenerAdditives(p);
     expect(out).toEqual([
@@ -50,14 +50,14 @@ describe('sweetenerAdditives', () => {
     ]);
   });
 
-  it('sin aditivos de edulcorante -> lista vacía', () => {
+  it('no sweetener additives -> empty list', () => {
     expect(sweetenerAdditives({ additives_tags: ['en:e322', 'en:e500'] })).toEqual([]);
     expect(sweetenerAdditives({})).toEqual([]);
   });
 });
 
 describe('toDomainUnit', () => {
-  it('unidad igual -> pasa directo', () => {
+  it('same unit -> passes through', () => {
     expect(toDomainUnit(100, 'kcal', 'kcal')).toBe(100);
   });
 
@@ -69,16 +69,16 @@ describe('toDomainUnit', () => {
     expect(toDomainUnit(1, 'mg', 'µg')).toBe(1000);
   });
 
-  it('g -> ml: 1:1 (agua)', () => {
+  it('g -> ml: 1:1 (water)', () => {
     expect(toDomainUnit(50, 'g', 'ml')).toBe(50);
   });
 
-  it('unidad no convertible -> null (se descarta, nunca unidad equivocada)', () => {
+  it('non-convertible unit -> null (discarded, never the wrong unit)', () => {
     expect(toDomainUnit(5, 'IU', 'mg')).toBeNull();
   });
 });
 
-describe('fetchFDC: prioridad de kcal 1008 > 2048 > 2047', () => {
+describe('fetchFDC: kcal priority 1008 > 2048 > 2047', () => {
   // FDC_KEY is read from import.meta.env at module load: the env must be stubbed
   // and the module re-imported (vi.resetModules) so the constant picks up the new value.
   beforeEach(() => {
@@ -101,7 +101,7 @@ describe('fetchFDC: prioridad de kcal 1008 > 2048 > 2047', () => {
     })));
   }
 
-  it('con 1008 presente, ignora 2047 y 2048', async () => {
+  it('with 1008 present, ignores 2047 and 2048', async () => {
     mockFoodNutrients([
       [2047, 400, 'kcal'],
       [2048, 410, 'kcal'],
@@ -112,7 +112,7 @@ describe('fetchFDC: prioridad de kcal 1008 > 2048 > 2047', () => {
     expect(out.kcal).toBe(123);
   });
 
-  it('sin 1008, usa 2048 sobre 2047', async () => {
+  it('without 1008, uses 2048 over 2047', async () => {
     mockFoodNutrients([
       [2047, 400, 'kcal'],
       [2048, 410, 'kcal'],
@@ -122,7 +122,7 @@ describe('fetchFDC: prioridad de kcal 1008 > 2048 > 2047', () => {
     expect(out.kcal).toBe(410);
   });
 
-  it('solo 2047 -> lo usa', async () => {
+  it('only 2047 -> uses it', async () => {
     mockFoodNutrients([[2047, 390, 'kcal']]);
     const { fetchFDC } = await import('./sources.js');
     const out = await fetchFDC('999');

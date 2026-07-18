@@ -11,31 +11,31 @@ import {
 } from './mcp.js';
 
 describe('assertValidMicros', () => {
-  it('rechaza claves fuera de MICROS y lista las válidas', () => {
+  it('rejects keys outside MICROS and lists the valid ones', () => {
     expect(() => assertValidMicros({ vitamina_x_mg: 5 })).toThrow(/vitamina_x_mg/);
     expect(() => assertValidMicros({ vitamina_x_mg: 5 })).toThrow(/sodio_mg/);
   });
-  it('acepta claves válidas', () => {
+  it('accepts valid keys', () => {
     expect(() => assertValidMicros({ sodio_mg: 100, fibra_g: 2 })).not.toThrow();
   });
 });
 
 describe('assertNonNegative', () => {
-  it('rechaza negativos y no finitos', () => {
+  it('rejects negative and non-finite values', () => {
     expect(() => assertNonNegative({ kcal: -1 })).toThrow();
     expect(() => assertNonNegative({ kcal: NaN })).toThrow();
   });
-  it('permite campos ausentes (null/undefined)', () => {
+  it('allows missing fields (null/undefined)', () => {
     expect(() => assertNonNegative({ kcal: null, protein_g: undefined })).not.toThrow();
   });
 });
 
 describe('assertValidPortions', () => {
-  it('rechaza portion sin grams > 0', () => {
+  it('rejects a portion without grams > 0', () => {
     expect(() => assertValidPortions([{ name: 'vaso', grams: 0 }])).toThrow();
     expect(() => assertValidPortions([{ grams: 10 }])).toThrow();
   });
-  it('acepta portions válidas', () => {
+  it('accepts valid portions', () => {
     expect(() => assertValidPortions([{ name: 'vaso', grams: 250 }])).not.toThrow();
   });
 });
@@ -65,12 +65,12 @@ describe('bodyMetricWarnings', () => {
 });
 
 describe('buildWarnings', () => {
-  it('macros implausibles: NO bloquea, devuelve warning', () => {
+  it('implausible macros: does NOT block, returns a warning', () => {
     const food = { kcal: 1080, protein_g: 120, carbs_g: 0, fat_g: 0, micros: {} };
     expect(() => buildWarnings(food)).not.toThrow();
     expect(buildWarnings(food).length).toBeGreaterThan(0);
   });
-  it('food razonable: sin warnings', () => {
+  it('reasonable food: no warnings', () => {
     const food = { kcal: 52, protein_g: 0.3, carbs_g: 14, fat_g: 0.2, micros: { fibra_g: 2.4 } };
     expect(buildWarnings(food)).toEqual([]);
   });
@@ -78,21 +78,21 @@ describe('buildWarnings', () => {
 
 describe('decideUpdatePath', () => {
   const uid = 'user-1';
-  it('food ajeno (incluye catálogo base owner null) -> fork', () => {
+  it("someone else's food (includes base catalog owner null) -> fork", () => {
     expect(decideUpdatePath(null, uid, ['kcal'])).toBe('fork');
     expect(decideUpdatePath('otro-usuario', uid, ['kcal'])).toBe('fork');
   });
-  it('food propio, solo portions -> update-portions (no cambia source)', () => {
+  it("own food, portions only -> update-portions (source doesn't change)", () => {
     expect(decideUpdatePath(uid, uid, ['portions'])).toBe('update-portions');
   });
-  it('food propio, cualquier otro campo -> update', () => {
+  it('own food, any other field -> update', () => {
     expect(decideUpdatePath(uid, uid, ['kcal'])).toBe('update');
     expect(decideUpdatePath(uid, uid, ['portions', 'kcal'])).toBe('update');
   });
 });
 
-describe('recipeResponse — caso canónico', () => {
-  it('100 g de A + 200 g de B, peso cocido 250 => por 100 g = (A + 2B) / 2.5', () => {
+describe('recipeResponse — canonical case', () => {
+  it('100 g of A + 200 g of B, cooked weight 250 => per 100 g = (A + 2B) / 2.5', () => {
     const A = { kcal: 100, protein_g: 10, carbs_g: 20, fat_g: 5, micros: { sodio_mg: 50 } };
     const B = { kcal: 200, protein_g: 20, carbs_g: 10, fat_g: 8, micros: { sodio_mg: 30 } };
     const items = [
@@ -108,7 +108,7 @@ describe('recipeResponse — caso canónico', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it('sin ingredientes y sin peso cocido -> error (peso resultante 0)', () => {
+  it('no ingredients and no cooked weight -> error (resulting weight 0)', () => {
     expect(() => recipeResponse([], 0)).toThrow();
   });
 });

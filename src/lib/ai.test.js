@@ -10,12 +10,12 @@ beforeAll(async () => {
 });
 
 describe('toJsonSchema', () => {
-  it('nullable -> [tipo, "null"]', () => {
+  it('nullable -> [type, "null"]', () => {
     const g = { type: 'NUMBER', nullable: true };
     expect(toJsonSchema(g)).toEqual({ type: ['number', 'null'] });
   });
 
-  it('required completo + additionalProperties:false en objetos', () => {
+  it('complete required + additionalProperties:false on objects', () => {
     const g = {
       type: 'OBJECT',
       properties: {
@@ -52,7 +52,7 @@ describe('parseAmount', () => {
     expect(parseAmount('0,5 kg')).toEqual({ unit: 'g', value: 500 });
   });
 
-  it('sin cantidad -> null', () => {
+  it('no quantity -> null', () => {
     expect(parseAmount('pollo a la plancha')).toBeNull();
   });
 });
@@ -62,7 +62,7 @@ describe('l2normalize', () => {
     expect(l2normalize([3, 4])).toEqual([0.6, 0.8]);
   });
 
-  it('array vacío -> null', () => {
+  it('empty array -> null', () => {
     expect(l2normalize([])).toBeNull();
   });
 
@@ -70,7 +70,7 @@ describe('l2normalize', () => {
     expect(l2normalize(null)).toBeNull();
   });
 
-  it('vector de ceros -> null', () => {
+  it('zero vector -> null', () => {
     expect(l2normalize([0, 0, 0])).toBeNull();
   });
 });
@@ -79,32 +79,32 @@ describe('sanitizeAskPlan', () => {
   const TODAY = '2026-07-15';
   const VALID = ['kcal', 'protein_g', 'carbs_g', 'fat_g', 'sodio_mg'];
 
-  it('fechas ausentes -> últimos 30 días terminando hoy', () => {
+  it('missing dates -> last 30 days ending today', () => {
     const out = sanitizeAskPlan({}, TODAY, VALID);
     expect(out.date_to).toBe(TODAY);
     expect(out.date_from).toBe('2026-06-16'); // 30 days incl. today
     expect(out.clamped).toBe(false);
   });
 
-  it('fechas inválidas -> mismo fallback de 30 días', () => {
+  it('invalid dates -> same 30-day fallback', () => {
     const out = sanitizeAskPlan({ date_from: 'no-es-fecha', date_to: '2026-07-15' }, TODAY, VALID);
     expect(out.date_to).toBe(TODAY);
     expect(out.date_from).toBe('2026-06-16');
   });
 
-  it('date_to futuro se recorta a hoy', () => {
+  it('date_to in the future is clamped to today', () => {
     const out = sanitizeAskPlan({ date_from: '2026-07-01', date_to: '2026-08-01' }, TODAY, VALID);
     expect(out.date_to).toBe(TODAY);
     expect(out.date_from).toBe('2026-07-01');
   });
 
-  it('date_from > date_to se intercambian', () => {
+  it('date_from > date_to get swapped', () => {
     const out = sanitizeAskPlan({ date_from: '2026-07-15', date_to: '2026-07-01' }, TODAY, VALID);
     expect(out.date_from).toBe('2026-07-01');
     expect(out.date_to).toBe('2026-07-15');
   });
 
-  it('rango > 92 días se recorta a 92 y clamped=true', () => {
+  it('range > 92 days is clamped to 92 and clamped=true', () => {
     const out = sanitizeAskPlan({ date_from: '2025-01-01', date_to: TODAY }, TODAY, VALID);
     expect(out.clamped).toBe(true);
     expect(out.date_to).toBe(TODAY);
@@ -112,7 +112,7 @@ describe('sanitizeAskPlan', () => {
     expect(span).toBe(92);
   });
 
-  it('nutrients inválidos -> filtrados, vacío cae a macros', () => {
+  it('invalid nutrients -> filtered out, empty falls back to macros', () => {
     const out = sanitizeAskPlan(
       { date_from: '2026-07-10', date_to: '2026-07-15', nutrients: ['inventado', 'otro_falso'] },
       TODAY,
@@ -121,7 +121,7 @@ describe('sanitizeAskPlan', () => {
     expect(out.nutrients).toEqual(['kcal', 'protein_g', 'carbs_g', 'fat_g']);
   });
 
-  it('nutrients válidos parciales se conservan', () => {
+  it('valid partial nutrients are kept', () => {
     const out = sanitizeAskPlan(
       { date_from: '2026-07-10', date_to: '2026-07-15', nutrients: ['sodio_mg', 'inventado'] },
       TODAY,
@@ -132,7 +132,7 @@ describe('sanitizeAskPlan', () => {
 });
 
 describe('formatAskContext', () => {
-  it('caso canónico: columnas, redondeo y orden por día', () => {
+  it('canonical case: columns, rounding and order by day', () => {
     const days = [
       { day: '2026-07-02', kcal: 2000, protein_g: 150, micros: { sodio_mg: 1500 } },
       { day: '2026-07-01', kcal: 1850.44, protein_g: 142.36, micros: { sodio_mg: 2890.5 } },
@@ -164,12 +164,12 @@ describe('formatAskContext', () => {
     );
   });
 
-  it('entries null -> sin sección de Alimentos', () => {
+  it('entries null -> no Alimentos section', () => {
     const out = formatAskContext({ days: [], targetByDay: {}, entries: null, nutrients: ['kcal'], lang: 'es' });
     expect(out).not.toContain('# Alimentos');
   });
 
-  it('más de 400 alimentos -> recorta a los 400 con mayor kcal y avisa', () => {
+  it('more than 400 foods -> trims to the 400 with highest kcal and warns', () => {
     const entries = Array.from({ length: 401 }, (_, i) => ({ day: '2026-07-01', item: `Item${i}`, grams: 100, kcal: i }));
     const out = formatAskContext({ days: [], targetByDay: {}, entries, nutrients: ['kcal'], lang: 'es' });
     const lines = out.split('\n');
