@@ -12,7 +12,7 @@ import ConfirmSheet from './ConfirmSheet.jsx';
 // Step-by-step wizard to configure a targets phase (7 dow rows) + special
 // dates (overrides). Reuses draftToRows/domain.js: it produces EXACTLY the
 // same rows as the Targets editor. It does not configure adherence margins
-// (those are derived from `goal` in classifyDiana) — it only explains them.
+// (those are derived from `goal` in classifyBullseye) — it only explains them.
 
 const STEP_COUNT = 8; // 0..7
 
@@ -34,7 +34,7 @@ const ELECTRO_DEFAULTS = {
 };
 const electroFor = (goal) => ELECTRO_DEFAULTS[goal] || ELECTRO_DEFAULTS._;
 
-// Regime nuance on the margins (classifyDiana adjusts them automatically).
+// Regime nuance on the margins (classifyBullseye adjusts them automatically).
 const goalNuance = (goal) =>
   goal === 'deficit'
     ? t('En déficit tolera menos el exceso de calorías.')

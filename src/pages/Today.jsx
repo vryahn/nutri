@@ -17,7 +17,7 @@ import {
   addDaysISO,
   resolveTarget,
   nutrientKind,
-  classifyDiana,
+  classifyBullseye,
   classifyFloor,
   classifyBand,
   classifyCeiling,
@@ -120,7 +120,7 @@ function itemState(key, totals, target, hasFood) {
   const tgt = targetFor(key, target);
   const pct = tgt ? Math.round((value / tgt) * 100) : null;
   let color;
-  if (meta.kind === 'diana') color = statusColor[classifyDiana(value, tgt, goal)] || meta.color;
+  if (meta.kind === 'diana') color = statusColor[classifyBullseye(value, tgt, goal)] || meta.color;
   else if (meta.kind === 'piso') color = statusColor[classifyFloor(value, tgt)] || meta.color;
   else if (meta.kind === 'rango') color = statusColor[classifyBand(value, tgt)] || meta.color;
   else if (meta.kind === 'techo') color = statusColor[classifyCeiling(value, tgt)] || meta.color;
@@ -134,7 +134,7 @@ function itemState(key, totals, target, hasFood) {
 // floor (piso/meta), at or below the ceiling (techo). Sodium is rendered separately (dual).
 function metFor(meta, value, tgt, goal) {
   if (tgt == null) return false;
-  if (meta.kind === 'diana') return classifyDiana(value, tgt, goal) === 'ok';
+  if (meta.kind === 'diana') return classifyBullseye(value, tgt, goal) === 'ok';
   if (meta.kind === 'rango') return classifyBand(value, tgt) === 'ok';
   if (meta.kind === 'techo') return value <= tgt;
   return value >= tgt; // piso, meta archetypes
@@ -166,7 +166,7 @@ function pendingFor(items, totals, target, hasFood) {
     if (!s) continue;
     const { meta, value, tgt, goal } = s;
     if (meta.kind === 'diana') {
-      const st = classifyDiana(value, tgt, goal);
+      const st = classifyBullseye(value, tgt, goal);
       if (st && st !== 'ok') pending.push({ key, critical: st === 'danger', delta: value - tgt, base: tgt });
     } else if (meta.kind === 'rango') {
       const st = classifyBand(value, tgt);

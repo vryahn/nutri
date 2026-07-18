@@ -41,7 +41,7 @@ import {
   weekdayOf,
   resolveTarget,
   nutrientKind,
-  classifyDiana,
+  classifyBullseye,
   classifyFloor,
   classifyBand,
   classifyCeiling,
@@ -58,10 +58,10 @@ import {
   cv,
   olsSlope,
   bayesAdherence,
-  MIN_DIAS_MEDIANA,
-  MIN_DIAS_STDDEV,
-  MIN_DIAS_TENDENCIA,
-  MIN_DIAS_BAYES,
+  MIN_DAYS_MEDIAN,
+  MIN_DAYS_STDDEV,
+  MIN_DAYS_TREND,
+  MIN_DAYS_BAYES,
   STRUCTURAL_ZERO_FRACTION,
   BAYES_KCAL_TOL,
   dayCompleteness,
@@ -83,43 +83,43 @@ const CALC_ADVANCED = [
     key: 'mediana',
     label: 'Mediana + IQR',
     desc: 'Tu día típico. A diferencia del promedio, no la mueven los días raros (una fiesta, un ayuno). El paréntesis es el rango donde cae la mitad de tus días.',
-    minDias: MIN_DIAS_MEDIANA,
+    minDias: MIN_DAYS_MEDIAN,
   },
   {
     key: 'stddev',
     label: 'Desv. estándar + CV',
     desc: 'Qué tan parejo comes de un día a otro. Número chico = días parecidos. El % permite comparar kcal contra micros aunque midan cosas distintas.',
-    minDias: MIN_DIAS_STDDEV,
+    minDias: MIN_DAYS_STDDEV,
   },
   {
     key: 'tendencia',
     label: 'Tendencia',
     desc: 'Cuánto sube o baja tu consumo cada día, en promedio, a lo largo del periodo.',
-    minDias: MIN_DIAS_TENDENCIA,
+    minDias: MIN_DAYS_TREND,
   },
   {
     key: 'bayes',
     label: 'Adherencia bayesiana',
     desc: 'Qué tan seguido cumples tu objetivo, y qué tan confiable es esa cifra. Con pocos días el rango sale ancho: es honestidad, no un error.',
-    minDias: MIN_DIAS_BAYES,
+    minDias: MIN_DAYS_BAYES,
     needsObjetivo: true,
   },
 ];
 const CALC_ALL = [...CALC_BASIC, ...CALC_ADVANCED];
 
 // Reason (string) why a calculation option is disabled, or null if it applies.
-// ctx: { diasRegistrados, diasConObjetivo, diasCompletosFull, diasParcialesFull,
-//        diasCompletosPhase, diasParcialesPhase, crossesPhases }
+// ctx: { daysLogged, daysWithTarget, diasCompletosFull, partialDaysFull,
+//        diasCompletosPhase, partialDaysPhase, crossesPhases }
 function calcDisabledReason(opt, ctx) {
   if (opt.key === 'suma' || opt.key === 'promedio') {
-    return ctx.diasRegistrados >= 1 ? null : t('No registraste nada en este periodo.');
+    return ctx.daysLogged >= 1 ? null : t('No registraste nada en este periodo.');
   }
   if (opt.key === 'bayes') {
     if (ctx.diasCompletosFull < opt.minDias) {
       return t('Necesitas al menos %n días completos. Llevas %a completos y %b incompletos.')
-        .replace('%n', opt.minDias).replace('%a', ctx.diasCompletosFull).replace('%b', ctx.diasParcialesFull);
+        .replace('%n', opt.minDias).replace('%a', ctx.diasCompletosFull).replace('%b', ctx.partialDaysFull);
     }
-    if (opt.needsObjetivo && ctx.diasConObjetivo < 1) return t('Primero fija tus objetivos en Metas.');
+    if (opt.needsObjetivo && ctx.daysWithTarget < 1) return t('Primero fija tus objetivos en Metas.');
     return null;
   }
   // mediana, stddev, tendencia — immune to phase mixing: computed over the current phase if the range spans >1.
@@ -128,7 +128,7 @@ function calcDisabledReason(opt, ctx) {
       ? t('Necesitas al menos %n días completos en la fase actual. Llevas %a.')
           .replace('%n', opt.minDias).replace('%a', ctx.diasCompletosPhase)
       : t('Necesitas al menos %n días completos. Llevas %a completos y %b incompletos.')
-          .replace('%n', opt.minDias).replace('%a', ctx.diasCompletosPhase).replace('%b', ctx.diasParcialesPhase);
+          .replace('%n', opt.minDias).replace('%a', ctx.diasCompletosPhase).replace('%b', ctx.partialDaysPhase);
   }
   return null;
 }
@@ -428,7 +428,7 @@ function MetricLines({ display, className = '' }) {
 }
 
 // Objective shown in the micros table, according to the mode (Fix 1).
-function objetivoCell(calcMode, objStats, unit) {
+function targetCell(calcMode, objStats, unit) {
   if (objStats.n === 0) {
     return <Hint text={NO_TARGET_HINT()}>–</Hint>;
   }
@@ -534,9 +534,9 @@ function computeStats(dates, dailyTotals, targets) {
   const byDay = new Map(dailyTotals.map((d) => [d.day, d]));
   const consumido = { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
   const objetivo = { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
-  const microsConsumido = {};
-  const microsObjetivo = {};
-  let diasRegistrados = 0;
+  const microsConsumed = {};
+  const microsTarget = {};
+  let daysLogged = 0;
   let sodioTotal = 0;
 
   const chartData = dates.map((day, dayIndex) => {
@@ -544,7 +544,7 @@ function computeStats(dates, dailyTotals, targets) {
     const target = resolveTarget(targets, day);
     const kcal = Number(row?.kcal || 0);
     const registrado = kcal > 0;
-    if (registrado) diasRegistrados++;
+    if (registrado) daysLogged++;
 
     consumido.kcal += kcal;
     consumido.protein_g += Number(row?.protein_g || 0);
@@ -554,7 +554,7 @@ function computeStats(dates, dailyTotals, targets) {
     sodioTotal += sodio;
 
     for (const [k, v] of Object.entries(row?.micros || {})) {
-      microsConsumido[k] = (microsConsumido[k] || 0) + Number(v);
+      microsConsumed[k] = (microsConsumed[k] || 0) + Number(v);
     }
     if (target) {
       objetivo.kcal += Number(target.kcal || 0);
@@ -562,7 +562,7 @@ function computeStats(dates, dailyTotals, targets) {
       objetivo.carbs_g += Number(target.carbs_g || 0);
       objetivo.fat_g += Number(target.fat_g || 0);
       for (const [k, v] of Object.entries(target.micros || {})) {
-        microsObjetivo[k] = (microsObjetivo[k] || 0) + Number(v);
+        microsTarget[k] = (microsTarget[k] || 0) + Number(v);
       }
     }
 
@@ -591,14 +591,14 @@ function computeStats(dates, dailyTotals, targets) {
   });
 
   const promedio = {
-    kcal: diasRegistrados ? consumido.kcal / diasRegistrados : 0,
-    protein_g: diasRegistrados ? consumido.protein_g / diasRegistrados : 0,
-    carbs_g: diasRegistrados ? consumido.carbs_g / diasRegistrados : 0,
-    fat_g: diasRegistrados ? consumido.fat_g / diasRegistrados : 0,
+    kcal: daysLogged ? consumido.kcal / daysLogged : 0,
+    protein_g: daysLogged ? consumido.protein_g / daysLogged : 0,
+    carbs_g: daysLogged ? consumido.carbs_g / daysLogged : 0,
+    fat_g: daysLogged ? consumido.fat_g / daysLogged : 0,
   };
-  const avgSodio = diasRegistrados ? sodioTotal / diasRegistrados : 0;
+  const avgSodio = daysLogged ? sodioTotal / daysLogged : 0;
 
-  return { consumido, objetivo, microsConsumido, microsObjetivo, diasRegistrados, avgSodio, promedio, chartData };
+  return { consumido, objetivo, microsConsumed, microsTarget, daysLogged, avgSodio, promedio, chartData };
 }
 
 // MA-7: 7-calendar-day window, averaged only over the days with a record
@@ -1082,7 +1082,7 @@ export default function Dashboard() {
   const bodyByDay = new Map(bodyRows.map((d) => [d.day, d]));
   const rangeItems = phaseMode ? itemRows.filter((r) => dateSet.has(r.day)) : itemRows;
   const stats = computeStats(dates, dailyTotals, targets);
-  const diasConObjetivo = dates.filter((d) => resolveTarget(targets, d)).length;
+  const daysWithTarget = dates.filter((d) => resolveTarget(targets, d)).length;
 
   // Inferred day completeness (tri-state, on the fly): distinct labels
   // per day (for the one-off binge) and median kcal of the last 90 days
@@ -1121,18 +1121,18 @@ export default function Dashboard() {
   const registeredDays = chartData.filter((d) => d.registrado);
   const completeDaysFull = registeredDays.filter((d) => d.completeness !== 'parcial');
   const advancedDays = completeDaysFull.filter((d) => !activePhaseDays || activePhaseDays.has(d.day));
-  const diasParcialesFull = registeredDays.length - completeDaysFull.length;
-  const diasParcialesPhase = activePhaseDays
+  const partialDaysFull = registeredDays.length - completeDaysFull.length;
+  const partialDaysPhase = activePhaseDays
     ? registeredDays.filter((d) => activePhaseDays.has(d.day) && d.completeness === 'parcial').length
-    : diasParcialesFull;
+    : partialDaysFull;
 
   const calcCtx = {
-    diasRegistrados: stats.diasRegistrados,
-    diasConObjetivo,
+    daysLogged: stats.daysLogged,
+    daysWithTarget,
     diasCompletosFull: completeDaysFull.length,
-    diasParcialesFull,
+    partialDaysFull,
     diasCompletosPhase: advancedDays.length,
-    diasParcialesPhase,
+    partialDaysPhase,
     crossesPhases: activePhaseDays != null, // only when the trim to the current phase is active
   };
 
@@ -1146,7 +1146,7 @@ export default function Dashboard() {
     if (calcDisabledReason(opt, calcCtx)) {
       setCalcMode(calcDisabledReason(CALC_BASIC[1], calcCtx) ? 'suma' : 'promedio');
     }
-  }, [loading, calcMode, calcCtx.diasRegistrados, calcCtx.diasConObjetivo, calcCtx.diasCompletosFull, calcCtx.diasCompletosPhase]);
+  }, [loading, calcMode, calcCtx.daysLogged, calcCtx.daysWithTarget, calcCtx.diasCompletosFull, calcCtx.diasCompletosPhase]);
 
   if (loading) return <PageSkeleton blocks={4} />;
 
@@ -1154,7 +1154,7 @@ export default function Dashboard() {
   const prevStats = computeStats(datesInRange(prevStart, prevEnd), prevDailyTotals, targets);
   // Merging several phases leaves no "periodo previo" (previous period) that makes sense: the
   // window before the first day falls within a different regimen. The delta is hidden.
-  const showDelta = !unionMode && prevStats.diasRegistrados >= 1 && (calcMode === 'suma' || calcMode === 'promedio');
+  const showDelta = !unionMode && prevStats.daysLogged >= 1 && (calcMode === 'suma' || calcMode === 'promedio');
 
   const kcalChart = withMovingAverage(chartData);
 
@@ -1217,10 +1217,10 @@ export default function Dashboard() {
   // "Huella nutricional" radar: MICROS_DEFAULT micros with objective > 0,
   // % of the objective per the range's Suma-vs-objective (fixed, does not change with the selector).
   const radarData = MICROS.slice(0, MICROS_DEFAULT)
-    .filter((m) => m.key !== 'agua_ml' && stats.microsObjetivo[m.key] > 0)
+    .filter((m) => m.key !== 'agua_ml' && stats.microsTarget[m.key] > 0)
     .map((m) => ({
       label: m.label,
-      value: Math.min(150, ((stats.microsConsumido[m.key] || 0) / stats.microsObjetivo[m.key]) * 100),
+      value: Math.min(150, ((stats.microsConsumed[m.key] || 0) / stats.microsTarget[m.key]) * 100),
     }));
 
   const sodioVals = chartData.map((d) => d.sodio).filter((v) => v != null);
@@ -1242,7 +1242,7 @@ export default function Dashboard() {
     const b = calcMode === 'bayes' ? bayesForMetric(completeDaysFull, m.key) : null;
     const [val, det, obj, pct] = summaryCells(calcMode, ms, objStats, b);
     const zero = structuralZeroInfo(registeredDays, m.key);
-    const danger = m.key === 'sodio_mg' && (sodiumIsLow(stats.avgSodio, stats.diasRegistrados > 0) || sodiumIsHigh(stats.avgSodio, stats.diasRegistrados > 0));
+    const danger = m.key === 'sodio_mg' && (sodiumIsLow(stats.avgSodio, stats.daysLogged > 0) || sodiumIsHigh(stats.avgSodio, stats.daysLogged > 0));
     const unit = calcMode === 'bayes' ? '' : ` ${m.unit}`;
     return (
       <tr key={m.key} className="border-t border-border">
@@ -1278,8 +1278,8 @@ export default function Dashboard() {
   function renderInforme() {
     const visibles = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favs.includes(m.key)) && m.key !== 'agua_ml');
     const anyZeroWarn = visibles.some((m) => structuralZeroInfo(registeredDays, m.key).warn);
-    const sodiumLow = sodiumIsLow(stats.avgSodio, stats.diasRegistrados > 0);
-    const sodiumHigh = sodiumIsHigh(stats.avgSodio, stats.diasRegistrados > 0);
+    const sodiumLow = sodiumIsLow(stats.avgSodio, stats.daysLogged > 0);
+    const sodiumHigh = sodiumIsHigh(stats.avgSodio, stats.daysLogged > 0);
     return (
       // No backdrop-blur on the scrim: backdrop-filter would turn the overlay
       // into the containing block of the fixed bar, and the bar would pan along with the paper.
@@ -1336,13 +1336,13 @@ export default function Dashboard() {
         <section className="mt-4">
           <p className="text-sm text-text-2">
             {t('%a de %b días registrados · %c completos')
-              .replace('%a', stats.diasRegistrados)
+              .replace('%a', stats.daysLogged)
               .replace('%b', dates.length)
               .replace('%c', completeDaysFull.length)}
-            {diasParcialesFull > 0 ? ` (+${diasParcialesFull}p)` : ''}
+            {partialDaysFull > 0 ? ` (+${partialDaysFull}p)` : ''}
           </p>
           {plainKcalPhrase && <p className="text-sm text-text-2 mt-1">{plainKcalPhrase}</p>}
-          {(stats.microsConsumido.agua_ml > 0 || stats.microsObjetivo.agua_ml > 0) && (
+          {(stats.microsConsumed.agua_ml > 0 || stats.microsTarget.agua_ml > 0) && (
             <p className="text-sm text-text-2 mt-1">
               {t('Agua')}: {aguaView.primary}
               {aguaView.targetStr ? ` / ${aguaView.targetStr}` : ''}
@@ -1692,7 +1692,7 @@ export default function Dashboard() {
             label={t("Kcal")}
             display={metricDisplay(calcMode, msKcal, bKcal, '', 1)}
             delta={showDelta ? pctDelta(stats.promedio.kcal, prevStats.promedio.kcal) : null}
-            status={classifyDiana(stats.consumido.kcal, stats.objetivo.kcal, periodGoal)}
+            status={classifyBullseye(stats.consumido.kcal, stats.objetivo.kcal, periodGoal)}
             sparkline={chartData.map((d) => d.kcal)}
             sparkColor="var(--d-kcal)"
           />
@@ -1724,19 +1724,19 @@ export default function Dashboard() {
             label={t("Sodio")}
             display={metricDisplay(calcMode, msSodio, bSodio, ' mg', 0)}
             delta={showDelta ? pctDelta(stats.avgSodio, prevStats.avgSodio) : null}
-            status={classifySodium(stats.avgSodio, stats.diasRegistrados > 0)}
+            status={classifySodium(stats.avgSodio, stats.daysLogged > 0)}
             sparkline={chartData.map((d) => d.sodio)}
             sparkColor="var(--d-carb)"
           />
           <KpiCard
             label={t("Días")}
             display={{
-              primary: `${calcCtx.diasCompletosFull}${diasParcialesFull > 0 ? ` +${diasParcialesFull}p` : ''}`,
+              primary: `${calcCtx.diasCompletosFull}${partialDaysFull > 0 ? ` +${partialDaysFull}p` : ''}`,
               secondary: null,
               hint: t('%a días con todo registrado y %b a los que parece faltarles comidas, de %c días del periodo.')
-                .replace('%a', calcCtx.diasCompletosFull).replace('%b', diasParcialesFull).replace('%c', dates.length),
+                .replace('%a', calcCtx.diasCompletosFull).replace('%b', partialDaysFull).replace('%c', dates.length),
             }}
-            delta={showDelta ? pctDelta(stats.diasRegistrados, prevStats.diasRegistrados) : null}
+            delta={showDelta ? pctDelta(stats.daysLogged, prevStats.daysLogged) : null}
             suffix={` / ${dates.length}`}
           />
         </section>
@@ -1798,7 +1798,7 @@ export default function Dashboard() {
           </p>
           {macroTotalKcal <= 0 ? (
             <p className="text-sm text-text-2 py-8 text-center">{t('Sin registros en el rango')}</p>
-          ) : stats.diasRegistrados >= 3 ? (
+          ) : stats.daysLogged >= 3 ? (
             <div className="h-[220px] lg:h-80">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={macroStreamData} stackOffset="silhouette">
@@ -2027,10 +2027,10 @@ export default function Dashboard() {
         <div className="md:col-span-2 lg:col-span-12">
           <MicrosTable
             favs={favs}
-            microsConsumido={stats.microsConsumido}
-            microsObjetivo={stats.microsObjetivo}
+            microsConsumed={stats.microsConsumed}
+            microsTarget={stats.microsTarget}
             avgSodio={stats.avgSodio}
-            diasRegistrados={stats.diasRegistrados}
+            daysLogged={stats.daysLogged}
             chartData={chartData}
             registeredDays={registeredDays}
             advancedDays={advancedDays}
@@ -2362,7 +2362,7 @@ function AdherenceHeatmap({ weeks, dateSet, dayInfo }) {
             const info = dayInfo.get(day);
             let cls = 'bg-surface-2';
             if (info?.registrado) {
-              const status = classifyDiana(info.kcal, info.targetKcal, info.goal);
+              const status = classifyBullseye(info.kcal, info.targetKcal, info.goal);
               cls = status ? STATUS_BG[status] : 'bg-surface-3';
             }
             const parcial = info?.completeness === 'parcial';
@@ -2386,10 +2386,10 @@ function AdherenceHeatmap({ weeks, dateSet, dayInfo }) {
 // goes here: it has its own section above.
 function MicrosTable({
   favs,
-  microsConsumido,
-  microsObjetivo,
+  microsConsumed,
+  microsTarget,
   avgSodio,
-  diasRegistrados,
+  daysLogged,
   chartData,
   registeredDays,
   advancedDays,
@@ -2403,7 +2403,7 @@ function MicrosTable({
       i >= MICROS_DEFAULT &&
       !favs.includes(m.key) &&
       m.key !== 'agua_ml' &&
-      ((microsConsumido[m.key] || 0) > 0 || (microsObjetivo[m.key] || 0) > 0)
+      ((microsConsumed[m.key] || 0) > 0 || (microsTarget[m.key] || 0) > 0)
   );
 
   const renderRow = (m) => {
@@ -2412,7 +2412,7 @@ function MicrosTable({
     const zero = structuralZeroInfo(registeredDays, m.key);
     const bayesInfo = calcMode === 'bayes' ? bayesCell(completeDaysFull, m.key) : null;
     const consumidoDisplay = metricDisplay(calcMode, ms, bayesInfo, ` ${m.unit}`, 1);
-    const sodiumDanger = m.key === 'sodio_mg' && (sodiumIsLow(avgSodio, diasRegistrados > 0) || sodiumIsHigh(avgSodio, diasRegistrados > 0));
+    const sodiumDanger = m.key === 'sodio_mg' && (sodiumIsLow(avgSodio, daysLogged > 0) || sodiumIsHigh(avgSodio, daysLogged > 0));
     const degraded = consumidoDisplay.degraded;
     // Row status light: 'techo' (ceiling — must not be exceeded) and 'piso' (floor — must be reached), only in modes with
     // a comparable consumed/objective pair. Sodium follows its own dual route (sodiumDanger);
@@ -2437,7 +2437,7 @@ function MicrosTable({
             </Hint>
           )}
         </td>
-        <td className="py-2 text-right font-mono tabular-nums text-text-2">{objetivoCell(calcMode, objStats, m.unit)}</td>
+        <td className="py-2 text-right font-mono tabular-nums text-text-2">{targetCell(calcMode, objStats, m.unit)}</td>
         <td className="py-2 text-right font-mono tabular-nums text-text-2">{pctCell(calcMode, ms, objStats)}</td>
       </tr>
     );
@@ -2479,10 +2479,10 @@ function MicrosTable({
           </table>
         </details>
       )}
-      {sodiumIsLow(avgSodio, diasRegistrados > 0) && (
+      {sodiumIsLow(avgSodio, daysLogged > 0) && (
         <p className="mt-3 text-sm text-danger">⚠ {t('sodio promedio')} &lt; {SODIUM_FLOOR_MG} mg</p>
       )}
-      {sodiumIsHigh(avgSodio, diasRegistrados > 0) && (
+      {sodiumIsHigh(avgSodio, daysLogged > 0) && (
         <p className="mt-3 text-sm text-danger">⚠ {t('sodio promedio')} &gt; {SODIUM_CEILING_MG} mg</p>
       )}
     </section>

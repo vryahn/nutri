@@ -161,7 +161,7 @@ export function kcalFromMacros(f) {
   // ponytail: real erythritol is ~0 kcal/g; it is treated at 2.4 like the rest — the
   // kcalSuspicious tolerance (25 %) absorbs the difference except in nearly pure
   // erythritol products, which are uncommon; refine to 0 if the case arises.
-  const polioles = Number(m.polioles_g || 0) ||
+  const polyols = Number(m.polioles_g || 0) ||
     (Number(m.eritritol_g || 0) + Number(m.xilitol_g || 0) + Number(m.sorbitol_g || 0) +
       Number(m.maltitol_g || 0) + Number(m.manitol_g || 0) + Number(m.isomalt_g || 0) +
       Number(m.lactitol_g || 0));
@@ -171,7 +171,7 @@ export function kcalFromMacros(f) {
       9 * Number(f.fat_g || 0) +
       7 * Number(m.alcohol_g || 0) -
       2 * Number(m.fibra_g || 0) -
-      1.6 * polioles
+      1.6 * polyols
   );
 }
 
@@ -282,12 +282,12 @@ export const DERIVED_BODY = [
 
 export function derivedBodyMetrics(m, heightCm) {
   const n = (v) => (v === '' || v == null || !(Number(v) >= 0) ? null : Number(v));
-  const peso = n(m?.peso_kg), grasa = n(m?.grasa_pct), alt = n(heightCm);
+  const weightKg = n(m?.peso_kg), bodyFatPct = n(m?.grasa_pct), alt = n(heightCm);
   const hm = alt > 0 ? alt / 100 : null;
-  const ffm = peso != null && grasa != null ? peso * (1 - grasa / 100) : null;
+  const ffm = weightKg != null && bodyFatPct != null ? weightKg * (1 - bodyFatPct / 100) : null;
   return {
     ffm_kg: ffm != null ? round(ffm, 2) : null,
-    imc: peso != null && hm ? round(peso / (hm * hm), 1) : null,
+    imc: weightKg != null && hm ? round(weightKg / (hm * hm), 1) : null,
     ffmi: ffm != null && hm ? round(ffm / (hm * hm), 1) : null,
   };
 }
@@ -433,8 +433,8 @@ export function macrosImplausible(f) {
   const c = Number(f.carbs_g || 0);
   const g = Number(f.fat_g || 0);
   const alcohol = Number(f.micros?.alcohol_g || 0);
-  const agua = Number(f.micros?.agua_ml || 0);
-  if (p + c + g + alcohol + agua > 105) return true;
+  const water = Number(f.micros?.agua_ml || 0);
+  if (p + c + g + alcohol + water > 105) return true;
   if (p > 100 || c > 100 || g > 100) return true;
   const m = f.micros || {};
   for (const [key, max] of Object.entries(MICRO_MAX)) {
@@ -460,9 +460,9 @@ export function componentsInconsistent(f) {
   const satTrans = m.grasa_sat_g != null || m.grasa_trans_g != null
     ? Number(m.grasa_sat_g || 0) + Number(m.grasa_trans_g || 0)
     : null;
-  const azucar = num(m.azucar_g);
-  const azucarAnadido = num(m.azucar_anadido_g);
-  const fibra = num(m.fibra_g);
+  const sugar = num(m.azucar_g);
+  const addedSugar = num(m.azucar_anadido_g);
+  const fiber = num(m.fibra_g);
 
   // Sum of the keys present (null if none): a missing datum does not count as 0,
   // so a partial sum always stays below the total and is never a false positive.
@@ -470,28 +470,28 @@ export function componentsInconsistent(f) {
     const vals = ks.map((k) => num(m[k])).filter((v) => v != null);
     return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
   };
-  const polioles = num(m.polioles_g);
-  const poliolPartes = sumPresent('eritritol_g', 'xilitol_g', 'sorbitol_g', 'maltitol_g', 'manitol_g', 'isomalt_g', 'lactitol_g');
-  const azucarPartes = sumPresent('glucosa_g', 'fructosa_g', 'galactosa_g', 'lactosa_g', 'maltosa_g', 'sacarosa_g');
-  const fibraPartes = sumPresent('fibra_soluble_g', 'fibra_insoluble_g');
-  const grasaPartes = sumPresent('grasa_sat_g', 'grasa_trans_g', 'grasa_mono_g', 'grasa_poli_g');
+  const polyols = num(m.polioles_g);
+  const polyolParts = sumPresent('eritritol_g', 'xilitol_g', 'sorbitol_g', 'maltitol_g', 'manitol_g', 'isomalt_g', 'lactitol_g');
+  const sugarParts = sumPresent('glucosa_g', 'fructosa_g', 'galactosa_g', 'lactosa_g', 'maltosa_g', 'sacarosa_g');
+  const fiberParts = sumPresent('fibra_soluble_g', 'fibra_insoluble_g');
+  const fatParts = sumPresent('grasa_sat_g', 'grasa_trans_g', 'grasa_mono_g', 'grasa_poli_g');
   const omega3 = num(m.omega3_g);
-  const omega3Partes = sumPresent('ala_g', 'epa_g', 'dha_g');
+  const omega3Parts = sumPresent('ala_g', 'epa_g', 'dha_g');
   const omega6 = num(m.omega6_g);
-  const omega6Partes = sumPresent('la_g', 'aa_g');
+  const omega6Parts = sumPresent('la_g', 'aa_g');
 
   const over = (a, b) => a != null && b != null && a > b + 0.5;
   if (over(satTrans, fat)) return 'grasa saturada + trans supera la grasa total';
-  if (over(azucar, carbs)) return 'azúcar supera los carbohidratos';
-  if (over(azucarAnadido, azucar)) return 'azúcar añadido supera el azúcar total';
-  if (over(fibra, carbs)) return 'fibra supera los carbohidratos';
-  if (over(polioles, carbs)) return 'polialcoholes superan los carbohidratos';
-  if (over(poliolPartes, polioles)) return 'los polialcoholes desglosados superan su total';
-  if (over(azucarPartes, azucar)) return 'los azúcares desglosados superan el azúcar total';
-  if (over(fibraPartes, fibra)) return 'fibra soluble + insoluble supera la fibra total';
-  if (over(grasaPartes, fat)) return 'los tipos de grasa superan la grasa total';
-  if (over(omega3Partes, omega3)) return 'ALA + EPA + DHA superan el omega-3 total';
-  if (over(omega6Partes, omega6)) return 'LA + AA superan el omega-6 total';
+  if (over(sugar, carbs)) return 'azúcar supera los carbohidratos';
+  if (over(addedSugar, sugar)) return 'azúcar añadido supera el azúcar total';
+  if (over(fiber, carbs)) return 'fibra supera los carbohidratos';
+  if (over(polyols, carbs)) return 'polialcoholes superan los carbohidratos';
+  if (over(polyolParts, polyols)) return 'los polialcoholes desglosados superan su total';
+  if (over(sugarParts, sugar)) return 'los azúcares desglosados superan el azúcar total';
+  if (over(fiberParts, fiber)) return 'fibra soluble + insoluble supera la fibra total';
+  if (over(fatParts, fat)) return 'los tipos de grasa superan la grasa total';
+  if (over(omega3Parts, omega3)) return 'ALA + EPA + DHA superan el omega-3 total';
+  if (over(omega6Parts, omega6)) return 'LA + AA superan el omega-6 total';
   return null;
 }
 
@@ -522,8 +522,8 @@ export function addDaysISO(iso, delta) {
 // sample → 40-day window.
 // phaseVfs = distinct valid_from values of dow rows; today = ISO yyyy-mm-dd.
 export function recentWindowStart(phaseVfs, today) {
-  const vigente = [...phaseVfs].filter((vf) => vf <= today).sort().pop() || null;
-  if (vigente && addDaysISO(vigente, 7) <= today) return vigente;
+  const currentVf = [...phaseVfs].filter((vf) => vf <= today).sort().pop() || null;
+  if (currentVf && addDaysISO(currentVf, 7) <= today) return currentVf;
   return addDaysISO(today, -40);
 }
 
@@ -668,7 +668,7 @@ export function subscribeBands(fn) {
 }
 
 // diana: target with an asymmetric grace band according to the phase regimen.
-export function classifyDiana(consumed, target, goal) {
+export function classifyBullseye(consumed, target, goal) {
   if (!target) return null;
   const b = activeBands.diana[goal] || activeBands.diana.default;
   const diff = (consumed - target) / target; // signed: + = excess, − = shortfall
@@ -679,7 +679,7 @@ export function classifyDiana(consumed, target, goal) {
 
 // Compat: kcal without a known regimen = historical strict band (diana default).
 export function classifyKcal(consumed, target) {
-  return classifyDiana(consumed, target, null);
+  return classifyBullseye(consumed, target, null);
 }
 
 // piso: minimum to reach (protein). Excess harmless, shortfall = danger.
@@ -741,10 +741,10 @@ export function round(n, decimals) {
 
 // Minimum numbers of logged days required to enable each advanced Dashboard
 // calculation (named constants, no magic numbers in the JSX).
-export const MIN_DIAS_MEDIANA = 3;
-export const MIN_DIAS_STDDEV = 2;
-export const MIN_DIAS_TENDENCIA = 3;
-export const MIN_DIAS_BAYES = 3;
+export const MIN_DAYS_MEDIAN = 3;
+export const MIN_DAYS_STDDEV = 2;
+export const MIN_DAYS_TREND = 3;
+export const MIN_DAYS_BAYES = 3;
 
 // A logged day counts as "no data" (structural 0) for a micro if more
 // than this fraction of the days used carries exactly 0 — the 0 almost
@@ -769,9 +769,9 @@ export const MIN_MEALS_SIGNAL = 3; // meals signal only if the typical count is 
 export function dayCompleteness({ kcal, targetKcal, historyKcals, mealsCount, typicalMeals }) {
   if (kcal <= 0) return 'sin_registro';
   if (kcal < KCAL_HARD_FLOOR) return 'parcial';
-  const historial = (historyKcals || []).filter((k) => k > 0);
-  if (historial.length >= HIST_MIN_DAYS) {
-    const med = median(historial);
+  const kcalHistory = (historyKcals || []).filter((k) => k > 0);
+  if (kcalHistory.length >= HIST_MIN_DAYS) {
+    const med = median(kcalHistory);
     const bingeOverride = typicalMeals >= MIN_MEALS_SIGNAL && mealsCount <= 1;
     if (bingeOverride) return 'parcial';
     return kcal >= COMPLETE_RATIO * med ? 'completo' : 'parcial';

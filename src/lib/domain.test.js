@@ -3,7 +3,7 @@ import {
   computeRecipePer100g, resolveTarget, weekdayOf, kcalFromMacros, kcalSuspicious,
   macrosImplausible, componentsInconsistent, dayCompleteness, bayesAdherence,
   reorderLabels, eanChecksumValid, cleanNumericMap,
-  nutrientKind, classifyDiana, classifyKcal, classifyFloor, classifyBand,
+  nutrientKind, classifyBullseye, classifyKcal, classifyFloor, classifyBand,
   classifyCeiling, classifySodium, sodiumIsLow, sodiumIsHigh,
   SODIUM_FLOOR_MG, SODIUM_CEILING_MG,
   DASH_VARS_BY_KEY, axisUnits, buildDashSeries, dashVarTarget,
@@ -351,28 +351,28 @@ describe('nutrientKind', () => {
   });
 });
 
-describe('classifyDiana (banda asimétrica por régimen)', () => {
+describe('classifyBullseye (banda asimétrica por régimen)', () => {
   it('sin régimen conserva la banda estricta histórica ±5 / ±15', () => {
-    expect(classifyDiana(2000, 2000, null)).toBe('ok');
-    expect(classifyDiana(2000 * 1.05, 2000, null)).toBe('ok');
-    expect(classifyDiana(2000 * 1.10, 2000, null)).toBe('warn');
-    expect(classifyDiana(2000 * 1.20, 2000, null)).toBe('danger');
+    expect(classifyBullseye(2000, 2000, null)).toBe('ok');
+    expect(classifyBullseye(2000 * 1.05, 2000, null)).toBe('ok');
+    expect(classifyBullseye(2000 * 1.10, 2000, null)).toBe('warn');
+    expect(classifyBullseye(2000 * 1.20, 2000, null)).toBe('danger');
     expect(classifyKcal(2000 * 1.20, 2000)).toBe('danger'); // compat wrapper
   });
   it('déficit: el exceso pesa más que el defecto', () => {
     // −12% under a deficit is still ok (shortfall tolerated down to −15%)
-    expect(classifyDiana(2000 * 0.88, 2000, 'deficit')).toBe('ok');
+    expect(classifyBullseye(2000 * 0.88, 2000, 'deficit')).toBe('ok');
     // +12% under a deficit is already warn (overshoot ok only up to +8%)
-    expect(classifyDiana(2000 * 1.12, 2000, 'deficit')).toBe('warn');
+    expect(classifyBullseye(2000 * 1.12, 2000, 'deficit')).toBe('warn');
     // +20% under a deficit is danger (overshoot warn up to +18%)
-    expect(classifyDiana(2000 * 1.20, 2000, 'deficit')).toBe('danger');
+    expect(classifyBullseye(2000 * 1.20, 2000, 'deficit')).toBe('danger');
   });
   it('volumen: el defecto pesa más que el exceso (espejo)', () => {
-    expect(classifyDiana(2000 * 1.12, 2000, 'volumen')).toBe('ok');
-    expect(classifyDiana(2000 * 0.88, 2000, 'volumen')).toBe('warn');
+    expect(classifyBullseye(2000 * 1.12, 2000, 'volumen')).toBe('ok');
+    expect(classifyBullseye(2000 * 0.88, 2000, 'volumen')).toBe('warn');
   });
   it('sin objetivo -> null', () => {
-    expect(classifyDiana(2000, 0, 'deficit')).toBe(null);
+    expect(classifyBullseye(2000, 0, 'deficit')).toBe(null);
   });
 });
 
