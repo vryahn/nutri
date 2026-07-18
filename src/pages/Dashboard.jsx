@@ -102,7 +102,7 @@ const CALC_ADVANCED = [
     label: 'Adherencia bayesiana',
     desc: 'Qué tan seguido cumples tu objetivo, y qué tan confiable es esa cifra. Con pocos días el rango sale ancho: es honestidad, no un error.',
     minDias: MIN_DAYS_BAYES,
-    needsObjetivo: true,
+    needsTarget: true,
   },
 ];
 const CALC_ALL = [...CALC_BASIC, ...CALC_ADVANCED];
@@ -119,7 +119,7 @@ function calcDisabledReason(opt, ctx) {
       return t('Necesitas al menos %n días completos. Llevas %a completos y %b incompletos.')
         .replace('%n', opt.minDias).replace('%a', ctx.diasCompletosFull).replace('%b', ctx.partialDaysFull);
     }
-    if (opt.needsObjetivo && ctx.daysWithTarget < 1) return t('Primero fija tus objetivos en Metas.');
+    if (opt.needsTarget && ctx.daysWithTarget < 1) return t('Primero fija tus objetivos en Metas.');
     return null;
   }
   // mediana, stddev, tendencia — immune to phase mixing: computed over the current phase if the range spans >1.
@@ -532,8 +532,8 @@ const TREND_NUTRIENTS = [
 // (current range and previous range for the KPI deltas).
 function computeStats(dates, dailyTotals, targets) {
   const byDay = new Map(dailyTotals.map((d) => [d.day, d]));
-  const consumido = { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
-  const objetivo = { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
+  const consumedTotals = { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
+  const targetTotals = { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
   const microsConsumed = {};
   const microsTarget = {};
   let daysLogged = 0;
@@ -546,10 +546,10 @@ function computeStats(dates, dailyTotals, targets) {
     const registrado = kcal > 0;
     if (registrado) daysLogged++;
 
-    consumido.kcal += kcal;
-    consumido.protein_g += Number(row?.protein_g || 0);
-    consumido.carbs_g += Number(row?.carbs_g || 0);
-    consumido.fat_g += Number(row?.fat_g || 0);
+    consumedTotals.kcal += kcal;
+    consumedTotals.protein_g += Number(row?.protein_g || 0);
+    consumedTotals.carbs_g += Number(row?.carbs_g || 0);
+    consumedTotals.fat_g += Number(row?.fat_g || 0);
     const sodio = Number(row?.micros?.sodio_mg || 0);
     sodioTotal += sodio;
 
@@ -557,10 +557,10 @@ function computeStats(dates, dailyTotals, targets) {
       microsConsumed[k] = (microsConsumed[k] || 0) + Number(v);
     }
     if (target) {
-      objetivo.kcal += Number(target.kcal || 0);
-      objetivo.protein_g += Number(target.protein_g || 0);
-      objetivo.carbs_g += Number(target.carbs_g || 0);
-      objetivo.fat_g += Number(target.fat_g || 0);
+      targetTotals.kcal += Number(target.kcal || 0);
+      targetTotals.protein_g += Number(target.protein_g || 0);
+      targetTotals.carbs_g += Number(target.carbs_g || 0);
+      targetTotals.fat_g += Number(target.fat_g || 0);
       for (const [k, v] of Object.entries(target.micros || {})) {
         microsTarget[k] = (microsTarget[k] || 0) + Number(v);
       }
@@ -590,15 +590,15 @@ function computeStats(dates, dailyTotals, targets) {
     };
   });
 
-  const promedio = {
-    kcal: daysLogged ? consumido.kcal / daysLogged : 0,
-    protein_g: daysLogged ? consumido.protein_g / daysLogged : 0,
-    carbs_g: daysLogged ? consumido.carbs_g / daysLogged : 0,
-    fat_g: daysLogged ? consumido.fat_g / daysLogged : 0,
+  const avgTotals = {
+    kcal: daysLogged ? consumedTotals.kcal / daysLogged : 0,
+    protein_g: daysLogged ? consumedTotals.protein_g / daysLogged : 0,
+    carbs_g: daysLogged ? consumedTotals.carbs_g / daysLogged : 0,
+    fat_g: daysLogged ? consumedTotals.fat_g / daysLogged : 0,
   };
   const avgSodio = daysLogged ? sodioTotal / daysLogged : 0;
 
-  return { consumido, objetivo, microsConsumed, microsTarget, daysLogged, avgSodio, promedio, chartData };
+  return { consumedTotals, targetTotals, microsConsumed, microsTarget, daysLogged, avgSodio, avgTotals, chartData };
 }
 
 // MA-7: 7-calendar-day window, averaged only over the days with a record
@@ -1190,7 +1190,7 @@ export default function Dashboard() {
   const bCarbs = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'carbs_g') : null;
   const bFat = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'fat_g') : null;
   const bSodio = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'sodio_mg') : null;
-  const aguaView = waterView(
+  const waterStats = waterView(
     calcMode,
     computeMetricStats(registeredDays, advancedDays, 'agua_ml'),
     computeObjectiveStats(chartData, 'agua_ml'),
@@ -1212,7 +1212,7 @@ export default function Dashboard() {
     carb: d.values ? d.values.carbs_g * 4 : 0,
     fat: d.values ? d.values.fat_g * 9 : 0,
   }));
-  const macroTotalKcal = stats.consumido.protein_g * 4 + stats.consumido.carbs_g * 4 + stats.consumido.fat_g * 9;
+  const macroTotalKcal = stats.consumedTotals.protein_g * 4 + stats.consumedTotals.carbs_g * 4 + stats.consumedTotals.fat_g * 9;
 
   // "Huella nutricional" radar: MICROS_DEFAULT micros with objective > 0,
   // % of the objective per the range's Suma-vs-objective (fixed, does not change with the selector).
@@ -1344,9 +1344,9 @@ export default function Dashboard() {
           {plainKcalPhrase && <p className="text-sm text-text-2 mt-1">{plainKcalPhrase}</p>}
           {(stats.microsConsumed.agua_ml > 0 || stats.microsTarget.agua_ml > 0) && (
             <p className="text-sm text-text-2 mt-1">
-              {t('Agua')}: {aguaView.primary}
-              {aguaView.targetStr ? ` / ${aguaView.targetStr}` : ''}
-              {aguaView.secondary ? ` (${aguaView.secondary})` : ''}
+              {t('Agua')}: {waterStats.primary}
+              {waterStats.targetStr ? ` / ${waterStats.targetStr}` : ''}
+              {waterStats.secondary ? ` (${waterStats.secondary})` : ''}
             </p>
           )}
           {sodiumLow && (
@@ -1390,7 +1390,7 @@ export default function Dashboard() {
                 <ReferenceArea y1={avgTargetKcal * 0.9} y2={avgTargetKcal * 1.1} fill="var(--accent)" fillOpacity={0.08} strokeOpacity={0} />
               )}
               <Area type="monotone" dataKey="kcal" name={t('Kcal')} stroke="var(--d-kcal)" strokeWidth={2} fill="var(--d-kcal)" fillOpacity={0.15} isAnimationActive={false} />
-              {stats.objetivo.kcal > 0 && (
+              {stats.targetTotals.kcal > 0 && (
                 <Line dataKey="targetKcal" name={t('Objetivo')} stroke="var(--accent)" dot={false} strokeWidth={2} isAnimationActive={false} />
               )}
               <Line dataKey="ma7" name={t('Promedio 7 días')} stroke="var(--d-carb)" strokeDasharray="4 3" dot={false} strokeWidth={2} isAnimationActive={false} />
@@ -1675,14 +1675,14 @@ export default function Dashboard() {
           <div className="flex justify-between items-baseline mb-2">
             <p className="text-sm text-text-3">{t('Agua')}</p>
             <p className="font-mono tabular-nums text-sm text-d-carb">
-              {aguaView.primary}
-              {aguaView.targetStr ? ` / ${aguaView.targetStr}` : ''}
-              {aguaView.secondary ? <span className="text-text-3"> ({aguaView.secondary})</span> : ''}
+              {waterStats.primary}
+              {waterStats.targetStr ? ` / ${waterStats.targetStr}` : ''}
+              {waterStats.secondary ? <span className="text-text-3"> ({waterStats.secondary})</span> : ''}
             </p>
           </div>
-          {aguaView.barWidth != null && (
+          {waterStats.barWidth != null && (
             <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
-              <div className="h-full bg-d-carb rounded-full" style={{ width: `${aguaView.barWidth}%` }} />
+              <div className="h-full bg-d-carb rounded-full" style={{ width: `${waterStats.barWidth}%` }} />
             </div>
           )}
         </section>
@@ -1691,32 +1691,32 @@ export default function Dashboard() {
           <KpiCard
             label={t("Kcal")}
             display={metricDisplay(calcMode, msKcal, bKcal, '', 1)}
-            delta={showDelta ? pctDelta(stats.promedio.kcal, prevStats.promedio.kcal) : null}
-            status={classifyBullseye(stats.consumido.kcal, stats.objetivo.kcal, periodGoal)}
+            delta={showDelta ? pctDelta(stats.avgTotals.kcal, prevStats.avgTotals.kcal) : null}
+            status={classifyBullseye(stats.consumedTotals.kcal, stats.targetTotals.kcal, periodGoal)}
             sparkline={chartData.map((d) => d.kcal)}
             sparkColor="var(--d-kcal)"
           />
           <KpiCard
             label={t("Proteína")}
             display={metricDisplay(calcMode, msProtein, bProtein, ' g', 1)}
-            delta={showDelta ? pctDelta(stats.promedio.protein_g, prevStats.promedio.protein_g) : null}
-            status={classifyFloor(stats.consumido.protein_g, stats.objetivo.protein_g)}
+            delta={showDelta ? pctDelta(stats.avgTotals.protein_g, prevStats.avgTotals.protein_g) : null}
+            status={classifyFloor(stats.consumedTotals.protein_g, stats.targetTotals.protein_g)}
             sparkline={chartData.map((d) => d.protein)}
             sparkColor="var(--d-prot)"
           />
           <KpiCard
             label={t("Carbs")}
             display={metricDisplay(calcMode, msCarbs, bCarbs, ' g', 1)}
-            delta={showDelta ? pctDelta(stats.promedio.carbs_g, prevStats.promedio.carbs_g) : null}
-            status={classifyBand(stats.consumido.carbs_g, stats.objetivo.carbs_g)}
+            delta={showDelta ? pctDelta(stats.avgTotals.carbs_g, prevStats.avgTotals.carbs_g) : null}
+            status={classifyBand(stats.consumedTotals.carbs_g, stats.targetTotals.carbs_g)}
             sparkline={chartData.map((d) => (d.values ? d.values.carbs_g : null))}
             sparkColor="var(--d-carb)"
           />
           <KpiCard
             label={t("Grasa")}
             display={metricDisplay(calcMode, msFat, bFat, ' g', 1)}
-            delta={showDelta ? pctDelta(stats.promedio.fat_g, prevStats.promedio.fat_g) : null}
-            status={classifyBand(stats.consumido.fat_g, stats.objetivo.fat_g)}
+            delta={showDelta ? pctDelta(stats.avgTotals.fat_g, prevStats.avgTotals.fat_g) : null}
+            status={classifyBand(stats.consumedTotals.fat_g, stats.targetTotals.fat_g)}
             sparkline={chartData.map((d) => (d.values ? d.values.fat_g : null))}
             sparkColor="var(--d-fat)"
           />
@@ -1780,7 +1780,7 @@ export default function Dashboard() {
                 <ReferenceArea y1={avgTargetKcal * 0.9} y2={avgTargetKcal * 1.1} fill="var(--accent)" fillOpacity={0.08} strokeOpacity={0} />
               )}
               <Area type="monotone" dataKey="kcal" name={t("Kcal")} stroke="var(--d-kcal)" strokeWidth={2} fill="url(#kcalGrad)" isAnimationActive={!reducedMotion} />
-              {stats.objetivo.kcal > 0 && (
+              {stats.targetTotals.kcal > 0 && (
                 <Line dataKey="targetKcal" name={t("Objetivo")} stroke="var(--accent)" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
               )}
               <Line dataKey="ma7" name={t("Promedio 7 días")} stroke="var(--d-carb)" strokeDasharray="4 3" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
@@ -1828,14 +1828,14 @@ export default function Dashboard() {
           ) : (
             <div className="flex flex-col gap-2 py-4">
               <div className="h-4 rounded-full overflow-hidden flex">
-                <div className="h-full bg-d-prot" style={{ width: `${(stats.consumido.protein_g * 4 * 100) / macroTotalKcal}%` }} />
-                <div className="h-full bg-d-carb" style={{ width: `${(stats.consumido.carbs_g * 4 * 100) / macroTotalKcal}%` }} />
-                <div className="h-full bg-d-fat" style={{ width: `${(stats.consumido.fat_g * 9 * 100) / macroTotalKcal}%` }} />
+                <div className="h-full bg-d-prot" style={{ width: `${(stats.consumedTotals.protein_g * 4 * 100) / macroTotalKcal}%` }} />
+                <div className="h-full bg-d-carb" style={{ width: `${(stats.consumedTotals.carbs_g * 4 * 100) / macroTotalKcal}%` }} />
+                <div className="h-full bg-d-fat" style={{ width: `${(stats.consumedTotals.fat_g * 9 * 100) / macroTotalKcal}%` }} />
               </div>
               <div className="flex justify-between text-xs text-text-2">
-                <span className="text-d-prot">{t('Prot')} {Math.round((stats.consumido.protein_g * 4 * 100) / macroTotalKcal)}%</span>
-                <span className="text-d-carb">{t('Carbs')} {Math.round((stats.consumido.carbs_g * 4 * 100) / macroTotalKcal)}%</span>
-                <span className="text-d-fat">{t('Grasa')} {Math.round((stats.consumido.fat_g * 9 * 100) / macroTotalKcal)}%</span>
+                <span className="text-d-prot">{t('Prot')} {Math.round((stats.consumedTotals.protein_g * 4 * 100) / macroTotalKcal)}%</span>
+                <span className="text-d-carb">{t('Carbs')} {Math.round((stats.consumedTotals.carbs_g * 4 * 100) / macroTotalKcal)}%</span>
+                <span className="text-d-fat">{t('Grasa')} {Math.round((stats.consumedTotals.fat_g * 9 * 100) / macroTotalKcal)}%</span>
               </div>
             </div>
           )}
@@ -2411,9 +2411,9 @@ function MicrosTable({
     const objStats = computeObjectiveStats(chartData, m.key);
     const zero = structuralZeroInfo(registeredDays, m.key);
     const bayesInfo = calcMode === 'bayes' ? bayesCell(completeDaysFull, m.key) : null;
-    const consumidoDisplay = metricDisplay(calcMode, ms, bayesInfo, ` ${m.unit}`, 1);
+    const consumedDisplay = metricDisplay(calcMode, ms, bayesInfo, ` ${m.unit}`, 1);
     const sodiumDanger = m.key === 'sodio_mg' && (sodiumIsLow(avgSodio, daysLogged > 0) || sodiumIsHigh(avgSodio, daysLogged > 0));
-    const degraded = consumidoDisplay.degraded;
+    const degraded = consumedDisplay.degraded;
     // Row status light: 'techo' (ceiling — must not be exceeded) and 'piso' (floor — must be reached), only in modes with
     // a comparable consumed/objective pair. Sodium follows its own dual route (sodiumDanger);
     // the rest of the micros ('meta') stay neutral — a data table, not everything needs a status light.
@@ -2429,7 +2429,7 @@ function MicrosTable({
       <tr key={m.key} className="border-t border-border">
         <td className="py-2">{t(m.label)}</td>
         <td className={`py-2 text-right whitespace-normal font-mono tabular-nums ${sodiumDanger ? 'text-danger' : statusText} ${degraded ? 'text-text-3' : ''}`}>
-          <MetricCellText display={consumidoDisplay} />
+          <MetricCellText display={consumedDisplay} />
           {zero.warn && (
             <Hint text={t('En %a de %b días no registraste este nutriente. El 0 puede significar \'no lo anotaste\', no \'no lo comiste\'.').replace('%a', zero.n).replace('%b', zero.m)}>
               {' '}
