@@ -807,7 +807,6 @@ const EN = {
   'Ocultar ▴': 'Hide ▴',
 
   // Body.jsx — labels de BODY_METRICS (domain.js) que faltaban
-  Altura: 'Height',
   IMC: 'BMI',
   'Masa libre de grasa': 'Fat-free mass',
   'Agua corporal (L)': 'Body water (L)',
@@ -825,10 +824,11 @@ const EN = {
   // Body.jsx — derivadas de solo lectura
   Derivadas: 'Derived',
   'Ver fórmula': 'View formula',
-  altura: 'height',
   grasa: 'fat',
   y: 'and',
   'Se calculan con tu peso del día y tu última %s registrada.': 'Calculated from your weight that day and your last recorded %s.',
+  'IMC y FFMI requieren tu altura — regístrala en tu Perfil (menú de usuario).':
+    'BMI and FFMI require your height — set it in your Profile (user menu).',
 
   // Today.jsx
   'Ver resumen del día': 'View day summary',

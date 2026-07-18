@@ -9,7 +9,7 @@ import ImportSheet from '../components/ImportSheet.jsx';
 import Hint from '../components/Hint.jsx';
 import ConfirmSheet from '../components/ConfirmSheet.jsx';
 import UndoToast from '../components/UndoToast.jsx';
-import { t, useLang, locale, useSleepThreshold } from '../lib/i18n.js';
+import { t, useLang, locale, useSleepThreshold, useProfile } from '../lib/i18n.js';
 import {
   todayISO,
   addDaysISO,
@@ -323,17 +323,19 @@ export default function Body() {
   const defaults = BODY_METRICS.slice(0, BODY_METRICS_DEFAULT);
   const extra = BODY_METRICS.slice(BODY_METRICS_DEFAULT);
   const favMetrics = extra.filter((m) => favs.includes(m.key));
-  // Altura y grasa% solo se capturan en días de bioimpedancia; para que las
-  // derivadas salgan en cualquier día pesado, se arrastra la última lectura
-  // conocida del historial cuando el día no la trae (no se persiste, solo alimenta
-  // el cálculo con el peso del día). El caption declara qué insumos se heredaron.
+  // Grasa% solo se captura en días de bioimpedancia; para que las derivadas
+  // salgan en cualquier día pesado, se arrastra la última lectura conocida del
+  // historial cuando el día no la trae (no se persiste, solo alimenta el cálculo
+  // con el peso del día). La altura NO es medida del día: viene del Perfil
+  // (prefs.data.profile.height_cm). El caption declara qué insumos se heredaron.
+  const { height_cm } = useProfile();
   const lastOf = (key) => [...history].reverse().find((r) => r.metrics?.[key] != null)?.metrics[key] ?? null;
   const inherit = (key) => ((values[key] ?? '') !== '' ? values[key] : lastOf(key));
-  const derived = derivedBodyMetrics({ ...values, altura_cm: inherit('altura_cm'), grasa_pct: inherit('grasa_pct') });
+  const derived = derivedBodyMetrics({ ...values, grasa_pct: inherit('grasa_pct') }, height_cm);
   const heredadas = [
     (values.grasa_pct ?? '') === '' && lastOf('grasa_pct') != null ? `${t('grasa')} ${lastOf('grasa_pct')} %` : null,
-    (values.altura_cm ?? '') === '' && lastOf('altura_cm') != null ? `${t('altura')} ${lastOf('altura_cm')} cm` : null,
   ].filter(Boolean);
+  const missingHeight = !(Number(height_cm) > 0);
   const showDerived = (values.peso_kg ?? '') !== '';
 
   return (
@@ -397,6 +399,11 @@ export default function Body() {
             {heredadas.length > 0 && (
               <p className="text-[11px] text-text-3" style={{ margin: 0 }}>
                 {t('Se calculan con tu peso del día y tu última %s registrada.').replace('%s', heredadas.join(` ${t('y')} `))}
+              </p>
+            )}
+            {missingHeight && (
+              <p className="text-[11px] text-text-3" style={{ margin: 0 }}>
+                {t('IMC y FFMI requieren tu altura — regístrala en tu Perfil (menú de usuario).')}
               </p>
             )}
           </div>
