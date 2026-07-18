@@ -219,7 +219,6 @@ export const BODY_METRICS = [
   { key: 'hueso_kg', label: 'Masa ósea', unit: 'kg', cat: 'Composición' },
   { key: 'grasa_visceral', label: 'Grasa visceral', unit: 'nivel', cat: 'Composición' },
   { key: 'metabolismo_basal_kcal', label: 'Metabolismo basal', unit: 'kcal', cat: 'Composición' },
-  { key: 'altura_cm', label: 'Altura', unit: 'cm', cat: 'Composición' },
   { key: 'cintura_cm', label: 'Cintura', unit: 'cm', cat: 'Circunferencias' },
   { key: 'cadera_cm', label: 'Cadera', unit: 'cm', cat: 'Circunferencias' },
   { key: 'pecho_cm', label: 'Pecho', unit: 'cm', cat: 'Circunferencias' },
@@ -260,7 +259,7 @@ export function cleanNumericMap(obj) {
 // decimal), no valores altos legítimos. Clave ausente = sin cota. Al vuelo, no persistida.
 export const BODY_METRIC_MAX = {
   peso_kg: 500, grasa_pct: 80, musculo_kg: 120, agua_pct: 90, hueso_kg: 12,
-  grasa_visceral: 60, metabolismo_basal_kcal: 6000, agua_l: 80, altura_cm: 250,
+  grasa_visceral: 60, metabolismo_basal_kcal: 6000, agua_l: 80,
   cintura_cm: 300, cadera_cm: 300, pecho_cm: 300, cuello_cm: 120,
   biceps_der_cm: 120, biceps_izq_cm: 120, pierna_izq_cm: 150, pierna_der_cm: 150,
   pantorrilla_izq_cm: 100, pantorrilla_der_cm: 100,
@@ -270,18 +269,20 @@ export const BODY_METRIC_MAX = {
   grasa_pierna_izq_kg: 20, grasa_pierna_der_kg: 20,
 };
 
-// Composición derivada de peso/grasa/altura: se calcula al vuelo, NUNCA se
-// persiste (misma política que kcal). Solo lectura en Medidas. `formula` alimenta
-// el Hint "?". derivedBodyMetrics devuelve null por clave si faltan sus insumos.
+// Composición derivada de peso/grasa (de la medición) + altura (del Perfil,
+// prefs.data.profile.height_cm — la altura NO es una medida del día): se calcula
+// al vuelo, NUNCA se persiste (misma política que kcal). Solo lectura en Medidas.
+// `formula` alimenta el Hint "?". derivedBodyMetrics devuelve null por clave si
+// faltan sus insumos.
 export const DERIVED_BODY = [
   { key: 'ffm_kg', label: 'Masa libre de grasa', unit: 'kg', formula: 'peso × (1 − grasa% / 100)' },
-  { key: 'imc', label: 'IMC', unit: 'kg/m²', formula: 'peso / altura² (altura en m)' },
-  { key: 'ffmi', label: 'FFMI', unit: 'kg/m²', formula: 'masa libre de grasa / altura² (altura en m)' },
+  { key: 'imc', label: 'IMC', unit: 'kg/m²', formula: 'peso / altura² (altura del Perfil, en m)' },
+  { key: 'ffmi', label: 'FFMI', unit: 'kg/m²', formula: 'masa libre de grasa / altura² (altura del Perfil, en m)' },
 ];
 
-export function derivedBodyMetrics(m) {
+export function derivedBodyMetrics(m, heightCm) {
   const n = (v) => (v === '' || v == null || !(Number(v) >= 0) ? null : Number(v));
-  const peso = n(m?.peso_kg), grasa = n(m?.grasa_pct), alt = n(m?.altura_cm);
+  const peso = n(m?.peso_kg), grasa = n(m?.grasa_pct), alt = n(heightCm);
   const hm = alt > 0 ? alt / 100 : null;
   const ffm = peso != null && grasa != null ? peso * (1 - grasa / 100) : null;
   return {
@@ -410,12 +411,12 @@ export function bucketRows(dailyRows, keys, agg, reducer) {
 // [key]:valor|null} por variable. agg='dia' = una fila por día del rango (default,
 // preserva la semántica previa); semana/mes agrupan y reducen. nutByDay/bodyByDay
 // son Map(day→fila).
-export function buildDashSeries(dates, vars, nutByDay, bodyByDay, agg = 'dia', reducer = 'promedio') {
+export function buildDashSeries(dates, vars, nutByDay, bodyByDay, agg = 'dia', reducer = 'promedio', heightCm = null) {
   const daily = dates.map((day) => {
     const nut = nutByDay.get(day);
     const registered = Number(nut?.kcal || 0) > 0;
     const body = bodyByDay.get(day);
-    const derived = body ? derivedBodyMetrics(body.metrics) : null;
+    const derived = body ? derivedBodyMetrics(body.metrics, heightCm) : null;
     const row = { day };
     for (const v of vars) row[v.key] = dashVarValue(v, nut, registered, body, derived);
     return row;
