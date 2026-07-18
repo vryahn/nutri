@@ -26,7 +26,7 @@ import {
   resolveTarget,
   round,
 } from '../lib/domain.js';
-import { t, useProfile } from '../lib/i18n.js';
+import { t } from '../lib/i18n.js';
 
 // Rotación de colores de datos (nunca --accent: reservado para la línea de
 // objetivo). 4 tokens = DASH_MAX_VARS, así ninguna serie repite color.
@@ -66,9 +66,7 @@ function CustomChart({ def, dates, nutByDay, bodyByDay, targets, onEdit, onRemov
   // Suma sin sentido en medidas: si hay stock cae a promedio (el constructor ya
   // la deshabilita; esto blinda defs viejos o editados a mano).
   const reducer = def.reducer === 'suma' && hasStock ? 'promedio' : def.reducer || 'promedio';
-  // Altura del Perfil: insumo de las derivadas (IMC/FFMI) — no es medida del día.
-  const { height_cm } = useProfile();
-  const series = buildDashSeries(dates, vars, nutByDay, bodyByDay, agg, reducer, height_cm);
+  const series = buildDashSeries(dates, vars, nutByDay, bodyByDay, agg, reducer);
 
   // Objetivo solo con UNA variable de nutrición que lo tenga. Se agrega con el
   // MISMO bucket/reductor que los datos para que línea y objetivo sean comparables.
