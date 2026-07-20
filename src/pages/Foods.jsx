@@ -8,7 +8,7 @@ import { cacheGet, cacheSet } from '../lib/cache.js';
 import { useToast } from '../lib/useToast.js';
 import {
   MICROS, MICROS_DEFAULT, microGroups, round, kcalFromMacros, kcalSuspicious, macrosImplausible,
-  componentsInconsistent, isWaterSentinel, eanChecksumValid, mergeFoodResults,
+  componentsInconsistent, isWaterSentinel, eanChecksumValid, mergeFoodResults, normalizeTo100,
 } from '../lib/domain.js';
 import { fetchOFF, searchFDC, fetchFDC } from '../lib/sources.js';
 import { GEMINI_KEY, DENSITY_PRESETS, estimateFood, embedText } from '../lib/ai.js';
@@ -625,30 +625,6 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const [basis, setBasis] = useState('100'); // amount (in basisUnit) that the captured values refer to
   const [basisUnit, setBasisUnit] = useState('g'); // 'g'|'ml' — the form's basis, 1 g/ml is NEVER assumed
 
-  // The DB always stores per 100 g: if the user captured against another basis, it is scaled on save.
-  // If the basis is ml, it is first converted to grams using the chosen density (never assumed).
-  // Portions and density are absolute, they are not scaled. null = blocked, density missing.
-  function normalizeTo100(f) {
-    const b = Number(basis);
-    if (!b || b <= 0) return f;
-    let baseGrams = b;
-    if (basisUnit === 'ml') {
-      const density = Number(f.density_g_ml) || 0;
-      if (!(density > 0)) return null;
-      baseGrams = b * density;
-    }
-    if (baseGrams === 100) return f;
-    const s = 100 / baseGrams;
-    const scale = (v, d) => (v === '' || v == null ? v : round(Number(v) * s, d));
-    return {
-      ...f,
-      kcal: scale(f.kcal, 1),
-      protein_g: scale(f.protein_g, 2),
-      carbs_g: scale(f.carbs_g, 2),
-      fat_g: scale(f.fat_g, 2),
-      micros: Object.fromEntries(Object.entries(f.micros).map(([k, v]) => [k, round(Number(v) * s, 3)])),
-    };
-  }
   // true = the user chose "Otro…" for liquid (manual density even if empty)
   const [densityOther, setDensityOther] = useState(
     food.density_g_ml > 0 && !DENSITY_PRESETS.some((p) => p.value === Number(food.density_g_ml))
@@ -781,12 +757,12 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const suspicious = form.kcal !== '' && hasMacros && kcalSuspicious(form);
   // Plausibility is ALWAYS evaluated on values normalized to 100 g: with a basis ≠ 100 g
   // (e.g. "per 30 g" or per 100 ml) the absolute thresholds would be mis-scaled.
-  const normForCheck = normalizeTo100(form) ?? form;
+  const normForCheck = normalizeTo100(form, basis, basisUnit) ?? form;
   const implausible = macrosImplausible(normForCheck);
   const inconsistent = componentsInconsistent(normForCheck);
   const warned = Boolean(suspicious || implausible || inconsistent);
   // empty kcal → the macro-based computation (the placeholder the user sees) is saved
-  const submitValues = () => normalizeTo100({ ...form, kcal: form.kcal === '' ? kcalCalc : form.kcal });
+  const submitValues = () => normalizeTo100({ ...form, kcal: form.kcal === '' ? kcalCalc : form.kcal }, basis, basisUnit);
   // Base-catalog food (owner null): saving ALWAYS creates the user's own copy
   // (no id → handleSave takes the insert branch; the server assigns owner = auth.uid()).
   const isBaseFood = food.owner === null;

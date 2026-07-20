@@ -739,6 +739,32 @@ export function round(n, decimals) {
   return Math.round(n * f) / f;
 }
 
+// Values are always stored per 100 g: if the user captured against another basis, it is
+// scaled on save. If the basis is ml it is first converted to grams with the chosen
+// density (1 g/ml is NEVER assumed). Portions and density are absolute, not scaled.
+// Returns null = blocked, the basis is ml and there is no density.
+export function normalizeTo100(f, basis, basisUnit) {
+  const b = Number(basis);
+  if (!b || b <= 0) return f;
+  let baseGrams = b;
+  if (basisUnit === 'ml') {
+    const density = Number(f.density_g_ml) || 0;
+    if (!(density > 0)) return null;
+    baseGrams = b * density;
+  }
+  if (baseGrams === 100) return f;
+  const s = 100 / baseGrams;
+  const scale = (v, d) => (v === '' || v == null ? v : round(Number(v) * s, d));
+  return {
+    ...f,
+    kcal: scale(f.kcal, 1),
+    protein_g: scale(f.protein_g, 2),
+    carbs_g: scale(f.carbs_g, 2),
+    fat_g: scale(f.fat_g, 2),
+    micros: Object.fromEntries(Object.entries(f.micros).map(([k, v]) => [k, round(Number(v) * s, 3)])),
+  };
+}
+
 // Minimum numbers of logged days required to enable each advanced Dashboard
 // calculation (named constants, no magic numbers in the JSX).
 export const MIN_DAYS_MEDIAN = 3;

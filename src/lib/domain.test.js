@@ -7,7 +7,7 @@ import {
   classifyCeiling, classifySodium, sodiumIsLow, sodiumIsHigh,
   SODIUM_FLOOR_MG, SODIUM_CEILING_MG,
   DASH_VARS_BY_KEY, axisUnits, buildDashSeries, dashVarTarget,
-  autoAgg, resolveAgg, reduceBucket, bucketRows, mergeFoodResults,
+  autoAgg, resolveAgg, reduceBucket, bucketRows, mergeFoodResults, normalizeTo100,
 } from './domain.js';
 
 describe('temporal aggregation of custom charts', () => {
@@ -431,5 +431,57 @@ describe('mergeFoodResults', () => {
     const primary = [{ id: 1 }];
     expect(mergeFoodResults(primary, [])).toEqual(primary);
     expect(mergeFoodResults(primary, null)).toEqual(primary);
+  });
+});
+
+describe('normalizeTo100', () => {
+  it('basis 100 g -> identity, no scaling', () => {
+    const f = { kcal: 150, protein_g: 10, carbs_g: 20, fat_g: 5, micros: { sodio_mg: 30 } };
+    expect(normalizeTo100(f, 100, 'g')).toBe(f);
+  });
+
+  it('basis 50 g -> doubles', () => {
+    const f = { kcal: 100, protein_g: 5, carbs_g: 0, fat_g: 0, micros: { sodio_mg: 10 } };
+    const r = normalizeTo100(f, 50, 'g');
+    expect(r.kcal).toBe(200);
+    expect(r.protein_g).toBe(10);
+    expect(r.micros.sodio_mg).toBe(20);
+  });
+
+  it('basis 200 g -> halves', () => {
+    const f = { kcal: 100, protein_g: 10, carbs_g: 0, fat_g: 0, micros: { sodio_mg: 40 } };
+    const r = normalizeTo100(f, 200, 'g');
+    expect(r.kcal).toBe(50);
+    expect(r.protein_g).toBe(5);
+    expect(r.micros.sodio_mg).toBe(20);
+  });
+
+  it('basis ml WITH density converts to grams first', () => {
+    const f = { kcal: 100, protein_g: 0, carbs_g: 0, fat_g: 0, micros: {}, density_g_ml: 0.92 };
+    const r = normalizeTo100(f, 100, 'ml');
+    // baseGrams = 100 ml * 0.92 g/ml = 92 g -> kcal scales by 100/92
+    expect(r.kcal).toBe(108.7);
+  });
+
+  it('basis ml WITHOUT density is blocked (null) — density 0 or absent', () => {
+    const f = { kcal: 100, protein_g: 0, carbs_g: 0, fat_g: 0, micros: {}, density_g_ml: 0 };
+    expect(normalizeTo100(f, 100, 'ml')).toBeNull();
+    const noDensity = { kcal: 100, protein_g: 0, carbs_g: 0, fat_g: 0, micros: {} };
+    expect(normalizeTo100(noDensity, 100, 'ml')).toBeNull();
+  });
+
+  it('empty string and null fields survive without becoming 0 or NaN', () => {
+    const f = { kcal: '', protein_g: null, carbs_g: 50, fat_g: '', micros: {} };
+    const r = normalizeTo100(f, 50, 'g');
+    expect(r.kcal).toBe('');
+    expect(r.protein_g).toBeNull();
+    expect(r.carbs_g).toBe(100);
+  });
+
+  it('invalid basis (0, negative, non-numeric) -> object unchanged', () => {
+    const f = { kcal: 100, protein_g: 5, carbs_g: 0, fat_g: 0, micros: {} };
+    expect(normalizeTo100(f, 0, 'g')).toBe(f);
+    expect(normalizeTo100(f, -10, 'g')).toBe(f);
+    expect(normalizeTo100(f, 'abc', 'g')).toBe(f);
   });
 });
