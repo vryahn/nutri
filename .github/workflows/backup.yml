@@ -2,7 +2,7 @@ name: Backup
 
 on:
   schedule:
-    - cron: '0 6 1 * *' # on the 1st of every month at 06:00 UTC
+    - cron: '0 6 * * 1' # every Monday at 06:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -20,6 +20,15 @@ jobs:
 
       - name: pg_dump
         run: /usr/lib/postgresql/17/bin/pg_dump "${{ secrets.SUPABASE_DB_URL }}" -f backup.sql
+
+      - name: Verificar que el dump tiene contenido
+        # A pg_dump that fails partway (pooler permissions, timeout) still exits 0 and
+        # leaves a truncated file. Without this the job would encrypt and upload an
+        # unusable backup for months without anyone noticing.
+        run: |
+          test "$(wc -c < backup.sql)" -gt 100000
+          grep -q 'COPY nutri.entries' backup.sql
+          grep -q 'COPY nutri.foods' backup.sql
 
       - name: Cifrar backup
         env:
