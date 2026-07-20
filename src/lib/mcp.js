@@ -15,7 +15,7 @@ import {
 export const MICRO_KEYS = new Set(MICROS.map((m) => m.key));
 export const BODY_METRIC_KEYS = new Set(BODY_METRICS.map((m) => m.key));
 
-// HARD validation: micro keys outside MICROS block the save.
+// HARD validation: micro keys outside MICROS, and negative values, block the save.
 export function assertValidMicros(micros) {
   if (!micros) return;
   const bad = Object.keys(micros).filter((k) => !MICRO_KEYS.has(k));
@@ -24,6 +24,7 @@ export function assertValidMicros(micros) {
       `Claves de micro inválidas: ${bad.join(', ')}. Válidas: ${[...MICRO_KEYS].join(', ')}`
     );
   }
+  assertNonNegative(micros);
 }
 
 // HARD validation: finite numbers ≥ 0 (null/undefined = absent field, allowed).

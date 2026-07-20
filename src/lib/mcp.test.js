@@ -18,6 +18,9 @@ describe('assertValidMicros', () => {
   it('accepts valid keys', () => {
     expect(() => assertValidMicros({ sodio_mg: 100, fibra_g: 2 })).not.toThrow();
   });
+  it('rechaza micros negativos', () => {
+    expect(() => assertValidMicros({ sodio_mg: -500 })).toThrow();
+  });
 });
 
 describe('assertNonNegative', () => {
