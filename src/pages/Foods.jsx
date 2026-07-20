@@ -11,7 +11,7 @@ import {
   componentsInconsistent, isWaterSentinel, eanChecksumValid, mergeFoodResults,
 } from '../lib/domain.js';
 import { fetchOFF, searchFDC, fetchFDC } from '../lib/sources.js';
-import { GEMINI_KEY, DENSITY_PRESETS, snapDensity, estimateFood, embedText } from '../lib/ai.js';
+import { GEMINI_KEY, DENSITY_PRESETS, estimateFood, embedText } from '../lib/ai.js';
 import { t, useLang, useUnits, gToOz, mlToFlOz } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import UndoToast from '../components/UndoToast.jsx';
@@ -19,8 +19,6 @@ import SortTh from '../components/SortTh.jsx';
 import AiDataCard from '../components/AiDataCard.jsx';
 import ImportSheet from '../components/ImportSheet.jsx';
 import PortionsEditor from '../components/PortionsEditor.jsx';
-
-const FDC_KEY = import.meta.env.VITE_FDC_KEY;
 
 // ponytail: matchMedia instead of a custom resize observer; same pattern as Today.jsx.
 function useIsLgUp() {
@@ -663,9 +661,6 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const [aiResult, setAiResult] = useState(null); // { source, name, confidence } for the result line
   const [aiMissing, setAiMissing] = useState([]); // labels of required fields lacking reliable data
   const [fdcChips, setFdcChips] = useState([]); // up to 6 FDC matches (from usda_query or manual search)
-  const [usdaQuery, setUsdaQuery] = useState('');
-  const [usdaLoading, setUsdaLoading] = useState(false);
-  const [usdaError, setUsdaError] = useState('');
   const [labelMismatch, setLabelMismatch] = useState([]); // labels where the nutrition label and OFF differ by >25%, UI only
   const [sweeteners, setSweeteners] = useState([]); // sweeteners detected by OFF (presence, not amount), UI only
 
@@ -759,16 +754,6 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     setAiLoading(false);
   }
 
-  async function handleUsdaSearch() {
-    if (!usdaQuery.trim()) return;
-    setUsdaLoading(true);
-    setUsdaError('');
-    const matches = await searchFDC(usdaQuery.trim());
-    setFdcChips(matches);
-    if (matches.length === 0) setUsdaError(t('Sin resultados en USDA.'));
-    setUsdaLoading(false);
-  }
-
   async function handleFdcChip(fdcId, description) {
     setAiLoading(true);
     setAiError('');
@@ -858,37 +843,6 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           )}
         </AiDataCard>
       )}
-
-      {/* ponytail: manual USDA search disabled at the user's request. The USDA chips
-          from `usda_query` (Gemini) remain active. To re-enable it, uncomment.
-      {!form.id && FDC_KEY && (
-        <div className="rounded-xl bg-surface-2 border border-border p-3 flex flex-col gap-2">
-          <p className="text-sm text-text-2 flex items-center gap-2">
-            <Search size={16} className="text-accent" /> Buscar en USDA <span className="text-text-3">· en inglés</span>
-          </p>
-          {GEMINI_KEY && (
-            <p className="text-xs text-text-3">¿Prefieres español? Usa “Datos con IA” arriba.</p>
-          )}
-          <div className="flex gap-2">
-            <input
-              value={usdaQuery}
-              onChange={(e) => setUsdaQuery(e.target.value)}
-              placeholder="p. ej. egg, scrambled"
-              className="flex-1 min-w-0 min-h-[44px] rounded-xl bg-surface-3 border border-border px-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-            <button
-              type="button"
-              onClick={handleUsdaSearch}
-              disabled={usdaLoading || !usdaQuery.trim()}
-              className="min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium disabled:opacity-40 press"
-            >
-              {usdaLoading ? 'Buscando…' : 'Buscar en USDA'}
-            </button>
-          </div>
-          {usdaError && <p className="text-sm text-danger">{usdaError}</p>}
-        </div>
-      )}
-      */}
 
       {fdcChips.length > 0 && (
         <div className="flex flex-wrap gap-2">
