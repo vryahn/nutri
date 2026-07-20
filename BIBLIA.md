@@ -135,7 +135,9 @@ Checklist obligatorio para **toda migración** (`supabase/migrations/NNN_*.sql`)
 
 - Sin registro público ni recuperación self-service (spec §11): las 2 cuentas se
   gestionan a mano en Supabase.
-- **Leaked password protection habilitada** en Supabase Auth (HaveIBeenPwned).
+- **Leaked password protection**: no disponible — es exclusiva del plan Pro de
+  Supabase y el proyecto opera en free tier. Limitación aceptada; el registro
+  público está cerrado y solo hay 2 cuentas.
 - Contraseñas largas de gestor de contraseñas; nunca hardcodeadas — las pruebas
   cross-user piden credenciales a Bryan en el momento.
 
