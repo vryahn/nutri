@@ -7,7 +7,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { createClient } from '@supabase/supabase-js';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { z } from 'zod';
-import { resolveTarget, todayISO } from '../src/lib/domain.js';
+import { resolveTarget } from '../src/lib/domain.js';
 import {
   assertValidMicros,
   assertNonNegative,
@@ -19,6 +19,13 @@ import {
   decideUpdatePath,
   recipeResponse,
 } from '../src/lib/mcp.js';
+
+// ponytail: the serverless runtime and Postgres both run in UTC, but both users are
+// in Mexico — without an explicit zone the MCP writes to the next day from 18:00.
+// Hardcoded rather than a TZ env var so the fix lives in the repo; make it a per-user
+// preference only if someone actually logs from another zone.
+const APP_TZ = 'America/Mexico_City';
+const todayLocal = () => new Date().toLocaleDateString('en-CA', { timeZone: APP_TZ });
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
@@ -123,7 +130,7 @@ async function logEntry(supabase, { food_id, recipe_id, item, grams, label, day 
   const params = { p_grams: grams };
   if (item != null) params.p_item = item;
   if (label != null) params.p_label = label;
-  if (day != null) params.p_day = day;
+  params.p_day = day ?? todayLocal();
   if (food_id != null) params.p_food_id = food_id;
   if (recipe_id != null) params.p_recipe_id = recipe_id;
   const { data, error } = await supabase.rpc('log_entry', params);
@@ -138,7 +145,7 @@ async function deleteEntry(supabase, entryId) {
 }
 
 async function getDay(supabase, day) {
-  const d = day || todayISO();
+  const d = day || todayLocal();
   const [{ data: totals, error: e1 }, { data: entries, error: e2 }] = await Promise.all([
     supabase.from('daily_totals').select('*').eq('day', d).maybeSingle(),
     supabase
@@ -156,7 +163,7 @@ async function getDay(supabase, day) {
 }
 
 async function getTargets(supabase, day) {
-  const d = day || todayISO();
+  const d = day || todayLocal();
   const { data: targets, error } = await supabase.from('targets').select('*');
   if (error) throw new Error(error.message);
   const resolved = resolveTarget(targets || [], d);
@@ -289,7 +296,7 @@ async function updateFood(supabase, uid, foodId, patch) {
 // overwrite the keys already saved that day (project priority: never lose data).
 async function logMeasurement(supabase, uid, { day, metrics }) {
   assertValidBodyMetrics(metrics);
-  const d = day || todayISO();
+  const d = day || todayLocal();
   const { data: existing, error: getErr } = await supabase
     .from('body_metrics')
     .select('metrics')
