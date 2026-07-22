@@ -11,9 +11,10 @@ function nameLangInstruction() {
 export const GEMINI_KEY = import.meta.env?.VITE_GEMINI_KEY;
 export const MISTRAL_KEY = import.meta.env?.VITE_MISTRAL_KEY;
 
-// Fallback cascade on error/quota exhaustion: Gemini 3.5 → Gemini 2.5 → Mistral.
+// Fallback cascade on error/quota exhaustion: Gemini 3.6 → 3.5 → 2.5 → Mistral.
 // Each step is skipped if its key is not configured; see callAI.
 const AI_CHAIN = [
+  { kind: 'gemini', model: 'gemini-3.6-flash' },
   { kind: 'gemini', model: 'gemini-3.5-flash' },
   { kind: 'gemini', model: 'gemini-2.5-flash' },
   { kind: 'mistral', model: 'mistral-small-latest' },
