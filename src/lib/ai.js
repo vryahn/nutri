@@ -217,8 +217,17 @@ export async function embedText(text) {
 }
 
 async function callGemini(model, systemPrompt, parts, schema, temperature) {
-  const generationConfig = { response_mime_type: 'application/json', response_schema: schema };
-  if (temperature != null) generationConfig.temperature = temperature; // only used by the eval (temp 0 = reproducible)
+  const generationConfig = {
+    response_mime_type: 'application/json',
+    response_schema: schema,
+    // Transcribing/extracting is deterministic work: temp 0 stops digits from
+    // oscillating between runs (the eval already pinned it; now production matches).
+    temperature: temperature ?? 0,
+    // More vision tiles = better OCR of small print on nutrition labels.
+    // No-op on text-only requests. Accepted by 3.6/2.5-flash (verified live);
+    // if a model rejected it, the cascade falls through to the next one.
+    mediaResolution: 'MEDIA_RESOLUTION_HIGH',
+  };
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
@@ -242,7 +251,7 @@ async function callMistral(model, systemPrompt, parts, schema, temperature) {
     messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content }],
     response_format: { type: 'json_schema', json_schema: { name: 'nutri', strict: true, schema: toJsonSchema(schema) } },
   };
-  if (temperature != null) body.temperature = temperature; // only used by the eval
+  body.temperature = temperature ?? 0; // deterministic extraction, same as callGemini
   const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${MISTRAL_KEY}` },
@@ -270,7 +279,7 @@ async function callGroq(model, systemPrompt, parts, schema, temperature) {
     // work anyway; no reasoning needed.
     reasoning_effort: 'none',
   };
-  if (temperature != null) body.temperature = temperature; // only used by the eval
+  body.temperature = temperature ?? 0; // deterministic extraction, same as callGemini
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
@@ -354,7 +363,9 @@ export function parseAmount(text) {
 export async function estimateFood(text, imageFiles) {
   const parts = [{ text: text.trim() || 'Analiza las imágenes.' }];
   for (const f of imageFiles || []) {
-    parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(f) } });
+    // 2048 (vs the 1024 default): nutrition-label digits blur at 1024 and a 5
+    // reads as a 6. Recipe photos stay at 1024 — dishes carry no small print.
+    parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(f, 2048) } });
   }
   return estimateFoodFromParts(parts);
 }
