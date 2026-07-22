@@ -10,13 +10,15 @@ function nameLangInstruction() {
 
 export const GEMINI_KEY = import.meta.env?.VITE_GEMINI_KEY;
 export const MISTRAL_KEY = import.meta.env?.VITE_MISTRAL_KEY;
+export const GROQ_KEY = import.meta.env?.VITE_GROQ_KEY;
 
-// Fallback cascade on error/quota exhaustion: Gemini 3.6 → 3.5 → 2.5 → Mistral.
+// Fallback cascade on error/quota exhaustion: Gemini 3.6 → 3.5 → 2.5 → Groq → Mistral.
 // Each step is skipped if its key is not configured; see callAI.
 const AI_CHAIN = [
   { kind: 'gemini', model: 'gemini-3.6-flash' },
   { kind: 'gemini', model: 'gemini-3.5-flash' },
   { kind: 'gemini', model: 'gemini-2.5-flash' },
+  { kind: 'groq', model: 'qwen/qwen3.6-27b' },
   { kind: 'mistral', model: 'mistral-small-latest' },
 ];
 
@@ -251,18 +253,46 @@ async function callMistral(model, systemPrompt, parts, schema, temperature) {
   return JSON.parse(data.choices[0].message.content);
 }
 
+// Groq (OpenAI-compat). Its vision models do not support json_schema strict mode —
+// only json_object (valid JSON, schema not enforced) — so the schema goes embedded
+// in the system prompt and estimateFoodFromParts's normalization discards leftovers.
+async function callGroq(model, systemPrompt, parts, schema, temperature) {
+  const content = parts.map((p) => (p.text != null
+    ? { type: 'text', text: p.text }
+    : { type: 'image_url', image_url: { url: `data:${p.inline_data.mime_type};base64,${p.inline_data.data}` } }));
+  const sys = `${systemPrompt}\nResponde SOLO con un objeto JSON que cumpla EXACTAMENTE este JSON Schema (usa null donde no haya dato):\n${JSON.stringify(toJsonSchema(schema))}`;
+  const body = {
+    model,
+    messages: [{ role: 'system', content: sys }, { role: 'user', content }],
+    response_format: { type: 'json_object' },
+    // Without this, qwen3.6 burns the whole output on reasoning and returns empty
+    // content → 400 json_validate_failed (verified live). Extraction is deterministic
+    // work anyway; no reasoning needed.
+    reasoning_effort: 'none',
+  };
+  if (temperature != null) body.temperature = temperature; // only used by the eval
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Groq ${model} ${res.status}`);
+  const data = await res.json();
+  return JSON.parse(data.choices[0].message.content);
+}
+
+const AI_CALLERS = { gemini: callGemini, mistral: callMistral, groq: callGroq };
+const AI_KEYS = { get gemini() { return GEMINI_KEY; }, get mistral() { return MISTRAL_KEY; }, get groq() { return GROQ_KEY; } };
+
 // Tries each model in AI_CHAIN in order; on ANY error it moves on to the next.
 // Skips a step if its key is not configured. Propagates the last error if all fail.
 // Returns { data, model } — model = "kind:model" of the step that responded (for the eval harness).
 async function callAI(systemPrompt, parts, schema) {
   let lastErr;
   for (const step of AI_CHAIN) {
-    if (step.kind === 'gemini' && !GEMINI_KEY) continue;
-    if (step.kind === 'mistral' && !MISTRAL_KEY) continue;
+    if (!AI_KEYS[step.kind]) continue;
     try {
-      const data = step.kind === 'gemini'
-        ? await callGemini(step.model, systemPrompt, parts, schema)
-        : await callMistral(step.model, systemPrompt, parts, schema);
+      const data = await AI_CALLERS[step.kind](step.model, systemPrompt, parts, schema);
       return { data, model: `${step.kind}:${step.model}` };
     } catch (e) {
       lastErr = e;
@@ -472,10 +502,12 @@ export async function askAnswer(question, contextStr, lang) {
 export async function estimateFoodFromParts(parts, opts = {}) {
   let out, model;
   if (opts.model) {
-    const mistral = opts.model.startsWith('mistral');
-    const call = mistral ? callMistral : callGemini;
-    out = await call(opts.model, geminiPrompt(), parts, GEMINI_SCHEMA, opts.temperature);
-    model = `${mistral ? 'mistral' : 'gemini'}:${opts.model}`;
+    // kind by AI_CHAIN lookup; arbitrary models outside the chain (e.g. another
+    // Gemini pinned via EVAL_MODEL) fall back to the old prefix heuristic.
+    const kind = AI_CHAIN.find((s) => s.model === opts.model)?.kind
+      || (opts.model.startsWith('mistral') ? 'mistral' : 'gemini');
+    out = await AI_CALLERS[kind](opts.model, geminiPrompt(), parts, GEMINI_SCHEMA, opts.temperature);
+    model = `${kind}:${opts.model}`;
   } else {
     ({ data: out, model } = await callAI(geminiPrompt(), parts, GEMINI_SCHEMA));
   }

@@ -16,7 +16,8 @@ const CASES_DIR = path.join(DIR, 'cases');
 const DEFAULT_MODEL = 'gemini-3.5-flash';
 const EVAL_MODEL = process.env.EVAL_MODEL || DEFAULT_MODEL;
 const EVAL_OPTS = { model: EVAL_MODEL, temperature: 0 };
-const suffix = EVAL_MODEL === DEFAULT_MODEL ? '' : `.${EVAL_MODEL}`;
+// '/' in model ids (e.g. meta-llama/llama-4-scout…) would break the baseline filename
+const suffix = EVAL_MODEL === DEFAULT_MODEL ? '' : `.${EVAL_MODEL.replace(/\//g, '_')}`;
 const BASELINE = path.join(DIR, `baseline${suffix}.json`);
 const LAST_RUN = path.join(DIR, `last-run${suffix}.json`);
 
@@ -49,8 +50,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const cases = loadCases();
 // The required key depends on the pinned model: with only the "wrong" key in .env, running
 // anyway would blow up all 7 cases as false regressions instead of a clean skip.
-const NEED_KEY = EVAL_MODEL.startsWith('mistral') ? 'VITE_MISTRAL_KEY' : 'VITE_GEMINI_KEY';
+const NEED_KEY = EVAL_MODEL.startsWith('mistral') ? 'VITE_MISTRAL_KEY'
+  : EVAL_MODEL.startsWith('qwen/') ? 'VITE_GROQ_KEY' : 'VITE_GEMINI_KEY';
 const hasAI = !!import.meta.env[NEED_KEY];
+// Groq free tier: 8k TPM — each case eats ~3-4k tokens, so ~2 req/min. Its 429 is
+// a per-minute window (retryable), unlike Gemini's daily-quota 429 (not retryable).
+const GROQ_EVAL = EVAL_MODEL.startsWith('qwen/');
 const results = [];
 
 describe.skipIf(!hasAI)('eval extracción IA', () => {
@@ -63,9 +68,10 @@ describe.skipIf(!hasAI)('eval extracción IA', () => {
     for (let a = 1; ; a++) {
       try { return await estimateFoodFromParts(parts, EVAL_OPTS); }
       catch (e) {
-        const transient = /\b(500|502|503|504)\b/.test(String(e.message));
+        const transient = /\b(500|502|503|504)\b/.test(String(e.message))
+          || (GROQ_EVAL && /\b429\b/.test(String(e.message)));
         if (!transient || a >= tries) throw e;
-        await sleep(6000);
+        await sleep(GROQ_EVAL ? 30000 : 6000);
       }
     }
   }
@@ -78,7 +84,7 @@ describe.skipIf(!hasAI)('eval extracción IA', () => {
   for (const [i, c] of cases.entries()) {
     if (!c.ready) console.warn(`eval: caso '${c.id}' sin sus fotos en disco — omitido.`);
     it.skipIf(!c.ready)(c.id, async () => {
-      if (i > 0) await sleep(4000); // free tier RPM: space out the calls
+      if (i > 0) await sleep(GROQ_EVAL ? 30000 : 4000); // free tier RPM/TPM: space out the calls
       const got = await estimateWithRetry(buildParts(c));
       results.push(scoreCase(c, got));
     }, 120000);

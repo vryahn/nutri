@@ -1,0 +1,432 @@
+{
+  "generated_at": "2026-07-22T15:16:21.695Z",
+  "cases": [
+    {
+      "id": "gomitas-magnesio",
+      "model": "groq:qwen/qwen3.6-27b",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 257.2,
+          "got": 257.2,
+          "pass": true
+        },
+        "protein_g": {
+          "expected": 6,
+          "got": 0,
+          "pass": false
+        },
+        "carbs_g": {
+          "expected": 58.3,
+          "got": 58.9,
+          "pass": true
+        },
+        "fat_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 145.2,
+          "got": 146.2,
+          "pass": true
+        },
+        "potasio_mg": {
+          "expected": null,
+          "pass": false
+        },
+        "magnesio_mg": {
+          "expected": 3600,
+          "got": 178.6,
+          "pass": false
+        },
+        "vit_d_mcg": {
+          "expected": 119,
+          "got": 11.9,
+          "pass": false
+        }
+      },
+      "extras": [
+        "fibra_g"
+      ],
+      "passed": 4,
+      "total": 9
+    },
+    {
+      "id": "huevo-crudo",
+      "model": "groq:qwen/qwen3.6-27b",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 143,
+          "got": 143,
+          "pass": true
+        },
+        "protein_g": {
+          "expected": 12.6,
+          "got": 12.58,
+          "pass": true
+        },
+        "carbs_g": {
+          "expected": 0.72,
+          "got": 0.72,
+          "pass": true
+        },
+        "fat_g": {
+          "expected": 9.51,
+          "got": 9.51,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 142,
+          "got": 142,
+          "pass": true
+        },
+        "potasio_mg": {
+          "expected": 138,
+          "got": 138,
+          "pass": true
+        },
+        "magnesio_mg": {
+          "expected": 12,
+          "got": 11,
+          "pass": true
+        },
+        "fibra_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        }
+      },
+      "extras": [],
+      "passed": 8,
+      "total": 8
+    },
+    {
+      "id": "huevo-gallinita",
+      "model": "groq:qwen/qwen3.6-27b",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 146.2,
+          "got": 146.2,
+          "pass": true
+        },
+        "protein_g": {
+          "expected": 12.3,
+          "got": 12.3,
+          "pass": true
+        },
+        "carbs_g": {
+          "expected": 4.9,
+          "got": 0.9,
+          "pass": false
+        },
+        "fat_g": {
+          "expected": 8.6,
+          "got": 8.6,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 133.1,
+          "got": 133.1,
+          "pass": true
+        },
+        "potasio_mg": {
+          "expected": null,
+          "pass": false
+        },
+        "magnesio_mg": {
+          "expected": null,
+          "pass": false
+        },
+        "grasa_sat_g": {
+          "expected": 3.1,
+          "got": 3.1,
+          "pass": true
+        },
+        "grasa_trans_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "azucar_g": {
+          "expected": 0.4,
+          "got": 0.9,
+          "pass": true
+        },
+        "azucar_anadido_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "fibra_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        }
+      },
+      "extras": [],
+      "passed": 9,
+      "total": 12
+    },
+    {
+      "id": "leche-deslactosada",
+      "model": "groq:qwen/qwen3.6-27b",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 47,
+          "got": 47,
+          "pass": true
+        },
+        "protein_g": {
+          "expected": 5.4,
+          "got": 5.4,
+          "pass": true
+        },
+        "carbs_g": {
+          "expected": 5.1,
+          "got": 5.1,
+          "pass": true
+        },
+        "fat_g": {
+          "expected": 0.5,
+          "got": 0.5,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 60,
+          "got": 60,
+          "pass": true
+        },
+        "potasio_mg": {
+          "expected": null,
+          "pass": false
+        },
+        "magnesio_mg": {
+          "expected": null,
+          "pass": false
+        },
+        "grasa_sat_g": {
+          "expected": 0.3,
+          "got": 0.3,
+          "pass": true
+        },
+        "grasa_trans_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "azucar_g": {
+          "expected": 5.1,
+          "got": 5.1,
+          "pass": true
+        },
+        "azucar_anadido_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "fibra_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "calcio_mg": {
+          "expected": 178,
+          "got": 178,
+          "pass": true
+        },
+        "vit_a_mcg": {
+          "expected": 60,
+          "got": 60,
+          "pass": true
+        },
+        "vit_d_mcg": {
+          "expected": 0.62,
+          "got": 0.62,
+          "pass": true
+        }
+      },
+      "extras": [],
+      "passed": 13,
+      "total": 15
+    },
+    {
+      "id": "manzana-fuji",
+      "model": "groq:qwen/qwen3.6-27b",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 63,
+          "got": 53,
+          "pass": true
+        },
+        "protein_g": {
+          "expected": 0.2,
+          "got": 0.3,
+          "pass": true
+        },
+        "carbs_g": {
+          "expected": 15.2,
+          "got": 13.8,
+          "pass": true
+        },
+        "fat_g": {
+          "expected": 0.18,
+          "got": 0.2,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 1,
+          "got": 1,
+          "pass": true
+        },
+        "potasio_mg": {
+          "expected": 109,
+          "got": 108,
+          "pass": true
+        },
+        "magnesio_mg": {
+          "expected": 5,
+          "got": 5,
+          "pass": true
+        },
+        "fibra_g": {
+          "expected": 2.1,
+          "got": 2.4,
+          "pass": true
+        }
+      },
+      "extras": [],
+      "passed": 8,
+      "total": 8
+    },
+    {
+      "id": "miel-aguacate",
+      "model": "groq:qwen/qwen3.6-27b",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 324,
+          "got": 324,
+          "pass": true
+        },
+        "protein_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "carbs_g": {
+          "expected": 81,
+          "got": 81,
+          "pass": true
+        },
+        "fat_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "potasio_mg": {
+          "expected": null,
+          "pass": false
+        },
+        "magnesio_mg": {
+          "expected": null,
+          "pass": false
+        },
+        "grasa_sat_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "grasa_trans_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "azucar_g": {
+          "expected": 81,
+          "got": 81,
+          "pass": true
+        },
+        "azucar_anadido_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        },
+        "fibra_g": {
+          "expected": 0,
+          "got": 0,
+          "pass": true
+        }
+      },
+      "extras": [],
+      "passed": 10,
+      "total": 12
+    },
+    {
+      "id": "tortilla-maiz",
+      "model": "groq:qwen/qwen3.6-27b",
+      "mode_ok": true,
+      "basis_ok": true,
+      "fields": {
+        "kcal": {
+          "expected": 218,
+          "got": 218,
+          "pass": true
+        },
+        "protein_g": {
+          "expected": 5.7,
+          "got": 5.9,
+          "pass": true
+        },
+        "carbs_g": {
+          "expected": 44.6,
+          "got": 44.6,
+          "pass": true
+        },
+        "fat_g": {
+          "expected": 2.85,
+          "got": 2.3,
+          "pass": true
+        },
+        "sodio_mg": {
+          "expected": 45,
+          "got": 350,
+          "pass": false
+        },
+        "potasio_mg": {
+          "expected": 186,
+          "got": 180,
+          "pass": true
+        },
+        "magnesio_mg": {
+          "expected": 72,
+          "got": 45,
+          "pass": true
+        },
+        "fibra_g": {
+          "expected": 6.3,
+          "got": 6.3,
+          "pass": true
+        }
+      },
+      "extras": [],
+      "passed": 7,
+      "total": 8
+    }
+  ]
+}
