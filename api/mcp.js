@@ -43,6 +43,7 @@ async function verifyToken(authHeader) {
     const { payload } = await jwtVerify(authHeader.slice(7), JWKS, {
       issuer: ISSUER,
       audience: 'authenticated',
+      algorithms: ['ES256'],
     });
     return payload.sub || null;
   } catch {
