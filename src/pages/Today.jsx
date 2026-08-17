@@ -17,11 +17,8 @@ import {
   addDaysISO,
   resolveTarget,
   nutrientKind,
-  classifyBullseye,
-  classifyFloor,
-  classifyBand,
-  classifyCeiling,
-  classifySodium,
+  classifyNutrient,
+  effectiveBound,
   sodiumIsLow,
   sodiumIsHigh,
   SODIUM_FLOOR_MG,
@@ -109,35 +106,40 @@ function targetFor(key, target) {
   return v > 0 ? Number(v) : null;
 }
 
-// Renderable state of a nutrient: value, target, % and color per its archetype.
-// The regimen (target.goal) biases the kcal band; hasFood avoids flagging sodium
-// on an empty day.
+// Renderable state of a nutrient: value, target, %, color and "met" per its
+// archetype — or per its explicit bound (targets.bounds), which wins
+// (classifyNutrient in domain.js). The regimen (target.goal) biases the kcal
+// band; hasFood avoids flagging sodium on an empty day. `bound` = the effective
+// {min,max} (explicit sides + implied ones) or null; `pct` keeps measuring against
+// the objective.
 function itemState(key, totals, target, hasFood) {
   const meta = nutrientMeta(key);
   if (!meta) return null;
   const goal = target?.goal ?? null;
   const value = Number(totals[key] || 0);
   const tgt = targetFor(key, target);
+  const bound = effectiveBound(key, tgt, goal, target?.bounds?.[key]);
   const pct = tgt ? Math.round((value / tgt) * 100) : null;
+  const status = classifyNutrient(key, value, tgt, { goal, hasFood, bounds: bound });
   let color;
-  if (meta.kind === 'diana') color = statusColor[classifyBullseye(value, tgt, goal)] || meta.color;
-  else if (meta.kind === 'piso') color = statusColor[classifyFloor(value, tgt)] || meta.color;
-  else if (meta.kind === 'rango') color = statusColor[classifyBand(value, tgt)] || meta.color;
-  else if (meta.kind === 'techo') color = statusColor[classifyCeiling(value, tgt)] || meta.color;
-  else if (meta.kind === 'sodio') color = statusColor[classifySodium(value, hasFood)] || 'text-text';
+  if (meta.kind === 'sodio') color = statusColor[status] || 'text-text';
+  else if (meta.kind !== 'meta' || bound) color = statusColor[status] || meta.color;
   else if (meta.color) color = meta.color;
   else color = tgt != null && value >= tgt ? 'text-ok' : 'text-warn';
-  return { meta, value, tgt, pct, color, goal };
+  // "On target": within the explicit bound, or per archetype (band ok / floor
+  // reached / ceiling respected). Sodium is rendered separately (dual).
+  let met = false;
+  if (bound) met = status === 'ok';
+  else if (tgt != null) met = meta.kind === 'techo' ? value <= tgt : meta.kind === 'diana' || meta.kind === 'rango' ? status === 'ok' : value >= tgt;
+  return { meta, value, tgt, bound, pct, color, goal, status, met };
 }
 
-// "On target" per the archetype: within the band (diana/rango), at or above the
-// floor (piso/meta), at or below the ceiling (techo). Sodium is rendered separately (dual).
-function metFor(meta, value, tgt, goal) {
-  if (tgt == null) return false;
-  if (meta.kind === 'diana') return classifyBullseye(value, tgt, goal) === 'ok';
-  if (meta.kind === 'rango') return classifyBand(value, tgt) === 'ok';
-  if (meta.kind === 'techo') return value <= tgt;
-  return value >= tgt; // piso, meta archetypes
+// "1,900–2,100" / "≥ 150" / "≤ 20": explicit bound of a nutrient, for the labels.
+function boundText(bound, d) {
+  if (!bound) return null;
+  const f = (x) => round(x, d);
+  if (bound.min != null && bound.max != null) return `${f(bound.min)}–${f(bound.max)}`;
+  return bound.min != null ? `≥ ${f(bound.min)}` : `≤ ${f(bound.max)}`;
 }
 
 // Delta to the target formatted per the mode: absolute (−318) or in % (−18%).
@@ -153,31 +155,31 @@ function deltaText(mode, delta, base, decimals) {
 // items — safety rule, not configurable.
 function pendingFor(items, totals, target, hasFood) {
   const sodium = Number(totals.sodio_mg || 0);
+  const sodMax = target?.bounds?.sodio_mg?.max ?? SODIUM_CEILING_MG; // the ceiling is the only relaxable side
   const sodLow = sodiumIsLow(sodium, hasFood);
-  const sodHigh = sodiumIsHigh(sodium, hasFood);
+  const sodHigh = sodiumIsHigh(sodium, hasFood, sodMax);
   // Sodium pending item: floor (deficit) or ceiling (excess), both critical and medical.
   const sodPending = () =>
     sodLow
       ? { key: 'sodio_mg', critical: true, delta: sodium - SODIUM_FLOOR_MG, base: SODIUM_FLOOR_MG }
-      : { key: 'sodio_mg', critical: true, delta: sodium - SODIUM_CEILING_MG, base: SODIUM_CEILING_MG };
+      : { key: 'sodio_mg', critical: true, delta: sodium - sodMax, base: sodMax };
   const pending = [];
   for (const key of items) {
-    const s = itemState(key, totals, target);
+    const s = itemState(key, totals, target, hasFood);
     if (!s) continue;
-    const { meta, value, tgt, goal } = s;
-    if (meta.kind === 'diana') {
-      const st = classifyBullseye(value, tgt, goal);
-      if (st && st !== 'ok') pending.push({ key, critical: st === 'danger', delta: value - tgt, base: tgt });
-    } else if (meta.kind === 'rango') {
-      const st = classifyBand(value, tgt);
-      if (st && st !== 'ok') pending.push({ key, critical: st === 'danger', delta: value - tgt, base: tgt });
-    } else if (meta.kind === 'piso') {
-      if (classifyFloor(value, tgt) === 'danger') pending.push({ key, critical: true, delta: value - tgt, base: tgt });
-    } else if (meta.kind === 'techo') {
-      const st = classifyCeiling(value, tgt);
-      if (st && st !== 'ok') pending.push({ key, critical: st === 'danger', delta: value - tgt, base: tgt });
-    } else if (meta.kind === 'sodio') {
+    const { meta, value, tgt, bound, status } = s;
+    if (meta.kind === 'sodio') {
       if (sodLow || sodHigh) pending.push(sodPending());
+    } else if (bound) {
+      // Explicit bound: the delta points at the violated side.
+      if (status && status !== 'ok') {
+        const b = value < bound.min ? bound.min : bound.max;
+        pending.push({ key, critical: status === 'danger', delta: value - b, base: b });
+      }
+    } else if (meta.kind === 'diana' || meta.kind === 'rango' || meta.kind === 'techo') {
+      if (status && status !== 'ok') pending.push({ key, critical: status === 'danger', delta: value - tgt, base: tgt });
+    } else if (meta.kind === 'piso') {
+      if (status === 'danger') pending.push({ key, critical: true, delta: value - tgt, base: tgt });
     } else if (tgt != null && value < tgt) {
       pending.push({ key, critical: false, delta: value - tgt, base: tgt });
     }
@@ -260,9 +262,9 @@ function GoalSummary({ cfg, totals, target, hasFood }) {
 }
 
 function HeroRing({ state, mode }) {
-  const { meta, value, tgt, pct, color, goal } = state;
+  const { meta, value, tgt, bound, pct, color } = state;
   const arc = pct != null ? 326.726 * (1 - Math.min(1, pct / 100)) : null;
-  const met = metFor(meta, value, tgt, goal);
+  const { met } = state;
   return (
     <div className="flex items-center gap-4">
       <div className={`relative w-[104px] h-[104px] flex-none ${color}`}>
@@ -286,7 +288,7 @@ function HeroRing({ state, mode }) {
         ) : met ? (
           <>
             <p className="flex items-center gap-1.5 text-lg"><Check size={18} />{t('en meta')}</p>
-            <p className="text-xs text-text-3 mt-2">{t('meta')} {round(tgt, meta.decimals)} {meta.unit}</p>
+            <p className="text-xs text-text-3 mt-2">{t('meta')} {round(tgt, meta.decimals)} {meta.unit}{bound && ` · ${boundText(bound, meta.decimals)}`}</p>
           </>
         ) : mode === 'meta' ? (
           <>
@@ -296,7 +298,7 @@ function HeroRing({ state, mode }) {
         ) : (
           <>
             <p className="font-mono tabular-nums text-2xl leading-none">{deltaText(mode, value - tgt, tgt, meta.decimals)}</p>
-            <p className="text-xs text-text-3 mt-2">{meta.unit} · {t('meta')} {round(tgt, meta.decimals)}</p>
+            <p className="text-xs text-text-3 mt-2">{meta.unit} · {t('meta')} {round(tgt, meta.decimals)}{bound && ` · ${boundText(bound, meta.decimals)}`}</p>
           </>
         )}
       </div>
@@ -308,9 +310,10 @@ function HeroRing({ state, mode }) {
 // SODIUM_FLOOR_MG + ceiling SODIUM_CEILING_MG), not configurable; the rest follow
 // their archetype (techo = do not exceed, meta = reach).
 function Tile({ state, mode, hasFood }) {
-  const { meta, value, tgt, color, goal } = state;
+  const { meta, value, tgt, bound, color } = state;
   const d = meta.decimals;
-  const met = metFor(meta, value, tgt, goal);
+  const { met } = state;
+  const sodMax = bound?.max ?? SODIUM_CEILING_MG;
   return (
     <div className="rounded-xl bg-surface-2 p-3">
       <p className="text-[10px] uppercase tracking-wide text-text-3">{t(meta.label)}</p>
@@ -320,12 +323,12 @@ function Tile({ state, mode, hasFood }) {
           <p className="font-mono tabular-nums text-[11px] text-danger mt-0.5">
             {mode === 'pct' ? deltaText('pct', value - SODIUM_FLOOR_MG, SODIUM_FLOOR_MG, 0) : `−${round(SODIUM_FLOOR_MG - value, 0)}`} {t('al piso')}
           </p>
-        ) : sodiumIsHigh(value, hasFood) ? (
+        ) : sodiumIsHigh(value, hasFood, sodMax) ? (
           <p className="font-mono tabular-nums text-[11px] text-danger mt-0.5">
-            {mode === 'pct' ? deltaText('pct', value - SODIUM_CEILING_MG, SODIUM_CEILING_MG, 0) : `+${round(value - SODIUM_CEILING_MG, 0)}`} {t('sobre el techo')}
+            {mode === 'pct' ? deltaText('pct', value - sodMax, sodMax, 0) : `+${round(value - sodMax, 0)}`} {t('sobre el techo')}
           </p>
         ) : (
-          <p className="text-[10px] text-text-3 mt-0.5">{meta.unit} · {t('piso')} {SODIUM_FLOOR_MG} · {t('techo')} {SODIUM_CEILING_MG}</p>
+          <p className="text-[10px] text-text-3 mt-0.5">{meta.unit} · {t('piso')} {SODIUM_FLOOR_MG} · {t('techo')} {sodMax}</p>
         )
       ) : tgt == null ? (
         <p className="text-[10px] text-text-3 mt-0.5">{meta.unit}</p>
@@ -1816,9 +1819,9 @@ function WaterSettingsForm({ glassMl, onSave }) {
 // current value (+ /target), 'delta'/'pct' = remainder (✓ when met); the small
 // line always anchors the value/target context.
 function Stat({ state, mode }) {
-  const { meta, value, tgt, color, goal } = state;
+  const { meta, value, tgt, color } = state;
   const d = meta.decimals;
-  const met = metFor(meta, value, tgt, goal);
+  const { met } = state;
   const showDelta = mode !== 'meta' && tgt != null;
   return (
     <div>
@@ -1839,10 +1842,10 @@ function Stat({ state, mode }) {
 // −N% or value/target). Target met → check + dimmed row; the empty
 // stretch of the bar uses the nutrient's own color (faint).
 function RailStat({ state, mode }) {
-  const { meta, value, tgt, pct, color, goal } = state;
+  const { meta, value, tgt, pct, color } = state;
   const d = meta.decimals;
   const has = tgt != null;
-  const met = metFor(meta, value, tgt, goal);
+  const { met } = state;
   return (
     <div className={`${color}${met ? ' opacity-60' : ''}`}>
       <div className="flex items-baseline justify-between text-sm">

@@ -41,11 +41,8 @@ import {
   weekdayOf,
   resolveTarget,
   nutrientKind,
-  classifyBullseye,
-  classifyFloor,
-  classifyBand,
-  classifyCeiling,
-  classifySodium,
+  classifyNutrient,
+  hasBound,
   sodiumIsLow,
   sodiumIsHigh,
   SODIUM_FLOOR_MG,
@@ -169,6 +166,23 @@ function computeObjectiveStats(chartData, key) {
   return objectiveStatsOf(withKey.map((d) => Number(d.targetMicros[key])));
 }
 
+// Average DAILY explicit bound (targets.bounds) of a nutrient over the days
+// that have a target, or null if any target-day lacks it: a mixed period has no
+// honest single range, so it falls back to the archetype. Sides missing on some
+// days are treated as open.
+function periodBound(days, key) {
+  const withT = days.filter((d) => d.hasTarget);
+  const bs = withT.map((d) => d.bounds?.[key]).filter(hasBound);
+  if (!bs.length || bs.length !== withT.length) return null;
+  const avg = (side) => {
+    const xs = bs.map((b) => b[side]).filter((x) => x != null);
+    return xs.length === bs.length ? xs.reduce((a, x) => a + x, 0) / xs.length : null;
+  };
+  const b = { min: avg('min'), max: avg('max') };
+  return hasBound(b) ? b : null;
+}
+const scaleBound = (b, n) => (b ? { min: b.min == null ? null : b.min * n, max: b.max == null ? null : b.max * n } : null);
+
 // [value, detail, objective, %] of the summary CSV for a metric, using the
 // SAME ms/objStats/bayes the screen renders — only the format changes:
 // bare numbers (the unit goes in its own column) so the CSV is
@@ -224,30 +238,28 @@ const BAYES_TARGET_FIELD = { kcal: 'targetKcal', carbs_g: 'targetCarbs', fat_g: 
 // are treated as a floor (≥); sodium with its fixed floor. `days` arrives already
 // filtered to complete days (it does not call `registrado`/completeness here).
 function bayesForMetric(days, key) {
+  const boundOf = (d) => (hasBound(d.bounds?.[key]) ? d.bounds[key] : null);
+  const targetOf = (d) =>
+    BAYES_TARGET_FIELD[key] ? d[BAYES_TARGET_FIELD[key]] : key === 'protein_g' ? d.proteinFloor : d.targetMicros?.[key] ?? null;
   let applicable;
-  if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') {
-    const field = BAYES_TARGET_FIELD[key];
-    const withTarget = days.filter((d) => d[field] != null);
-    if (!withTarget.length) return null;
-    applicable = withTarget.map((d) => Math.abs(d.values[key] - d[field]) / d[field] <= BAYES_KCAL_TOL);
-  } else if (key === 'protein_g') {
-    const withTarget = days.filter((d) => d.proteinFloor != null);
-    if (!withTarget.length) return null;
-    applicable = withTarget.map((d) => d.values.protein_g >= d.proteinFloor);
-  } else if (key === 'sodio_mg') {
+  if (key === 'sodio_mg') {
     if (!days.length) return null;
-    // Dual: the day complies if sodium falls within the medical range [floor, ceiling].
-    applicable = days.map((d) => d.values.sodio_mg >= SODIUM_FLOOR_MG && d.values.sodio_mg <= SODIUM_CEILING_MG);
+    // Dual: the day complies if sodium falls within the medical range [floor, ceiling]
+    // (an explicit bound may move only the ceiling).
+    applicable = days.map((d) => classifyNutrient('sodio_mg', d.values.sodio_mg, null, { bounds: boundOf(d) }) === 'ok');
   } else {
-    const withTarget = days.filter((d) => d.targetMicros != null && d.targetMicros[key] != null);
+    const withTarget = days.filter((d) => boundOf(d) || targetOf(d) != null);
     if (!withTarget.length) return null;
-    // 'techo' (ceiling — sat. fat, trans, added sugar, alcohol, cholesterol): complies if it
-    // does NOT exceed the objective; the remaining micros are a floor (reach or surpass).
-    const isCeiling = nutrientKind(key) === 'techo';
+    // Explicit bound: complies inside [min, max]. Otherwise kcal/carbs/fat with the
+    // two-tailed tolerance; 'techo' complies if it does NOT exceed the objective;
+    // the remaining nutrients are a floor (reach or surpass).
     applicable = withTarget.map((d) => {
       const v = Number(d.values[key] || 0);
-      const tgt = Number(d.targetMicros[key]);
-      return isCeiling ? v <= tgt : v >= tgt;
+      const b = boundOf(d);
+      const tgt = targetOf(d) == null ? null : Number(targetOf(d));
+      if (b) return classifyNutrient(key, v, tgt, { goal: d.goal, bounds: b }) === 'ok';
+      if (BAYES_TARGET_FIELD[key]) return Math.abs(v - tgt) / tgt <= BAYES_KCAL_TOL;
+      return nutrientKind(key) === 'techo' ? v <= tgt : v >= tgt;
     });
   }
   return bayesAdherence(applicable.filter(Boolean).length, applicable.length);
@@ -260,6 +272,7 @@ const NO_TARGET_HINT = () => t(NO_TARGET_HINT_ES);
 // Reason why bayesForMetric returned null, for the cell's Hint.
 function bayesUnavailableReason(days, key) {
   if (!days.length) return t('No registraste nada en este periodo.');
+  if (days.some((d) => hasBound(d.bounds?.[key]))) return null;
   if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') {
     const field = BAYES_TARGET_FIELD[key];
     return days.some((d) => d[field] != null) ? null : NO_TARGET_HINT();
@@ -270,7 +283,12 @@ function bayesUnavailableReason(days, key) {
 }
 
 // Success criterion for a day, stated so the adherence % is auditable.
-function bayesCriterionHint(key) {
+function bayesCriterionHint(days, key) {
+  if (days.some((d) => hasBound(d.bounds?.[key]))) {
+    return key === 'sodio_mg'
+      ? t('Cuenta como día cumplido si el sodio quedó entre el piso médico (1,500 mg) y tu máximo de Metas.')
+      : t('Cuenta como día cumplido si quedaste dentro del mín–máx que fijaste en Metas.');
+  }
   if (key === 'sodio_mg') {
     const loc = getLang() === 'en' ? 'en-US' : 'es-MX';
     return t('Cuenta como día cumplido si el sodio quedó entre %a y %b mg.')
@@ -294,7 +312,7 @@ function bayesCell(days, key) {
     return {
       primary: `${round(b.mean * 100, 0)}%`,
       secondary: t('probablemente entre %a y %b%').replace('%a', round(b.lower * 100, 0)).replace('%b', round(b.upper * 100, 0)),
-      hint: bayesCriterionHint(key),
+      hint: bayesCriterionHint(days, key),
       degraded: false,
     };
   }
@@ -579,6 +597,8 @@ function computeStats(dates, dailyTotals, targets) {
       targetCarbs: target?.carbs_g ?? null,
       targetFat: target?.fat_g ?? null,
       targetMicros: target?.micros ?? null,
+      bounds: target?.bounds ?? null, // explicit mín/máx per nutrient (wins over the archetype)
+      hasTarget: !!target,
       goal: target?.goal ?? null, // day's regimen: biases the kcal band (diana)
       protein: registrado ? protein_g : null,
       proteinFloor: target?.protein_g ?? null,
@@ -648,6 +668,7 @@ function weeklyProteinData(weeks, dateSet, dayInfo) {
       week: `${getLang() === 'en' ? 'W' : 'S'}${i + 1}`,
       protein: count ? sum / count : null,
       floor: floorCount ? floorSum / floorCount : null,
+      bound: periodBound(week.filter((d) => dateSet.has(d)).map((d) => dayInfo.get(d)).filter(Boolean), 'protein_g'),
     };
   });
 }
@@ -1175,6 +1196,11 @@ export default function Dashboard() {
   // Period regimen used to bias the kcal band (diana): the one from the last day
   // of the selected range (the phase/goal in effect on it). null = strict band.
   const periodGoal = chartData.length ? chartData[chartData.length - 1].goal : null;
+  // Explicit bounds over the period (null = archetype). KPI totals compare against the
+  // daily bound × days with target; the sodium ceiling is the only relaxable medical side.
+  const nTargetDays = chartData.filter((d) => d.hasTarget).length;
+  const kpiBound = (key) => scaleBound(periodBound(chartData, key), nTargetDays);
+  const sodCeil = periodBound(chartData, 'sodio_mg')?.max ?? SODIUM_CEILING_MG;
   const weeks = buildWeeks(start, end).filter((w) => w.some((d) => dateSet.has(d)));
   const proteinWeekly = weeklyProteinData(weeks, dateSet, dayInfo);
   const top = topItems(rangeItems, waterFoodId, topMetric);
@@ -1242,7 +1268,7 @@ export default function Dashboard() {
     const b = calcMode === 'bayes' ? bayesForMetric(completeDaysFull, m.key) : null;
     const [val, det, obj, pct] = summaryCells(calcMode, ms, objStats, b);
     const zero = structuralZeroInfo(registeredDays, m.key);
-    const danger = m.key === 'sodio_mg' && (sodiumIsLow(stats.avgSodio, stats.daysLogged > 0) || sodiumIsHigh(stats.avgSodio, stats.daysLogged > 0));
+    const danger = m.key === 'sodio_mg' && (sodiumIsLow(stats.avgSodio, stats.daysLogged > 0) || sodiumIsHigh(stats.avgSodio, stats.daysLogged > 0, sodCeil));
     const unit = calcMode === 'bayes' ? '' : ` ${m.unit}`;
     return (
       <tr key={m.key} className="border-t border-border">
@@ -1279,7 +1305,7 @@ export default function Dashboard() {
     const visibles = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favs.includes(m.key)) && m.key !== 'agua_ml');
     const anyZeroWarn = visibles.some((m) => structuralZeroInfo(registeredDays, m.key).warn);
     const sodiumLow = sodiumIsLow(stats.avgSodio, stats.daysLogged > 0);
-    const sodiumHigh = sodiumIsHigh(stats.avgSodio, stats.daysLogged > 0);
+    const sodiumHigh = sodiumIsHigh(stats.avgSodio, stats.daysLogged > 0, sodCeil);
     return (
       // No backdrop-blur on the scrim: backdrop-filter would turn the overlay
       // into the containing block of the fixed bar, and the bar would pan along with the paper.
@@ -1353,7 +1379,7 @@ export default function Dashboard() {
             <p className="text-sm text-danger mt-1">⚠ {t('sodio promedio')} &lt; {SODIUM_FLOOR_MG} mg</p>
           )}
           {sodiumHigh && (
-            <p className="text-sm text-danger mt-1">⚠ {t('sodio promedio')} &gt; {SODIUM_CEILING_MG} mg</p>
+            <p className="text-sm text-danger mt-1">⚠ {t('sodio promedio')} &gt; {sodCeil} mg</p>
           )}
           <div className="grid grid-cols-4 gap-2 text-center mt-3 rounded-xl border border-border p-3">
             <Stat label={t('Kcal')} display={noHint(metricDisplay(calcMode, msKcal, bKcal, '', 1))} color="text-d-kcal" />
@@ -1692,7 +1718,7 @@ export default function Dashboard() {
             label={t("Kcal")}
             display={metricDisplay(calcMode, msKcal, bKcal, '', 1)}
             delta={showDelta ? pctDelta(stats.avgTotals.kcal, prevStats.avgTotals.kcal) : null}
-            status={classifyBullseye(stats.consumedTotals.kcal, stats.targetTotals.kcal, periodGoal)}
+            status={classifyNutrient('kcal', stats.consumedTotals.kcal, stats.targetTotals.kcal, { goal: periodGoal, bounds: kpiBound('kcal') })}
             sparkline={chartData.map((d) => d.kcal)}
             sparkColor="var(--d-kcal)"
           />
@@ -1700,7 +1726,7 @@ export default function Dashboard() {
             label={t("Proteína")}
             display={metricDisplay(calcMode, msProtein, bProtein, ' g', 1)}
             delta={showDelta ? pctDelta(stats.avgTotals.protein_g, prevStats.avgTotals.protein_g) : null}
-            status={classifyFloor(stats.consumedTotals.protein_g, stats.targetTotals.protein_g)}
+            status={classifyNutrient('protein_g', stats.consumedTotals.protein_g, stats.targetTotals.protein_g, { bounds: kpiBound('protein_g') })}
             sparkline={chartData.map((d) => d.protein)}
             sparkColor="var(--d-prot)"
           />
@@ -1708,7 +1734,7 @@ export default function Dashboard() {
             label={t("Carbs")}
             display={metricDisplay(calcMode, msCarbs, bCarbs, ' g', 1)}
             delta={showDelta ? pctDelta(stats.avgTotals.carbs_g, prevStats.avgTotals.carbs_g) : null}
-            status={classifyBand(stats.consumedTotals.carbs_g, stats.targetTotals.carbs_g)}
+            status={classifyNutrient('carbs_g', stats.consumedTotals.carbs_g, stats.targetTotals.carbs_g, { bounds: kpiBound('carbs_g') })}
             sparkline={chartData.map((d) => (d.values ? d.values.carbs_g : null))}
             sparkColor="var(--d-carb)"
           />
@@ -1716,7 +1742,7 @@ export default function Dashboard() {
             label={t("Grasa")}
             display={metricDisplay(calcMode, msFat, bFat, ' g', 1)}
             delta={showDelta ? pctDelta(stats.avgTotals.fat_g, prevStats.avgTotals.fat_g) : null}
-            status={classifyBand(stats.consumedTotals.fat_g, stats.targetTotals.fat_g)}
+            status={classifyNutrient('fat_g', stats.consumedTotals.fat_g, stats.targetTotals.fat_g, { bounds: kpiBound('fat_g') })}
             sparkline={chartData.map((d) => (d.values ? d.values.fat_g : null))}
             sparkColor="var(--d-fat)"
           />
@@ -1724,7 +1750,7 @@ export default function Dashboard() {
             label={t("Sodio")}
             display={metricDisplay(calcMode, msSodio, bSodio, ' mg', 0)}
             delta={showDelta ? pctDelta(stats.avgSodio, prevStats.avgSodio) : null}
-            status={classifySodium(stats.avgSodio, stats.daysLogged > 0)}
+            status={classifyNutrient('sodio_mg', stats.avgSodio, null, { hasFood: stats.daysLogged > 0, bounds: periodBound(chartData, 'sodio_mg') })}
             sparkline={chartData.map((d) => d.sodio)}
             sparkColor="var(--d-carb)"
           />
@@ -1883,7 +1909,7 @@ export default function Dashboard() {
               <Tooltip contentStyle={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text)' }} />
               <Bar dataKey="protein" name={t("Proteína")} radius={[4, 4, 0, 0]} isAnimationActive={!reducedMotion}>
                 {proteinWeekly.map((w, i) => (
-                  <Cell key={i} fill={`var(--${classifyFloor(w.protein, w.floor) || 'd-prot'})`} />
+                  <Cell key={i} fill={`var(--${classifyNutrient('protein_g', w.protein, w.floor, { bounds: w.bound }) || 'd-prot'})`} />
                 ))}
               </Bar>
               <Line dataKey="floor" name={t("Piso")} stroke="var(--accent)" dot={false} strokeWidth={2} isAnimationActive={!reducedMotion} />
@@ -1910,7 +1936,7 @@ export default function Dashboard() {
               <YAxis tick={{ fill: 'var(--text-3)', fontSize: 10 }} width={40} />
               <Tooltip contentStyle={{ background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text)' }} />
               <ReferenceLine y={SODIUM_FLOOR_MG} stroke="var(--danger)" strokeDasharray="4 3" />
-              <ReferenceLine y={SODIUM_CEILING_MG} stroke="var(--danger)" strokeDasharray="4 3" />
+              <ReferenceLine y={sodCeil} stroke="var(--danger)" strokeDasharray="4 3" />
               <Area
                 type="monotone"
                 dataKey="sodio"
@@ -1921,7 +1947,7 @@ export default function Dashboard() {
                 dot={(props) => {
                   const { cx, cy, payload, index } = props;
                   if (payload.sodio == null) return <g key={`dot-${index}`} />;
-                  const danger = payload.sodio < SODIUM_FLOOR_MG || payload.sodio > SODIUM_CEILING_MG;
+                  const danger = payload.sodio < SODIUM_FLOOR_MG || payload.sodio > sodCeil;
                   return <circle key={`dot-${index}`} cx={cx} cy={cy} r={3} fill={danger ? 'var(--danger)' : 'var(--d-carb)'} />;
                 }}
                 isAnimationActive={!reducedMotion}
@@ -2362,7 +2388,7 @@ function AdherenceHeatmap({ weeks, dateSet, dayInfo }) {
             const info = dayInfo.get(day);
             let cls = 'bg-surface-2';
             if (info?.registrado) {
-              const status = classifyBullseye(info.kcal, info.targetKcal, info.goal);
+              const status = classifyNutrient('kcal', info.kcal, info.targetKcal, { goal: info.goal, bounds: info.bounds?.kcal });
               cls = status ? STATUS_BG[status] : 'bg-surface-3';
             }
             const parcial = info?.completeness === 'parcial';
@@ -2412,17 +2438,20 @@ function MicrosTable({
     const zero = structuralZeroInfo(registeredDays, m.key);
     const bayesInfo = calcMode === 'bayes' ? bayesCell(completeDaysFull, m.key) : null;
     const consumedDisplay = metricDisplay(calcMode, ms, bayesInfo, ` ${m.unit}`, 1);
-    const sodiumDanger = m.key === 'sodio_mg' && (sodiumIsLow(avgSodio, daysLogged > 0) || sodiumIsHigh(avgSodio, daysLogged > 0));
+    const pBound = periodBound(chartData, m.key);
+    const sodiumDanger = m.key === 'sodio_mg' && (sodiumIsLow(avgSodio, daysLogged > 0) || sodiumIsHigh(avgSodio, daysLogged > 0, pBound?.max ?? SODIUM_CEILING_MG));
     const degraded = consumedDisplay.degraded;
-    // Row status light: 'techo' (ceiling — must not be exceeded) and 'piso' (floor — must be reached), only in modes with
-    // a comparable consumed/objective pair. Sodium follows its own dual route (sodiumDanger);
-    // the rest of the micros ('meta') stay neutral — a data table, not everything needs a status light.
+    // Row status light: an explicit bound (any nutrient), or 'techo' (ceiling — must not be exceeded) and
+    // 'piso' (floor — must be reached), only in modes with a comparable consumed/objective pair. Sodium
+    // follows its own dual route (sodiumDanger); the rest of the micros ('meta') stay neutral — a data
+    // table, not everything needs a status light.
     const kind = nutrientKind(m.key);
     const cmpPair = { suma: [ms.sum, objStats.sum], promedio: [ms.avg, objStats.avg], mediana: [ms.median, objStats.median] }[calcMode];
     let rowStatus = null;
-    if (!degraded && !sodiumDanger && objStats.n && cmpPair && (kind === 'techo' || kind === 'piso')) {
+    if (!degraded && !sodiumDanger && cmpPair && m.key !== 'sodio_mg') {
       const [val, tgt] = cmpPair;
-      if (val != null && tgt > 0) rowStatus = kind === 'techo' ? classifyCeiling(val, tgt) : classifyFloor(val, tgt);
+      if (pBound && val != null) rowStatus = classifyNutrient(m.key, val, tgt, { bounds: calcMode === 'suma' ? scaleBound(pBound, objStats.n || chartData.filter((d) => d.hasTarget).length) : pBound });
+      else if (objStats.n && (kind === 'techo' || kind === 'piso') && val != null && tgt > 0) rowStatus = classifyNutrient(m.key, val, tgt);
     }
     const statusText = rowStatus ? { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' }[rowStatus] : '';
     return (
@@ -2482,8 +2511,8 @@ function MicrosTable({
       {sodiumIsLow(avgSodio, daysLogged > 0) && (
         <p className="mt-3 text-sm text-danger">⚠ {t('sodio promedio')} &lt; {SODIUM_FLOOR_MG} mg</p>
       )}
-      {sodiumIsHigh(avgSodio, daysLogged > 0) && (
-        <p className="mt-3 text-sm text-danger">⚠ {t('sodio promedio')} &gt; {SODIUM_CEILING_MG} mg</p>
+      {sodiumIsHigh(avgSodio, daysLogged > 0, periodBound(chartData, 'sodio_mg')?.max ?? SODIUM_CEILING_MG) && (
+        <p className="mt-3 text-sm text-danger">⚠ {t('sodio promedio')} &gt; {periodBound(chartData, 'sodio_mg')?.max ?? SODIUM_CEILING_MG} mg</p>
       )}
     </section>
   );

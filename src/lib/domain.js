@@ -557,8 +557,23 @@ export function cleanMicros(m) {
   return out;
 }
 
+// targets.bounds: { key: { min?, max? } }. Drops empty sides and keys with no
+// side; sodium's floor is medical (SODIUM_FLOOR_MG) and cannot be lowered.
+export function cleanBounds(b) {
+  const out = {};
+  for (const k of Object.keys(b || {}).sort()) {
+    const min = numOrNull(b[k]?.min);
+    const max = numOrNull(b[k]?.max);
+    const o = {};
+    if (min != null) o.min = k === 'sodio_mg' ? Math.max(min, SODIUM_FLOOR_MG) : min;
+    if (max != null) o.max = max;
+    if (Object.keys(o).length) out[k] = o;
+  }
+  return out;
+}
+
 // Expands the draft groups into the 7 dow rows (always 7). groups:
-// [{ dows:[0-6], values:{ kcal, protein_g, carbs_g, fat_g, micros } }].
+// [{ dows:[0-6], values:{ kcal, protein_g, carbs_g, fat_g, micros, bounds } }].
 export function draftToRows(groups, { validFrom, label, description, goal, owner }) {
   const byDow = {};
   for (const g of groups) {
@@ -568,6 +583,7 @@ export function draftToRows(groups, { validFrom, label, description, goal, owner
       carbs_g: numOrNull(g.values.carbs_g),
       fat_g: numOrNull(g.values.fat_g),
       micros: cleanMicros(g.values.micros),
+      bounds: cleanBounds(g.values.bounds),
     };
     for (const dow of g.dows) byDow[dow] = row;
   }
@@ -580,7 +596,7 @@ export function draftToRows(groups, { validFrom, label, description, goal, owner
       label: (label || '').trim() || null,
       description: (description || '').trim() || null,
       goal: goal || null,
-      ...(byDow[dow] || { kcal: null, protein_g: null, carbs_g: null, fat_g: null, micros: {} }),
+      ...(byDow[dow] || { kcal: null, protein_g: null, carbs_g: null, fat_g: null, micros: {}, bounds: {} }),
     });
   }
   return rows;
@@ -713,14 +729,78 @@ export function sodiumIsLow(sodiumMg, hasEntries) {
   return hasEntries && sodiumMg < SODIUM_FLOOR_MG;
 }
 
-export function sodiumIsHigh(sodiumMg, hasEntries) {
-  return hasEntries && sodiumMg > SODIUM_CEILING_MG;
+// The ceiling can be raised/lowered by an explicit bound (targets.bounds.sodio_mg.max);
+// the floor never (medical rule).
+export function sodiumIsHigh(sodiumMg, hasEntries, ceiling = SODIUM_CEILING_MG) {
+  return hasEntries && sodiumMg > ceiling;
 }
 
 // Dual sodium traffic light: danger outside the [floor, ceiling] range, ok inside.
 export function classifySodium(sodiumMg, hasEntries) {
   if (!hasEntries) return null;
   return sodiumMg < SODIUM_FLOOR_MG || sodiumMg > SODIUM_CEILING_MG ? 'danger' : 'ok';
+}
+
+// —— Explicit bounds (targets.bounds) ————————————————————————————————
+// A bound is a user-declared [min, max] for one nutrient (either side optional).
+// It WINS over the archetype: nutrientKind decides only when no bound exists.
+export function hasBound(b) {
+  return !!b && (b.min != null || b.max != null);
+}
+
+// ok inside [min, max]; outside by ≤ techo.warn (10 %) = warn; beyond = danger.
+export function classifyBounds(value, b) {
+  if (!hasBound(b)) return null;
+  const slack = activeBands.techo.warn;
+  if (b.min != null && value < b.min) return value < b.min * (1 - slack) ? 'danger' : 'warn';
+  if (b.max != null && value > b.max) return value > b.max * (1 + slack) ? 'danger' : 'warn';
+  return 'ok';
+}
+
+// The bounds the app assumes TODAY for a nutrient without an explicit bound
+// (from its archetype + active bands). Shown as placeholders in the Targets editor
+// so the user sees the default and only overrides what differs. null side = open.
+export function impliedBounds(key, target, goal) {
+  const kind = nutrientKind(key);
+  if (kind === 'sodio') return { min: SODIUM_FLOOR_MG, max: SODIUM_CEILING_MG };
+  if (!(target > 0)) return { min: null, max: null };
+  const r = (x) => Math.round(x * 100) / 100;
+  if (kind === 'diana') {
+    const b = activeBands.diana[goal] || activeBands.diana.default;
+    return { min: r(target * (1 - b.okUnder)), max: r(target * (1 + b.okOver)) };
+  }
+  if (kind === 'rango') return { min: r(target * (1 - activeBands.rango.ok)), max: r(target * (1 + activeBands.rango.ok)) };
+  if (kind === 'techo') return { min: null, max: target };
+  return { min: target, max: null }; // piso, meta
+}
+
+// Effective bound = explicit sides + implied ones for the sides left empty (what
+// the editor shows greyed as placeholder is exactly what applies). null when there
+// is no explicit bound at all. Sodium: the floor is always the medical one.
+export function effectiveBound(key, target, goal, bounds) {
+  if (!hasBound(bounds)) return null;
+  const imp = impliedBounds(key, target, goal);
+  const b = { min: bounds.min ?? imp.min, max: bounds.max ?? imp.max };
+  if (nutrientKind(key) === 'sodio') b.min = SODIUM_FLOOR_MG;
+  return b;
+}
+
+// Single dispatcher for Hoy and Dashboard: explicit bound first, then archetype.
+// Sodium below the medical floor is ALWAYS danger (bounds cannot relax it); a
+// sodium bound may only move the ceiling.
+export function classifyNutrient(key, value, target, { goal = null, hasFood = true, bounds = null } = {}) {
+  const kind = nutrientKind(key);
+  if (kind === 'sodio' && !hasFood) return null;
+  if (kind === 'sodio' && value < SODIUM_FLOOR_MG) return 'danger';
+  const eff = effectiveBound(key, target, goal, bounds);
+  if (eff) return classifyBounds(value, eff);
+  if (kind === 'diana') return classifyBullseye(value, target, goal);
+  if (kind === 'piso') return classifyFloor(value, target);
+  if (kind === 'rango') return classifyBand(value, target);
+  if (kind === 'techo') return classifyCeiling(value, target);
+  if (kind === 'sodio') return classifySodium(value, hasFood);
+  if (!(target > 0)) return null;
+  return value >= target ? 'ok' : 'warn'; // meta: reach the RDA, excess harmless
 }
 
 // "High in" per entry (FDA criterion: ≥20% of the daily reference value).

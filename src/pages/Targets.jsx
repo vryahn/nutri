@@ -3,7 +3,7 @@ import { History, ChevronLeft, ChevronDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { useToast } from '../lib/useToast.js';
-import { MICROS, microGroups, PHASE_GOALS, goalLabel, todayISO, addDaysISO, resolveTarget, numOrNull, cleanMicros, draftToRows } from '../lib/domain.js';
+import { MICROS, microGroups, PHASE_GOALS, goalLabel, todayISO, addDaysISO, resolveTarget, numOrNull, cleanMicros, cleanBounds, draftToRows, impliedBounds, SODIUM_FLOOR_MG } from '../lib/domain.js';
 import { t, useLang, getLang, locale } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import ConfirmSheet from '../components/ConfirmSheet.jsx';
@@ -32,6 +32,7 @@ function rowSig(r) {
     carbs_g: numOrNull(r?.carbs_g),
     fat_g: numOrNull(r?.fat_g),
     micros: cleanMicros(r?.micros),
+    bounds: cleanBounds(r?.bounds),
   });
 }
 
@@ -111,8 +112,20 @@ function valuesOf(row) {
     carbs_g: row?.carbs_g ?? '',
     fat_g: row?.fat_g ?? '',
     micros: { ...(row?.micros || {}) },
+    bounds: { ...(row?.bounds || {}) },
   };
 }
+
+// Editable bounds: values.bounds = { key: { min, max } } as typed ('' = open side).
+// A key with both sides empty is dropped, so "has bounds" = non-empty object.
+function withBound(values, key, side, val) {
+  const bounds = { ...(values.bounds || {}) };
+  const b = { ...(bounds[key] || {}), [side]: val };
+  if ((b.min ?? '') === '' && (b.max ?? '') === '') delete bounds[key];
+  else bounds[key] = b;
+  return { ...values, bounds };
+}
+const hasAnyBound = (values) => Object.keys(values?.bounds || {}).length > 0;
 
 function draftFromWeek(week) {
   return groupWeek(week).map((g) => ({ id: uid(), dows: [...g.dows], values: valuesOf(g.values) }));
@@ -285,6 +298,7 @@ export default function Targets() {
       carbs_g: numOrNull(draft.values.carbs_g),
       fat_g: numOrNull(draft.values.fat_g),
       micros: cleanMicros(draft.values.micros),
+      bounds: cleanBounds(draft.values.bounds),
     };
     const { error } = id
       ? await supabase.from('targets').update(payload).eq('id', id)
@@ -314,9 +328,9 @@ export default function Targets() {
   async function undoDeleteOverride() {
     if (!undoOverride) return;
     clearTimeout(undoOverride.timer);
-    const { day, label, kcal, protein_g, carbs_g, fat_g, micros } = undoOverride.row;
+    const { day, label, kcal, protein_g, carbs_g, fat_g, micros, bounds } = undoOverride.row;
     setUndoOverride(null);
-    const { error } = await supabase.from('targets').insert({ owner: userId, day, label, kcal, protein_g, carbs_g, fat_g, micros });
+    const { error } = await supabase.from('targets').insert({ owner: userId, day, label, kcal, protein_g, carbs_g, fat_g, micros, bounds: bounds || {} });
     if (error) showToast(t('No se pudo deshacer.'));
     load();
   }
@@ -709,11 +723,12 @@ function PhaseCard({ variant, validFrom, label = '', description = '', goal = ''
         return { ...g, values: { ...g.values, micros } };
       })
     );
+  const setBound = (gid, key, side, val) => setGroups((gs) => gs.map((g) => (g.id === gid ? { ...g, values: withBound(g.values, key, side, val) } : g)));
   function splitDay(gid, dow) {
     setGroups((gs) => {
       const src = gs.find((g) => g.id === gid);
       const out = gs.map((g) => (g.id === gid ? { ...g, dows: g.dows.filter((d) => d !== dow) } : g));
-      out.push({ id: uid(), dows: [dow], values: { ...src.values, micros: { ...src.values.micros } } });
+      out.push({ id: uid(), dows: [dow], values: { ...src.values, micros: { ...src.values.micros }, bounds: { ...(src.values.bounds || {}) } } });
       return sortGroups(out);
     });
     setExpanded(null);
@@ -777,7 +792,7 @@ function PhaseCard({ variant, validFrom, label = '', description = '', goal = ''
                     <GroupReadBlock values={g.values} dows={g.dows} />
                   </button>
                   {expanded === g.id && (
-                    <GroupEditor group={g} onField={(k, v) => setField(g.id, k, v)} onMicro={(k, v) => setMicro(g.id, k, v)} onSplit={(d) => splitDay(g.id, d)} />
+                    <GroupEditor group={g} goal={draft.goal} onField={(k, v) => setField(g.id, k, v)} onMicro={(k, v) => setMicro(g.id, k, v)} onBound={(k, side, v) => setBound(g.id, k, side, v)} onSplit={(d) => splitDay(g.id, d)} />
                   )}
                 </div>
               ))}
@@ -837,6 +852,9 @@ function OverrideCard({ variant, override, faseFor, initialEditing = false, forc
       else micros[k] = v;
       return { ...d, values: { ...d.values, micros } };
     });
+  const setBound = (k, side, v) => setDraft((d) => ({ ...d, values: withBound(d.values, k, side, v) }));
+  const [range, setRange] = useState(false);
+  const showRange = range || hasAnyBound(draft?.values);
 
   const day = editing ? draft.day : override?.day || today;
   const fase = faseFor(day);
@@ -879,6 +897,7 @@ function OverrideCard({ variant, override, faseFor, initialEditing = false, forc
               </div>
               <MacroBar p={override?.protein_g} c={override?.carbs_g} f={override?.fat_g} />
               <MacroLine p={override?.protein_g} c={override?.carbs_g} f={override?.fat_g} />
+              <BoundsLine bounds={override?.bounds} />
             </div>
           </div>
         </>
@@ -886,19 +905,15 @@ function OverrideCard({ variant, override, faseFor, initialEditing = false, forc
         <>
           <DateField label={t('Fecha')} value={draft.day} onChange={(v) => setDraft((d) => ({ ...d, day: v }))} />
           <TextField label={t('Motivo')} value={draft.label} onChange={(v) => setDraft((d) => ({ ...d, label: v }))} placeholder={t('p. ej. Cumpleaños')} />
-          <div className="grid grid-cols-4 gap-2">
-            <MiniNumberField label={t('Kcal')} value={draft.values.kcal} onChange={(v) => setVal('kcal', v)} />
-            <MiniNumberField label={t('Prot')} value={draft.values.protein_g} onChange={(v) => setVal('protein_g', v)} />
-            <MiniNumberField label={t('Carbs')} value={draft.values.carbs_g} onChange={(v) => setVal('carbs_g', v)} />
-            <MiniNumberField label={t('Grasa')} value={draft.values.fat_g} onChange={(v) => setVal('fat_g', v)} />
-          </div>
+          <MacroFields values={draft.values} goal={fase?.goal} range={showRange} onField={setVal} onBound={setBound} />
           {delta != null && (
             <p className="font-mono text-[11px]" style={{ color: 'var(--warn)', margin: 0 }}>
               {delta > 0 ? '+' : '−'}
               {Math.abs(delta)} {t('kcal vs fase ese día')}
             </p>
           )}
-          <MicrosEditor micros={draft.values.micros} onMicro={setMicro} />
+          <RangeToggle open={showRange} locked={hasAnyBound(draft.values)} onToggle={() => setRange((r) => !r)} />
+          <MicrosEditor values={draft.values} goal={fase?.goal} range={showRange} onMicro={setMicro} onBound={setBound} />
           {saveError && <p className="text-xs text-danger">{saveError}</p>}
           <div className="flex gap-2 pt-1">
             <button onClick={cancel} className="flex-1 min-h-[44px] rounded-xl border border-border text-text-2 press">
@@ -986,21 +1001,20 @@ function GroupReadBlock({ values, dows }) {
       </div>
       <MacroBar p={values.protein_g} c={values.carbs_g} f={values.fat_g} />
       <MacroLine p={values.protein_g} c={values.carbs_g} f={values.fat_g} />
+      <BoundsLine bounds={values.bounds} />
     </div>
   );
 }
 
-function GroupEditor({ group, onField, onMicro, onSplit }) {
+function GroupEditor({ group, goal, onField, onMicro, onBound, onSplit }) {
   const [splitting, setSplitting] = useState(false);
+  const [range, setRange] = useState(false);
+  const showRange = range || hasAnyBound(group.values);
   return (
     <div className="bg-surface-3 rounded-b-xl p-3 flex flex-col gap-3">
-      <div className="grid grid-cols-4 gap-2">
-        <MiniNumberField label={t('Kcal')} value={group.values.kcal} onChange={(v) => onField('kcal', v)} />
-        <MiniNumberField label={t('Prot')} value={group.values.protein_g} onChange={(v) => onField('protein_g', v)} />
-        <MiniNumberField label={t('Carbs')} value={group.values.carbs_g} onChange={(v) => onField('carbs_g', v)} />
-        <MiniNumberField label={t('Grasa')} value={group.values.fat_g} onChange={(v) => onField('fat_g', v)} />
-      </div>
-      <MicrosEditor micros={group.values.micros} onMicro={onMicro} />
+      <MacroFields values={group.values} goal={goal} range={showRange} onField={onField} onBound={onBound} />
+      <RangeToggle open={showRange} locked={hasAnyBound(group.values)} onToggle={() => setRange((r) => !r)} />
+      <MicrosEditor values={group.values} goal={goal} range={showRange} onMicro={onMicro} onBound={onBound} />
       {group.dows.length > 1 && (
         <div>
           <button type="button" onClick={() => setSplitting((s) => !s)} className="text-xs text-accent min-h-[44px] press">
@@ -1021,7 +1035,39 @@ function GroupEditor({ group, onField, onMicro, onSplit }) {
   );
 }
 
-function MicrosEditor({ micros, onMicro }) {
+const MACRO_FIELDS = [
+  ['kcal', 'Kcal'],
+  ['protein_g', 'Prot'],
+  ['carbs_g', 'Carbs'],
+  ['fat_g', 'Grasa'],
+];
+
+function MacroFields({ values, goal, range, onField, onBound }) {
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {MACRO_FIELDS.map(([k, label]) => (
+        <MiniNumberField key={k} nutrientKey={k} goal={goal} label={t(label)} value={values[k]} onChange={(v) => onField(k, v)} range={range} bound={values.bounds?.[k]} onBound={(side, v) => onBound(k, side, v)} />
+      ))}
+    </div>
+  );
+}
+
+// Progressive disclosure of the mín/máx per nutrient: hidden until the user asks
+// (or a bound already exists — then it stays open so nothing is silently hidden).
+function RangeToggle({ open, locked, onToggle }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <button type="button" onClick={locked ? undefined : onToggle} className={`text-xs text-accent min-h-[44px] press text-left flex items-center gap-1 ${locked ? 'cursor-default' : ''}`}>
+        <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        {open ? t('Mín/máx por nutriente') : t('Ajustar mín/máx por nutriente')}
+      </button>
+      {open && <p className="text-[11px] text-text-3" style={{ margin: 0 }}>{t('Vacío = el límite que la app asume hoy (en gris) y que sigue aplicando. Hoy y el Dashboard clasifican contra tu mín/máx cuando lo fijas.')}</p>}
+    </div>
+  );
+}
+
+function MicrosEditor({ values, goal, range, onMicro, onBound }) {
+  const micros = values.micros || {};
   return (
     <details>
       <summary className="cursor-pointer text-xs text-text-3 min-h-[44px] flex items-center">{t('Micros')}</summary>
@@ -1030,12 +1076,28 @@ function MicrosEditor({ micros, onMicro }) {
           <p className="text-xs uppercase tracking-wide text-text-3 pt-4 pb-1">{t(cat)}</p>
           <div className="grid grid-cols-4 gap-2">
             {items.map((m) => (
-              <MiniNumberField key={m.key} label={t(m.label)} value={micros[m.key] ?? ''} onChange={(v) => onMicro(m.key, v)} />
+              <MiniNumberField key={m.key} nutrientKey={m.key} goal={goal} label={t(m.label)} value={micros[m.key] ?? ''} onChange={(v) => onMicro(m.key, v)} range={range} bound={values.bounds?.[m.key]} onBound={(side, v) => onBound(m.key, side, v)} />
             ))}
           </div>
         </div>
       ))}
     </details>
+  );
+}
+
+// "kcal 1900–2100 · P ≥150 · +2 micros": explicit bounds of a day type, read mode.
+function BoundsLine({ bounds }) {
+  const keys = Object.keys(bounds || {});
+  if (!keys.length) return null;
+  const fmt = (b) => (b.min != null && b.max != null ? `${b.min}–${b.max}` : b.min != null ? `≥${b.min}` : `≤${b.max}`);
+  const short = { kcal: 'kcal', protein_g: 'P', carbs_g: 'C', fat_g: 'G' };
+  const macros = MACRO_FIELDS.map(([k]) => k).filter((k) => bounds[k]).map((k) => `${short[k]} ${fmt(bounds[k])}`);
+  const nMicros = keys.filter((k) => !short[k]).length;
+  const parts = [...macros, ...(nMicros ? [`+${nMicros} ${nMicros === 1 ? t('micro') : t('micros')}`] : [])];
+  return (
+    <p className="font-mono text-[11px] text-text-3" style={{ margin: 0 }}>
+      {t('mín/máx')}: {parts.join(' · ')}
+    </p>
   );
 }
 
@@ -1107,18 +1169,38 @@ function EditPill({ onClick }) {
   );
 }
 
-function MiniNumberField({ label, value, onChange }) {
+const MINI_INPUT = 'min-h-[44px] w-full rounded-lg bg-surface-2 border border-border px-2 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent placeholder:text-text-3';
+
+// Objective input; with `range`, the mín/máx pair stacked below it. Placeholders =
+// the bounds the app assumes today for that objective (impliedBounds), so the user
+// sees the default and only types what differs. Non-blocking ⚠ for an objective
+// outside its own range, mín > máx, or a sodium floor under the medical 1,500 mg
+// (cleanBounds raises it on save).
+function MiniNumberField({ label, value, onChange, nutrientKey, goal, range, bound, onBound }) {
+  const has = bound && ((bound.min ?? '') !== '' || (bound.max ?? '') !== '');
+  let warn = null;
+  if (range) {
+    const v = numOrNull(value), mn = numOrNull(bound?.min), mx = numOrNull(bound?.max);
+    if (nutrientKey === 'sodio_mg' && mn != null && mn < SODIUM_FLOOR_MG) warn = t('piso médico 1,500 mg: no baja');
+    else if (mn != null && mx != null && mn > mx) warn = t('mín > máx');
+    else if (v != null && ((mn != null && v < mn) || (mx != null && v > mx))) warn = t('objetivo fuera del rango');
+  }
+  const implied = range ? impliedBounds(nutrientKey, numOrNull(value), goal) : null;
+  const ph = (sign, x) => (x == null ? '—' : `${sign} ${Math.round(x * 10) / 10}`);
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs text-text-3">{label}</label>
-      <input
-        type="number"
-        inputMode="decimal"
-        step="any"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="min-h-[44px] rounded-lg bg-surface-2 border border-border px-2 text-text font-mono tabular-nums text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-      />
+    <div className="flex flex-col gap-1 min-w-0">
+      <label className="text-xs text-text-3 truncate">
+        {label}
+        {has && <span className="text-accent"> •</span>}
+      </label>
+      <input type="number" inputMode="decimal" step="any" value={value} onChange={(e) => onChange(e.target.value)} className={`${MINI_INPUT} text-sm`} />
+      {range && (
+        <>
+          <input type="number" inputMode="decimal" step="any" aria-label={`${label} ${t('mín')}`} placeholder={ph('≥', implied.min)} value={bound?.min ?? ''} onChange={(e) => onBound('min', e.target.value)} className={`${MINI_INPUT} text-xs`} />
+          <input type="number" inputMode="decimal" step="any" aria-label={`${label} ${t('máx')}`} placeholder={ph('≤', implied.max)} value={bound?.max ?? ''} onChange={(e) => onBound('max', e.target.value)} className={`${MINI_INPUT} text-xs`} />
+          {warn && <p className="text-[10px] text-warn leading-tight" style={{ margin: 0 }}>⚠ {warn}</p>}
+        </>
+      )}
     </div>
   );
 }

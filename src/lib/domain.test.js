@@ -8,6 +8,7 @@ import {
   SODIUM_FLOOR_MG, SODIUM_CEILING_MG,
   DASH_VARS_BY_KEY, axisUnits, buildDashSeries, dashVarTarget,
   autoAgg, resolveAgg, reduceBucket, bucketRows, mergeFoodResults, normalizeTo100,
+  cleanBounds, classifyBounds, classifyNutrient, impliedBounds, effectiveBound, draftToRows,
 } from './domain.js';
 
 describe('temporal aggregation of custom charts', () => {
@@ -483,5 +484,54 @@ describe('normalizeTo100', () => {
     expect(normalizeTo100(f, 0, 'g')).toBe(f);
     expect(normalizeTo100(f, -10, 'g')).toBe(f);
     expect(normalizeTo100(f, 'abc', 'g')).toBe(f);
+  });
+});
+
+describe('bounds explícitos (targets.bounds)', () => {
+  it('cleanBounds drops empty sides/keys and clamps sodium floor', () => {
+    expect(cleanBounds({ kcal: { min: '1900', max: '' }, fat_g: { min: '', max: '' }, sodio_mg: { min: 1000, max: 2000 } }))
+      .toEqual({ kcal: { min: 1900 }, sodio_mg: { min: SODIUM_FLOOR_MG, max: 2000 } });
+    expect(draftToRows([{ dows: [1], values: { kcal: 2000, protein_g: '', carbs_g: '', fat_g: '', micros: {}, bounds: { kcal: { min: 1900, max: 2100 } } } }], { validFrom: '2026-01-05' })[1].bounds)
+      .toEqual({ kcal: { min: 1900, max: 2100 } });
+    expect(draftToRows([], { validFrom: '2026-01-05' })[0].bounds).toEqual({});
+  });
+  it('classifyBounds: ok inside, warn ≤10 % outside, danger beyond; open sides', () => {
+    const b = { min: 1900, max: 2100 };
+    expect(classifyBounds(2000, b)).toBe('ok');
+    expect(classifyBounds(1900, b)).toBe('ok');
+    expect(classifyBounds(1800, b)).toBe('warn'); // 1900·0.9 = 1710
+    expect(classifyBounds(1700, b)).toBe('danger');
+    expect(classifyBounds(2200, b)).toBe('warn'); // 2100·1.1 = 2310
+    expect(classifyBounds(2400, b)).toBe('danger');
+    expect(classifyBounds(5000, { min: 150 })).toBe('ok');
+    expect(classifyBounds(0, { max: 20 })).toBe('ok');
+    expect(classifyBounds(10, {})).toBeNull();
+  });
+  it('classifyNutrient: bound wins over archetype; falls back without it', () => {
+    expect(classifyNutrient('protein_g', 120, 150)).toBe('danger'); // piso
+    expect(classifyNutrient('protein_g', 120, 150, { bounds: { min: 100, max: 200 } })).toBe('ok');
+    expect(classifyNutrient('protein_g', 260, 150, { bounds: { min: 100, max: 200 } })).toBe('danger');
+    // one-sided bound: the other side is the implied one (piso keeps its floor)
+    expect(effectiveBound('protein_g', 150, null, { max: 200 })).toEqual({ min: 150, max: 200 });
+    expect(classifyNutrient('protein_g', 0, 150, { bounds: { max: 200 } })).toBe('danger');
+    expect(effectiveBound('kcal', 2000, 'deficit', { min: 1900 })).toEqual({ min: 1900, max: 2160 });
+    expect(effectiveBound('kcal', 2000, null, null)).toBeNull();
+    expect(classifyNutrient('kcal', 2000, 2000, { goal: 'deficit' })).toBe('ok');
+    expect(classifyNutrient('calcio_mg', 900, 1000)).toBe('warn'); // meta
+    expect(classifyNutrient('calcio_mg', 900, null)).toBeNull();
+    // sodium: medical floor is not relaxable, ceiling is
+    expect(classifyNutrient('sodio_mg', 1400, null, { bounds: { min: 1000, max: 3000 } })).toBe('danger');
+    expect(classifyNutrient('sodio_mg', 2800, null, { bounds: { max: 3000 } })).toBe('ok');
+    expect(classifyNutrient('sodio_mg', 2800, null, { bounds: { min: 1800 } })).toBe('danger'); // min-only keeps the FDA ceiling
+    expect(classifyNutrient('sodio_mg', 2800, null)).toBe('danger');
+    expect(classifyNutrient('sodio_mg', 100, null, { hasFood: false })).toBeNull();
+  });
+  it('impliedBounds mirrors the archetype bands', () => {
+    expect(impliedBounds('kcal', 2000, 'deficit')).toEqual({ min: 1700, max: 2160 });
+    expect(impliedBounds('protein_g', 150)).toEqual({ min: 150, max: null });
+    expect(impliedBounds('grasa_sat_g', 20)).toEqual({ min: null, max: 20 });
+    expect(impliedBounds('carbs_g', 200)).toEqual({ min: 170, max: 230 });
+    expect(impliedBounds('sodio_mg', null)).toEqual({ min: SODIUM_FLOOR_MG, max: SODIUM_CEILING_MG });
+    expect(impliedBounds('kcal', null)).toEqual({ min: null, max: null });
   });
 });

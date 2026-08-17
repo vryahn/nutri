@@ -413,7 +413,7 @@ function buildServer(supabase, uid) {
     {
       title: 'Ver objetivo del día',
       annotations: { readOnlyHint: true, openWorldHint: false },
-      description: 'Objetivo resuelto para una fecha (día específico si existe, si no la fase dow vigente), con label/goal de la fase. Default hoy.',
+      description: 'Objetivo resuelto para una fecha (día específico si existe, si no la fase dow vigente), con label/goal de la fase y `bounds` ({clave:{min,max}} explícitos por nutriente; vacío = arquetipo por defecto). Default hoy.',
       inputSchema: { day: z.string().optional().describe('AAAA-MM-DD, default hoy') },
     },
     async ({ day }) => {
