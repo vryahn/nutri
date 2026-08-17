@@ -18,6 +18,7 @@ import {
   resolveKcal,
   decideUpdatePath,
   recipeResponse,
+  mergeBounds,
 } from '../src/lib/mcp.js';
 
 // ponytail: the serverless runtime and Postgres both run in UTC, but both users are
@@ -170,6 +171,36 @@ async function getTargets(supabase, day) {
   const resolved = resolveTarget(targets || [], d);
   if (!resolved) return { day: d, resolved: null, message: `Sin objetivo que aplique al ${d}.` };
   return { day: d, resolved };
+}
+
+// Sets explicit mín/máx per nutrient (targets.bounds) for the target that applies to
+// `day`: its own override row if one exists, otherwise ALL 7 dow rows of the phase in
+// force that day (bounds are phase-wide, like label/goal). Past phases are refused —
+// rewriting them would recompute historical adherence, same rule as the app.
+async function setTargetBounds(supabase, { day, bounds }) {
+  const d = day || todayLocal();
+  const { data: targets, error } = await supabase.from('targets').select('*');
+  if (error) throw new Error(error.message);
+  const rows = targets || [];
+  const override = rows.find((r) => r.day === d);
+  if (override) {
+    const merged = mergeBounds(override.bounds, bounds);
+    const { error: e } = await supabase.from('targets').update({ bounds: merged }).eq('id', override.id);
+    if (e) throw new Error(e.message);
+    return { day: d, scope: 'override', bounds: merged };
+  }
+  const phase = resolveTarget(rows, d);
+  if (!phase) return { day: d, scope: null, message: `Sin objetivo que aplique al ${d}.` };
+  const today = todayLocal();
+  const currentVf = rows.filter((r) => r.dow != null && r.valid_from <= today).map((r) => r.valid_from).sort().pop();
+  if (currentVf && phase.valid_from < currentVf) {
+    throw new Error(`La fase que aplica al ${d} ya terminó (aplica desde ${phase.valid_from}); solo se editan la fase vigente, las programadas y los días específicos.`);
+  }
+  const phaseRows = rows.filter((r) => r.dow != null && r.valid_from === phase.valid_from);
+  const merged = mergeBounds(phase.bounds, bounds);
+  const { error: e } = await supabase.from('targets').update({ bounds: merged }).eq('valid_from', phase.valid_from).not('dow', 'is', null);
+  if (e) throw new Error(e.message);
+  return { day: d, scope: 'phase', valid_from: phase.valid_from, label: phase.label ?? null, rows: phaseRows.length, bounds: merged };
 }
 
 async function createFood(supabase, uid, input) {
@@ -419,6 +450,26 @@ function buildServer(supabase, uid) {
     async ({ day }) => {
       const result = await getTargets(supabase, day);
       return toolResult(result.resolved ? `Objetivo resuelto para ${result.day}.` : result.message, result);
+    }
+  );
+
+  server.registerTool(
+    'set_target_bounds',
+    {
+      title: 'Fijar mín/máx por nutriente',
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      description:
+        'Fija límites explícitos mín/máx por nutriente en el objetivo que aplica a una fecha: su día específico si existe, si no TODA la fase vigente/programada (las fases pasadas se rechazan). Patch por clave: {min,max} reemplaza el bound de ese nutriente, null lo quita, las claves no enviadas se conservan; un lado vacío sigue siendo el implícito de la app (p. ej. máx de proteína no borra su piso). Claves: kcal, protein_g, carbs_g, fat_g o las de MICROS. Piso de sodio médico 1,500 mg (no baja).',
+      inputSchema: {
+        day: z.string().optional().describe('AAAA-MM-DD, default hoy'),
+        bounds: z
+          .record(z.string(), z.object({ min: z.number().nullable().optional(), max: z.number().nullable().optional() }).nullable())
+          .describe('{ clave: {min?, max?} | null }'),
+      },
+    },
+    async (input) => {
+      const result = await setTargetBounds(supabase, input);
+      return toolResult(result.scope ? `Mín/máx guardados (${result.scope === 'phase' ? `fase desde ${result.valid_from}` : `día ${result.day}`}).` : result.message, result);
     }
   );
 

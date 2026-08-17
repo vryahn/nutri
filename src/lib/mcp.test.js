@@ -8,6 +8,7 @@ import {
   buildWarnings,
   decideUpdatePath,
   recipeResponse,
+  mergeBounds,
 } from './mcp.js';
 
 describe('assertValidMicros', () => {
@@ -113,5 +114,19 @@ describe('recipeResponse — canonical case', () => {
 
   it('no ingredients and no cooked weight -> error (resulting weight 0)', () => {
     expect(() => recipeResponse([], 0)).toThrow();
+  });
+});
+
+describe('mergeBounds (set_target_bounds)', () => {
+  it('patches per key, removes with null, keeps the rest, clamps sodium floor', () => {
+    const existing = { kcal: { min: 1800, max: 2000 }, protein_g: { max: 200 } };
+    expect(mergeBounds(existing, { protein_g: null, sodio_mg: { min: 1000, max: 2000 }, calcio_mg: { max: 2500 } }))
+      .toEqual({ calcio_mg: { max: 2500 }, kcal: { min: 1800, max: 2000 }, sodio_mg: { min: 1500, max: 2000 } });
+    expect(mergeBounds(null, { kcal: { min: null, max: null } })).toEqual({});
+  });
+  it('rejects unknown keys, negatives and mín > máx', () => {
+    expect(() => mergeBounds({}, { foo: { min: 1 } })).toThrow(/inválidas/);
+    expect(() => mergeBounds({}, { kcal: { min: -1 } })).toThrow(/negativos/);
+    expect(() => mergeBounds({}, { kcal: { min: 3, max: 2 } })).toThrow(/mín/);
   });
 });

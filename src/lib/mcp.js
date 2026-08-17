@@ -10,6 +10,7 @@ import {
   macrosImplausible,
   componentsInconsistent,
   computeRecipePer100g,
+  cleanBounds,
 } from './domain.js';
 
 export const MICRO_KEYS = new Set(MICROS.map((m) => m.key));
@@ -97,4 +98,26 @@ export function recipeResponse(items, cookedWeightG) {
   const per100g = computeRecipePer100g(items, cookedWeightG);
   if (!per100g) throw new Error('cooked_weight_g o items inválidos (peso resultante <= 0)');
   return { ...per100g, warnings: buildWarnings(per100g) };
+}
+
+// —— set_target_bounds ————————————————————————————————————————————————
+// Patch semantics over targets.bounds: each key sent replaces that nutrient's
+// bound; `null` (or an object with both sides null) removes it; keys not sent are
+// untouched. Keys: kcal/protein_g/carbs_g/fat_g or MICROS. Returns the merged,
+// cleaned bounds (cleanBounds raises sodium's floor to the medical one).
+export const BOUND_KEYS = new Set(['kcal', 'protein_g', 'carbs_g', 'fat_g', ...MICRO_KEYS]);
+export function mergeBounds(existing, patch) {
+  const bad = Object.keys(patch || {}).filter((k) => !BOUND_KEYS.has(k));
+  if (bad.length) throw new Error(`Claves de nutriente inválidas: ${bad.join(', ')}. Válidas: kcal, protein_g, carbs_g, fat_g y las claves de MICROS.`);
+  const out = { ...(existing || {}) };
+  for (const [k, b] of Object.entries(patch || {})) {
+    if (b == null || (b.min == null && b.max == null)) {
+      delete out[k];
+      continue;
+    }
+    if ((b.min != null && b.min < 0) || (b.max != null && b.max < 0)) throw new Error(`${k}: mín/máx no pueden ser negativos.`);
+    if (b.min != null && b.max != null && b.min > b.max) throw new Error(`${k}: mín (${b.min}) > máx (${b.max}).`);
+    out[k] = b;
+  }
+  return cleanBounds(out);
 }
