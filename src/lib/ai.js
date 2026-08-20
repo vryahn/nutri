@@ -63,6 +63,24 @@ const DEMO_ANSWER = {
   en: 'Demo example: over the last 7 days you averaged ~1,950 kcal and ~140 g of protein; your highest-sodium day was driven by the chilaquiles.',
 };
 
+// Los fixtures viven en español (los tests validan sus claves); en inglés solo
+// se traducen los nombres visibles — los números no cambian.
+function demoFood() {
+  const f = structuredClone(DEMO_FOOD);
+  if (getLang() === 'en') f.name = 'Greek yogurt, plain';
+  return f;
+}
+
+const DEMO_RECIPE_EN = ['Oatmeal, cooked', 'Whole milk', 'Banana, raw', 'Chia seeds'];
+function demoRecipe() {
+  const r = structuredClone(DEMO_RECIPE);
+  if (getLang() === 'en') {
+    r.name = 'Oatmeal with banana and chia';
+    r.ingredients.forEach((i, idx) => { i.name_es = DEMO_RECIPE_EN[idx]; });
+  }
+  return r;
+}
+
 // Fallback cascade on error/quota exhaustion: Gemini 3.6 → 3.5 → 2.5 → Groq → Mistral.
 // In direct mode a step is skipped if its key is not configured; through the proxy
 // the client cannot know which keys the server holds, so every step is attempted and
@@ -372,7 +390,7 @@ async function callAI(systemPrompt, parts, schema) {
 }
 
 export async function estimateRecipe(text, imageFiles, catalogNames) {
-  if (isDemo()) return structuredClone(DEMO_RECIPE);
+  if (isDemo()) return demoRecipe();
   const parts = [{ text: text.trim() || 'Analiza las imágenes.' }];
   for (const f of imageFiles || []) {
     parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(f) } });
@@ -423,7 +441,7 @@ export function parseAmount(text) {
 }
 
 export async function estimateFood(text, imageFiles) {
-  if (isDemo()) return structuredClone(DEMO_FOOD); // antes de comprimir fotos: no hay a dónde mandarlas
+  if (isDemo()) return demoFood(); // antes de comprimir fotos: no hay a dónde mandarlas
   const parts = [{ text: text.trim() || 'Analiza las imágenes.' }];
   for (const f of imageFiles || []) {
     // 2048 (vs the 1024 default): nutrition-label digits blur at 1024 and a 5
@@ -578,7 +596,7 @@ export async function askAnswer(question, contextStr, lang) {
 }
 
 export async function estimateFoodFromParts(parts, opts = {}) {
-  if (isDemo()) return structuredClone(DEMO_FOOD);
+  if (isDemo()) return demoFood();
   let out, model;
   if (opts.model) {
     // kind by AI_CHAIN lookup; arbitrary models outside the chain (e.g. another

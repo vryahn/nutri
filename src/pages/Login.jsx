@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase, setSeedingDemo } from '../lib/supabase.js';
-import { t, useLang } from '../lib/i18n.js';
+import { t, useLang, getLang } from '../lib/i18n.js';
 
 // Captured at module load: the router redirects to /login and clears the query
 // string before Login mounts, so ?dev=1 no longer exists inside the effect.
@@ -50,7 +50,8 @@ export default function Login() {
       setError(t('No se pudo abrir la demo — intenta más tarde.'));
       return;
     }
-    const { error: seedErr } = await supabase.rpc('seed_demo');
+    // El seed siembra etiquetas, recetas y alimentos en el idioma del visitante.
+    const { error: seedErr } = await supabase.rpc('seed_demo', { lang: getLang() });
     if (seedErr) {
       await supabase.auth.signOut(); // nunca dejar una sesión anónima vacía sin aviso
       setSeedingDemo(false);
