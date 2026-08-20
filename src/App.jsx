@@ -1,7 +1,7 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
 import { CalendarDays, Apple, ChefHat, Target, BarChart3, Ruler, MoreHorizontal } from 'lucide-react';
-import { supabase } from './lib/supabase.js';
+import { supabase, isDemo, isSeedingDemo } from './lib/supabase.js';
 import { cacheClear } from './lib/cache.js';
 import { subscribeSectionMenu } from './lib/sectionMenu.js';
 import { useOutsideClose } from './lib/useOutsideClose.js';
@@ -168,6 +168,21 @@ function Layout({ children }) {
       <Sidebar menuActions={menuActions} />
 
       <div className="flex-1 flex flex-col min-w-0 md:ml-52">
+        {/* Demo strip: in normal flow (never over the header or the tab bar), so it
+            cannot cover anything. Its height is that of the "Salir" button (44 px,
+            touch floor), with text-xs so it still reads as a strip at 375 px. */}
+        {isDemo() && (
+          <div className="flex items-center justify-between gap-2 px-4 text-xs bg-surface-2 border-b border-border text-text-2">
+            <span className="min-w-0">{t('Demo con datos de ejemplo — los cambios se borran solos.')}</span>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="shrink-0 min-h-[44px] px-2 underline underline-offset-2 press"
+            >
+              {t('Salir')}
+            </button>
+          </div>
+        )}
+
         <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b border-border glass">
           <span className="font-display text-lg">
             nutri<span className="text-accent-glass">.</span>
@@ -256,9 +271,12 @@ export default function App() {
 
   return (
     <Routes>
+      {/* While seed_demo() populates the fresh anonymous account, Login stays on
+          screen with its "Preparando demo…" state: entering the app before the seed
+          finishes would show empty days and cache them. */}
       <Route
         path="/login"
-        element={session ? <Navigate to={loginRedirect} replace /> : <Login />}
+        element={session && !isSeedingDemo() ? <Navigate to={loginRedirect} replace /> : <Login />}
       />
       <Route
         path="/"

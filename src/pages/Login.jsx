@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase.js';
+import { supabase, setSeedingDemo } from '../lib/supabase.js';
 import { t, useLang } from '../lib/i18n.js';
 
 // Captured at module load: the router redirects to /login and clears the query
 // string before Login mounts, so ?dev=1 no longer exists inside the effect.
 const devAutoLogin =
   import.meta.env.DEV && new URLSearchParams(window.location.search).has('dev');
+// Same capture, but ?demo=1 works in production too: it is the link the /about
+// landing page (and any recruiter) uses to get straight into the demo.
+const demoAutoEnter = new URLSearchParams(window.location.search).has('demo');
 
 export default function Login() {
   useLang();
@@ -13,6 +16,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
 
   // Auto-login ONLY in dev, for autonomous AI-driven testing: the agent cannot
   // type passwords (harness rule), so with /?dev=1 the app authenticates itself
@@ -26,6 +30,40 @@ export default function Login() {
     supabase.auth.signInWithPassword({ email: devEmail, password: devPassword }).then(({ error }) => {
       if (error) setError('dev-login: ' + error.message);
     });
+  }, []);
+
+  // Demo for recruiters: anonymous session + seed_demo() (~35 days of synthetic
+  // data, idempotent). setSeedingDemo keeps App from mounting half-empty while the
+  // seed runs; on success the reload boots the app with the data already there.
+  // ponytail: a full reload instead of refetching every page — one line, and it
+  // also empties the in-memory cache. Revisit only if the flash of the seed becomes
+  // slower than a reload.
+  async function enterDemo() {
+    if (demoLoading) return;
+    setError('');
+    setDemoLoading(true);
+    setSeedingDemo(true);
+    const { error: authErr } = await supabase.auth.signInAnonymously();
+    if (authErr) {
+      setSeedingDemo(false);
+      setDemoLoading(false);
+      setError(t('No se pudo abrir la demo — intenta más tarde.'));
+      return;
+    }
+    const { error: seedErr } = await supabase.rpc('seed_demo');
+    if (seedErr) {
+      await supabase.auth.signOut(); // nunca dejar una sesión anónima vacía sin aviso
+      setSeedingDemo(false);
+      setDemoLoading(false);
+      setError(t('No se pudo preparar la demo — intenta más tarde.'));
+      return;
+    }
+    window.location.replace('/');
+  }
+
+  useEffect(() => {
+    if (demoAutoEnter) enterDemo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleSubmit(e) {
@@ -90,10 +128,19 @@ export default function Login() {
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || demoLoading}
           className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60"
         >
           {loading ? t('Entrando…') : t('Entrar')}
+        </button>
+
+        <button
+          type="button"
+          onClick={enterDemo}
+          disabled={loading || demoLoading}
+          className="min-h-[44px] rounded-xl bg-surface-2 border border-border text-text-2 font-medium press disabled:opacity-60"
+        >
+          {demoLoading ? t('Preparando demo…') : t('Explorar la demo')}
         </button>
       </form>
       <a

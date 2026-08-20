@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Upload, Camera, X, Star, Moon, HelpCircle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { supabase } from '../lib/supabase.js';
+import { supabase, isDemo } from '../lib/supabase.js';
 import { toJpegBlob } from '../lib/ai.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
 import { useToast } from '../lib/useToast.js';
@@ -216,6 +216,9 @@ export default function Body() {
   // Compresses client-side (JPEG ~1280px) and uploads to the private bucket at {uid}/{uuid}.jpg —
   // the first segment = uid is what isolates the user in the storage.objects RLS.
   async function uploadPhotos(fileList) {
+    // Demo: the storage policy already rejects anonymous uploads; guarding here
+    // (drag & drop included) avoids showing the raw error.
+    if (isDemo()) return;
     const files = Array.from(fileList || []);
     if (!files.length || !userId) return;
     setUploading(true);
@@ -476,20 +479,24 @@ export default function Body() {
             ))}
           </div>
         )}
-        <label className="self-start inline-flex items-center gap-2 text-sm text-accent min-h-[44px] press cursor-pointer">
-          <Camera size={18} />
-          {t('Añadir fotos')}
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              uploadPhotos(e.target.files);
-              e.target.value = '';
-            }}
-          />
-        </label>
+        {isDemo() ? (
+          <p className="text-xs text-text-3">{t('En la demo no se pueden subir fotos de progreso.')}</p>
+        ) : (
+          <label className="self-start inline-flex items-center gap-2 text-sm text-accent min-h-[44px] press cursor-pointer">
+            <Camera size={18} />
+            {t('Añadir fotos')}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                uploadPhotos(e.target.files);
+                e.target.value = '';
+              }}
+            />
+          </label>
+        )}
       </section>
 
       {/* Trend */}

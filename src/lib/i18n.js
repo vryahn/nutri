@@ -475,6 +475,17 @@ const EN = {
   Entrar: 'Sign in',
   'Conoce el proyecto': 'About the project',
 
+  // Demo (anonymous sign-in): Login.jsx, App.jsx, AiDataCard.jsx, Dashboard.jsx, Body.jsx
+  'Explorar la demo': 'Explore the demo',
+  'Preparando demo…': 'Preparing demo…',
+  'No se pudo abrir la demo — intenta más tarde.': 'The demo could not be opened — try again later.',
+  'No se pudo preparar la demo — intenta más tarde.': 'The demo could not be prepared — try again later.',
+  'Demo con datos de ejemplo — los cambios se borran solos.': 'Demo with sample data — changes clean themselves up.',
+  Salir: 'Exit',
+  'En la demo la IA muestra un ejemplo fijo; en la app real analiza tu texto o foto.':
+    'In the demo, AI shows a fixed example; the real app analyzes your text or photo.',
+  'En la demo no se pueden subir fotos de progreso.': 'Progress photos cannot be uploaded in the demo.',
+
   // Today.jsx — header and summary
   'Día anterior': 'Previous day',
   'Día siguiente': 'Next day',

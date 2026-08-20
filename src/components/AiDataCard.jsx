@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Sparkles, ImagePlus, X, Loader2 } from 'lucide-react';
 import { t, useLang } from '../lib/i18n.js';
+import { isDemo } from '../lib/supabase.js';
 
 // "Datos con IA" card shared by FoodForm and RecipeForm: text/photos (up to 2:
 // e.g. front of the package + nutrition facts table) → "Obtener datos" button.
@@ -96,6 +97,13 @@ export default function AiDataCard({
         </button>
       </div>
       {error && <p className="text-sm text-danger">{error}</p>}
+      {/* One line here covers both forms (Foods and Recipes): in demo mode ai.js
+          answers with a fixed fixture and never calls the network. */}
+      {isDemo() && (
+        <p className="text-xs text-text-3">
+          {t('En la demo la IA muestra un ejemplo fijo; en la app real analiza tu texto o foto.')}
+        </p>
+      )}
       {children}
       {hint && <p className="text-xs text-text-3">{hint}</p>}
     </div>
