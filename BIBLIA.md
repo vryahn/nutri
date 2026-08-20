@@ -283,13 +283,15 @@ dominio = editarlo aquí + en la CSP de `vercel.json` en el mismo commit.
 | Dominio | Uso | Directiva CSP |
 |---|---|---|
 | `*.supabase.co` (proyecto) | API REST + Auth (+ wss para Realtime si se usara) | `connect-src` |
-| `generativelanguage.googleapis.com` | Gemini ("Datos con IA") | `connect-src` |
-| `api.mistral.ai` | Respaldo de la cascada de IA | `connect-src` |
 | `world.openfoodfacts.org` | Open Food Facts (EAN) | `connect-src` |
 | `api.nal.usda.gov` | USDA FoodData Central | `connect-src` |
 | `api.mymemory.translated.net` | Traducción EN→ES (ayuda visual) | `connect-src` |
 | `fonts.googleapis.com` | CSS de Google Fonts | `style-src` |
 | `fonts.gstatic.com` | Archivos de fuente | `font-src` |
+
+La IA (Gemini/Groq/Mistral) NO aparece aquí desde el proxy `/api/ai` (cubierto
+por `connect-src 'self'`): el frontend nunca habla con esos proveedores ni
+lleva sus keys en el bundle.
 
 Base: `default-src 'self'`; `img-src 'self' data: blob:`; `frame-ancestors
 'none'`; el script inline de tema en `index.html` se autoriza por **hash**

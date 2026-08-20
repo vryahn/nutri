@@ -20,6 +20,15 @@ const ALLOWED = {
   embed: ['gemini-embedding-001'],
 };
 
+// Cuentas con IA real: las 5 existentes al 2026-08-20, previas a abrir signups.
+const AI_USERS = new Set([
+  'a9706349-25dd-4d10-bb34-7b8e5770789a',
+  'cad61d8e-6f59-4c94-97b4-740faea18c60',
+  '972e774e-019e-4fb7-8f03-6ae43a5fac73',
+  'aebb890e-23bf-46bc-9934-063cbc2643f2',
+  'd0f95b41-cbfa-4571-b1a2-3861bf4151ae',
+]);
+
 const KEY = {
   gemini: () => process.env.GEMINI_KEY ?? process.env.VITE_GEMINI_KEY,
   embed: () => process.env.GEMINI_KEY ?? process.env.VITE_GEMINI_KEY,
@@ -65,6 +74,15 @@ export default async function handler(req, res) {
   // esto es el cinturón del lado servidor.
   if (claims.is_anonymous === true) {
     res.status(403).json({ error: 'demo' });
+    return;
+  }
+  // El demo obligó a abrir signups (los usuarios anónimos cuentan como signup),
+  // así que "no anónimo" ya no implica "de confianza": cualquiera puede crearse
+  // una cuenta con email. La IA real queda cerrada a las cuentas que existían
+  // antes de abrir signups. Los uids no son secretos (opacos, RLS no depende de
+  // ellos); los emails NO van aquí porque el repo es público.
+  if (!AI_USERS.has(claims.sub)) {
+    res.status(403).json({ error: 'forbidden' });
     return;
   }
 
