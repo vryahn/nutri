@@ -1,12 +1,26 @@
 import { describe, it, expect, beforeAll } from 'vitest';
+import { MICROS } from './domain.js';
 
 // i18n.js (imported by ai.js) reads localStorage at module load time (language
 // detection) — it does not exist in vitest's 'node' environment; it is minimally stubbed
 // and the import is done dynamically afterwards, instead of adding jsdom as a new dependency.
-let toJsonSchema, parseAmount, l2normalize, sanitizeAskPlan, formatAskContext;
+let toJsonSchema, parseAmount, l2normalize, sanitizeAskPlan, formatAskContext, DEMO_FOOD, DEMO_RECIPE;
 beforeAll(async () => {
   globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
-  ({ toJsonSchema, parseAmount, l2normalize, sanitizeAskPlan, formatAskContext } = await import('./ai.js'));
+  ({ toJsonSchema, parseAmount, l2normalize, sanitizeAskPlan, formatAskContext, DEMO_FOOD, DEMO_RECIPE } = await import('./ai.js'));
+});
+
+// The demo fixtures are saved by the user just like a real AI result: a free-form
+// key would fragment the SQL sums (MICROS is a closed contract).
+describe('demo fixtures', () => {
+  it('only use exact MICROS keys', () => {
+    const valid = MICROS.map((m) => m.key);
+    const sets = [DEMO_FOOD.micros, ...DEMO_RECIPE.ingredients.map((i) => i.micros)];
+    for (const micros of sets) {
+      expect(Object.keys(micros).length).toBeGreaterThan(0);
+      for (const key of Object.keys(micros)) expect(valid).toContain(key);
+    }
+  });
 });
 
 describe('toJsonSchema', () => {

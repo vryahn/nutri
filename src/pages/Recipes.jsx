@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { computeRecipePer100g, MICROS, MICROS_DEFAULT, round, isWaterSentinel } from '../lib/domain.js';
 import { useToast } from '../lib/useToast.js';
-import { GEMINI_KEY, estimateRecipe, parseAmount, snapDensity } from '../lib/ai.js';
+import { AI_AVAILABLE, estimateRecipe, parseAmount, snapDensity } from '../lib/ai.js';
 import { searchFDC, fetchFDC, translateEnEs } from '../lib/sources.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import UndoToast from '../components/UndoToast.jsx';
@@ -746,7 +746,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
         <h1 className="font-display text-xl">{form.id ? t('Editar receta') : t('Nueva receta')}</h1>
       </div>
 
-      {!form.id && GEMINI_KEY && (
+      {!form.id && AI_AVAILABLE && (
         <AiDataCard
           text={aiText}
           onText={setAiText}

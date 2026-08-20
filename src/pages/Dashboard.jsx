@@ -22,11 +22,11 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts';
-import { supabase } from '../lib/supabase.js';
+import { supabase, isDemo } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { useOutsideClose } from '../lib/useOutsideClose.js';
 import { useToast } from '../lib/useToast.js';
-import { GEMINI_KEY, planAskQuery, formatAskContext, askAnswer } from '../lib/ai.js';
+import { AI_AVAILABLE, planAskQuery, formatAskContext, askAnswer } from '../lib/ai.js';
 import Hint from '../components/Hint.jsx';
 import PageSkeleton from '../components/PageSkeleton.jsx';
 import UndoToast from '../components/UndoToast.jsx';
@@ -1462,7 +1462,7 @@ export default function Dashboard() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-xl">{t('Dashboard')}</h1>
         <div className="flex items-center gap-2">
-          {GEMINI_KEY && (
+          {AI_AVAILABLE && (
             <button
               onClick={() => setAskOpen(true)}
               className="shrink-0 px-3 py-2 min-h-[44px] rounded-full text-sm whitespace-nowrap bg-surface-2 border border-border text-text-2 press"
@@ -2106,7 +2106,13 @@ function AskLogSheet({ history, question, onQuestion, onSubmit, loading, onClose
     <Sheet
       title={t('Pregúntale a tu bitácora')}
       onClose={onClose}
-      footer={<p className="text-xs text-text-3">{t('Respuesta generada por IA — verifica contra el Dashboard.')}</p>}
+      footer={
+        <p className="text-xs text-text-3">
+          {isDemo()
+            ? t('En la demo la IA muestra un ejemplo fijo; en la app real analiza tu texto o foto.')
+            : t('Respuesta generada por IA — verifica contra el Dashboard.')}
+        </p>
+      }
     >
       <div className="flex flex-col gap-3">
         {history.length === 0 && !loading && (

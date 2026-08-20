@@ -11,7 +11,7 @@ import {
   componentsInconsistent, isWaterSentinel, eanChecksumValid, mergeFoodResults, normalizeTo100,
 } from '../lib/domain.js';
 import { fetchOFF, searchFDC, fetchFDC } from '../lib/sources.js';
-import { GEMINI_KEY, DENSITY_PRESETS, estimateFood, embedText } from '../lib/ai.js';
+import { AI_AVAILABLE, DENSITY_PRESETS, estimateFood, embedText } from '../lib/ai.js';
 import { t, useLang, useUnits, gToOz, mlToFlOz } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import UndoToast from '../components/UndoToast.jsx';
@@ -140,7 +140,7 @@ export default function Foods() {
     let hits = data;
     // Semantic fallback search: only when ilike yields few hits. It must never
     // break the normal search — embedText already returns null on any failure.
-    if (!isBase && GEMINI_KEY && query.trim().length >= 3 && data.length < 8) {
+    if (!isBase && AI_AVAILABLE && query.trim().length >= 3 && data.length < 8) {
       try {
         const vec = await embedText(query.trim());
         if (vec) {
@@ -789,7 +789,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         </p>
       )}
 
-      {GEMINI_KEY && (
+      {AI_AVAILABLE && (
         <AiDataCard
           text={aiText}
           onText={setAiText}

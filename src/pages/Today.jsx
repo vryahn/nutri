@@ -31,7 +31,7 @@ import {
   microGroups,
   mergeFoodResults,
 } from '../lib/domain.js';
-import { GEMINI_KEY, embedText } from '../lib/ai.js';
+import { AI_AVAILABLE, embedText } from '../lib/ai.js';
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, closestCenter, closestCorners, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
@@ -1953,7 +1953,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
       let foodHits = foods || [];
       // Semantic fallback search: only when ilike yields few hits. It must never
       // break the normal search — embedText already returns null on any failure.
-      if (GEMINI_KEY && trimmed.length >= 3 && foodHits.length < 8) {
+      if (AI_AVAILABLE && trimmed.length >= 3 && foodHits.length < 8) {
         try {
           const vec = await embedText(trimmed);
           if (vec) {

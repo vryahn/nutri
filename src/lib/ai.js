@@ -1,6 +1,7 @@
 // Gemini client and helpers shared between Foods.jsx and Recipes.jsx ("Datos con IA").
 import { MICROS } from './domain.js';
 import { getLang } from './i18n.js';
+import { supabase, isDemo } from './supabase.js';
 
 // "name" in the user's active language, not always Spanish (the rest of the
 // prompt remains in Spanish — Gemini understands the instruction all the same).
@@ -8,12 +9,64 @@ function nameLangInstruction() {
   return getLang() === 'en' ? 'in English' : 'en español';
 }
 
-export const GEMINI_KEY = import.meta.env?.VITE_GEMINI_KEY;
-export const MISTRAL_KEY = import.meta.env?.VITE_MISTRAL_KEY;
-export const GROQ_KEY = import.meta.env?.VITE_GROQ_KEY;
+// Las keys SOLO existen en dev (dev server, vitest y el harness de evals). En el
+// build de producción `import.meta.env.DEV` es el literal false, así que el
+// minificador borra la rama directa y ninguna key llega al bundle: ahí todo va por
+// el proxy /api/ai, que las tiene del lado servidor.
+const GEMINI_KEY = import.meta.env.DEV ? import.meta.env.VITE_GEMINI_KEY : undefined;
+const MISTRAL_KEY = import.meta.env.DEV ? import.meta.env.VITE_MISTRAL_KEY : undefined;
+const GROQ_KEY = import.meta.env.DEV ? import.meta.env.VITE_GROQ_KEY : undefined;
+const DIRECT = !!(GEMINI_KEY || MISTRAL_KEY || GROQ_KEY);
+
+// En producción siempre hay proxy; en dev, solo si hay alguna key en .env
+// (sin ninguna, los módulos de IA se ocultan como siempre).
+export const AI_AVAILABLE = !import.meta.env.DEV || DIRECT;
+
+// ── Modo demo (cuenta anónima): la IA NO se llama ───────────────────────────
+// Un visitante no quema cuota de nadie. Las funciones públicas devuelven estos
+// fixtures con la MISMA forma que la respuesta real, marcados demo:true para que
+// la UI lo diga. Los micros usan claves EXACTAS de MICROS (contrato cerrado).
+export const DEMO_FOOD = {
+  mode: 'estimacion',
+  basis: '100g',
+  ean: null,
+  confidence: 'media',
+  usda_query: null,
+  name: 'Yogur griego natural',
+  brand: '',
+  kcal: 94.5,
+  protein_g: 8.8,
+  carbs_g: 4.8,
+  fat_g: 4.3,
+  micros: { grasa_sat_g: 2.5, azucar_g: 4, sodio_mg: 45, potasio_mg: 141, magnesio_mg: 11, calcio_mg: 111 },
+  density_g_ml: '',
+  ai_model: 'demo',
+  demo: true,
+};
+
+export const DEMO_RECIPE = {
+  name: 'Avena con plátano y chía',
+  confidence: 'media',
+  total_weight_g: 560,
+  kcal_total_estimate: 620,
+  ingredients: [
+    { name_es: 'Avena, cocida', grams: 250, db_match: null, usda_query: null, kcal: 71, protein_g: 2.5, carbs_g: 12, fat_g: 1.5, micros: { fibra_g: 1.7, sodio_mg: 4, potasio_mg: 61, magnesio_mg: 27 } },
+    { name_es: 'Leche entera', grams: 200, db_match: null, usda_query: null, kcal: 61, protein_g: 3.2, carbs_g: 4.8, fat_g: 3.3, micros: { calcio_mg: 113, sodio_mg: 43, potasio_mg: 132, azucar_g: 4.8 } },
+    { name_es: 'Plátano, crudo', grams: 100, db_match: null, usda_query: null, kcal: 89, protein_g: 1.1, carbs_g: 22.8, fat_g: 0.3, micros: { fibra_g: 2.6, azucar_g: 12.2, potasio_mg: 358, magnesio_mg: 27 } },
+    { name_es: 'Semilla de chía', grams: 15, db_match: null, usda_query: null, kcal: 486, protein_g: 16.5, carbs_g: 42.1, fat_g: 30.7, micros: { fibra_g: 34.4, calcio_mg: 631, magnesio_mg: 335, potasio_mg: 407 } },
+  ],
+  demo: true,
+};
+
+const DEMO_ANSWER = {
+  es: 'Ejemplo de demo: en los últimos 7 días promediaste ~1,950 kcal y ~140 g de proteína; el día más alto en sodio fue por los chilaquiles.',
+  en: 'Demo example: over the last 7 days you averaged ~1,950 kcal and ~140 g of protein; your highest-sodium day was driven by the chilaquiles.',
+};
 
 // Fallback cascade on error/quota exhaustion: Gemini 3.6 → 3.5 → 2.5 → Groq → Mistral.
-// Each step is skipped if its key is not configured; see callAI.
+// In direct mode a step is skipped if its key is not configured; through the proxy
+// the client cannot know which keys the server holds, so every step is attempted and
+// its 501 ("not configured") simply falls through to the next one. See callAI.
 const AI_CHAIN = [
   { kind: 'gemini', model: 'gemini-3.6-flash' },
   { kind: 'gemini', model: 'gemini-3.5-flash' },
@@ -196,20 +249,45 @@ export function l2normalize(v) {
   return v.map((x) => x / n);
 }
 
+// ── Transporte: un solo lugar decide directo vs proxy ───────────────────────
+// Directo (solo dev, con key en .env): el fetch va al proveedor, igual que antes —
+// el harness de evals depende de ello. Si no, va a /api/ai con el access_token de
+// la sesión y las keys se quedan en el servidor.
+const DIRECT_TARGET = {
+  gemini: (model) => [`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, { 'x-goog-api-key': GEMINI_KEY }],
+  embed: (model) => [`https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent`, { 'x-goog-api-key': GEMINI_KEY }],
+  groq: () => ['https://api.groq.com/openai/v1/chat/completions', { Authorization: `Bearer ${GROQ_KEY}` }],
+  mistral: () => ['https://api.mistral.ai/v1/chat/completions', { Authorization: `Bearer ${MISTRAL_KEY}` }],
+};
+
+async function aiFetch(kind, model, payload) {
+  let url, headers, body;
+  if (DIRECT) {
+    [url, headers] = DIRECT_TARGET[kind](model);
+    body = payload;
+  } else {
+    const { data } = await supabase.auth.getSession();
+    url = '/api/ai';
+    headers = { Authorization: `Bearer ${data.session?.access_token || ''}` };
+    body = { kind, model, payload };
+  }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${kind} ${model} ${res.status}`);
+  return res.json();
+}
+
 // Embedding for the catalog's semantic search. null on any failure (never throws).
 export async function embedText(text) {
-  if (!GEMINI_KEY || !text?.trim()) return null;
+  if (!AI_AVAILABLE || isDemo() || !text?.trim()) return null;
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
-        body: JSON.stringify({ content: { parts: [{ text: text.trim() }] }, outputDimensionality: 768 }),
-      },
-    );
-    if (!res.ok) return null;
-    const json = await res.json();
+    const json = await aiFetch('embed', 'gemini-embedding-001', {
+      content: { parts: [{ text: text.trim() }] },
+      outputDimensionality: 768,
+    });
     return l2normalize(json?.embedding?.values);
   } catch {
     return null;
@@ -228,17 +306,11 @@ async function callGemini(model, systemPrompt, parts, schema, temperature) {
     // if a model rejected it, the cascade falls through to the next one.
     mediaResolution: 'MEDIA_RESOLUTION_HIGH',
   };
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts }],
-      generationConfig,
-    }),
+  const data = await aiFetch('gemini', model, {
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ parts }],
+    generationConfig,
   });
-  if (!res.ok) throw new Error(`Gemini ${model} ${res.status}`);
-  const data = await res.json();
   return JSON.parse(data.candidates[0].content.parts[0].text);
 }
 
@@ -252,13 +324,7 @@ async function callMistral(model, systemPrompt, parts, schema, temperature) {
     response_format: { type: 'json_schema', json_schema: { name: 'nutri', strict: true, schema: toJsonSchema(schema) } },
   };
   body.temperature = temperature ?? 0; // deterministic extraction, same as callGemini
-  const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${MISTRAL_KEY}` },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Mistral ${model} ${res.status}`);
-  const data = await res.json();
+  const data = await aiFetch('mistral', model, body);
   return JSON.parse(data.choices[0].message.content);
 }
 
@@ -280,13 +346,7 @@ async function callGroq(model, systemPrompt, parts, schema, temperature) {
     reasoning_effort: 'none',
   };
   body.temperature = temperature ?? 0; // deterministic extraction, same as callGemini
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Groq ${model} ${res.status}`);
-  const data = await res.json();
+  const data = await aiFetch('groq', model, body);
   return JSON.parse(data.choices[0].message.content);
 }
 
@@ -294,12 +354,13 @@ const AI_CALLERS = { gemini: callGemini, mistral: callMistral, groq: callGroq };
 const AI_KEYS = { get gemini() { return GEMINI_KEY; }, get mistral() { return MISTRAL_KEY; }, get groq() { return GROQ_KEY; } };
 
 // Tries each model in AI_CHAIN in order; on ANY error it moves on to the next.
-// Skips a step if its key is not configured. Propagates the last error if all fail.
+// In direct mode it skips a step whose key is not configured; through the proxy every
+// step is attempted (its 501 is just one more error). Propagates the last error if all fail.
 // Returns { data, model } — model = "kind:model" of the step that responded (for the eval harness).
 async function callAI(systemPrompt, parts, schema) {
   let lastErr;
   for (const step of AI_CHAIN) {
-    if (!AI_KEYS[step.kind]) continue;
+    if (DIRECT && !AI_KEYS[step.kind]) continue;
     try {
       const data = await AI_CALLERS[step.kind](step.model, systemPrompt, parts, schema);
       return { data, model: `${step.kind}:${step.model}` };
@@ -311,6 +372,7 @@ async function callAI(systemPrompt, parts, schema) {
 }
 
 export async function estimateRecipe(text, imageFiles, catalogNames) {
+  if (isDemo()) return structuredClone(DEMO_RECIPE);
   const parts = [{ text: text.trim() || 'Analiza las imágenes.' }];
   for (const f of imageFiles || []) {
     parts.push({ inline_data: { mime_type: 'image/jpeg', data: await toJpegBase64(f) } });
@@ -361,6 +423,7 @@ export function parseAmount(text) {
 }
 
 export async function estimateFood(text, imageFiles) {
+  if (isDemo()) return structuredClone(DEMO_FOOD); // antes de comprimir fotos: no hay a dónde mandarlas
   const parts = [{ text: text.trim() || 'Analiza las imágenes.' }];
   for (const f of imageFiles || []) {
     // 2048 (vs the 1024 default): nutrition-label digits blur at 1024 and a 5
@@ -376,7 +439,7 @@ export async function estimateFood(text, imageFiles) {
 // opts (eval only): { model, temperature } pins ONE model (no cascade) so that the gate
 // does not depend on which model happened to answer due to a 503; Foods.jsx calls without opts and uses the cascade.
 // —— "Pregúntale a tu bitácora": structured 3-step RAG (planner → SQL
-// in the caller → generation with citations). Entirely gated by GEMINI_KEY in the caller.
+// in the caller → generation with citations). Entirely gated by AI_AVAILABLE in the caller.
 
 const ASK_NUTRIENT_KEYS = ['kcal', 'protein_g', 'carbs_g', 'fat_g', ...MICROS.map((m) => m.key)];
 const ASK_DEFAULT_NUTRIENTS = ['kcal', 'protein_g', 'carbs_g', 'fat_g'];
@@ -434,6 +497,9 @@ function askPlanPrompt(todayStr) {
 // Step 1 of the RAG: decides the date range, whether per-food detail is needed
 // and which nutrients to query. Returns the plan already sanitized (sanitizeAskPlan).
 export async function planAskQuery(question, todayStr, lang) {
+  // Demo: plan por defecto (últimos 30 días, macros) sin llamar la red; la respuesta
+  // también es fija, así que el plan solo sirve para no romper el pipeline.
+  if (isDemo()) return sanitizeAskPlan(null, todayStr, ASK_NUTRIENT_KEYS);
   const langInstr = lang === 'en' ? 'Answer only via the schema fields.' : 'Responde solo con los campos del schema.';
   const { data } = await callAI(`${askPlanPrompt(todayStr)} ${langInstr}`, [{ text: question }], ASK_PLAN_SCHEMA);
   return sanitizeAskPlan(data, todayStr, ASK_NUTRIENT_KEYS);
@@ -505,12 +571,14 @@ function askAnswerPrompt(lang) {
 // already-built context (formatAskContext). There is no true free-form schema — GEMINI_SCHEMA
 // requires one, so a single-field object is used and `answer` is extracted.
 export async function askAnswer(question, contextStr, lang) {
+  if (isDemo()) return DEMO_ANSWER[(lang ?? getLang()) === 'en' ? 'en' : 'es'];
   const parts = [{ text: `Contexto:\n${contextStr}\n\nPregunta: ${question}` }];
   const { data } = await callAI(askAnswerPrompt(lang), parts, ASK_ANSWER_SCHEMA);
   return data.answer || '';
 }
 
 export async function estimateFoodFromParts(parts, opts = {}) {
+  if (isDemo()) return structuredClone(DEMO_FOOD);
   let out, model;
   if (opts.model) {
     // kind by AI_CHAIN lookup; arbitrary models outside the chain (e.g. another
