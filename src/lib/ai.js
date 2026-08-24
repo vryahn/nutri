@@ -81,11 +81,12 @@ function demoRecipe() {
   return r;
 }
 
-// Fallback cascade on error/quota exhaustion: Gemini 3.6 → 3.5 → 2.5 → Groq → Mistral.
+// Fallback cascade on error/quota exhaustion: Gemini 3.7 → 3.6 → 3.5 → 2.5 → Groq → Mistral.
 // In direct mode a step is skipped if its key is not configured; through the proxy
 // the client cannot know which keys the server holds, so every step is attempted and
 // its 501 ("not configured") simply falls through to the next one. See callAI.
 const AI_CHAIN = [
+  { kind: 'gemini', model: 'gemini-3.7-flash' },
   { kind: 'gemini', model: 'gemini-3.6-flash' },
   { kind: 'gemini', model: 'gemini-3.5-flash' },
   { kind: 'gemini', model: 'gemini-2.5-flash' },
