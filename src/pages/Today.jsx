@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste, ArrowLeftRight, Upload, Bookmark } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
@@ -486,6 +486,7 @@ function MealTemplatesSheet({ templates, canSave, onSave, onAdd, onDelete, onClo
 
 export default function Today() {
   const lang = useLang();
+  const location = useLocation();
   useUnits();
   useAdherenceBands(); // re-renders when the bands change in Configuración
   const [date, setDate] = useState(todayISO());
@@ -517,6 +518,7 @@ export default function Today() {
   const [draggingSection, setDraggingSection] = useState(null); // id of the section being dragged (dims the others)
   const [quickAddKey, setQuickAddKey] = useState(0); // bumped to reset the inline quick-add after logging
   const [quickAddInitialLabel, setQuickAddInitialLabel] = useState(null);
+  const [logItem, setLogItem] = useState(null); // { id, name, type } preselected after "Guardar y registrar" from Alimentos
   const quickAddInputRef = useRef(null);
   const isLg = useIsLgUp();
   // Mini-summary (<lg): visible when the summary card leaves the viewport.
@@ -1033,6 +1035,23 @@ export default function Today() {
     return () => setSectionMenu([]);
   }, [date, copiedDay, prefs.water_food_id, entries, lang]);
 
+  // "Guardar y registrar" from Alimentos: /  arrives with state.logFood, preselecting
+  // it in the add-entry form (rail on lg+, sheet on <lg). Read once at mount, then
+  // clear the history state so a refresh does not reopen it.
+  useEffect(() => {
+    const state = location.state;
+    if (!state?.logFood) return;
+    if (state.date) setDate(state.date);
+    setLogItem({ id: state.logFood.id, name: state.logFood.name, type: 'food' });
+    if (isLg) {
+      setQuickAddInitialLabel(state.labelId ?? null);
+      setQuickAddKey((k) => k + 1);
+    } else {
+      setAdding({ labelId: state.labelId ?? null });
+    }
+    window.history.replaceState({}, '');
+  }, []);
+
   // Section "+": on lg+ it does not open the sheet (replaced by the inline quick-add),
   // it only prefills its label and remounts the form (focus via autoFocus); on <lg
   // it keeps the current sheet.
@@ -1130,12 +1149,14 @@ export default function Today() {
             labels={labels}
             waterFoodId={prefs.water_food_id}
             initialLabelId={quickAddInitialLabel}
+            initialItem={logItem}
             inputRef={quickAddInputRef}
             autoFocus={quickAddKey > 0}
             onPreview={setPreview}
             onAdded={(labelId) => {
               setQuickAddKey((k) => k + 1);
               setQuickAddInitialLabel(null);
+              setLogItem(null);
               loadDay(true).then(() => scrollToSection(labelId));
             }}
           />
@@ -1344,11 +1365,13 @@ export default function Today() {
           labels={labels}
           waterFoodId={prefs.water_food_id}
           initialLabelId={adding.labelId}
+          initialItem={logItem}
           subheader={daySummaryStrip}
           onPreview={setPreview}
-          onClose={() => setAdding(null)}
+          onClose={() => { setAdding(null); setLogItem(null); }}
           onAdded={(labelId) => {
             setAdding(null);
+            setLogItem(null);
             loadDay(true).then(() => scrollToSection(labelId));
           }}
         />
@@ -1904,12 +1927,12 @@ function useFoodMeta(foodId, recipeId) {
 // Core of "add entry": search box with recents, amount and label.
 // Reused by AddEntrySheet (sheet, <lg) and the inline quick-add (rail, lg+).
 // Keyboard navigation over results: ↓/↑ moves the selection, Enter confirms it.
-function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inputRef, autoFocus, onPreview }) {
+function AddEntryForm({ date, labels, waterFoodId, initialLabelId, initialItem, onAdded, inputRef, autoFocus, onPreview }) {
   const navigate = useNavigate();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialItem?.name ?? '');
   const [results, setResults] = useState([]);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [selected, setSelected] = useState(null); // { id, name, type }
+  const [selected, setSelected] = useState(initialItem ?? null); // { id, name, type }
   const [grams, setGrams] = useState('');
   const [presetGrams, setPresetGrams] = useState(null);
   const [labelId, setLabelId] = useState(initialLabelId || '');
@@ -2081,7 +2104,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
       {!selected && (
         <button
           type="button"
-          onClick={() => navigate('/foods', { state: { newFood: { name: query.trim() } } })}
+          onClick={() => navigate('/foods', { state: { newFood: { name: query.trim() }, from: { date, labelId: labelId || initialLabelId || null } } })}
           className="min-h-[44px] self-start text-sm text-accent press"
         >
           ＋ {t('Nuevo alimento')}
@@ -2118,7 +2141,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, onAdded, inpu
   );
 }
 
-function AddEntrySheet({ date, labels, waterFoodId, initialLabelId, subheader, onClose, onAdded, onPreview }) {
+function AddEntrySheet({ date, labels, waterFoodId, initialLabelId, initialItem, subheader, onClose, onAdded, onPreview }) {
   return (
     <Sheet title={t('Añadir registro')} onClose={onClose} subheader={subheader}>
       <AddEntryForm
@@ -2126,6 +2149,7 @@ function AddEntrySheet({ date, labels, waterFoodId, initialLabelId, subheader, o
         labels={labels}
         waterFoodId={waterFoodId}
         initialLabelId={initialLabelId}
+        initialItem={initialItem}
         onPreview={onPreview}
         onAdded={onAdded}
       />

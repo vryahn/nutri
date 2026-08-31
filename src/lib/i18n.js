@@ -540,6 +540,7 @@ const EN = {
   'Tamaño de vaso (fl oz)': 'Glass size (fl oz)',
   Guardar: 'Save',
   'Guardar copia': 'Save copy',
+  'Guardar y registrar': 'Save and log',
 
   // Sodium warning
   '⚠ sodio < %n mg': '⚠ sodium < %n mg',

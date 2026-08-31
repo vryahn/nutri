@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Plus, ChevronLeft, Search, Star, AlertTriangle, Trash2, Upload,
 } from 'lucide-react';
@@ -65,10 +65,14 @@ export default function Foods() {
   const [query, setQuery] = useState('');
   const [importing, setImporting] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   // creation initiated from Today: /foods with state.newFood opens the form pre-filled
   const [editing, setEditing] = useState(() =>
     location.state?.newFood ? { ...EMPTY_FOOD, ...location.state.newFood } : null
   ); // null = list view, object = form view
+  // where to jump back to after "Guardar y registrar" (date/label active in Today when we
+  // arrived from there); captured before the history state is cleared below.
+  const fromToday = useRef(location.state?.from || null);
   const [toast, showToast] = useToast();
   const [userId, setUserId] = useState(null);
   const [favs, setFavs] = useState([]); // prefs.data.fav_micros: micros promoted out of "Más micros"
@@ -156,7 +160,7 @@ export default function Foods() {
     setLoading(false);
   }
 
-  async function handleSave(food) {
+  async function handleSave(food, alsoLog) {
     const payload = {
       name: food.name,
       brand: food.brand || null,
@@ -183,9 +187,13 @@ export default function Foods() {
       return;
     }
     showToast(t('Guardado.'));
-    setEditing(null);
-    load();
-    // Embedding for semantic search: fire-and-forget, never blocks the save.
+    if (alsoLog) {
+      navigate('/', { state: { logFood: { id: saved.id, name: saved.name }, ...(fromToday.current || {}) } });
+    } else {
+      setEditing(null);
+      load();
+    }
+    // Embedding for semantic search: fire-and-forget, never blocks the save (nor the navigate above).
     embedText(saved.name.trim() + (saved.brand?.trim() ? ' ' + saved.brand.trim() : '')).then((e) => {
       if (e) supabase.from('foods').update({ embedding: JSON.stringify(e) }).eq('id', saved.id);
     });
@@ -766,7 +774,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   // Base-catalog food (owner null): saving ALWAYS creates the user's own copy
   // (no id → handleSave takes the insert branch; the server assigns owner = auth.uid()).
   const isBaseFood = food.owner === null;
-  const save = (values) => onSave(isBaseFood ? { ...values, id: undefined } : values);
+  const save = (values, alsoLog) => onSave(isBaseFood ? { ...values, id: undefined } : values, alsoLog);
   const hiddenMicros = MICROS.slice(MICROS_DEFAULT);
   const basisDensity = Number(form.density_g_ml) || 0;
   const basisBlocked = basisUnit === 'ml' && !(basisDensity > 0);
@@ -1131,10 +1139,21 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           </select>
         </Field>
 
+        {!form.id && (
+          <button
+            type="button"
+            disabled={basisBlocked}
+            onClick={() => { if (!basisBlocked && form.name.trim()) save(submitValues(), true); }}
+            className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-40"
+          >
+            {t('Guardar y registrar')}
+          </button>
+        )}
+
         <button
           type="submit"
           disabled={basisBlocked}
-          className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-40"
+          className={`min-h-[44px] rounded-xl font-medium press disabled:opacity-40 ${form.id ? 'bg-accent-deep text-on-accent' : 'border border-border text-text'}`}
         >
           {isBaseFood ? t('Guardar copia') : t('Guardar')}
         </button>
