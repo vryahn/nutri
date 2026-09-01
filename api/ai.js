@@ -18,6 +18,9 @@ const ALLOWED = {
   groq: ['qwen/qwen3.6-27b'],
   mistral: ['mistral-small-latest'],
   embed: ['gemini-embedding-001'],
+  // No es IA: los chips de coincidencias USDA. Van por aquí solo para que la key
+  // de FDC deje de viajar en el bundle público (antes era VITE_FDC_KEY).
+  usda: ['search', 'food'],
 };
 
 // Cuentas con IA real: las 5 existentes al 2026-08-20, previas a abrir signups.
@@ -34,13 +37,28 @@ const KEY = {
   embed: () => process.env.GEMINI_KEY ?? process.env.VITE_GEMINI_KEY,
   groq: () => process.env.GROQ_KEY ?? process.env.VITE_GROQ_KEY,
   mistral: () => process.env.MISTRAL_KEY ?? process.env.VITE_MISTRAL_KEY,
+  usda: () => process.env.FDC_KEY ?? process.env.VITE_FDC_KEY,
 };
+
+// FDC es GET con la key en el query string. La URL se arma AQUÍ, del lado
+// servidor, y solo con dos formas fijas: nada del cliente entra en la ruta.
+// Devuelve null si el payload no encaja (el handler responde 400).
+export function usdaUrl(model, payload, key) {
+  if (model === 'search') {
+    const q = typeof payload.query === 'string' ? payload.query.trim() : '';
+    if (!q) return null;
+    return `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(q)}&dataType=Foundation,SR%20Legacy&pageSize=6&api_key=${key}`;
+  }
+  if (!/^\d+$/.test(String(payload.fdcId ?? ''))) return null;
+  return `https://api.nal.usda.gov/fdc/v1/food/${payload.fdcId}?api_key=${key}`;
+}
 
 const UPSTREAM = {
   gemini: (model, key) => [`${GEMINI_BASE}/${model}:generateContent`, { 'x-goog-api-key': key }],
   embed: (model, key) => [`${GEMINI_BASE}/${model}:embedContent`, { 'x-goog-api-key': key }],
   groq: (_model, key) => ['https://api.groq.com/openai/v1/chat/completions', { Authorization: `Bearer ${key}` }],
   mistral: (_model, key) => ['https://api.mistral.ai/v1/chat/completions', { Authorization: `Bearer ${key}` }],
+  usda: (model, key, payload) => [usdaUrl(model, payload, key), {}],
 };
 
 // Claims del JWT si es válido, o null. Mismos iss/aud/alg que api/mcp.js.
@@ -76,19 +94,19 @@ export default async function handler(req, res) {
     res.status(403).json({ error: 'demo' });
     return;
   }
+  const { kind, model, payload } = req.body || {};
+  if (!ALLOWED[kind]?.includes(model) || !payload || typeof payload !== 'object') {
+    res.status(400).json({ error: 'bad_request' });
+    return;
+  }
   // El demo obligó a abrir signups (los usuarios anónimos cuentan como signup),
   // así que "no anónimo" ya no implica "de confianza": cualquiera puede crearse
   // una cuenta con email. La IA real queda cerrada a las cuentas que existían
   // antes de abrir signups. Los uids no son secretos (opacos, RLS no depende de
-  // ellos); los emails NO van aquí porque el repo es público.
-  if (!AI_USERS.has(claims.sub)) {
+  // ellos); los emails NO van aquí porque el repo es público. `usda` no es IA
+  // (catálogo público, cuota generosa): abierto a cualquier cuenta autenticada.
+  if (kind !== 'usda' && !AI_USERS.has(claims.sub)) {
     res.status(403).json({ error: 'forbidden' });
-    return;
-  }
-
-  const { kind, model, payload } = req.body || {};
-  if (!ALLOWED[kind]?.includes(model) || !payload || typeof payload !== 'object') {
-    res.status(400).json({ error: 'bad_request' });
     return;
   }
 
@@ -100,9 +118,14 @@ export default async function handler(req, res) {
     return;
   }
 
-  const [url, headers] = UPSTREAM[kind](model, key);
+  const [url, headers] = UPSTREAM[kind](model, key, payload);
+  if (!url) {
+    res.status(400).json({ error: 'bad_request' });
+    return;
+  }
   try {
-    const upstream = await fetch(url, {
+    // usda es GET (sin cuerpo); el resto de la cascada es POST con JSON.
+    const upstream = await fetch(url, kind === 'usda' ? undefined : {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
       body: JSON.stringify(payload),

@@ -383,10 +383,10 @@ Then `npm ci && npm run dev`. `.env` is in `.gitignore`. Never use the `service_
 | `VITE_SUPABASE_ANON_KEY` | yes | anon/publishable key |
 | `VITE_GEMINI_KEY` | no | enables "Datos con IA", semantic search, and "ask your log" ([Google AI Studio](https://aistudio.google.com/apikey) free tier, no billing); without it those modules are hidden |
 | `VITE_MISTRAL_KEY` | no | enables the Mistral tail of the AI fallback cascade; skipped if absent |
-| `VITE_FDC_KEY` | no | enables USDA FoodData Central match chips ([free key](https://fdc.nal.usda.gov/api-key-signup)); without it they simply don't appear |
+| `FDC_KEY` (Vercel) / `VITE_FDC_KEY` (dev) | no | enables USDA FoodData Central match chips ([free key](https://fdc.nal.usda.gov/api-key-signup)); in production it stays server-side behind `/api/ai`, in dev the `VITE_` one calls FDC directly |
 | `VITE_SENTRY_DSN` | no | production-only error monitoring ([Sentry](https://sentry.io), platform: React); dev stays silent |
 
-The AI keys are client-side and visible in the bundle — a deliberate, documented trade-off: use free-tier keys with **no billing attached**, so the worst case is quota exhaustion, not a bill. The Sentry DSN is publishable by design. To use any of these in production, set the same variables in Vercel → Environment Variables.
+No provider key ships in the bundle: in production the AI cascade and the USDA chips both go through `/api/ai`, which verifies the caller's Supabase JWT and holds `GEMINI_KEY`, `GROQ_KEY`, `MISTRAL_KEY` and `FDC_KEY` server-side. The `VITE_*` variants exist only for local dev and the eval harness — that branch is behind `import.meta.env.DEV`, which the production build strips. Only the Supabase publishable key and the Sentry DSN are in the bundle, both public by design. Set the non-`VITE_` names in Vercel → Environment Variables.
 
 ## Testing and quality
 

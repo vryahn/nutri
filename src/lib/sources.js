@@ -1,8 +1,36 @@
 // Clients for external nutrition data sources, per 100 g, mapped to the EXACT
 // MICROS keys (src/lib/domain.js). fetch only, no new dependencies.
 import { MICROS, round } from './domain.js';
+import { supabase } from './supabase.js';
 
-const FDC_KEY = import.meta.env.VITE_FDC_KEY;
+// La key SOLO existe en dev (dev server y vitest). En el build de producción
+// `import.meta.env.DEV` es el literal false, así que el minificador borra la rama
+// directa y la key no llega al bundle: ahí todo va por el proxy /api/ai, que la
+// tiene del lado servidor (mismo patrón que src/lib/ai.js).
+const FDC_KEY = import.meta.env.DEV ? import.meta.env.VITE_FDC_KEY : undefined;
+
+// En producción siempre hay proxy; en dev, solo con key en .env (sin ella los
+// chips de coincidencias USDA simplemente no aparecen, como siempre).
+export const FDC_AVAILABLE = !import.meta.env.DEV || !!FDC_KEY;
+
+// Un solo lugar decide directo (dev) vs proxy (producción).
+async function fdcFetch(model, payload) {
+  if (FDC_KEY) {
+    const url = model === 'search'
+      ? `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(payload.query)}&dataType=Foundation,SR%20Legacy&pageSize=6&api_key=${FDC_KEY}`
+      : `https://api.nal.usda.gov/fdc/v1/food/${payload.fdcId}?api_key=${FDC_KEY}`;
+    return fetch(url);
+  }
+  const { data } = await supabase.auth.getSession();
+  return fetch('/api/ai', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${data.session?.access_token || ''}`,
+    },
+    body: JSON.stringify({ kind: 'usda', model, payload }),
+  });
+}
 
 // --- Open Food Facts ---
 
@@ -153,11 +181,10 @@ export function toDomainUnit(amount, apiUnit, domainUnit) {
 // Generic foods only (Foundation/SR Legacy) — never branded products
 // (Branded would return US variants, a loss of accuracy for Mexico).
 export async function searchFDC(query) {
-  if (!FDC_KEY) return [];
-  const url = `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&dataType=Foundation,SR%20Legacy&pageSize=6&api_key=${FDC_KEY}`;
+  if (!FDC_AVAILABLE) return [];
   let res;
   try {
-    res = await fetch(url);
+    res = await fdcFetch('search', { query });
   } catch {
     return [];
   }
@@ -191,10 +218,10 @@ export async function translateEnEs(text) {
 }
 
 export async function fetchFDC(fdcId) {
-  if (!FDC_KEY) return null;
+  if (!FDC_AVAILABLE) return null;
   let res;
   try {
-    res = await fetch(`https://api.nal.usda.gov/fdc/v1/food/${fdcId}?api_key=${FDC_KEY}`);
+    res = await fdcFetch('food', { fdcId });
   } catch {
     return null;
   }

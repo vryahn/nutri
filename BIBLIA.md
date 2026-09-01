@@ -89,11 +89,16 @@ actualización simultánea de este documento y de `CLAUDE.md`.
 - La **publishable/anon key** de Supabase es pública por diseño; la seguridad es
   RLS. La `service_role`/secret key **no se usa en ninguna parte del proyecto**,
   ni en CI, ni en scripts, ni "temporalmente".
-- Claves client-side de terceros (`VITE_GEMINI_KEY`, `VITE_MISTRAL_KEY`,
-  `VITE_FDC_KEY`): riesgo aceptado = agotamiento de cuota, **nunca** facturación
-  (solo free tiers sin billing). Obligatorio: restringirlas por referrer HTTP
-  cuando el proveedor lo permita, y revisar su consumo en el mantenimiento
-  mensual (§7). Si un proveedor exige una key con billing, esa integración se
+- Claves de terceros (IA y FDC): **ninguna viaja en el bundle**. Viven en el
+  entorno de Vercel y salen por el proxy `/api/ai`, que exige JWT de Supabase.
+  Las `VITE_*_KEY` equivalentes existen solo para dev/evals y su rama está
+  gateada por `import.meta.env.DEV`, que el build de producción borra. Al añadir
+  una fuente externa con key, el proxy es el camino por defecto; si alguna vez se
+  acepta una key client-side, debe ser free tier **sin billing** (peor caso:
+  agotar cuota, nunca una factura), restringida por referrer HTTP cuando el
+  proveedor lo permita. Verificación obligatoria antes de pushear un cambio de
+  keys: `npm run build` y `grep -rF "<valor>" dist/` sin resultados. Revisar el
+  consumo de todas ellas en el mantenimiento mensual (§7). Si un proveedor exige una key con billing, esa integración se
   mueve a un backend o no se hace.
 - `.env` está en `.gitignore` y así se queda; `.env.example` documenta cada
   variable sin valores.
@@ -284,7 +289,6 @@ dominio = editarlo aquí + en la CSP de `vercel.json` en el mismo commit.
 |---|---|---|
 | `*.supabase.co` (proyecto) | API REST + Auth (+ wss para Realtime si se usara) | `connect-src` |
 | `world.openfoodfacts.org` | Open Food Facts (EAN) | `connect-src` |
-| `api.nal.usda.gov` | USDA FoodData Central | `connect-src` |
 | `api.mymemory.translated.net` | Traducción EN→ES (ayuda visual) | `connect-src` |
 | `fonts.googleapis.com` | CSS de Google Fonts | `style-src` |
 | `fonts.gstatic.com` | Archivos de fuente | `font-src` |

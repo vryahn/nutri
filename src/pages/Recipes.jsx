@@ -5,7 +5,7 @@ import { cacheGet, cacheSet } from '../lib/cache.js';
 import { computeRecipePer100g, MICROS, MICROS_DEFAULT, round, isWaterSentinel } from '../lib/domain.js';
 import { useToast } from '../lib/useToast.js';
 import { AI_AVAILABLE, estimateRecipe, parseAmount, snapDensity } from '../lib/ai.js';
-import { searchFDC, fetchFDC, translateEnEs } from '../lib/sources.js';
+import { searchFDC, fetchFDC, translateEnEs, FDC_AVAILABLE } from '../lib/sources.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import UndoToast from '../components/UndoToast.jsx';
 import AmountField from '../components/AmountField.jsx';
@@ -15,7 +15,6 @@ import PortionsEditor from '../components/PortionsEditor.jsx';
 import { t, useLang, useUnits, fmtG, gToOz, ozToG } from '../lib/i18n.js';
 import { fetchFoodsForImport, parseIngredientLines } from '../lib/importer.js';
 
-const FDC_KEY = import.meta.env.VITE_FDC_KEY;
 const SOURCE_LABELS = { manual: 'Manual', gemini: 'IA', ia_personal: 'IA personal' };
 
 // ponytail: matchMedia instead of a custom resize observer; same pattern as Today.jsx.
@@ -1061,7 +1060,7 @@ function StagedIngredientCard({ ing, onFood, onGrams, onSave, onRemove, onSwapCa
 
   // USDA immediately on mount: searches and translates without the user asking.
   useEffect(() => {
-    if (!ing.usda_query || !FDC_KEY) return;
+    if (!ing.usda_query || !FDC_AVAILABLE) return;
     let alive = true;
     searchFDC(ing.usda_query).then(async (chips) => {
       if (!alive) return;
