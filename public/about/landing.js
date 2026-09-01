@@ -14,31 +14,30 @@ decTabs.forEach(t => t.addEventListener('click', () => {
   });
 }));
 
-// ES/EN toggle: data-en holds English text; Spanish original saved on first switch.
-const nodes = [...document.querySelectorAll('[data-en], [data-en-html]')];
+// Inglés como idioma base del HTML; data-es guarda la versión en español.
+const nodes = [...document.querySelectorAll('[data-es], [data-es-html]')];
 nodes.forEach(n => {
-  if (n.dataset.enHtml !== undefined) n.dataset.esHtml = n.innerHTML;
-  else n.dataset.es = n.textContent;
+  if (n.dataset.esHtml !== undefined) n.dataset.enHtml = n.innerHTML;
+  else n.dataset.en = n.textContent;
 });
 const btnES = document.getElementById('lang-es');
 const btnEN = document.getElementById('lang-en');
 function setLang(lang) {
   nodes.forEach(n => {
-    if (n.dataset.enHtml !== undefined) n.innerHTML = lang === 'en' ? n.dataset.enHtml : n.dataset.esHtml;
-    else n.textContent = lang === 'en' ? n.dataset.en : n.dataset.es;
+    if (n.dataset.esHtml !== undefined) n.innerHTML = lang === 'es' ? n.dataset.esHtml : n.dataset.enHtml;
+    else n.textContent = lang === 'es' ? n.dataset.es : n.dataset.en;
   });
   btnES.classList.toggle('on', lang === 'es');
   btnEN.classList.toggle('on', lang === 'en');
   btnES.setAttribute('aria-pressed', lang === 'es');
   btnEN.setAttribute('aria-pressed', lang === 'en');
   document.documentElement.lang = lang;
-  document.title = lang === 'en'
-    ? 'nutri. — nutrition tracking with laboratory-grade precision'
-    : 'nutri. — registro nutricional con precisión de laboratorio';
+  document.title = lang === 'es'
+    ? 'nutri. — registro nutricional con precisión de laboratorio'
+    : 'nutri. — nutrition tracking with laboratory-grade precision';
 }
 btnES.addEventListener('click', () => setLang('es'));
 btnEN.addEventListener('click', () => setLang('en'));
 
-// Idioma inicial según el navegador: el HTML viene en español, así que solo
-// hay que cambiar cuando el visitante no pide español.
-if (!(navigator.language || '').toLowerCase().startsWith('es')) setLang('en');
+// Español solo si el visitante lo pide.
+if ((navigator.language || '').toLowerCase().startsWith('es')) setLang('es');
