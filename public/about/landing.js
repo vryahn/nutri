@@ -32,6 +32,9 @@ function setLang(lang) {
   btnES.setAttribute('aria-pressed', lang === 'es');
   btnEN.setAttribute('aria-pressed', lang === 'en');
   document.documentElement.lang = lang;
+  document.title = lang === 'en'
+    ? 'nutri. — nutrition tracking with laboratory-grade precision'
+    : 'nutri. — registro nutricional con precisión de laboratorio';
 }
 btnES.addEventListener('click', () => setLang('es'));
 btnEN.addEventListener('click', () => setLang('en'));
