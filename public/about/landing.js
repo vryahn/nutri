@@ -35,3 +35,7 @@ function setLang(lang) {
 }
 btnES.addEventListener('click', () => setLang('es'));
 btnEN.addEventListener('click', () => setLang('en'));
+
+// Idioma inicial según el navegador: el HTML viene en español, así que solo
+// hay que cambiar cuando el visitante no pide español.
+if (!(navigator.language || '').toLowerCase().startsWith('es')) setLang('en');
