@@ -20,6 +20,9 @@ nodes.forEach(n => {
   if (n.dataset.esHtml !== undefined) n.dataset.enHtml = n.innerHTML;
   else n.dataset.en = n.textContent;
 });
+// Los aria-label también cambian de idioma; el inglés se guarda del DOM.
+const labelNodes = [...document.querySelectorAll('[data-es-label]')];
+labelNodes.forEach(n => { n.dataset.enLabel = n.getAttribute('aria-label'); });
 const btnES = document.getElementById('lang-es');
 const btnEN = document.getElementById('lang-en');
 function setLang(lang) {
@@ -31,6 +34,7 @@ function setLang(lang) {
   btnEN.classList.toggle('on', lang === 'en');
   btnES.setAttribute('aria-pressed', lang === 'es');
   btnEN.setAttribute('aria-pressed', lang === 'en');
+  labelNodes.forEach(n => n.setAttribute('aria-label', lang === 'es' ? n.dataset.esLabel : n.dataset.enLabel));
   document.documentElement.lang = lang;
   document.title = lang === 'es'
     ? 'nutri. — registro nutricional con precisión de laboratorio'
