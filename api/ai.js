@@ -14,7 +14,7 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 // Allowlist cerrada: un modelo fuera de esta lista se rechaza (400) antes de
 // tocar al proveedor — el proxy no es un relay abierto a cualquier endpoint.
 const ALLOWED = {
-  gemini: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-2.5-flash'],
+  gemini: ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-2.5-flash'],
   groq: ['qwen/qwen3.6-27b'],
   mistral: ['mistral-small-latest'],
   embed: ['gemini-embedding-001'],

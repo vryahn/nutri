@@ -86,6 +86,7 @@ function demoRecipe() {
 // the client cannot know which keys the server holds, so every step is attempted and
 // its 501 ("not configured") simply falls through to the next one. See callAI.
 const AI_CHAIN = [
+  { kind: 'gemini', model: 'gemini-3.8-flash' },
   { kind: 'gemini', model: 'gemini-3.7-flash' },
   { kind: 'gemini', model: 'gemini-3.6-flash' },
   { kind: 'gemini', model: 'gemini-3.5-flash' },
