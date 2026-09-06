@@ -6,6 +6,7 @@ import { cacheGet, cacheSet } from '../lib/cache.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
 import { outboxOps, onOutbox, setOutboxOwner, queueInsert, queueUpdate, queueDelete, applyOutbox, flushOutbox } from '../lib/outbox.js';
 import { prefetchFrequent, refreshFrequent, getFrequent } from '../lib/frequent.js';
+import { prefetchCatalog, searchCatalog, catalogFood } from '../lib/catalog.js';
 import { useToast } from '../lib/useToast.js';
 import { t, useLang, locale, useUnits, fmtG, fmtMl, mlToFlOz, flOzToMl, useAdherenceBands } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
@@ -626,6 +627,9 @@ export default function Today() {
     // On a slow connection the frequent-items query takes a while: it is fired here
     // (post-login) so that opening the add sheet is instant (it reads from the cache).
     prefetchFrequent();
+    // Fills the persisted catalog the first time, so a later cold start with no
+    // connection can still search and log.
+    prefetchCatalog();
     // LabelsModal lives in App.jsx above this page: no remount, it notifies via an event.
     window.addEventListener('labels-changed', loadLabels);
     return () => window.removeEventListener('labels-changed', loadLabels);
@@ -1911,9 +1915,12 @@ function useFoodMeta(foodId, recipeId) {
   const key = foodId ? `foodmeta:${foodId}` : recipeId ? `recipemeta:${recipeId}` : null;
   // SWR cache seed: reopening a card for the same food renders instantly
   // (portion chips included); the background refetch corrects it if it changed.
-  const [meta, setMeta] = useState(() => (key && cacheGet(key)) || null);
+  // Seed: what this food's card showed last, else its row in the cached catalog (the
+  // offline path — without it a food picked with no connection would log with no values).
+  const seed = () => (key && cacheGet(key)) || (foodId ? catalogFood(foodId) : null);
+  const [meta, setMeta] = useState(seed);
   useEffect(() => {
-    setMeta((key && cacheGet(key)) || null);
+    setMeta(seed());
     if (!key) return;
     let alive = true;
     const query = foodId
@@ -1976,14 +1983,29 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, initialItem, 
     const timer = setTimeout(async () => {
       const trimmed = query.trim();
       const q = trimmed.replace(/[,()]/g, ' ');
-      const [{ data: foods }, { data: recipes }] = await Promise.all([
-        supabase.from('foods').select('id,name,brand,source').or(`name.ilike.%${q}%,brand.ilike.%${q}%`).limit(8),
-        supabase.from('recipes').select('id,name').ilike('name', `%${q}%`).limit(8),
-      ]);
-      let foodHits = foods || [];
+      // Offline (or any failed query): search the persisted catalog instead of showing an
+      // empty result — being able to log without a connection is the point of caching it.
+      // Same fields, so the rest of the flow cannot tell the difference. A dropped
+      // connection surfaces as a rejected fetch, not as { error }, hence the try.
+      let foods = null;
+      let recipes = null;
+      let offline;
+      try {
+        const [f, r] = await Promise.all([
+          supabase.from('foods').select('id,name,brand,source').or(`name.ilike.%${q}%,brand.ilike.%${q}%`).limit(8),
+          supabase.from('recipes').select('id,name').ilike('name', `%${q}%`).limit(8),
+        ]);
+        offline = !!(f.error || r.error);
+        foods = f.data;
+        recipes = r.data;
+      } catch {
+        offline = true;
+      }
+      const local = offline ? searchCatalog(q) : null;
+      let foodHits = offline ? local.foods : foods || [];
       // Semantic fallback search: only when ilike yields few hits. It must never
       // break the normal search — embedText already returns null on any failure.
-      if (AI_AVAILABLE && trimmed.length >= 3 && foodHits.length < 8) {
+      if (!offline && AI_AVAILABLE && trimmed.length >= 3 && foodHits.length < 8) {
         try {
           const vec = await embedText(trimmed);
           if (vec) {
@@ -1997,7 +2019,7 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, initialItem, 
       const combined = [
         // Agua is logged from its own card, not as food
         ...foodHits.filter((f) => f.id !== waterFoodId).map((f) => ({ ...f, type: 'food' })),
-        ...(recipes || []).map((r) => ({ ...r, type: 'recipe' })),
+        ...(offline ? local.recipes : recipes || []).map((r) => ({ ...r, type: 'recipe' })),
       ];
       // base catalog (usda) last; stable, preserves the order within each group
       combined.sort((a, b) => (a.source === 'usda') - (b.source === 'usda'));

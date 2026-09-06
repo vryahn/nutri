@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js';
+import { cacheGet, cacheSet } from './cache.js';
 
 // Frequent items: simple count over a 30-day window, top 8, grams =
 // mode within the window. Window and metric chosen by backtest over the
@@ -16,7 +17,9 @@ function load() {
       .from('entry_nutrients')
       .select('food_id, recipe_id, item, brand, grams, meal_label_id')
       .gte('day', cutoff)
-      .then(({ data }) => data || []);
+      // Persisted (src/lib/cache.js): offline the query returns no data and the chips
+      // fall back to the last window we saw — the fastest way to log without a network.
+      .then(({ data }) => (data ? cacheSet('frequent', data) : cacheGet('frequent') || []));
   }
   return cache;
 }

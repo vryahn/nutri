@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
+import { FOOD_COLUMNS } from '../lib/catalog.js';
 import { useToast } from '../lib/useToast.js';
 import {
   MICROS, MICROS_DEFAULT, microGroups, round, kcalFromMacros, kcalSuspicious, macrosImplausible,
@@ -137,7 +138,7 @@ export default function Foods() {
     // on the tab. The skeleton only appears when there is nothing to paint.
     const isBase = !query.trim();
     if (!(isBase && cacheGet('foods'))) setLoading(true);
-    let req = supabase.from('foods').select('id,name,brand,kcal,protein_g,carbs_g,fat_g,micros,portions,density_g_ml,source,owner,reviewed_at').order('name');
+    let req = supabase.from('foods').select(FOOD_COLUMNS).order('name');
     if (!isBase) req = req.ilike('name', `%${query.trim()}%`);
     const { data, error } = await req;
     if (error) { showToast(t('No se pudieron cargar los alimentos — revisa tu conexión.')); setLoading(false); return; }
