@@ -442,6 +442,10 @@
           <span class="k" data-es="Integridad de datos">Data integrity</span>
           <span class="t" data-es="La exactitud gana todo trade-off">Accuracy wins every trade-off</span>
         </button>
+        <button role="tab" aria-selected="false" data-p="p-offline">
+          <span class="k" data-es="Fiabilidad">Reliability</span>
+          <span class="t" data-es="Escribe local, sincroniza después">Write local, sync later</span>
+        </button>
         <button role="tab" aria-selected="false" data-p="p-ai">
           <span class="k" data-es="IA con paracaídas">AI with guardrails</span>
           <span class="t" data-es="Cascada custodiada por evals">A cascade gated by evals</span>
@@ -492,6 +496,32 @@
           </div>
         </article>
 
+        <article class="dec-panel" id="p-offline" role="tabpanel" hidden>
+          <div class="dec-copy">
+            <span class="k" data-es="Fiabilidad">Reliability</span>
+            <h3 data-es="Escribe local, sincroniza después">Write local, sync later</h3>
+            <p data-es="En el metro, esperar al servidor antes de mover la interfaz significaba registrar la misma comida dos o tres veces. Ahora el registro entra en una cola local y la fila aparece en el mismo toque; la red ocurre detrás.">On a weak connection, waiting for the server before moving the interface meant logging the same meal two or three times. The entry now lands in a local queue and the row appears on the same tap; the network happens behind it.</p>
+            <p data-es="El id de la fila lo genera el cliente, así que reintentar una escritura que ya había llegado choca contra la llave primaria en vez de duplicarla. El catálogo también se cachea: la app abre sin conexión, busca, registra y sincroniza al volver.">The row's id is generated on the client, so replaying a write that already arrived collides on the primary key instead of duplicating it. The catalog is cached too: the app opens with no connection, searches, logs, and syncs when it returns.</p>
+          </div>
+          <div class="dec-viz">
+            <div class="flow big mono">
+              <span class="stepchip anim" style="--i:0" data-es="toque">tap</span>
+              <span class="arr anim" style="--i:0">→</span>
+              <span class="stepchip anim" style="--i:1">localStorage</span>
+              <span class="arr anim" style="--i:1">→</span>
+              <span class="stepchip ok anim" style="--i:2" data-es="fila en pantalla · 0 ms">row on screen · 0 ms</span>
+            </div>
+            <div class="flow big mono">
+              <span class="stepchip anim" style="--i:3" data-es="vuelve la red">network returns</span>
+              <span class="arr anim" style="--i:3">→</span>
+              <span class="stepchip anim" style="--i:4">insert id=a1f0…</span>
+              <span class="arr anim" style="--i:4">→</span>
+              <span class="stepchip ok anim" style="--i:5" data-es="23505 = ya estaba ✓">23505 = already there ✓</span>
+            </div>
+            <p class="viz-note anim" style="--i:5" data-es="Reproducir la cola es idempotente: el mismo id no puede entrar dos veces, así que ningún reintento —ni ningún toque de más— duplica un registro.">Replaying the queue is idempotent: the same id cannot land twice, so no retry — and no extra tap — ever duplicates an entry.</p>
+          </div>
+        </article>
+
         <article class="dec-panel" id="p-ai" role="tabpanel" hidden>
           <div class="dec-copy">
             <span class="k" data-es="IA con paracaídas">AI with guardrails</span>
@@ -501,16 +531,16 @@
           </div>
           <div class="dec-viz">
             <div class="flow big mono">
-              <span class="stepchip anim" style="--i:0">gemini-3.5-flash <b class="x">✗ timeout</b></span>
+              <span class="stepchip anim" style="--i:0">gemini-3.8-flash <b class="x">✗ timeout</b></span>
               <span class="arr anim" style="--i:1">→</span>
               <span class="stepchip anim" style="--i:1">gemini-2.5-flash <b class="x">✗ 429</b></span>
               <span class="arr anim" style="--i:2">→</span>
-              <span class="stepchip ok anim" style="--i:2">mistral-small ✓</span>
+              <span class="stepchip ok anim" style="--i:2">qwen3.6-27b ✓</span>
             </div>
             <div class="flow big mono">
               <span class="stepchip ok anim" style="--i:3" data-es="✓ npm run eval — regresión vs baseline = no hay deploy">✓ npm run eval — regression vs baseline = no deploy</span>
             </div>
-            <p class="viz-note anim" style="--i:3" data-es="El schema de Gemini se traduce a JSON Schema estricto para Mistral — misma salida estructurada, otro dialecto.">The Gemini schema is translated to strict JSON Schema for Mistral — same structured output, different dialect.</p>
+            <p class="viz-note anim" style="--i:3" data-es="Siete modelos en la cadena. El schema de Gemini se traduce a JSON Schema estricto para Groq y Mistral — misma salida estructurada, otro dialecto.">Seven models deep. The Gemini schema is translated to strict JSON Schema for Groq and Mistral — same structured output, different dialect.</p>
           </div>
         </article>
 
@@ -621,7 +651,7 @@
   <section class="wrap">
     <div class="sec-head">
       <h2 data-es="Un stack deliberadamente pequeño">A deliberately small stack</h2>
-      <p data-es="~42 archivos fuente, cero TypeScript, sin librería de estado. La contención es un feature: cada dependencia debe justificarse en una línea.">~42 source files, zero TypeScript, no state library. Restraint is a feature: every dependency must justify itself in one line.</p>
+      <p data-es="~45 archivos fuente, cero TypeScript, sin librería de estado. La contención es un feature: cada dependencia debe justificarse en una línea.">~45 source files, zero TypeScript, no state library. Restraint is a feature: every dependency must justify itself in one line.</p>
     </div>
     <div class="arch">
       <div class="arch-row">
@@ -632,7 +662,7 @@
       <div class="arch-row">
         <div class="node"><b data-es="Foto o etiqueta">Photo or label</b><span data-es="compresión canvas → 1024 px">canvas compression → 1024 px</span></div>
         <div class="link"><span class="a"></span><span class="mono">response_schema JSON</span></div>
-        <div class="node"><b data-es="Cascada IA">AI cascade</b><span>Gemini 3.5 → 2.5 → Mistral</span></div>
+        <div class="node"><b data-es="Cascada IA">AI cascade</b><span>Gemini 3.8 → … → 2.5 → Groq → Mistral</span></div>
       </div>
       <div class="arch-row">
         <div class="node"><b data-es="Clientes MCP">MCP clients</b><span>Claude · ChatGPT · Perplexity…</span></div>
@@ -640,13 +670,13 @@
         <div class="node"><b data-es="La misma bitácora">The same log</b><span data-es="8 tools: registrar, buscar, auditar">8 tools: log, search, audit</span></div>
       </div>
       <div class="arch-row">
-        <div class="node"><b>git push main</b><span data-es="GitHub Actions: lint · 163 tests · build">GitHub Actions: lint · 163 tests · build</span></div>
+        <div class="node"><b>git push main</b><span data-es="GitHub Actions: lint · 186 tests · build">GitHub Actions: lint · 186 tests · build</span></div>
         <div class="link"><span class="a"></span><span class="mono" data-es="CI verde = deploy">green CI = deploy</span></div>
         <div class="node"><b>Vercel</b><span data-es="producción — sin staging, verificado en local">production — no staging, verified locally</span></div>
       </div>
     </div>
     <div class="stack mono">
-      <span>React</span><span>Supabase · Postgres + RLS</span><span>pgvector</span><span>Tailwind</span><span>Recharts</span><span>Vite PWA</span><span>Gemini + Mistral</span><span>MCP</span><span>GitHub Actions</span><span>Vercel</span>
+      <span>React</span><span>Supabase · Postgres + RLS</span><span>pgvector</span><span>Tailwind</span><span>Recharts</span><span>Vite PWA</span><span>Gemini · Groq · Mistral</span><span>MCP</span><span>GitHub Actions</span><span>Vercel</span>
     </div>
   </section>
 
