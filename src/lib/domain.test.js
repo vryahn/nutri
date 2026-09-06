@@ -9,6 +9,7 @@ import {
   DASH_VARS_BY_KEY, axisUnits, buildDashSeries, dashVarTarget,
   autoAgg, resolveAgg, reduceBucket, bucketRows, mergeFoodResults, normalizeTo100,
   cleanBounds, classifyBounds, classifyNutrient, impliedBounds, effectiveBound, draftToRows,
+  entryNutrients,
 } from './domain.js';
 
 describe('temporal aggregation of custom charts', () => {
@@ -533,5 +534,35 @@ describe('bounds explícitos (targets.bounds)', () => {
     expect(impliedBounds('carbs_g', 200)).toEqual({ min: 170, max: 230 });
     expect(impliedBounds('sodio_mg', null)).toEqual({ min: SODIUM_FLOOR_MG, max: SODIUM_CEILING_MG });
     expect(impliedBounds('kcal', null)).toEqual({ min: null, max: null });
+  });
+});
+
+describe('entryNutrients (client replica of the entry_nutrients view)', () => {
+  const meta = {
+    kcal: 89, protein_g: 1.09, carbs_g: 22.84, fat_g: 0.33,
+    micros: { potasio_mg: 358, sodio_mg: 1, magnesio_mg: 27 },
+  };
+
+  it('150 g of a food is 1.5x its per-100 g values, macros and micros alike', () => {
+    const r = entryNutrients({ id: 'a', day: '2026-09-05', grams: 150 }, meta, { item: 'Plátano' });
+    expect(r.kcal).toBe(133.5);
+    expect(r.protein_g).toBe(1.64); // round(1.635, 2), same as the view
+    expect(r.carbs_g).toBe(34.26);
+    expect(r.fat_g).toBe(0.5);
+    expect(r.micros).toEqual({ potasio_mg: 537, sodio_mg: 1.5, magnesio_mg: 40.5 });
+    expect(r.item).toBe('Plátano');
+  });
+
+  it('100 g leaves the values untouched', () => {
+    const r = entryNutrients({ grams: 100 }, meta);
+    expect([r.kcal, r.protein_g, r.carbs_g, r.fat_g]).toEqual([89, 1.09, 22.84, 0.33]);
+  });
+
+  it('without meta the nutrients are null, never an invented zero', () => {
+    const r = entryNutrients({ id: 'a', grams: 150 }, null);
+    expect(r.kcal).toBeNull();
+    expect(r.protein_g).toBeNull();
+    expect(r.micros).toEqual({});
+    expect(r.grams).toBe(150);
   });
 });

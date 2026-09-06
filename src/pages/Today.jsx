@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste, ArrowLeftRight, Upload, Bookmark } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste, ArrowLeftRight, Upload, Bookmark, CloudOff } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
+import { outboxOps, onOutbox, setOutboxOwner, queueInsert, queueUpdate, queueDelete, applyOutbox, flushOutbox } from '../lib/outbox.js';
 import { prefetchFrequent, refreshFrequent, getFrequent } from '../lib/frequent.js';
 import { useToast } from '../lib/useToast.js';
 import { t, useLang, locale, useUnits, fmtG, fmtMl, mlToFlOz, flOzToMl, useAdherenceBands } from '../lib/i18n.js';
@@ -26,6 +27,7 @@ import {
   SODIUM_HIGH_MG,
   POTASSIUM_HIGH_MG,
   round,
+  entryNutrients,
   MICROS,
   MICROS_DEFAULT,
   microGroups,
@@ -67,6 +69,9 @@ const CARD_DEFAULTS = {
   mini: { mode: 'delta', items: BASE_ITEMS },
 };
 const VIEW_CYCLE = ['estado', 'objetivos', 'mini'];
+// Per-100 g of the user's own "Agua" food: grams = ml, no macros. Lets a queued glass
+// render without a round-trip to read the food back.
+const WATER_META = { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, micros: { agua_ml: 100 } };
 const VIEW_NAMES = { estado: 'Estado actual', objetivos: 'Objetivos', mini: 'Mini' };
 
 function cardCfg(prefs, view) {
@@ -508,9 +513,9 @@ export default function Today() {
   const [prefs, setPrefs] = useState({ water_glass_ml: 1000, water_food_id: null, today_view: 'estado' });
   const [waterSettingsOpen, setWaterSettingsOpen] = useState(false);
   const [cardConfigOpen, setCardConfigOpen] = useState(false);
-  // Optimistic water: in-flight ml (pending insert/delete) to render the glasses
-  // instantly without waiting for the Supabase round-trip. Deducted upon resolution.
-  const [pendingWaterMl, setPendingWaterMl] = useState(0);
+  // Outbox: writes queued locally (see src/lib/outbox.js). They render as entries
+  // right away — the day is the queue applied on top of the server rows.
+  const [pendingOps, setPendingOps] = useState(outboxOps);
   const [undoData, setUndoData] = useState(null); // { entry, timer } after a delete, for "Deshacer"
   const [undoTpl, setUndoTpl] = useState(null); // { list, timer }: prefs.meal_templates prior to deleting a template, for "Deshacer"
   const [activeEntry, setActiveEntry] = useState(null); // entry being dragged (for the DragOverlay ghost)
@@ -565,6 +570,17 @@ export default function Today() {
     if (cached) setEntries(cached);
     loadDay();
   }, [date]);
+
+  // The queue drains on its own (on 'online' and on returning to the app); here we
+  // re-render with it, and refetch once something actually lands so the server's
+  // numbers replace the locally computed ones.
+  useEffect(() => onOutbox(({ synced, dropped }) => {
+    setPendingOps(outboxOps());
+    if (synced) loadDay(true);
+    if (dropped) showToast(t('No se pudo guardar un registro — se descartó.'));
+  }), [date]);
+
+  useEffect(() => { flushOutbox(); }, []);
 
   useEffect(() => {
     const el = summaryCardRef.current;
@@ -641,6 +657,7 @@ export default function Today() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     setUserId(session.user.id);
+    setOutboxOwner(session.user.id); // queued writes are never sent under another account
     const { data } = await supabase.from('prefs').select('data').maybeSingle();
     if (data?.data) setPrefs((p) => ({ ...p, ...data.data }));
   }
@@ -691,8 +708,9 @@ export default function Today() {
     // Validate the cache: a catalog import/cleanup may have deleted the food and
     // left the id dead (inserts would silently fail on the FK).
     if (prefs.water_food_id) {
-      const { data } = await supabase.from('foods').select('id').eq('id', prefs.water_food_id).maybeSingle();
-      if (data) return data.id;
+      const { data, error } = await supabase.from('foods').select('id').eq('id', prefs.water_food_id).maybeSingle();
+      // Offline the check cannot run: trust the cached id (the insert is queued anyway).
+      if (data || error) return prefs.water_food_id;
     }
     let { data: food } = await supabase.from('foods').select('id').eq('name', 'Agua').eq('owner', userId).maybeSingle();
     if (!food) {
@@ -702,34 +720,25 @@ export default function Today() {
         .select('id')
         .single());
     }
+    if (!food) return null;
     await savePrefs({ water_food_id: food.id });
     return food.id;
   }
 
   async function addWater(ml) {
     if (!userId || !(ml > 0)) return;
-    setPendingWaterMl((p) => p + ml);
-    try {
-      const foodId = await getWaterFoodId();
-      const { error } = await supabase.from('entries').insert({ day: date, grams: ml, food_id: foodId });
-      if (error) throw error;
-      await loadDay(true);
-    } catch {
+    const foodId = await getWaterFoodId();
+    if (!foodId) {
       showToast(t('Error al registrar agua.'));
-    } finally {
-      setPendingWaterMl((p) => p - ml);
+      return;
     }
+    const payload = { id: crypto.randomUUID(), day: date, grams: ml, meal_label_id: null, food_id: foodId, recipe_id: null };
+    queueInsert(payload, entryNutrients(payload, WATER_META, { item: 'Agua' }));
   }
 
-  async function undoWater() {
+  function undoWater() {
     const last = waterEntries[waterEntries.length - 1];
-    if (!last) return;
-    const ml = Number(last.grams);
-    setPendingWaterMl((p) => p - ml);
-    const { error } = await supabase.from('entries').delete().eq('id', last.id);
-    if (!error) await loadDay(true);
-    else showToast(t('Error al registrar agua.'));
-    setPendingWaterMl((p) => p + ml);
+    if (last) queueDelete(last.id);
   }
 
   async function loadTargets() {
@@ -857,14 +866,8 @@ export default function Today() {
 
   // Unified delete (swipe/hover icon in Hoy and the editor's "Borrar" button): optimistic
   // UI + toast with "Deshacer" for 5 s that reinserts the entry exactly as it was.
-  async function deleteEntry(entry) {
-    setEntries((es) => es.filter((x) => x.id !== entry.id));
-    const { error } = await supabase.from('entries').delete().eq('id', entry.id);
-    if (error) {
-      loadDay(true);
-      showToast(t('Error al borrar.'));
-      return;
-    }
+  function deleteEntry(entry) {
+    queueDelete(entry.id);
     setUndoData((prev) => {
       if (prev?.timer) clearTimeout(prev.timer);
       const timer = setTimeout(() => setUndoData(null), 5000);
@@ -872,13 +875,14 @@ export default function Today() {
     });
   }
 
-  async function handleUndo() {
+  // Reinserts it as a new row (the original id is gone): same payload, fresh uuid.
+  function handleUndo() {
     if (!undoData) return;
     clearTimeout(undoData.timer);
     const { day, grams, meal_label_id, food_id, recipe_id } = undoData.entry;
     setUndoData(null);
-    const { error } = await supabase.from('entries').insert({ day, grams, meal_label_id, food_id, recipe_id });
-    if (!error) loadDay(true);
+    const payload = { id: crypto.randomUUID(), day, grams, meal_label_id, food_id, recipe_id };
+    queueInsert(payload, { ...undoData.entry, id: payload.id });
   }
 
   // Inserts `sourceDay`'s entries into the current date. Reused by "Ayer"
@@ -992,8 +996,7 @@ export default function Today() {
   // Deletes the day's foods (not water, which is tracked by glasses). Destructive
   // and irreversible: confirms first with ConfirmSheet.
   function handleDeleteDay() {
-    const foods = entries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id));
-    if (foods.length === 0) {
+    if (foodEntries.length === 0) {
       showToast(t('Este día no tiene alimentos.'));
       return;
     }
@@ -1001,12 +1004,19 @@ export default function Today() {
   }
 
   async function doDeleteDay() {
-    const foods = entries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id));
-    const { error } = await supabase.from('entries').delete().in('id', foods.map((e) => e.id));
+    const foods = foodEntries;
     setConfirmingDeleteDay(false);
-    if (error) {
-      showToast(t('Error al borrar.'));
-      return;
+    // Queued rows are removed from the queue (the server never saw them); the rest go
+    // in one delete. ponytail: bulk stays online-only, same as copy/paste and templates.
+    const pending = foods.filter((e) => e._pending);
+    pending.forEach((e) => queueDelete(e.id));
+    const synced = foods.filter((e) => !e._pending);
+    if (synced.length) {
+      const { error } = await supabase.from('entries').delete().in('id', synced.map((e) => e.id));
+      if (error) {
+        showToast(t('Error al borrar.'));
+        return;
+      }
     }
     showToast(t('%n registros borrados.').replace('%n', foods.length));
     loadDay(true);
@@ -1033,7 +1043,7 @@ export default function Today() {
     actions.push({ key: 'borrar', label: t('Borrar día'), icon: Trash2, onClick: handleDeleteDay });
     setSectionMenu(actions);
     return () => setSectionMenu([]);
-  }, [date, copiedDay, prefs.water_food_id, entries, lang]);
+  }, [date, copiedDay, prefs.water_food_id, entries, pendingOps, lang]);
 
   // "Guardar y registrar" from Alimentos: /  arrives with state.logFood, preselecting
   // it in the add-entry form (rail on lg+, sheet on <lg). Read once at mount, then
@@ -1064,8 +1074,9 @@ export default function Today() {
     }
   }
 
-  const waterEntries = entries.filter((e) => e.food_id && e.food_id === prefs.water_food_id);
-  const foodEntries = entries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id));
+  const dayEntries = applyOutbox(entries, date, pendingOps);
+  const waterEntries = dayEntries.filter((e) => e.food_id && e.food_id === prefs.water_food_id);
+  const foodEntries = dayEntries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id));
   const waterMl = waterEntries.reduce((s, e) => s + Number(e.grams), 0); // density 1: grams = ml
 
   // Config of the active layout and of the mini (the fixed mini-summary shares it).
@@ -1157,7 +1168,7 @@ export default function Today() {
               setQuickAddKey((k) => k + 1);
               setQuickAddInitialLabel(null);
               setLogItem(null);
-              loadDay(true).then(() => scrollToSection(labelId));
+              scrollToSection(labelId);
             }}
           />
         </div>
@@ -1223,15 +1234,12 @@ export default function Today() {
                 deleteEntry(editing);
                 setEditing(null);
               }}
-              onSaved={() => {
-                setEditing(null);
-                loadDay(true);
-              }}
+              onSaved={() => setEditing(null)}
             />
           </div>
         ) : (
           <WaterCard
-            waterMl={Math.max(0, waterMl + pendingWaterMl)}
+            waterMl={waterMl}
             goalMl={Number(target?.micros?.agua_ml) || 0}
             glassMl={prefs.water_glass_ml}
             onGlass={() => addWater(prefs.water_glass_ml)}
@@ -1372,7 +1380,7 @@ export default function Today() {
           onAdded={(labelId) => {
             setAdding(null);
             setLogItem(null);
-            loadDay(true).then(() => scrollToSection(labelId));
+            scrollToSection(labelId);
           }}
         />
       )}
@@ -1389,10 +1397,7 @@ export default function Today() {
             deleteEntry(editing);
             setEditing(null);
           }}
-          onSaved={() => {
-            setEditing(null);
-            loadDay(true);
-          }}
+          onSaved={() => setEditing(null)}
         />
       )}
 
@@ -1619,6 +1624,7 @@ function SwipeCard({ entry: e, labelId, editing, onEdit, onDelete }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `card-${e.id}`,
     data: { type: 'card', entryId: e.id, labelId },
+    disabled: e._pending, // reordering writes sort_order by id: pointless before it syncs
   });
   // Sortable's transform → the neighboring cards "make room". The active card is
   // rendered by the DragOverlay, so we do not move it here (!isDragging).
@@ -1694,7 +1700,8 @@ function CardBody({ entry: e }) {
             K {round(Number(e.micros.potasio_mg), 0)}
           </span>
         )}
-        <span className="font-mono tabular-nums text-text-2">{e.kcal} kcal</span>
+        {e._pending && <CloudOff size={14} className="text-text-3 shrink-0" aria-label={t('Pendiente de sincronizar')} />}
+        <span className="font-mono tabular-nums text-text-2">{e.kcal == null ? '—' : e.kcal} kcal</span>
       </div>
     </>
   );
@@ -2030,26 +2037,28 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, initialItem, 
     }
   }
 
-  async function handleSubmit(e) {
+  // Queued, not awaited: the sheet closes and the card appears on the same tap. That is
+  // the whole point — the old await left the UI frozen on a weak connection and the user
+  // logged the same food two or three times.
+  function handleSubmit(e) {
     e.preventDefault();
     const finalGrams = grams === '' ? presetGrams : grams;
     if (!selected || !finalGrams) return;
     const payload = {
+      id: crypto.randomUUID(),
       day: date,
       grams: Number(finalGrams),
       meal_label_id: labelId || null,
       food_id: selected.type === 'food' ? selected.id : null,
       recipe_id: selected.type === 'recipe' ? selected.id : null,
     };
-    const { error } = await supabase.from('entries').insert(payload);
-    if (!error) {
-      onAdded(labelId || null);
-      // Reloads in the background; updates the list if the form is still mounted (lg+ rail).
-      refreshFrequent()
-        .then(() => getFrequent(initialLabelId, waterFoodId))
-        .then(setFrequent)
-        .catch(() => {});
-    }
+    queueInsert(payload, entryNutrients(payload, foodMeta, { item: selected.name, brand: selected.brand }));
+    onAdded(labelId || null);
+    // Reloads in the background; updates the list if the form is still mounted (lg+ rail).
+    refreshFrequent()
+      .then(() => getFrequent(initialLabelId, waterFoodId))
+      .then(setFrequent)
+      .catch(() => {});
   }
 
   return (
@@ -2173,14 +2182,12 @@ function EditEntryForm({ entry, labels, favMicros, onDelete, onSaved, onPreview 
   }, [foodMeta, grams, entry]);
   useEffect(() => () => onPreview?.(null), []); // cleans up on unmount (close/save)
 
-  async function handleSubmit(e) {
+  function handleSubmit(e) {
     e.preventDefault();
     const finalGrams = grams === '' ? entry.grams : Number(grams);
-    const { error } = await supabase
-      .from('entries')
-      .update({ grams: finalGrams, meal_label_id: labelId || null })
-      .eq('id', entry.id);
-    if (!error) onSaved();
+    const patch = { grams: finalGrams, meal_label_id: labelId || null };
+    queueUpdate(entry.id, patch, entryNutrients({ ...entry, ...patch }, foodMeta, { item: entry.item, brand: entry.brand, meal: entry.meal }));
+    onSaved();
   }
 
   return (

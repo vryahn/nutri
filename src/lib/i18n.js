@@ -590,6 +590,8 @@ const EN = {
   'Error al borrar.': 'Error deleting.',
   '%n registros borrados.': '%n entries deleted.',
   'Error al registrar agua.': 'Error logging water.',
+  'Pendiente de sincronizar': 'Waiting to sync',
+  'No se pudo guardar un registro — se descartó.': 'A record could not be saved — it was discarded.',
   'Alto en sodio': 'High in sodium',
   'Alto en potasio': 'High in potassium',
   G: 'F', // abbreviation of Grasa/Fat on the Today cards

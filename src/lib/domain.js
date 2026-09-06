@@ -1084,6 +1084,31 @@ export function eanChecksumValid(digits) {
   return sum % 10 === 0;
 }
 
+// Client-side replica of the SQL view nutri.entry_nutrients for ONE row: an entry that
+// is still queued in the outbox renders with the same numbers the view will return once
+// it syncs. If you change the view, change this (same rule as computeRecipePer100g).
+// `meta` is the food's (or recipe's) per-100 g row; without it the nutrients stay null
+// rather than inventing zeros — the card shows the amount and a "pending" mark.
+export function entryNutrients(entry, meta, extra = {}) {
+  const f = Number(entry.grams) / 100;
+  const scale = (v, d) => (v == null ? null : round(Number(v) * f, d));
+  return {
+    ...entry,
+    item: extra.item ?? null,
+    brand: extra.brand ?? null,
+    meal: extra.meal ?? null,
+    sort_order: null,
+    kcal: meta ? scale(meta.kcal, 1) : null,
+    protein_g: meta ? scale(meta.protein_g, 2) : null,
+    carbs_g: meta ? scale(meta.carbs_g, 2) : null,
+    fat_g: meta ? scale(meta.fat_g, 2) : null,
+    // jsonb_scale rounds to 3 decimals
+    micros: Object.fromEntries(
+      Object.entries(meta?.micros || {}).map(([k, v]) => [k, round(Number(v) * f, 3)])
+    ),
+  };
+}
+
 // Client-side replica of the SQL view nutri.recipe_per_100g (§4.3).
 export function computeRecipePer100g(ingredients, cookedWeightG) {
   const totalGrams = ingredients.reduce((sum, i) => sum + Number(i.grams || 0), 0);
