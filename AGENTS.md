@@ -30,7 +30,9 @@ supabase/migrations/     # migraciones incrementales, todas aplicadas: 001 prefs
                           # 014 meal_labels.archived_at (borrado suave: archivar en vez de borrar) ·
                           # 015 catálogo base compartido (144 foods USDA, owner null) · 016 log_entry por id ·
                           # 017 foods.embedding vector(768) + RPC match_foods (búsqueda semántica, pgvector) ·
-                          # 018 targets.bounds (mín/máx explícitos por nutriente)
+                          # 018 targets.bounds (mín/máx explícitos por nutriente) ·
+                          # 019 demo sandbox por visitante (anonymous sign-in, seed_demo + cleanup_demo_users vía pg_cron) ·
+                          # 020 seed_demo(lang): demo en el idioma del visitante (sustituye a seed_demo() de la 019)
 src/lib/supabase.js      # createClient, schema 'nutri'
 src/lib/domain.js        # MICROS, resolución de targets, adherencia, fórmula de recetas, reorderLabels
 src/lib/sources.js       # clientes Open Food Facts y USDA FDC, por 100 g, mapeados a claves MICROS
