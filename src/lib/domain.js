@@ -710,10 +710,11 @@ function buildScopedRows(phaseRows, scope, deltaCarbsG, rulesCfg, validFrom, app
     const inScope = !scope || scope.includes(dow);
     let carbs = src.carbs_g, kcal = src.kcal;
     if (inScope && carbs != null && kcal != null) {
-      const newCarbs = round(carbs + deltaCarbsG, 2);
       let newKcal = round(kcal + deltaCarbsG * 4, 1);
       if (rulesCfg.kcal_min != null) newKcal = Math.max(newKcal, rulesCfg.kcal_min);
       if (rulesCfg.kcal_max != null) newKcal = Math.min(newKcal, rulesCfg.kcal_max);
+      // Carbs follow the clamped kcal, so a partial clamp never leaves them inconsistent.
+      const newCarbs = round(carbs + (newKcal - kcal) / 4, 2);
       if (newKcal !== kcal) changed = true;
       carbs = newCarbs; kcal = newKcal;
     }
