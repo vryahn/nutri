@@ -47,15 +47,16 @@ src/lib/frequent.js      # frecuentes de Hoy: ventana 30 d, top 8, gramos = moda
 src/lib/sectionMenu.js   # store módulo-nivel para el menú de sección de la página activa
 src/lib/outbox.js        # cola de escrituras de `entries` en localStorage: la UI escribe local y sincroniza en segundo plano
 src/lib/useOutsideClose.js · useToast.js   # hooks compartidos
-src/lib/*.test.js        # vitest: domain, sources, ai, importer, derivedBody (99 tests)
-src/pages/               # Login, Today, Foods, Recipes, Targets, Dashboard, Body (una por tab)
-src/components/          # 17 extraídos: Sheet/ConfirmSheet/ImportSheet/ProfileSheet/RegionSheet/SettingsSheet,
+src/lib/*.test.js        # vitest: domain, sources, ai, apiAi, importer, derivedBody, mcp, csp, catalog, outbox (187 tests)
+src/pages/               # Login, Today, Foods, Recipes, Targets, Dashboard, Body (una por tab) + OAuthConsent (MCP)
+src/components/          # 20 extraídos: Sheet/ConfirmSheet/ImportSheet/ProfileSheet/RegionSheet/SettingsSheet/PasswordSheet,
                           # LabelsModal, UserMenu (tema+idioma+perfil), AmountField, AiDataCard, CustomChart,
-                          # Hint, SwipeToDelete, UndoToast, SortTh, PageSkeleton, ErrorBoundary
+                          # Hint, SwipeToDelete, UndoToast, SortTh, PageSkeleton, ErrorBoundary,
+                          # PortionsEditor, TargetsWizard
 src/App.jsx              # router, guard de sesión, tab bar
 brand/                   # manual de marca Nutrimetry (nutrimetry-brand.html)
 evals/                    # golden set + regresiones puntuadas de la extracción IA (npm run eval, NUNCA en CI)
-.github/workflows/       # ci.yml (lint+test+build en cada push), keepalive.yml (semanal), backup.yml (mensual)
+.github/workflows/       # ci.yml (lint+test+build en cada push), keepalive.yml (semanal), backup.yml (semanal, cifrado)
 ```
 
 **Identidad visual:** marca PROPIA de Nutrimetry (no la personal de Bryan). Paleta **"Petróleo"**: base tinta verdeazulada `#071010` + acento turquesa `#069C92` (`--accent-deep #028078` para botones AA con `--on-accent`); display **Space Grotesk**, cuerpo Inter, datos JetBrains Mono; logo "medidor n." (n geométrica como path en `public/icon.svg`, punto turquesa = punto de lectura). Todo el color de la app sale de los tokens de `src/index.css` — recolorear = editar tokens, no JSX. `brand/nutrimetry-brand.html` ya está sincronizado con la paleta Petróleo (regenerado 2026-07-12).
@@ -108,7 +109,7 @@ Recordar: vistas con `security_invoker = true`; nuevas tablas necesitan RLS + po
 - GitHub Actions (secrets ya configurados: `SUPABASE_URL`, `ANON_KEY`, `SUPABASE_DB_URL`):
   - `ci.yml` — lint + test + build en cada push a main.
   - `keepalive.yml` — lunes 06:00 UTC, evita la pausa del free tier.
-  - `backup.yml` — día 1 de cada mes, `pg_dump` como artefacto (retención 90 días). ⚠ Solo respalda Postgres: el bucket de Storage `body-photos` (fotos de progreso, migración 013) NO entra en el `pg_dump`; si esas fotos importan, respaldarlas aparte.
+  - `backup.yml` — lunes 06:00 UTC, `pg_dump` cifrado con GPG (passphrase en `BACKUP_PASSPHRASE`) como artefacto (retención 90 días). ⚠ Solo respalda Postgres: el bucket de Storage `body-photos` (fotos de progreso, migración 013) NO entra en el `pg_dump`; si esas fotos importan, respaldarlas aparte.
 
 ### Git hooks (locales, no versionados — re-crear en clone nuevo)
 

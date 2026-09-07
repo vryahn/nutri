@@ -270,7 +270,7 @@ esquema compromete la misma base de datos** — no se ignoran, se enrutan.
 
 | Cadencia | Tarea |
 |---|---|
-| Mensual | `npm audit` + `npm outdated`; advisors de Supabase (security + performance); verificar que el backup del día 1 corrió y su artefacto está **cifrado**; revisar consumo de las keys de IA/FDC. |
+| Mensual | `npm audit` + `npm outdated`; advisors de Supabase (security + performance); verificar que el último backup semanal (lunes) corrió y su artefacto está **cifrado**; revisar consumo de las keys de IA/FDC. |
 | Trimestral | Actualizar dependencias menores/patch; evaluar mayores pendientes (una línea de decisión: se hace / se difiere y por qué). |
 | Semestral | Restore drill del backup (§3.5); releer esta biblia y `CLAUDE.md` contra la realidad del repo y corregir lo desactualizado. |
 | Al tocar DDL | Advisors inmediatamente después (no esperar al mensual). |
