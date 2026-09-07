@@ -33,6 +33,7 @@ import {
   MICROS_DEFAULT,
   microGroups,
   mergeFoodResults,
+  evalRules,
 } from '../lib/domain.js';
 import { AI_AVAILABLE, embedText } from '../lib/ai.js';
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, closestCenter, closestCorners, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
@@ -519,6 +520,13 @@ export default function Today() {
   const [pendingOps, setPendingOps] = useState(outboxOps);
   const [undoData, setUndoData] = useState(null); // { entry, timer } after a delete, for "Deshacer"
   const [undoTpl, setUndoTpl] = useState(null); // { list, timer }: prefs.meal_templates prior to deleting a template, for "Deshacer"
+  // Phase rules (migration 021): recent weight + intake signals for evalRules.
+  const [bodyMetrics35, setBodyMetrics35] = useState([]);
+  const [dailyTotals35, setDailyTotals35] = useState([]);
+  const [ruleResult, setRuleResult] = useState(null); // evalRules() result pending a manual "Aplicar" (auto:false)
+  const [ruleApplying, setRuleApplying] = useState(false);
+  const [ruleUndo, setRuleUndo] = useState(null); // { validFrom, timer } after an auto-applied rule, for "Deshacer"
+  const ruleAutoAppliedRef = useRef(new Set()); // valid_from already auto-applied this session — never re-insert on re-render
   const [activeEntry, setActiveEntry] = useState(null); // entry being dragged (for the DragOverlay ghost)
   const [dragOverSection, setDragOverSection] = useState(null); // label id (or 'none') under a dragged card
   const [draggingSection, setDraggingSection] = useState(null); // id of the section being dragged (dims the others)
@@ -629,6 +637,7 @@ export default function Today() {
   useEffect(() => {
     loadLabels();
     loadTargets();
+    loadRuleSignals();
     loadPrefs();
     // On a slow connection the frequent-items query takes a while: it is fired here
     // (post-login) so that opening the add sheet is instant (it reads from the cache).
@@ -753,10 +762,86 @@ export default function Today() {
     if (last) queueDelete(last.id);
   }
 
+  // Phase rules (migration 021): evaluate on every relevant change. auto:true items
+  // apply themselves (once per valid_from, guarded by ruleAutoAppliedRef); auto:false
+  // ones surface the "Aplicar" banner instead.
+  useEffect(() => {
+    if (!userId || !targets.length) { setRuleResult(null); return; }
+    const res = evalRules({ targets, bodyMetrics: bodyMetrics35, dailyTotals: dailyTotals35, todayISO: todayISO() });
+    if (!res) { setRuleResult(null); return; }
+    if (res.auto) {
+      const vf = res.rows[0]?.valid_from;
+      if (vf && !ruleAutoAppliedRef.current.has(vf)) {
+        ruleAutoAppliedRef.current.add(vf);
+        applyRuleResult(res, { auto: true });
+      }
+    } else {
+      setRuleResult(res);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targets, bodyMetrics35, dailyTotals35, userId]);
+
+  // Refetches targets right before inserting (per spec: avoid acting on stale state),
+  // re-evaluates, and inserts (never upsert) the new version. A 23505 (unique
+  // owner/dow/valid_from) means another tab/session already applied it — treated as success.
+  async function applyRuleResult(res, { auto = false } = {}) {
+    setRuleApplying(true);
+    const { data: fresh, error: fetchErr } = await supabase.from('targets').select('*');
+    if (fetchErr) {
+      setRuleApplying(false);
+      showToast(t('No se pudo aplicar la regla — revisa tu conexión.'));
+      return;
+    }
+    const reeval = evalRules({ targets: fresh || [], bodyMetrics: bodyMetrics35, dailyTotals: dailyTotals35, todayISO: todayISO() });
+    if (!reeval || reeval.rule !== res.rule) {
+      setRuleApplying(false);
+      setRuleResult(null);
+      loadTargets();
+      return;
+    }
+    const { error } = await supabase.from('targets').insert(reeval.rows);
+    setRuleApplying(false);
+    if (error && error.code !== '23505') {
+      showToast(t('No se pudo aplicar la regla.'));
+      return;
+    }
+    setRuleResult(null);
+    await loadTargets(); // also refreshes the shared 'targets' cache key
+    if (auto) {
+      const validFrom = reeval.rows[0]?.valid_from;
+      setRuleUndo((prev) => {
+        if (prev?.timer) clearTimeout(prev.timer);
+        const timer = setTimeout(() => setRuleUndo(null), 5000);
+        return { validFrom, timer };
+      });
+    }
+  }
+
+  async function undoRuleApply() {
+    if (!ruleUndo) return;
+    clearTimeout(ruleUndo.timer);
+    const vf = ruleUndo.validFrom;
+    setRuleUndo(null);
+    await supabase.from('targets').delete().eq('valid_from', vf).not('applied_rule', 'is', null);
+    loadTargets();
+  }
+
   async function loadTargets() {
     const { data, error } = await supabase.from('targets').select('*');
     if (error) { showToast(t('No se pudieron cargar los objetivos — revisa tu conexión.')); return; }
     setTargets(cacheSet('targets', data || []));
+  }
+
+  // Recent weight + intake, for evalRules (phase rules, migration 021). Not cached
+  // (cache.js's persisted whitelist is for cold-start data, not this signal window).
+  async function loadRuleSignals() {
+    const start = addDaysISO(todayISO(), -34);
+    const [{ data: bm }, { data: dt }] = await Promise.all([
+      supabase.from('body_metrics').select('day,metrics').gte('day', start),
+      supabase.from('daily_totals').select('day,kcal').gte('day', start),
+    ]);
+    setBodyMetrics35(bm || []);
+    setDailyTotals35(dt || []);
   }
 
   // silent: refetch after a mutation without going through the skeleton — unmounting
@@ -1214,6 +1299,22 @@ export default function Today() {
         />
       </div>
 
+      {ruleResult && (
+        <div className="rounded-2xl bg-surface border border-border p-4 flex items-start justify-between gap-3 lg:col-start-1">
+          <div className="min-w-0">
+            <p className="text-[13.5px] font-medium" style={{ margin: 0 }}>{t('Regla de fase')}</p>
+            <p className="text-[12.5px] text-text-2 mt-0.5" style={{ margin: 0 }}>{ruleResult.why.text}</p>
+          </div>
+          <button
+            onClick={() => applyRuleResult(ruleResult)}
+            disabled={ruleApplying}
+            className="shrink-0 min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60"
+          >
+            {ruleApplying ? t('Aplicando…') : t('Aplicar')}
+          </button>
+        </div>
+      )}
+
       {/* Right rail (lg+): sticky, shows the day's summary or the active entry's editor. */}
       {/* The rail spans col-1's 4 rows (grid-rows-[auto_auto_auto_1fr] on the container).
           Without those explicit rows, `1/-1` collapses to span-1 and inflates row 1 with the
@@ -1437,7 +1538,9 @@ export default function Today() {
 
       {undoTpl && <UndoToast message={t('Plantilla borrada')} onUndo={undoDeleteTemplate} />}
 
-      {!undoData && !undoTpl && toast && (
+      {!undoTpl && ruleUndo && <UndoToast message={t('Regla aplicada')} onUndo={undoRuleApply} />}
+
+      {!undoData && !undoTpl && !ruleUndo && toast && (
         <div role="status" aria-live="polite" className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 text-center text-sm lg:left-auto lg:right-6 lg:bottom-6">
           {toast}
         </div>
