@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste, ArrowLeftRight, Upload, Bookmark, CloudOff } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
@@ -523,7 +523,13 @@ export default function Today() {
   // Phase rules (migration 021): recent weight + intake signals for evalRules.
   const [bodyMetrics35, setBodyMetrics35] = useState([]);
   const [dailyTotals35, setDailyTotals35] = useState([]);
-  const [ruleResult, setRuleResult] = useState(null); // evalRules() result pending a manual "Aplicar" (auto:false)
+  // evalRules() result, derived in render (no effect-set state): auto:true items are
+  // applied by the effect below; auto:false ones surface as the "Aplicar" banner.
+  const ruleEval = useMemo(
+    () => (userId && targets.length ? evalRules({ targets, bodyMetrics: bodyMetrics35, dailyTotals: dailyTotals35, todayISO: todayISO() }) : null),
+    [targets, bodyMetrics35, dailyTotals35, userId]
+  );
+  const ruleResult = ruleEval && !ruleEval.auto ? ruleEval : null;
   const [ruleApplying, setRuleApplying] = useState(false);
   const [ruleUndo, setRuleUndo] = useState(null); // { validFrom, timer } after an auto-applied rule, for "Deshacer"
   const ruleAutoAppliedRef = useRef(new Set()); // valid_from already auto-applied this session — never re-insert on re-render
@@ -766,20 +772,15 @@ export default function Today() {
   // apply themselves (once per valid_from, guarded by ruleAutoAppliedRef); auto:false
   // ones surface the "Aplicar" banner instead.
   useEffect(() => {
-    if (!userId || !targets.length) { setRuleResult(null); return; }
-    const res = evalRules({ targets, bodyMetrics: bodyMetrics35, dailyTotals: dailyTotals35, todayISO: todayISO() });
-    if (!res) { setRuleResult(null); return; }
-    if (res.auto) {
-      const vf = res.rows[0]?.valid_from;
-      if (vf && !ruleAutoAppliedRef.current.has(vf)) {
-        ruleAutoAppliedRef.current.add(vf);
-        applyRuleResult(res, { auto: true });
-      }
-    } else {
-      setRuleResult(res);
+    if (!ruleEval?.auto) return;
+    const vf = ruleEval.rows[0]?.valid_from;
+    if (vf && !ruleAutoAppliedRef.current.has(vf)) {
+      ruleAutoAppliedRef.current.add(vf);
+      applyRuleResult(ruleEval, { auto: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targets, bodyMetrics35, dailyTotals35, userId]);
+  // `applyRuleResult` is rebuilt every render; the evaluation result is the dependency on purpose.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ruleEval]);
 
   // Refetches targets right before inserting (per spec: avoid acting on stale state),
   // re-evaluates, and inserts (never upsert) the new version. A 23505 (unique
@@ -795,7 +796,6 @@ export default function Today() {
     const reeval = evalRules({ targets: fresh || [], bodyMetrics: bodyMetrics35, dailyTotals: dailyTotals35, todayISO: todayISO() });
     if (!reeval || reeval.rule !== res.rule) {
       setRuleApplying(false);
-      setRuleResult(null);
       loadTargets();
       return;
     }
@@ -805,8 +805,7 @@ export default function Today() {
       showToast(t('No se pudo aplicar la regla.'));
       return;
     }
-    setRuleResult(null);
-    await loadTargets(); // also refreshes the shared 'targets' cache key
+    await loadTargets(); // also refreshes the shared 'targets' cache key; the banner derives from the new targets
     if (auto) {
       const validFrom = reeval.rows[0]?.valid_from;
       setRuleUndo((prev) => {
