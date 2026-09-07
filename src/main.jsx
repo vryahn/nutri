@@ -11,7 +11,12 @@ import './index.css';
 // Production error monitoring. Sentry DSN (publishable, ships in the client
 // bundle); absent in dev = no noise. Error capture only: no tracing, no replay.
 if (import.meta.env.PROD && import.meta.env.VITE_SENTRY_DSN) {
-  Sentry.init({ dsn: import.meta.env.VITE_SENTRY_DSN });
+  Sentry.init({
+    dsn: import.meta.env.VITE_SENTRY_DSN,
+    // Injected by the Outlook in-app browser: its native bridge rejects a bare string
+    // when the page navigates away mid-call. Not our code, nothing to fix.
+    ignoreErrors: [/Object Not Found Matching Id:/],
+  });
 }
 
 let swReg = null;
