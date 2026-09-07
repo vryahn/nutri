@@ -106,14 +106,15 @@ export function applyOutbox(serverRows, day, queue = ops) {
   return merged;
 }
 
-// A 5-character SQLSTATE means the server rejected the write on its merits: retrying
-// cannot help, so the op is dropped and reported. Anything else (fetch failure, timeout,
-// gateway) is transient and stays queued. Exceptions: 23505 is the idempotent replay of
-// an insert that already landed (= done), and the RLS/JWT codes are transient because
-// the session comes back after a refresh.
+// A 5-character SQLSTATE, or a PostgREST PGRSTnnn code, means the server rejected the
+// write on its merits: retrying cannot help, so the op is dropped and reported. Anything
+// else (fetch failure, timeout, gateway) is transient and stays queued. Exceptions: 23505
+// is the idempotent replay of an insert that already landed (= done), and the RLS/JWT
+// codes are transient because the session comes back after a refresh.
 const DONE = '23505';
 const TRANSIENT_CODES = new Set(['42501', 'PGRST301', 'PGRST302']);
-const isPermanent = (error) => /^[0-9A-Z]{5}$/.test(error.code || '') && !TRANSIENT_CODES.has(error.code);
+const PERMANENT_CODE = /^(?:[0-9A-Z]{5}|PGRST\d{3})$/;
+const isPermanent = (error) => PERMANENT_CODE.test(error.code || '') && !TRANSIENT_CODES.has(error.code);
 
 async function send(op) {
   if (op.op === 'insert') return supabase.from('entries').insert(op.payload);

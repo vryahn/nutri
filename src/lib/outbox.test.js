@@ -138,6 +138,16 @@ describe('outbox flush', () => {
     expect(seen.at(-1)).toEqual({ synced: 0, dropped: 1 });
   });
 
+  it('drops a PostgREST rejection instead of jamming the queue behind it', async () => {
+    const ob = await fresh();
+    // 8 characters, so the SQLSTATE shape alone would have read it as transient.
+    responder = () => ({ error: { code: 'PGRST204', message: "column 'x' not found" } });
+    ob.queueInsert({ id: 'a', day: '2026-09-05', grams: 100 }, row('a'));
+    ob.queueInsert({ id: 'b', day: '2026-09-05', grams: 100 }, row('b'));
+    await ob.flushOutbox();
+    expect(ob.outboxOps()).toEqual([]);
+  });
+
   it('never writes a queue left behind by another account', async () => {
     const ob = await fresh();
     responder = () => ({ error: new TypeError('Failed to fetch') }); // offline: it stays queued
