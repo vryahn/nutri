@@ -572,9 +572,63 @@ export function cleanBounds(b) {
   return out;
 }
 
+// —— Phase rules (targets.rules, migration 021) ——————————————————————
+// rules = { paused_until?, kcal_min?, kcal_max?, items: [...] }. Each item adjusts
+// carbs (± delta_carbs_g × scope of dows) when a weight-trend signal fires; kcal is
+// recalculated as delta × 4. See evalRules below for the full evaluation.
+const RULE_KINDS = ['ritmo_alto', 'estancamiento', 'techo_peso', 'ritmo_lento'];
+
+// Hardcoded guardrail (§spec): when the phase goal is 'deficit' it is ALWAYS
+// evaluated first, is not an editable item, and is never configurable — same
+// pattern as SODIUM_FLOOR_MG.
+export const DEFICIT_RATE_CAP = { pctWk: 0.5, weeks: 2, deltaCarbsG: 25 };
+export const ADHERENCE_TOL = 0.07;
+
+function ruleNum(v) {
+  if (v === '' || v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Normalizes a raw `rules` object: drops items with an unknown kind or missing/
+// non-numeric required fields. Never throws on garbage input.
+export function cleanRules(r) {
+  const out = { items: [] };
+  const kcalMin = ruleNum(r?.kcal_min);
+  const kcalMax = ruleNum(r?.kcal_max);
+  if (kcalMin != null) out.kcal_min = kcalMin;
+  if (kcalMax != null) out.kcal_max = kcalMax;
+  if (r?.paused_until) out.paused_until = r.paused_until;
+  for (const raw of r?.items || []) {
+    if (!RULE_KINDS.includes(raw?.kind)) continue;
+    const item = { id: raw.id != null ? String(raw.id) : '', kind: raw.kind, auto: !!raw.auto };
+    if (raw.kind === 'estancamiento') {
+      const days = ruleNum(raw.days);
+      if (days == null) continue;
+      item.days = days;
+    } else {
+      const value = ruleNum(raw.value);
+      if (value == null) continue;
+      item.value = value;
+      if (raw.kind !== 'techo_peso') {
+        const weeks = ruleNum(raw.weeks);
+        if (weeks == null) continue;
+        item.weeks = weeks;
+      }
+    }
+    if (raw.kind !== 'techo_peso') {
+      const dcg = ruleNum(raw.delta_carbs_g);
+      if (dcg != null) item.delta_carbs_g = dcg;
+      item.scope = Array.isArray(raw.scope) ? raw.scope.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6) : null;
+    }
+    out.items.push(item);
+  }
+  return out;
+}
+
 // Expands the draft groups into the 7 dow rows (always 7). groups:
 // [{ dows:[0-6], values:{ kcal, protein_g, carbs_g, fat_g, micros, bounds } }].
-export function draftToRows(groups, { validFrom, label, description, goal, owner }) {
+export function draftToRows(groups, { validFrom, label, description, goal, owner, rules }) {
   const byDow = {};
   for (const g of groups) {
     const row = {
@@ -587,6 +641,7 @@ export function draftToRows(groups, { validFrom, label, description, goal, owner
     };
     for (const dow of g.dows) byDow[dow] = row;
   }
+  const rulesClean = cleanRules(rules);
   const rows = [];
   for (let dow = 0; dow < 7; dow++) {
     rows.push({
@@ -596,10 +651,244 @@ export function draftToRows(groups, { validFrom, label, description, goal, owner
       label: (label || '').trim() || null,
       description: (description || '').trim() || null,
       goal: goal || null,
+      rules: rulesClean,
       ...(byDow[dow] || { kcal: null, protein_g: null, carbs_g: null, fat_g: null, micros: {}, bounds: {} }),
     });
   }
   return rows;
+}
+
+function fmtSigned(n, decimals) {
+  const v = round(n, decimals);
+  return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v);
+}
+
+// 7-day moving average of peso_kg ending at `endISO` (inclusive). Requires ≥5
+// weigh-ins in that window; otherwise null (insufficient data — never averages a thin sample).
+function weightMA7(weightByDay, endISO) {
+  let total = 0, n = 0;
+  for (let i = 0; i < 7; i++) {
+    const w = weightByDay.get(addDaysISO(endISO, -i));
+    if (w != null) { total += w; n++; }
+  }
+  return n >= 5 ? total / n : null;
+}
+
+// Adherence guard: ≥5 registered days (daily_totals.kcal > 0) per 7-day block in the
+// window, AND the mean consumed kcal (of the registered days) within ADHERENCE_TOL of
+// the mean resolved target kcal for those same days.
+function adherenceCheck(dailyTotals, targets, today, windowDays) {
+  const byDay = new Map((dailyTotals || []).map((r) => [r.day, r]));
+  const consumed = [];
+  const targetVals = [];
+  for (let i = 0; i < windowDays; i++) {
+    const day = addDaysISO(today, -i);
+    const kcal = Number(byDay.get(day)?.kcal || 0);
+    if (kcal <= 0) continue;
+    consumed.push(kcal);
+    const tgt = resolveTarget(targets, day);
+    if (tgt?.kcal != null) targetVals.push(Number(tgt.kcal));
+  }
+  const minRegistered = Math.round((windowDays / 7) * 5);
+  if (consumed.length < minRegistered || !targetVals.length) return { ok: false, pct: null };
+  const meanConsumed = sum(consumed) / consumed.length;
+  const meanTarget = sum(targetVals) / targetVals.length;
+  if (!(meanTarget > 0)) return { ok: false, pct: null };
+  const pct = Math.abs(meanConsumed - meanTarget) / meanTarget;
+  return { ok: pct <= ADHERENCE_TOL, pct: round(pct * 100, 1) };
+}
+
+// Builds the 7 new dow rows for a carbs-delta action (copy of the vigente phase's
+// rows, with carbs/kcal adjusted for the rows in `scope`, clamped to kcal_min/max).
+// Returns null if the clamp cancels the change on every affected row (§spec: no fire).
+function buildScopedRows(phaseRows, scope, deltaCarbsG, rulesCfg, validFrom, appliedRule) {
+  let changed = false;
+  const rows = [];
+  for (let dow = 0; dow < 7; dow++) {
+    const src = phaseRows[dow];
+    if (!src) continue;
+    const inScope = !scope || scope.includes(dow);
+    let carbs = src.carbs_g, kcal = src.kcal;
+    if (inScope && carbs != null && kcal != null) {
+      const newCarbs = round(carbs + deltaCarbsG, 2);
+      let newKcal = round(kcal + deltaCarbsG * 4, 1);
+      if (rulesCfg.kcal_min != null) newKcal = Math.max(newKcal, rulesCfg.kcal_min);
+      if (rulesCfg.kcal_max != null) newKcal = Math.min(newKcal, rulesCfg.kcal_max);
+      if (newKcal !== kcal) changed = true;
+      carbs = newCarbs; kcal = newKcal;
+    }
+    rows.push({
+      owner: src.owner, dow, valid_from: validFrom,
+      label: src.label, description: src.description, goal: src.goal,
+      kcal, protein_g: src.protein_g, carbs_g: carbs, fat_g: src.fat_g,
+      micros: src.micros, bounds: src.bounds, rules: src.rules, applied_rule: appliedRule,
+    });
+  }
+  return changed ? rows : null;
+}
+
+function evalRitmoOrEstancamiento(item, ctx) {
+  const { weightByDay, dailyTotals, today, vigenteVf, targets, phaseRows, rulesCfg } = ctx;
+  const windowDays = item.kind === 'estancamiento' ? item.days : item.weeks * 7;
+  if (!(vigenteVf && vigenteVf <= addDaysISO(today, -windowDays))) return null; // ventana incompleta
+  const cooldownActive = targets.some((r) => r.dow != null && typeof r.applied_rule === 'string' &&
+    r.applied_rule.startsWith(`${item.id} `) && r.valid_from > addDaysISO(today, -windowDays));
+  if (cooldownActive) return null;
+  const adh = adherenceCheck(dailyTotals, targets, today, windowDays);
+  if (!adh.ok) return null;
+
+  let ritmo = null;
+  let ma7Now;
+  if (item.kind === 'estancamiento') {
+    ma7Now = weightMA7(weightByDay, today);
+    const ma7Past = weightMA7(weightByDay, addDaysISO(today, -item.days));
+    if (ma7Now == null || ma7Past == null) return null; // pesajes insuficientes
+    if (!(ma7Now <= ma7Past + 0.1)) return null;
+  } else {
+    ma7Now = weightMA7(weightByDay, today);
+    const ma7Past = weightMA7(weightByDay, addDaysISO(today, -windowDays));
+    if (ma7Now == null || ma7Past == null) return null; // pesajes insuficientes
+    ritmo = (ma7Now - ma7Past) / item.weeks;
+    if (item.kind === 'ritmo_alto' && !(ritmo > item.value)) return null;
+    if (item.kind === 'ritmo_lento' && !(-ritmo < item.value)) return null;
+  }
+  if (item.delta_carbs_g == null) return null;
+
+  const tomorrow = addDaysISO(today, 1);
+  const whyText = item.kind === 'estancamiento'
+    ? `estancamiento ${item.days} días · ${fmtSigned(item.delta_carbs_g, 0)} g carbs`
+    : `${fmtSigned(ritmo, 2)} kg/sem × ${item.weeks} sem · ${fmtSigned(item.delta_carbs_g, 0)} g carbs`;
+  const appliedRule = `${item.id} · ${whyText}`;
+  const rows = buildScopedRows(phaseRows, item.scope, item.delta_carbs_g, rulesCfg, tomorrow, appliedRule);
+  if (!rows) return null;
+  return {
+    rule: item.kind,
+    auto: !!item.auto,
+    why: { text: whyText, ritmoKgSem: ritmo != null ? round(ritmo, 3) : null, pctWk: null, ma7: ma7Now, adherencePct: adh.pct },
+    rows,
+  };
+}
+
+// ponytail: the spec gives techo_peso no weeks/days field, so it has no natural
+// window for "maintenance kcal" or cooldown. Reuses the 2-week granularity of the
+// other rules (same order of magnitude as DEFICIT_RATE_CAP.weeks) for both; revisit
+// if a configurable window is ever requested.
+const TECHO_WINDOW_DAYS = 14;
+
+function evalTechoPeso(item, ctx) {
+  const { weightByDay, dailyTotals, today, vigenteVf, targets, phaseRows } = ctx;
+  const ma7Now = weightMA7(weightByDay, today);
+  if (ma7Now == null || ma7Now < item.value) return null;
+  if (!(vigenteVf && vigenteVf <= addDaysISO(today, -TECHO_WINDOW_DAYS))) return null;
+  const cooldownActive = targets.some((r) => r.dow != null && typeof r.applied_rule === 'string' &&
+    r.applied_rule.startsWith(`${item.id} `) && r.valid_from > addDaysISO(today, -TECHO_WINDOW_DAYS));
+  if (cooldownActive) return null;
+  const ma7Past = weightMA7(weightByDay, addDaysISO(today, -TECHO_WINDOW_DAYS));
+  if (ma7Past == null) return null; // pesajes insuficientes
+  const ritmo = (ma7Now - ma7Past) / (TECHO_WINDOW_DAYS / 7);
+
+  const byDay = new Map(dailyTotals.map((r) => [r.day, r]));
+  const consumed = [];
+  for (let i = 0; i < TECHO_WINDOW_DAYS; i++) {
+    const kcal = Number(byDay.get(addDaysISO(today, -i))?.kcal || 0);
+    if (kcal > 0) consumed.push(kcal);
+  }
+  if (!consumed.length) return null;
+  const mantenimiento = Math.round((sum(consumed) / consumed.length - ritmo * 1100) / 10) * 10;
+
+  const tomorrow = addDaysISO(today, 1);
+  const whyText = `techo de peso alcanzado · mantenimiento ${mantenimiento} kcal`;
+  const appliedRule = `${item.id} · ${whyText}`;
+  let changed = false;
+  const rows = [];
+  for (let dow = 0; dow < 7; dow++) {
+    const src = phaseRows[dow];
+    if (!src) continue;
+    if (src.kcal !== mantenimiento) changed = true;
+    const carbsDelta = src.kcal != null ? round((mantenimiento - src.kcal) / 4, 2) : 0;
+    rows.push({
+      owner: src.owner, dow, valid_from: tomorrow,
+      label: src.label, description: src.description, goal: 'mantenimiento',
+      kcal: mantenimiento, protein_g: src.protein_g,
+      carbs_g: src.carbs_g != null ? round(src.carbs_g + carbsDelta, 2) : src.carbs_g,
+      fat_g: src.fat_g, micros: src.micros, bounds: src.bounds, rules: src.rules, applied_rule: appliedRule,
+    });
+  }
+  if (!changed) return null;
+  return {
+    rule: item.kind,
+    auto: !!item.auto,
+    why: { text: whyText, ritmoKgSem: round(ritmo, 3), pctWk: null, ma7: ma7Now, mantenimiento, adherencePct: null },
+    rows,
+  };
+}
+
+// Hardcoded deficit-protection guardrail (id 'proteccion-ritmo', not user-editable):
+// loss > DEFICIT_RATE_CAP.pctWk %/week of bodyweight sustained for its `weeks` → +carbs.
+function evalProteccion(ctx) {
+  const { weightByDay, dailyTotals, today, vigenteVf, targets, phaseRows, rulesCfg } = ctx;
+  const windowDays = DEFICIT_RATE_CAP.weeks * 7;
+  const id = 'proteccion-ritmo';
+  if (!(vigenteVf && vigenteVf <= addDaysISO(today, -windowDays))) return null;
+  const cooldownActive = targets.some((r) => r.dow != null && typeof r.applied_rule === 'string' &&
+    r.applied_rule.startsWith(`${id} `) && r.valid_from > addDaysISO(today, -windowDays));
+  if (cooldownActive) return null;
+  const adh = adherenceCheck(dailyTotals, targets, today, windowDays);
+  if (!adh.ok) return null;
+  const ma7Now = weightMA7(weightByDay, today);
+  const ma7Past = weightMA7(weightByDay, addDaysISO(today, -windowDays));
+  if (ma7Now == null || ma7Past == null) return null;
+  const ritmo = (ma7Now - ma7Past) / DEFICIT_RATE_CAP.weeks;
+  const pctWk = (ritmo / ma7Now) * 100;
+  if (!(pctWk <= -DEFICIT_RATE_CAP.pctWk)) return null;
+
+  const tomorrow = addDaysISO(today, 1);
+  const whyText = `${fmtSigned(pctWk, 2)} %/sem × ${DEFICIT_RATE_CAP.weeks} sem · ${fmtSigned(DEFICIT_RATE_CAP.deltaCarbsG, 0)} g carbs`;
+  const appliedRule = `${id} · ${whyText}`;
+  const rows = buildScopedRows(phaseRows, null, DEFICIT_RATE_CAP.deltaCarbsG, rulesCfg, tomorrow, appliedRule);
+  if (!rows) return null;
+  return {
+    rule: 'proteccion-ritmo',
+    auto: true,
+    why: { text: whyText, ritmoKgSem: round(ritmo, 3), pctWk: round(pctWk, 2), ma7: ma7Now, adherencePct: adh.pct },
+    rows,
+  };
+}
+
+// Evaluates the vigente phase's rules against recent weight/adherence signals.
+// Returns null (nothing fires, or a guard blocks it) or { rule, why, rows } — rows are
+// the 7 ready-to-insert dow rows for the new version (valid_from = tomorrow).
+// ponytail: guard failures are not surfaced with a reason (why.blocked) — every guard
+// simply skips to the next item. The UI only needs "fired or not"; a blocked-reason
+// string per guard would triple this function for a "Reglas: <motivo>" line that the
+// spec itself marks optional. Add if that line is ever built.
+export function evalRules({ targets, bodyMetrics, dailyTotals, todayISO: today }) {
+  const dowRows = (targets || []).filter((r) => r.dow != null);
+  const vfs = [...new Set(dowRows.map((r) => r.valid_from))].sort();
+  const vigenteVf = [...vfs].filter((vf) => vf <= today).pop() || null;
+  if (!vigenteVf) return null;
+  const phaseRows = Array(7).fill(null);
+  for (const r of dowRows) if (r.valid_from === vigenteVf) phaseRows[r.dow] = r;
+  const cfgRow = phaseRows.find((r) => r);
+  if (!cfgRow) return null;
+  const rulesCfg = cleanRules(cfgRow.rules);
+  if (rulesCfg.paused_until && rulesCfg.paused_until >= today) return null;
+
+  const weightByDay = new Map(
+    (bodyMetrics || []).filter((b) => b.metrics?.peso_kg != null).map((b) => [b.day, Number(b.metrics.peso_kg)])
+  );
+  const ctx = { targets: targets || [], weightByDay, dailyTotals: dailyTotals || [], today, vigenteVf, phaseRows, rulesCfg };
+
+  const list = cfgRow.goal === 'deficit' ? [{ proteccion: true }, ...rulesCfg.items] : rulesCfg.items;
+  for (const item of list) {
+    const result = item.proteccion
+      ? evalProteccion(ctx)
+      : item.kind === 'techo_peso'
+        ? evalTechoPeso(item, ctx)
+        : evalRitmoOrEstancamiento(item, ctx);
+    if (result) return result;
+  }
+  return null;
 }
 
 // —— Nutritional adherence semantics —————————————————————————————————

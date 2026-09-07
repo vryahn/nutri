@@ -9,7 +9,7 @@ import {
   DASH_VARS_BY_KEY, axisUnits, buildDashSeries, dashVarTarget,
   autoAgg, resolveAgg, reduceBucket, bucketRows, mergeFoodResults, normalizeTo100,
   cleanBounds, classifyBounds, classifyNutrient, impliedBounds, effectiveBound, draftToRows,
-  entryNutrients,
+  entryNutrients, addDaysISO, cleanRules, evalRules, DEFICIT_RATE_CAP,
 } from './domain.js';
 
 describe('temporal aggregation of custom charts', () => {
@@ -564,5 +564,159 @@ describe('entryNutrients (client replica of the entry_nutrients view)', () => {
     expect(r.protein_g).toBeNull();
     expect(r.micros).toEqual({});
     expect(r.grams).toBe(150);
+  });
+});
+
+describe('cleanRules', () => {
+  it('discards items with unknown kind', () => {
+    expect(cleanRules({ items: [{ id: 'x', kind: 'bogus', value: 1, weeks: 1 }] }).items).toEqual([]);
+  });
+  it('discards items with non-numeric required fields', () => {
+    expect(cleanRules({ items: [{ id: 'r1', kind: 'ritmo_alto', value: 'abc', weeks: 2, delta_carbs_g: -25 }] }).items).toEqual([]);
+    expect(cleanRules({ items: [{ id: 'r3', kind: 'estancamiento', days: '', delta_carbs_g: 25 }] }).items).toEqual([]);
+  });
+  it('keeps well-formed items and coerces to numbers', () => {
+    const out = cleanRules({
+      kcal_min: '1800', paused_until: '2026-01-01',
+      items: [{ id: 'r1', kind: 'ritmo_alto', value: '0.3', weeks: '2', delta_carbs_g: '-25', scope: [1, 2] }],
+    });
+    expect(out.kcal_min).toBe(1800);
+    expect(out.paused_until).toBe('2026-01-01');
+    expect(out.items).toEqual([{ id: 'r1', kind: 'ritmo_alto', auto: false, value: 0.3, weeks: 2, delta_carbs_g: -25, scope: [1, 2] }]);
+  });
+  it('techo_peso ignores delta_carbs_g and scope', () => {
+    const out = cleanRules({ items: [{ id: 'r2', kind: 'techo_peso', value: 85, delta_carbs_g: -25, scope: [1] }] });
+    expect(out.items).toEqual([{ id: 'r2', kind: 'techo_peso', auto: false, value: 85 }]);
+  });
+});
+
+describe('evalRules', () => {
+  const today = '2026-03-15';
+  const vf = '2026-01-01';
+
+  function phaseRows({ validFrom, owner = 'u1', kcal = 2000, protein_g = 150, carbs_g = 250, fat_g = 60, goal = null, rules = { items: [] }, applied_rule = null }) {
+    const rows = [];
+    for (let dow = 0; dow < 7; dow++) {
+      rows.push({
+        id: `id-${validFrom}-${dow}`, owner, dow, day: null, valid_from: validFrom,
+        label: 'Fase test', description: null, goal, kcal, protein_g, carbs_g, fat_g,
+        micros: {}, bounds: {}, rules, applied_rule,
+      });
+    }
+    return rows;
+  }
+  function baseTargets({ goal = null, rulesItems = [], kcalMin, kcalMax } = {}) {
+    const rules = { items: rulesItems, ...(kcalMin != null ? { kcal_min: kcalMin } : {}) };
+    void kcalMax;
+    return phaseRows({ validFrom: vf, goal, rules });
+  }
+  function weightFixture({ recentDays, recentWeight, pastDays, pastWeight }) {
+    const rows = [];
+    for (const off of recentDays) rows.push({ day: addDaysISO(today, -off), metrics: { peso_kg: recentWeight } });
+    for (const off of pastDays) rows.push({ day: addDaysISO(today, -off), metrics: { peso_kg: pastWeight } });
+    return rows;
+  }
+  function dailyTotalsFixture(offsets, kcal) {
+    return offsets.map((off) => ({ day: addDaysISO(today, -off), kcal }));
+  }
+
+  const bodyMetrics35 = () => weightFixture({ recentDays: [0, 1, 2, 3, 4, 5, 6], recentWeight: 80.6, pastDays: [14, 15, 16, 17, 18, 19, 20], pastWeight: 80.0 });
+  const dailyTotalsGood = () => dailyTotalsFixture([0, 1, 2, 4, 5, 6, 8, 9, 10, 12], 2000); // 10 of 14 days registered, on target
+
+  it('1) ritmo_alto fires with +0.3 kg/sem over 2 weeks and ok adherence; rows are correct', () => {
+    const targets = baseTargets({ rulesItems: [{ id: 'r1', kind: 'ritmo_alto', value: 0.25, weeks: 2, delta_carbs_g: -25, scope: null, auto: false }] });
+    const res = evalRules({ targets, bodyMetrics: bodyMetrics35(), dailyTotals: dailyTotalsGood(), todayISO: today });
+    expect(res).not.toBeNull();
+    expect(res.rule).toBe('ritmo_alto');
+    expect(res.rows).toHaveLength(7);
+    for (const row of res.rows) {
+      expect(row.valid_from).toBe(addDaysISO(today, 1));
+      expect(row.carbs_g).toBe(225); // 250 - 25
+      expect(row.kcal).toBe(1900); // 2000 + (-25 * 4)
+      expect(row.protein_g).toBe(150); // untouched
+      expect(row.fat_g).toBe(60); // untouched
+      expect(row.bounds).toEqual({});
+      expect(row.rules).toEqual(targets[0].rules);
+      expect(row.applied_rule.startsWith('r1 ')).toBe(true);
+    }
+  });
+
+  it('2) does not fire when adherence deviates 12 % from target', () => {
+    const targets = baseTargets({ rulesItems: [{ id: 'r1', kind: 'ritmo_alto', value: 0.25, weeks: 2, delta_carbs_g: -25 }] });
+    const dailyTotals = dailyTotalsFixture([0, 1, 2, 4, 5, 6, 8, 9, 10, 12], 2240); // 12 % over the 2000 target
+    expect(evalRules({ targets, bodyMetrics: bodyMetrics35(), dailyTotals, todayISO: today })).toBeNull();
+  });
+
+  it('3) does not fire with only 4 weigh-ins in the last 7 days', () => {
+    const targets = baseTargets({ rulesItems: [{ id: 'r1', kind: 'ritmo_alto', value: 0.25, weeks: 2, delta_carbs_g: -25 }] });
+    const bodyMetrics = weightFixture({ recentDays: [0, 1, 2, 3], recentWeight: 80.6, pastDays: [14, 15, 16, 17, 18, 19, 20], pastWeight: 80.0 });
+    expect(evalRules({ targets, bodyMetrics, dailyTotals: dailyTotalsGood(), todayISO: today })).toBeNull();
+  });
+
+  it('4) does not fire when the vigente phase is only 5 days old (incomplete window)', () => {
+    const targets = phaseRows({ validFrom: addDaysISO(today, -5), rules: { items: [{ id: 'r1', kind: 'ritmo_alto', value: 0.25, weeks: 2, delta_carbs_g: -25 }] } });
+    expect(evalRules({ targets, bodyMetrics: bodyMetrics35(), dailyTotals: dailyTotalsGood(), todayISO: today })).toBeNull();
+  });
+
+  it('5) cooldown: a phase already tagged with this rule blocks re-firing within its window', () => {
+    const ruleItems = [{ id: 'r1', kind: 'ritmo_alto', value: 0.25, weeks: 2, delta_carbs_g: -25 }];
+    const targets = phaseRows({ validFrom: addDaysISO(today, -3), rules: { items: ruleItems }, applied_rule: 'r1 · +0.30 kg/sem × 2 sem · −25 g carbs' });
+    expect(evalRules({ targets, bodyMetrics: bodyMetrics35(), dailyTotals: dailyTotalsGood(), todayISO: today })).toBeNull();
+  });
+
+  it('6) techo_peso computes estimated maintenance kcal and sets goal to mantenimiento', () => {
+    const targets = baseTargets({ rulesItems: [{ id: 'r2', kind: 'techo_peso', value: 85 }] });
+    const bodyMetrics = weightFixture({ recentDays: [0, 1, 2, 3, 4, 5, 6], recentWeight: 86, pastDays: [14, 15, 16, 17, 18, 19, 20], pastWeight: 84 });
+    const dailyTotals = dailyTotalsFixture([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], 2200);
+    const res = evalRules({ targets, bodyMetrics, dailyTotals, todayISO: today });
+    expect(res).not.toBeNull();
+    expect(res.rule).toBe('techo_peso');
+    expect(res.why.mantenimiento).toBe(1100); // round((2200 - 1.0kg/sem*1100)/10)*10
+    for (const row of res.rows) {
+      expect(row.goal).toBe('mantenimiento');
+      expect(row.kcal).toBe(1100);
+      expect(row.carbs_g).toBe(25); // 250 + round((1100-2000)/4)
+    }
+  });
+
+  it('7) deficit protection fires at −0.6 %/sem with no configured item', () => {
+    const rules = { items: [] };
+    const targets = phaseRows({ validFrom: vf, goal: 'deficit', kcal: 1800, rules });
+    // ma7Now=80, ma7Past=80.96 → ritmo=-0.48 kg/sem → pctWk = -0.6 %
+    const bodyMetrics = weightFixture({ recentDays: [0, 1, 2, 3, 4, 5, 6], recentWeight: 80, pastDays: [14, 15, 16, 17, 18, 19, 20], pastWeight: 80.96 });
+    const dailyTotals = dailyTotalsFixture([0, 1, 2, 4, 5, 6, 8, 9, 10, 12], 1800);
+    const res = evalRules({ targets, bodyMetrics, dailyTotals, todayISO: today });
+    expect(res).not.toBeNull();
+    expect(res.rule).toBe('proteccion-ritmo');
+    expect(res.why.pctWk).toBeCloseTo(-0.6, 1);
+    expect(res.rows[0].kcal).toBe(1800 + DEFICIT_RATE_CAP.deltaCarbsG * 4);
+    expect(res.rows[0].carbs_g).toBe(250 + DEFICIT_RATE_CAP.deltaCarbsG);
+    expect(res.rows[0].applied_rule.startsWith('proteccion-ritmo ')).toBe(true);
+  });
+
+  it('8) kcal_min clamp that cancels the change blocks the fire', () => {
+    const targets = baseTargets({ rulesItems: [{ id: 'r1', kind: 'ritmo_alto', value: 0.25, weeks: 2, delta_carbs_g: -25 }], kcalMin: 2000 });
+    expect(evalRules({ targets, bodyMetrics: bodyMetrics35(), dailyTotals: dailyTotalsGood(), todayISO: today })).toBeNull();
+  });
+
+  it('9) an unknown rule kind never fires (cleanRules already dropped it)', () => {
+    const targets = baseTargets({ rulesItems: [{ id: 'rX', kind: 'bogus', value: 0.25, weeks: 2, delta_carbs_g: -25 }] });
+    expect(evalRules({ targets, bodyMetrics: bodyMetrics35(), dailyTotals: dailyTotalsGood(), todayISO: today })).toBeNull();
+  });
+
+  it('10) scope only touches the listed dows', () => {
+    const targets = baseTargets({ rulesItems: [{ id: 'r1', kind: 'ritmo_alto', value: 0.25, weeks: 2, delta_carbs_g: -25, scope: [1, 2, 3] }] });
+    const res = evalRules({ targets, bodyMetrics: bodyMetrics35(), dailyTotals: dailyTotalsGood(), todayISO: today });
+    expect(res).not.toBeNull();
+    for (let dow = 0; dow < 7; dow++) {
+      const row = res.rows.find((r) => r.dow === dow);
+      if ([1, 2, 3].includes(dow)) {
+        expect(row.carbs_g).toBe(225);
+        expect(row.kcal).toBe(1900);
+      } else {
+        expect(row.carbs_g).toBe(250);
+        expect(row.kcal).toBe(2000);
+      }
+    }
   });
 });
