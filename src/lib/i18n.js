@@ -942,6 +942,50 @@ const EN = {
   'Escribe tu pregunta…': 'Type your question…',
   Enviar: 'Send',
   'No se pudo responder — intenta de nuevo': 'Could not answer — try again',
+
+  // Phase rules (RulesEditor.jsx, TargetsWizard step, Targets.jsx PhaseCard, Today.jsx banner — migration 021)
+  Aplicar: 'Apply',
+  'Aplicando…': 'Applying…',
+  'Aplicar automáticamente': 'Apply automatically',
+  'Añadir regla': 'Add rule',
+  'Borrar regla': 'Delete rule',
+  'Editar reglas': 'Edit rules',
+  Estancamiento: 'Stall',
+  'Kcal máx.': 'Kcal max.',
+  'Kcal mín.': 'Kcal min.',
+  'Límite kcal': 'Kcal limit',
+  'Límites de la fase': 'Phase limits',
+  'No se pudieron guardar las reglas.': 'Could not save the rules.',
+  'No se pudo aplicar la regla — revisa tu conexión.': 'Could not apply the rule — check your connection.',
+  'No se pudo aplicar la regla.': 'Could not apply the rule.',
+  'Opcional: ajustes automáticos de carbohidratos según cómo evolucione tu peso.':
+    'Optional: automatic carb adjustments based on how your weight evolves.',
+  'Pausadas hasta': 'Paused until',
+  'Pausar reglas hasta': 'Pause rules until',
+  'Peso (kg)': 'Weight (kg)',
+  'Regla aplicada': 'Rule applied',
+  'Regla borrada': 'Rule deleted',
+  'Regla de fase': 'Phase rule',
+  'Reglas de fase': 'Phase rules',
+  'Ritmo alto': 'Fast pace',
+  'Ritmo lento': 'Slow pace',
+  Semanas: 'Weeks',
+  'Si el peso baja menos de %v kg/sem durante %w semanas, %d.':
+    'If weight drops less than %v kg/wk for %w weeks, %d.',
+  'Si el peso llega a %v kg, tus kcal pasan a mantenimiento.':
+    'If weight reaches %v kg, your kcal switch to maintenance.',
+  'Si el peso no baja en %n días, %d.': 'If weight has not dropped in %n days, %d.',
+  'Si el peso sube más de %v kg/sem durante %w semanas, %d.':
+    'If weight rises more than %v kg/wk for %w weeks, %d.',
+  'Sin reglas configuradas.': 'No rules configured.',
+  'Techo de peso': 'Weight ceiling',
+  'ajusta los carbos': 'adjusts carbs',
+  auto: 'auto',
+  'de carbs': 'of carbs',
+  'kg/sem': 'kg/wk',
+  mantenimiento: 'maintenance',
+  sem: 'wk',
+  'Δ carbs (g)': 'Δ carbs (g)',
 };
 
 const LANG_KEY = 'nutri-lang';

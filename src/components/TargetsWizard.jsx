@@ -8,13 +8,14 @@ import {
 import { t, useLang, getLang, locale } from '../lib/i18n.js';
 import Sheet from './Sheet.jsx';
 import ConfirmSheet from './ConfirmSheet.jsx';
+import RulesEditor from './RulesEditor.jsx';
 
 // Step-by-step wizard to configure a targets phase (7 dow rows) + special
 // dates (overrides). Reuses draftToRows/domain.js: it produces EXACTLY the
 // same rows as the Targets editor. It does not configure adherence margins
 // (those are derived from `goal` in classifyBullseye) — it only explains them.
 
-const STEP_COUNT = 8; // 0..7
+const STEP_COUNT = 9; // 0..8
 
 // dow 0=Sunday (column contract). Visual order Mon→Sun.
 const VISUAL_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -79,7 +80,10 @@ export default function TargetsWizard({ onClose }) {
   const [electro, setElectro] = useState(() => ({ ...electroFor('') }));
   const [ceilings, setCeilings] = useState({ grasa_sat_g: '', azucar_anadido_g: '', alcohol_g: '' });
 
-  // Step 6: overrides
+  // Step 6: rules (migration 021)
+  const [rules, setRules] = useState({ items: [] });
+
+  // Step 7: overrides
   const [overrides, setOverrides] = useState([]); // { day, label, kcal, protein_g, carbs_g, fat_g }
 
   // Carga inicial de fases/overrides existentes.
@@ -171,7 +175,7 @@ export default function TargetsWizard({ onClose }) {
     const owner = session?.user?.id;
     if (!owner) { setError(t('No se pudo guardar.')); setBusy(false); return; }
 
-    const rows = draftToRows(groups, { validFrom, label, description, goal, owner });
+    const rows = draftToRows(groups, { validFrom, label, description, goal, owner, rules });
     const phaseErr = phaseConflict
       ? (await supabase.from('targets').upsert(rows, { onConflict: 'owner,dow,valid_from' })).error
       : (await supabase.from('targets').insert(rows)).error;
@@ -260,8 +264,11 @@ export default function TargetsWizard({ onClose }) {
           )}
           {step === 4 && <StepWater electro={electro} setElectro={setElectro} />}
           {step === 5 && <StepCeilings ceilings={ceilings} setCeilings={setCeilings} />}
-          {step === 6 && <StepSpecialDates overrides={overrides} setOverrides={setOverrides} />}
-          {step === 7 && (
+          {step === 6 && (
+            <StepRules rules={rules} setRules={setRules} activeGroupIdxs={activeGroupIdxs} daysInGroup={daysInGroup} groupNames={groupNames} />
+          )}
+          {step === 7 && <StepSpecialDates overrides={overrides} setOverrides={setOverrides} />}
+          {step === 8 && (
             <StepSummary
               label={label} goal={goal} validFrom={validFrom} description={description}
               activeGroupIdxs={activeGroupIdxs} daysInGroup={daysInGroup}
@@ -498,7 +505,20 @@ function StepCeilings({ ceilings, setCeilings }) {
   );
 }
 
-// ===== Step 6: special dates =====
+// ===== Step 6: rules (migration 021) =====
+function StepRules({ rules, setRules, activeGroupIdxs, daysInGroup, groupNames }) {
+  const scopeOptions = activeGroupIdxs.map((gi) => ({ label: groupNames[gi] || t('Tipo de día'), dows: daysInGroup(gi) }));
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-text-2" style={{ margin: 0 }}>
+        {t('Opcional: ajustes automáticos de carbohidratos según cómo evolucione tu peso.')}
+      </p>
+      <RulesEditor rules={rules} onChange={setRules} scopeOptions={scopeOptions} />
+    </div>
+  );
+}
+
+// ===== Step 7: special dates =====
 function StepSpecialDates({ overrides, setOverrides }) {
   const today = todayISO();
   const add = () => setOverrides((o) => [...o, { day: today, label: '', kcal: '', protein_g: '', carbs_g: '', fat_g: '' }]);
@@ -531,7 +551,7 @@ function StepSpecialDates({ overrides, setOverrides }) {
   );
 }
 
-// ===== Step 7: summary =====
+// ===== Step 8: summary =====
 function StepSummary({ label, goal, validFrom, description, activeGroupIdxs, daysInGroup, groupNames, groupValues, electro, ceilings, overridePayloads, phaseConflict }) {
   return (
     <div className="flex flex-col gap-3">

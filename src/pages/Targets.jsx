@@ -3,12 +3,13 @@ import { History, ChevronLeft, ChevronDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { useToast } from '../lib/useToast.js';
-import { MICROS, microGroups, PHASE_GOALS, goalLabel, todayISO, addDaysISO, resolveTarget, numOrNull, cleanMicros, cleanBounds, draftToRows, impliedBounds, SODIUM_FLOOR_MG } from '../lib/domain.js';
+import { MICROS, microGroups, PHASE_GOALS, goalLabel, todayISO, addDaysISO, resolveTarget, numOrNull, cleanMicros, cleanBounds, cleanRules, draftToRows, impliedBounds, SODIUM_FLOOR_MG } from '../lib/domain.js';
 import { t, useLang, getLang, locale } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
 import ConfirmSheet from '../components/ConfirmSheet.jsx';
 import UndoToast from '../components/UndoToast.jsx';
 import PageSkeleton from '../components/PageSkeleton.jsx';
+import RulesEditor from '../components/RulesEditor.jsx';
 
 // ===== Pure helpers (grouping §2.1, dates §5) =====
 // dow 0=Sunday (column contract). Visual display order Mon→Sun.
@@ -127,6 +128,28 @@ function withBound(values, key, side, val) {
 }
 const hasAnyBound = (values) => Object.keys(values?.bounds || {}).length > 0;
 
+// ===== Rules prose (targets.rules, migration 021) =====
+function hasConfiguredRules(rules) {
+  return !!(rules && ((rules.items && rules.items.length) || rules.kcal_min != null || rules.kcal_max != null || rules.paused_until));
+}
+function ruleKindLabel(kind) {
+  return { ritmo_alto: t('Ritmo alto'), estancamiento: t('Estancamiento'), techo_peso: t('Techo de peso'), ritmo_lento: t('Ritmo lento') }[kind] || kind;
+}
+function ruleProseLines(rules) {
+  const lines = [];
+  for (const it of rules?.items || []) {
+    const dcg = it.delta_carbs_g;
+    const dcgTxt = dcg != null ? `${dcg > 0 ? '+' : '−'}${Math.abs(dcg)} g carbs` : '';
+    if (it.kind === 'ritmo_alto') lines.push(`${ruleKindLabel(it.kind)}: >${it.value} kg/sem × ${it.weeks} ${t('sem')} → ${dcgTxt}`);
+    else if (it.kind === 'ritmo_lento') lines.push(`${ruleKindLabel(it.kind)}: <${it.value} kg/sem × ${it.weeks} ${t('sem')} → ${dcgTxt}`);
+    else if (it.kind === 'estancamiento') lines.push(`${ruleKindLabel(it.kind)}: ${it.days} ${t('días')} → ${dcgTxt}`);
+    else if (it.kind === 'techo_peso') lines.push(`${ruleKindLabel(it.kind)}: ≥${it.value} kg → ${t('mantenimiento')}`);
+  }
+  if (rules?.kcal_min != null || rules?.kcal_max != null) lines.push(`${t('Límite kcal')}: ${rules.kcal_min ?? '–'}–${rules.kcal_max ?? '–'}`);
+  if (rules?.paused_until) lines.push(`${t('Pausadas hasta')} ${rules.paused_until}`);
+  return lines;
+}
+
 function draftFromWeek(week) {
   return groupWeek(week).map((g) => ({ id: uid(), dows: [...g.dows], values: valuesOf(g.values) }));
 }
@@ -236,6 +259,8 @@ export default function Targets() {
   const labelOf = (vf) => phaseRows.find((t) => t.valid_from === vf && t.label)?.label || '';
   const descOf = (vf) => phaseRows.find((t) => t.valid_from === vf && t.description)?.description || '';
   const goalOf = (vf) => phaseRows.find((t) => t.valid_from === vf && t.goal)?.goal || '';
+  const rulesOf = (vf) => phaseRows.find((t) => t.valid_from === vf && hasConfiguredRules(t.rules))?.rules || { items: [] };
+  const weekGroupOptions = (vf) => groupWeek(weekOf(vf)).map((g) => ({ label: chipLabels(g.dows).join(' '), dows: g.dows }));
   const faseFor = (day) => resolveTarget(phaseRows, day); // resolution against phase rows (excludes overrides)
 
   // ---- persistence ----
@@ -246,7 +271,7 @@ export default function Targets() {
   }
 
   async function corregirFase(draft) {
-    const rows = draftToRows(draft.groups, { validFrom: vigenteVf, label: draft.label, description: draft.description, goal: draft.goal, owner: userId });
+    const rows = draftToRows(draft.groups, { validFrom: vigenteVf, label: draft.label, description: draft.description, goal: draft.goal, owner: userId, rules: rulesOf(vigenteVf) });
     const { error } = await supabase.from('targets').upsert(rows, { onConflict: 'owner,dow,valid_from' });
     if (error) return friendly(error, t('No se pudo corregir la fase.'));
     afterVigenteSave();
@@ -271,8 +296,9 @@ export default function Targets() {
   async function saveProgramada(oldVf, draft) {
     const newVf = draft.validFrom;
     if (newVf !== oldVf && phaseVfs.includes(newVf)) return t('Ya existe una fase que aplica desde esa fecha.');
+    const rules = rulesOf(oldVf);
     if (newVf !== oldVf) await supabase.from('targets').delete().eq('valid_from', oldVf).not('dow', 'is', null);
-    const rows = draftToRows(draft.groups, { validFrom: newVf, label: draft.label, description: draft.description, goal: draft.goal, owner: userId });
+    const rows = draftToRows(draft.groups, { validFrom: newVf, label: draft.label, description: draft.description, goal: draft.goal, owner: userId, rules });
     const { error } = await supabase.from('targets').upsert(rows, { onConflict: 'owner,dow,valid_from' });
     if (error) return friendly(error, t('No se pudo guardar la fase.'));
     setSheet(null);
@@ -284,6 +310,14 @@ export default function Targets() {
   // this the history could never be filtered by regimen in the Dashboard.
   async function saveGoal(vf, goal) {
     await supabase.from('targets').update({ goal: goal || null }).eq('valid_from', vf).not('dow', 'is', null);
+    load();
+  }
+  // "Editar reglas" (vigente only): patches the `rules` column in-place on the 7
+  // dow rows of that valid_from — it does NOT create a new phase version.
+  async function saveRulesFor(vf, draftRules) {
+    const { error } = await supabase.from('targets').update({ rules: cleanRules(draftRules) }).eq('valid_from', vf).not('dow', 'is', null);
+    if (error) { showToast(t('No se pudieron guardar las reglas.')); return; }
+    setSheet(null);
     load();
   }
   async function deletePhase(vf) {
@@ -360,6 +394,7 @@ export default function Targets() {
                 setSheet({ type: 'decision', draft });
                 return null; // opens the decision sheet; does not persist yet
               }}
+              onEditRules={() => setSheet({ type: 'rules', vf: vigenteVf })}
             />
           ) : (
             <div className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
@@ -627,6 +662,15 @@ export default function Targets() {
         </Sheet>
       )}
 
+      {sheet?.type === 'rules' && (
+        <RulesSheet
+          initial={rulesOf(sheet.vf)}
+          scopeOptions={weekGroupOptions(sheet.vf)}
+          onSave={(draft) => saveRulesFor(sheet.vf, draft)}
+          onClose={() => setSheet(null)}
+        />
+      )}
+
       {sheet?.type === 'decision' && (
         <DecisionSheet
           validFrom={vigenteVf}
@@ -675,10 +719,12 @@ export default function Targets() {
 }
 
 // ===== Phase card (read + edit), mirrored between the current-phase hero and the sheets (§2.1, §3) =====
-function PhaseCard({ variant, validFrom, label = '', description = '', goal = '', week, nextVf, copyWeek, initialEditing = false, forceCollapse = false, onSave, onCancel }) {
+function PhaseCard({ variant, validFrom, label = '', description = '', goal = '', week, nextVf, copyWeek, initialEditing = false, forceCollapse = false, onSave, onCancel, onEditRules }) {
   const today = todayISO();
   const editable = variant === 'vigente' || variant === 'programada' || variant === 'new';
   const showValidFrom = variant === 'programada' || variant === 'new';
+  const appliedRule = week ? week.find((r) => r?.applied_rule)?.applied_rule || null : null;
+  const phaseRules = week ? week.find((r) => hasConfiguredRules(r?.rules))?.rules || null : null;
   const [editing, setEditing] = useState(initialEditing);
   const [draft, setDraft] = useState(makeDraft);
   const [expanded, setExpanded] = useState(null);
@@ -743,7 +789,16 @@ function PhaseCard({ variant, validFrom, label = '', description = '', goal = ''
     <div className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <Kicker variant={variant} />
-        {editable && !editing && <EditPill onClick={startEdit} />}
+        {!editing && (
+          <div className="flex items-center gap-2 shrink-0">
+            {variant === 'vigente' && onEditRules && (
+              <button onClick={onEditRules} className="min-h-[44px] px-2 text-[12.5px] text-accent press">
+                {t('Editar reglas')}
+              </button>
+            )}
+            {editable && <EditPill onClick={startEdit} />}
+          </div>
+        )}
       </div>
 
       {!editing ? (
@@ -768,6 +823,24 @@ function PhaseCard({ variant, validFrom, label = '', description = '', goal = ''
       )}
 
       {!editing && <PhaseMeta variant={variant} validFrom={validFrom} nextVf={nextVf} today={today} />}
+
+      {!editing && (appliedRule || hasConfiguredRules(phaseRules)) && (
+        <div className="flex flex-col gap-1 border-t border-border pt-2">
+          {appliedRule && (
+            <p className="text-[12px]" style={{ margin: 0 }}>
+              <span className="px-1.5 py-0.5 rounded-full bg-surface-3 text-[10px] text-accent mr-1.5">{t('auto')}</span>
+              <span className="text-text-2">{appliedRule}</span>
+            </p>
+          )}
+          {hasConfiguredRules(phaseRules) && (
+            <ul className="text-[12px] text-text-2 list-disc pl-4" style={{ margin: 0 }}>
+              {ruleProseLines(phaseRules).map((l, i) => (
+                <li key={i}>{l}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="border-t border-border pt-3 flex flex-col gap-2">
         <div className="flex items-center justify-between">
@@ -1295,6 +1368,37 @@ function DecisionSheet({ validFrom, onCorregir, onNueva, onClose }) {
         <button onClick={onClose} disabled={busy} className="min-h-[44px] rounded-xl text-text-2 press">
           {t('Cancelar')}
         </button>
+      </div>
+    </Sheet>
+  );
+}
+
+// Sheet for "Editar reglas" (vigente only): patches targets.rules in-place on the
+// 7 dow rows of that valid_from — see the prose/chip readout inside PhaseCard itself.
+function RulesSheet({ initial, scopeOptions, onSave, onClose }) {
+  const [draft, setDraft] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  return (
+    <Sheet onClose={onClose}>
+      <div className="flex flex-col gap-3">
+        <h2 className="font-display text-[19px]">{t('Reglas de fase')}</h2>
+        <RulesEditor rules={draft} onChange={setDraft} scopeOptions={scopeOptions} />
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose} className="flex-1 min-h-[44px] rounded-xl border border-border text-text-2 press">
+            {t('Cancelar')}
+          </button>
+          <button
+            onClick={async () => {
+              setBusy(true);
+              await onSave(draft);
+              setBusy(false);
+            }}
+            disabled={busy}
+            className="flex-1 min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60"
+          >
+            {busy ? t('Guardando…') : t('Guardar')}
+          </button>
+        </div>
       </div>
     </Sheet>
   );
