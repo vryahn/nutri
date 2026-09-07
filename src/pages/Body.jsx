@@ -53,7 +53,9 @@ export default function Body() {
   const [values, setValues] = useState({}); // strings keyed by metric key, for the inputs
   const [note, setNote] = useState('');
   const [photos, setPhotos] = useState([]); // paths in the body-photos bucket for the day
-  const [photoUrls, setPhotoUrls] = useState({}); // path -> signed URL (ephemeral)
+  // path -> signed URL (ephemeral), stamped with the photo set it was signed for: the
+  // previous day's thumbnails never paint while the new ones sign. Derived, not reset.
+  const [signedPhotos, setSignedPhotos] = useState({ key: '', map: {} });
   const [uploading, setUploading] = useState(false);
   const [photoDrag, setPhotoDrag] = useState(false);
   const [history, setHistory] = useState([]); // {day, metrics} rows for the last HISTORY_DAYS
@@ -111,12 +113,11 @@ export default function Body() {
 
   // Signed URLs for the thumbnails (private bucket: not visible without a signed URL).
   // Regenerated whenever the photo set or the day changes.
+  const photoKey = photos.join('|');
+  const photoUrls = signedPhotos.key === photoKey ? signedPhotos.map : {};
   useEffect(() => {
+    if (!photos.length) return;
     let alive = true;
-    if (!photos.length) {
-      setPhotoUrls({});
-      return;
-    }
     supabase.storage
       .from('body-photos')
       .createSignedUrls(photos, 3600)
@@ -126,12 +127,12 @@ export default function Body() {
         data.forEach((d) => {
           if (d.signedUrl) map[d.path] = d.signedUrl;
         });
-        setPhotoUrls(map);
+        setSignedPhotos({ key: photoKey, map });
       });
     return () => {
       alive = false;
     };
-  }, [photos]);
+  }, [photos, photoKey]);
 
   function loadHistory() {
     const start = addDaysISO(todayISO(), -(HISTORY_DAYS - 1));

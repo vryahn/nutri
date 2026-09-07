@@ -63,6 +63,8 @@ export default function Login() {
   }
 
   useEffect(() => {
+    // Mount-only action: entering the demo signs in and navigates away — not state derivable from a prop.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (demoAutoEnter) enterDemo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

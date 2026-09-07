@@ -839,6 +839,8 @@ export default function Dashboard() {
     // (0202-…, 2020-…): without debounce, each one triggers load()'s 7 queries.
     const timer = setTimeout(load, cached || !loadedOnce.current ? 0 : 250);
     return () => clearTimeout(timer);
+  // `load` is rebuilt every render: the range is the dependency on purpose — keying on its identity would refetch on every keystroke of a custom date.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start, end]);
 
   function applyData(d) {
@@ -1091,6 +1093,8 @@ export default function Dashboard() {
       else html.removeAttribute('data-theme');
       document.title = prevTitle;
     };
+  // calcMode/rangeSlug are read once, when printing starts: the document title must not change under an open print dialog.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printing]);
 
   // In phase mode `dates` can be non-contiguous (union of phases with the same
@@ -1167,6 +1171,8 @@ export default function Dashboard() {
     if (calcDisabledReason(opt, calcCtx)) {
       setCalcMode(calcDisabledReason(CALC_BASIC[1], calcCtx) ? 'suma' : 'promedio');
     }
+  // calcCtx is rebuilt every render; the fields that decide the fallback are listed one by one on purpose. setCalcMode is a stable setter.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, calcMode, calcCtx.daysLogged, calcCtx.daysWithTarget, calcCtx.diasCompletosFull, calcCtx.diasCompletosPhase]);
 
   if (loading) return <PageSkeleton blocks={4} />;

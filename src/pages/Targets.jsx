@@ -180,6 +180,8 @@ export default function Targets() {
 
   useEffect(() => {
     load();
+  // Mount-only: the page loads once and every later refresh goes through load() by hand.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function collapseProgramada(vf) {

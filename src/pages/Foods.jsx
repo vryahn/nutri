@@ -88,11 +88,15 @@ export default function Foods() {
   useEffect(() => {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
+  // `load` is rebuilt every render: the debounce must follow the query, not the closure's identity.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
   // ponytail: clears the history state so that a refresh does not reopen the form
   useEffect(() => {
     if (location.state?.newFood) window.history.replaceState({}, '');
+  // Mount-only: consumes once the navigation state that opened the form.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // lg+ shortcuts: "/" focuses the search box (if focus is not on an input), Esc closes the panel.

@@ -100,8 +100,14 @@ export default function TargetsWizard({ onClose }) {
     return () => { alive = false; };
   }, []);
 
-  // Prefill water/electrolytes when a regime is chosen (overwrites: the regime sets the default).
-  useEffect(() => { setElectro({ ...electroFor(goal) }); }, [goal]);
+  // Prefill water/electrolytes when a regime is chosen (overwrites: the regime sets the
+  // default). Adjusted during render — the documented way to reset state when a prop
+  // changes; from an effect it would paint the previous regime's numbers first.
+  const [prevGoal, setPrevGoal] = useState(goal);
+  if (prevGoal !== goal) {
+    setPrevGoal(goal);
+    setElectro({ ...electroFor(goal) });
+  }
 
   const daysInGroup = (gi) => VISUAL_ORDER.filter((d) => dayGroup[d] === gi);
   const activeGroupIdxs = useMemo(

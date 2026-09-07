@@ -34,7 +34,10 @@ export default function UserMenu({ placement = 'bottom', className, showLabel = 
   const [sheet, setSheet] = useState(null); // 'perfil' | 'idioma' | 'config' | null
   const [mode, setLocalMode] = useState(getMode);
   const [email, setEmail] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState(null);
+  // Signed URL stamped with the path it belongs to, so a stale URL never paints over a
+  // new photo while it signs. Derived, not reset by an effect.
+  const [signedAvatar, setSignedAvatar] = useState({ path: null, url: null });
+  const avatarUrl = signedAvatar.path === profile.avatar_path ? signedAvatar.url : null;
   const ref = useOutsideClose(open, setOpen);
 
   useEffect(() => {
@@ -43,10 +46,10 @@ export default function UserMenu({ placement = 'bottom', className, showLabel = 
 
   // Signs the avatar photo (private bucket). Re-signed whenever the path changes.
   useEffect(() => {
+    if (!profile.avatar_path) return;
     let alive = true;
-    if (!profile.avatar_path) { setAvatarUrl(null); return; }
     supabase.storage.from('body-photos').createSignedUrl(profile.avatar_path, 3600).then(({ data }) => {
-      if (alive) setAvatarUrl(data?.signedUrl || null);
+      if (alive) setSignedAvatar({ path: profile.avatar_path, url: data?.signedUrl || null });
     });
     return () => { alive = false; };
   }, [profile.avatar_path]);

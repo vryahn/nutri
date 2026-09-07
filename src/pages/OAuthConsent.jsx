@@ -22,18 +22,16 @@ export default function OAuthConsent() {
   useLang();
   const [params] = useSearchParams();
   const authorizationId = params.get('authorization_id');
-  const [state, setState] = useState('loading'); // loading | error | consent | redirecting
-  const [error, setError] = useState('');
+  // Without authorization_id the page cannot do anything: that is the INITIAL state,
+  // not something an effect sets after the first paint.
+  const [state, setState] = useState(authorizationId ? 'loading' : 'error');
+  const [error, setError] = useState(authorizationId ? '' : t('Falta el parámetro authorization_id.'));
   const [details, setDetails] = useState(null);
   const [account, setAccount] = useState(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!authorizationId) {
-      setState('error');
-      setError(t('Falta el parámetro authorization_id.'));
-      return;
-    }
+    if (!authorizationId) return; // already reflected in the initial state
     let cancelled = false;
     (async () => {
       try {

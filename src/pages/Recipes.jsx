@@ -48,6 +48,8 @@ export default function Recipes() {
   useEffect(() => {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
+  // `load` is rebuilt every render: the debounce must follow the query, not the closure's identity.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
   useEffect(() => {
@@ -446,6 +448,8 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
 
   useEffect(() => {
     if (!query.trim()) {
+      // Emptying the box clears the hits immediately; deferring it to the debounced search would leave the previous ones on screen for 250 ms.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResults([]);
       return;
     }
@@ -1043,6 +1047,8 @@ function StagedIngredientCard({ ing, onFood, onGrams, onSave, onRemove, onSwapCa
 
   useEffect(() => {
     if (!query.trim()) {
+      // Emptying the box clears the hits immediately; deferring it to the debounced search would leave the previous ones on screen for 250 ms.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResults([]);
       return;
     }

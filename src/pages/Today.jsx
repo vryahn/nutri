@@ -568,8 +568,12 @@ export default function Today() {
     // On date change, render the new day's cache BEFORE the refetch —
     // without this, the previous day's entries would show while loading.
     const cached = cacheGet(`entries:${date}`);
+    // Paints the new day's cache BEFORE the refetch; without it the previous day's rows stay on screen while loading.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (cached) setEntries(cached);
     loadDay();
+  // `loadDay` is rebuilt every render: the day is the dependency on purpose.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
 
   // The queue drains on its own (on 'online' and on returning to the app); here we
@@ -579,6 +583,8 @@ export default function Today() {
     setPendingOps(outboxOps());
     if (synced) loadDay(true);
     if (dropped) showToast(t('No se pudo guardar un registro — se descartó.'));
+  // Re-subscribes only when the day changes; loadDay/showToast are rebuilt every render and would resubscribe on each one.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [date]);
 
   useEffect(() => { flushOutbox(); }, []);
@@ -633,6 +639,8 @@ export default function Today() {
     // LabelsModal lives in App.jsx above this page: no remount, it notifies via an event.
     window.addEventListener('labels-changed', loadLabels);
     return () => window.removeEventListener('labels-changed', loadLabels);
+  // Mount-only: the initial load and the labels-changed listener are set up once per session.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Keyboard shortcuts lg+: ←/→ change the day, "/" focuses the quick-add, Esc
@@ -1047,6 +1055,8 @@ export default function Today() {
     actions.push({ key: 'borrar', label: t('Borrar día'), icon: Trash2, onClick: handleDeleteDay });
     setSectionMenu(actions);
     return () => setSectionMenu([]);
+  // The handlers are rebuilt every render; the menu depends on the data it shows, not on their identity.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, copiedDay, prefs.water_food_id, entries, pendingOps, lang]);
 
   // "Guardar y registrar" from Alimentos: /  arrives with state.logFood, preselecting
@@ -1055,6 +1065,8 @@ export default function Today() {
   useEffect(() => {
     const state = location.state;
     if (!state?.logFood) return;
+    // Mount-only: consumes once the navigation state from "Guardar y registrar" and then clears it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (state.date) setDate(state.date);
     setLogItem({ id: state.logFood.id, name: state.logFood.name, type: 'food' });
     if (isLg) {
@@ -1064,6 +1076,8 @@ export default function Today() {
       setAdding({ labelId: state.labelId ?? null });
     }
     window.history.replaceState({}, '');
+  // Mount-only, as above: re-running on isLg/location.state would reopen the form.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Section "+": on lg+ it does not open the sheet (replaced by the inline quick-add),
@@ -1919,8 +1933,14 @@ function useFoodMeta(foodId, recipeId) {
   // offline path — without it a food picked with no connection would log with no values).
   const seed = () => (key && cacheGet(key)) || (foodId ? catalogFood(foodId) : null);
   const [meta, setMeta] = useState(seed);
-  useEffect(() => {
+  // Re-seed during render when the card switches food/recipe: from an effect the
+  // previous food's values would paint for one frame.
+  const [prevKey, setPrevKey] = useState(key);
+  if (prevKey !== key) {
+    setPrevKey(key);
     setMeta(seed());
+  }
+  useEffect(() => {
     if (!key) return;
     let alive = true;
     const query = foodId
@@ -1934,7 +1954,7 @@ function useFoodMeta(foodId, recipeId) {
       if (alive && data) setMeta(data);
     });
     return () => { alive = false; };
-  }, [foodId, recipeId]);
+  }, [foodId, recipeId, key]);
   return meta;
 }
 
@@ -1953,9 +1973,13 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, initialItem, 
   const [frequent, setFrequent] = useState([]);
   const foodMeta = useFoodMeta(selected?.type === 'food' ? selected.id : null, selected?.type === 'recipe' ? selected.id : null);
 
-  useEffect(() => {
+  // A new result list invalidates the highlighted row. Adjusted during render, so the
+  // keyboard never sees an index pointing into the previous list.
+  const [prevResults, setPrevResults] = useState(results);
+  if (prevResults !== results) {
+    setPrevResults(results);
     setActiveIndex(-1);
-  }, [results]);
+  }
 
   // "Calculator" preview: reports the chosen food's contribution at the amount
   // in progress. No selection/grams/meta → null (the summary reverts to the real totals).
@@ -1964,7 +1988,11 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, initialItem, 
     const g = Number(grams === '' ? presetGrams : grams);
     if (!selected || !foodMeta || !(g > 0)) onPreview(null);
     else onPreview({ meta: foodMeta, grams: g, minus: null });
+  // onPreview is rebuilt by the parent every render: as a dependency it would re-fire the preview on every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, foodMeta, grams, presetGrams]);
+  // Cleanup on unmount only; onPreview is rebuilt every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => onPreview?.(null), []); // cleans up on unmount (close/log)
 
   // Frequent items from the src/lib/frequent.js cache (prefetched when Hoy mounts):
@@ -1977,6 +2005,8 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, initialItem, 
 
   useEffect(() => {
     if (!query.trim() || selected) {
+      // Emptying the box clears the hits immediately; deferring it to the debounced search would leave the previous ones on screen for 250 ms.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResults([]);
       return;
     }
@@ -2026,6 +2056,8 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, initialItem, 
       setResults(combined);
     }, 250);
     return () => clearTimeout(timer);
+  // selected/waterFoodId are read inside the guard: re-running on them would relaunch the search right after picking an item.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
   function pick(item, preset) {
@@ -2201,7 +2233,11 @@ function EditEntryForm({ entry, labels, favMicros, onDelete, onSaved, onPreview 
     if (!onPreview || !foodMeta) return;
     const g = Number(grams === '' ? entry.grams : grams);
     if (g >= 0) onPreview({ meta: foodMeta, grams: g, minus: entry });
+  // onPreview is rebuilt by the parent every render: as a dependency it would re-fire the preview on every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foodMeta, grams, entry]);
+  // Cleanup on unmount only; onPreview is rebuilt every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => onPreview?.(null), []); // cleans up on unmount (close/save)
 
   function handleSubmit(e) {
