@@ -2,8 +2,8 @@
 
 > **Cómo usar este archivo (para Bryan, no es parte del spec):**
 > 1. Crea un repo vacío y guarda este archivo como `SPEC.md` en la raíz.
-> 2. Abre Claude Code en esa carpeta con **Sonnet** (`/model sonnet`). Sonnet basta: el spec ya resolvió todas las decisiones; el trabajo es ejecución. Escala a Opus solo si una fase se atora dos veces (típicamente RLS/SQL). Fable no hace falta.
-> 3. Prompt inicial: `Lee SPEC.md completo y ejecútalo fase por fase, empezando por F0. Detente donde el spec marque PAUSA.`
+> 2. Abre Claude Code en esa carpeta con **Sonnet** (`/model sonnet`). Sonnet basta: el spec ya resolvió todas las decisiones; el trabajo es ejecución. Escala a Opus solo si una fase se atora dos veces (típicamente RLS/SQL). Fable no hace falta. Alternativa equivalente: abre Codex en la carpeta y usa su tier fiable equivalente a Sonnet.
+> 3. Prompt inicial en Claude Code o Codex: `Lee SPEC.md completo y ejecútalo fase por fase, empezando por F0. Detente donde el spec marque PAUSA.`
 > 4. Para ahorrar tokens: una sesión por fase (`/clear` entre fases); el spec en el repo es la memoria, no la conversación. Al retomar: `Lee SPEC.md y continúa con la fase N.`
 
 ---
