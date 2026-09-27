@@ -4,6 +4,10 @@ A precision-first nutrition-tracking PWA — think Cronometer, rebuilt small and
 
 The core design commitment: **stored nutritional data is never allowed to drift or degrade.** Every trade-off in the codebase — UX, speed, scope — resolves in favor of data accuracy. Questionable values get flagged (⚠), never silently saved.
 
+## Dependencia del plan de seguimiento
+
+Nutri y Hevy son herramientas de captura y seguimiento dependientes del plan maestro anual de Anthropometry. El plan aprobado gobierna fases, fechas, targets nutricionales, descansos, rutinas y reglas de ajuste. Todo cambio de planificación aprobado se documenta **primero en el plan maestro**, con valores, fechas y bitácora; después se refleja y verifica en las herramientas. Sus datos son evidencia observada, no autoridad para reemplazar el plan. Una discrepancia se reporta y concilia; nunca se convierte silenciosamente en aprobación. Las automatizaciones solo ejecutan reglas ya aprobadas y documentadas en el plan, y sus resultados deben reflejarse allí antes de considerarse nuevos targets normativos. Propuestas pendientes y briefs no son decisiones aprobadas. Esta regla no altera la precisión ni las fuentes de los registros históricos.
+
 ## Why this codebase is worth a look
 
 - **Nutrients are computed, never copied.** Entries store only `(food, grams)`; SQL views derive every nutrient at read time. Fixing a food retroactively corrects all history for free — there is no denormalized data to backfill, ever.

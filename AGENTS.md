@@ -2,6 +2,10 @@
 
 App personal de registro nutricional (tipo Cronometer, simple) para 2 usuarios. **Ya está construida, desplegada y en uso** — el trabajo aquí es mantenimiento: mejoras, bugs, consultas y migraciones. `SPEC.md` es el spec original completo (referencia, no tarea pendiente). **`BIBLIA.md` es el documento normativo permanente** (principios, checklists de seguridad/QA/performance, mantenimiento periódico): toda sesión lo cumple; en conflicto gana la regla más restrictiva.
 
+## Dependencia del plan de seguimiento
+
+Nutri y Hevy son herramientas de captura y seguimiento dependientes del plan maestro anual de Anthropometry. El plan aprobado gobierna fases, fechas, targets nutricionales, descansos, rutinas y reglas de ajuste. Todo cambio de planificación aprobado se documenta **primero en el plan maestro**, con valores, fechas y bitácora; después se refleja y verifica en las herramientas. Sus datos son evidencia observada, no autoridad para reemplazar el plan. Una discrepancia se reporta y concilia; nunca se convierte silenciosamente en aprobación. Las automatizaciones solo ejecutan reglas ya aprobadas y documentadas en el plan, y sus resultados deben reflejarse allí antes de considerarse nuevos targets normativos. Propuestas pendientes y briefs no son decisiones aprobadas. Esta regla no altera la precisión ni las fuentes de los registros históricos.
+
 ## Reglas duras (siguen vigentes, no las relajes)
 
 - **Prioridad núcleo del proyecto: precisión y fiabilidad de los datos almacenados.** Ante cualquier trade-off (UX, velocidad, alcance), gana la exactitud de los valores nutricionales. Datos dudosos se marcan (⚠), nunca se guardan en silencio.

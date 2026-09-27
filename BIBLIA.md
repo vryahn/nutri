@@ -18,6 +18,10 @@ que requiere aprobación explícita de Bryan.
 
 ---
 
+## Dependencia del plan de seguimiento
+
+Nutri y Hevy son herramientas de captura y seguimiento dependientes del plan maestro anual de Anthropometry. El plan aprobado gobierna fases, fechas, targets nutricionales, descansos, rutinas y reglas de ajuste. Todo cambio de planificación aprobado se documenta **primero en el plan maestro**, con valores, fechas y bitácora; después se refleja y verifica en las herramientas. Sus datos son evidencia observada, no autoridad para reemplazar el plan. Una discrepancia se reporta y concilia; nunca se convierte silenciosamente en aprobación. Las automatizaciones solo ejecutan reglas ya aprobadas y documentadas en el plan, y sus resultados deben reflejarse allí antes de considerarse nuevos targets normativos. Propuestas pendientes y briefs no son decisiones aprobadas. Esta regla no altera la precisión ni las fuentes de los registros históricos.
+
 ## 1. Principios rectores
 
 - **P1 — Precisión de los datos sobre todo.** Ante cualquier trade-off (UX,
