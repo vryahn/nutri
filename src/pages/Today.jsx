@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste, ArrowLeftRight, Upload, Bookmark, CloudOff } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
@@ -18,6 +18,7 @@ import {
   todayISO,
   addDaysISO,
   resolveTarget,
+  coupledBandMacros,
   nutrientKind,
   classifyNutrient,
   effectiveBound,
@@ -147,6 +148,30 @@ function boundText(bound, d) {
   const f = (x) => round(x, d);
   if (bound.min != null && bound.max != null) return `${f(bound.min)}–${f(bound.max)}`;
   return bound.min != null ? `≥ ${f(bound.min)}` : `≤ ${f(bound.max)}`;
+}
+
+export function BandGuide({ target, date }) {
+  const [energy, setEnergy] = useState('');
+  const inputId = useId();
+  const transition = target?.rules?.transition;
+  if (transition?.kind !== 'coupled_band') return null;
+  const band = target.bounds?.kcal;
+  const macros = coupledBandMacros(target, energy);
+  if (!band) return null;
+  return (
+    <div className="rounded-2xl bg-surface border border-border p-4 lg:col-start-1">
+      <p className="text-sm font-medium">{t('Tu banda del día')}: {boundText(band, 0)} kcal</p>
+      <p className="text-xs text-text-2 mt-1">{t('Cualquier punto dentro de la banda cumple energía. Sin deuda para mañana.')}</p>
+      <label className="block text-xs mt-3" htmlFor={inputId}>{t('Consulta macros para tu energía elegida')}</label>
+      <input id={inputId} type="number" inputMode="decimal" min={band.min} max={band.max} step="any" value={energy} onChange={(e) => setEnergy(e.target.value)} placeholder={`${band.min}–${band.max}`} className="mt-1 min-h-[44px] w-full bg-surface-2 border border-border rounded-xl px-3 font-mono" />
+      <p className="text-xs text-text-2 mt-2" aria-live="polite">
+        {macros ? `P ${round(macros.protein_g, 1)} g · C ${round(macros.carbs_g, 1)} g · G ${round(macros.fat_g, 1)} g` : energy !== '' ? t('Elige una energía dentro de la banda.') : t('Carbohidratos y grasa cambian juntos con la energía que elijas.')}
+      </p>
+      <p className="text-xs text-text-3 mt-2">{t('Consulta orientativa; no registra ingesta ni cambia tu plan.')}</p>
+      {transition.review_dates?.length > 0 && <p className="text-xs text-text-2 mt-2">{t('Revisiones')}: {transition.review_dates.join(' · ')}</p>}
+      {transition.decision_date && <p className="text-xs text-text-2 mt-1">{date >= transition.decision_date ? t('Revisión pendiente: la banda se conserva hasta aprobar el siguiente bloque.') : `${t('Decisión del siguiente bloque')}: ${transition.decision_date}`}</p>}
+    </div>
+  );
 }
 
 // Delta to the target formatted per the mode: absolute (−318) or in % (−18%).
@@ -291,7 +316,7 @@ function HeroRing({ state, mode }) {
       </div>
       <div className={`min-w-0 ${color}`}>
         {tgt == null ? (
-          <p className="text-xs text-text-3">{t('sin meta de')} {t(meta.label).toLowerCase()}</p>
+          <p className="text-xs text-text-3">{bound ? `${boundText(bound, meta.decimals)} ${meta.unit}` : `${t('sin meta de')} ${t(meta.label).toLowerCase()}`}</p>
         ) : met ? (
           <>
             <p className="flex items-center gap-1.5 text-lg"><Check size={18} />{t('en meta')}</p>
@@ -338,7 +363,7 @@ function Tile({ state, mode, hasFood }) {
           <p className="text-[10px] text-text-3 mt-0.5">{meta.unit} · {t('piso')} {SODIUM_FLOOR_MG} · {t('techo')} {sodMax}</p>
         )
       ) : tgt == null ? (
-        <p className="text-[10px] text-text-3 mt-0.5">{meta.unit}</p>
+        <p className="text-[10px] text-text-3 mt-0.5">{bound && `${boundText(bound, d)} `}{meta.unit}</p>
       ) : met ? (
         <p className="flex items-center gap-1 text-[11px] text-ok mt-0.5"><Check size={12} />{t('meta')}</p>
       ) : mode === 'meta' ? (
@@ -363,7 +388,7 @@ function MiniGrid({ cfg, totals, target, hasFood }) {
             <span key={key} className="flex items-baseline gap-1.5">
               <span className={`font-mono tabular-nums text-sm ${s.color}`}>{round(s.value, s.meta.decimals)}</span>
               <span className="text-[11px] text-text-3">
-                {s.tgt != null && `/${round(s.tgt, s.meta.decimals)} `}{shortLabel(key)}
+                {s.bound ? `/${boundText(s.bound, s.meta.decimals)} ` : s.tgt != null && `/${round(s.tgt, s.meta.decimals)} `}{shortLabel(key)}
               </span>
             </span>
           );
@@ -1286,7 +1311,7 @@ export default function Today() {
         onTap={scrollToSummary}
       />
 
-      <div className="lg:hidden" ref={summaryCardRef}>
+      <div className="lg:hidden flex flex-col gap-4" ref={summaryCardRef}>
         <SummaryCard
           view={activeView}
           cfg={viewCfg}
@@ -1296,6 +1321,7 @@ export default function Today() {
           target={target}
           hasFood={foodEntries.length > 0}
         />
+        <BandGuide key={`${date}:${target?.id || ''}`} target={target} date={date} />
       </div>
 
       {ruleResult && (
@@ -1304,13 +1330,13 @@ export default function Today() {
             <p className="text-[13.5px] font-medium" style={{ margin: 0 }}>{t('Regla de fase')}</p>
             <p className="text-[12.5px] text-text-2 mt-0.5" style={{ margin: 0 }}>{ruleResult.why.text}</p>
           </div>
-          <button
+          {ruleResult.rows.length > 0 && <button
             onClick={() => applyRuleResult(ruleResult)}
             disabled={ruleApplying}
             className="shrink-0 min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60"
           >
             {ruleApplying ? t('Aplicando…') : t('Aplicar')}
-          </button>
+          </button>}
         </div>
       )}
 
@@ -1334,6 +1360,8 @@ export default function Today() {
             hasFood={foodEntries.length > 0}
           />
         </div>
+
+        <div className="hidden lg:block"><BandGuide key={`${date}:${target?.id || ''}`} target={target} date={date} /></div>
 
         {isLg && editing ? (
           <div key={editing.id} className="reveal-in rounded-2xl bg-surface border border-border p-4 flex flex-col gap-4">

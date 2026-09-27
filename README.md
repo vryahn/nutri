@@ -329,6 +329,8 @@ Flag as a discrepancy any macro (kcal, protein_g, carbs_g, fat_g) that differs >
 
 A `targets` row is either recurring (`dow` 0=Sunday…6, versioned by `valid_from`) or a one-off override (`day`). A **phase** (e.g. a mini bulk from Aug 1 to Sep 15) is two weeks: the phase week with `valid_from` = start and `label` = name, and a **restoration** week with `valid_from` = end+1 (a copy of the previous week):
 
+An approved daily transition band uses `bounds.kcal`, `bounds.carbs_g`, and `bounds.fat_g` for the two endpoints, fixed `protein_g`, and `rules.transition.kind = 'coupled_band'`. Leave point targets null until a choice is approved. Today provides an optional energy-to-macros guide: carbs and fat share the same interpolation fraction, and a blank input never implies a choice. The guide does not write targets or intake. Energy inside the band counts as adherent; review dates and the next decision date remain visible. Bands continue until a new approved phase supersedes them: the decision date never lowers the ceiling automatically. Slow-loss reductions are suspended while this metadata is active; fast-loss protection requests a plan review without creating point targets from a band. Exact-date overrides retain priority.
+
 ```bash
 # phase week (7 rows, one per dow; null = no target for that field)
 curl -X POST "$SUPABASE_URL/rest/v1/targets" \

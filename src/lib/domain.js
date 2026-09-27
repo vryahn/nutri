@@ -542,6 +542,22 @@ export function resolveTarget(targets, dateISO) {
   return candidates.reduce((best, t) => (t.valid_from > best.valid_from ? t : best));
 }
 
+// A daily energy choice is a guide, never an inferred/persisted target.
+// The shared fraction keeps both macros coupled and preserves 4/4/9 energy.
+export function coupledBandMacros(target, energy) {
+  if (target?.rules?.transition?.kind !== 'coupled_band' || energy === '' || energy == null) return null;
+  const kcal = Number(energy), protein_g = Number(target.protein_g);
+  const b = target.bounds;
+  if (!Number.isFinite(kcal) || !(protein_g > 0) ||
+    !['kcal', 'carbs_g', 'fat_g'].every((key) => Number.isFinite(b?.[key]?.min) && Number.isFinite(b?.[key]?.max) && b[key].min <= b[key].max) ||
+    !(b.kcal.max > b.kcal.min) || kcal < b.kcal.min || kcal > b.kcal.max) return null;
+  for (const side of ['min', 'max']) {
+    if (Math.abs(4 * protein_g + 4 * b.carbs_g[side] + 9 * b.fat_g[side] - b.kcal[side]) > 0.01) return null;
+  }
+  const fraction = (kcal - b.kcal.min) / (b.kcal.max - b.kcal.min);
+  return { kcal, protein_g, carbs_g: b.carbs_g.min + fraction * (b.carbs_g.max - b.carbs_g.min), fat_g: b.fat_g.min + fraction * (b.fat_g.max - b.fat_g.min) };
+}
+
 // —— Phase row construction (targets) ————————————————————————————————
 // Moved out of Targets.jsx for reuse in the goals wizard
 // (TargetsWizard). Identical behavior: null-safe, sorted micros.
@@ -594,6 +610,14 @@ function ruleNum(v) {
 // non-numeric required fields. Never throws on garbage input.
 export function cleanRules(r) {
   const out = { items: [] };
+  for (const [key, kind] of [['transition', 'coupled_band'], ['review', 'energy_reference']]) {
+    const meta = r?.[key];
+    if (meta?.kind !== kind) continue;
+    const dates = (Array.isArray(meta.review_dates) ? meta.review_dates : []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+    out[key] = { kind, review_dates: dates };
+    if (/^\d{4}-\d{2}-\d{2}$/.test(meta.decision_date)) out[key].decision_date = meta.decision_date;
+    if (typeof meta.plan_version === 'string') out[key].plan_version = meta.plan_version;
+  }
   const kcalMin = ruleNum(r?.kcal_min);
   const kcalMax = ruleNum(r?.kcal_max);
   if (kcalMin != null) out.kcal_min = kcalMin;
@@ -685,9 +709,13 @@ function adherenceCheck(dailyTotals, targets, today, windowDays) {
     const day = addDaysISO(today, -i);
     const kcal = Number(byDay.get(day)?.kcal || 0);
     if (kcal <= 0) continue;
-    consumed.push(kcal);
     const tgt = resolveTarget(targets, day);
-    if (tgt?.kcal != null) targetVals.push(Number(tgt.kcal));
+    const band = tgt?.bounds?.kcal;
+    const reference = band?.min != null && band?.max != null
+      ? Math.max(band.min, Math.min(band.max, kcal)) : tgt?.kcal;
+    if (reference == null) continue;
+    consumed.push(kcal);
+    targetVals.push(Number(reference));
   }
   const minRegistered = Math.round((windowDays / 7) * 5);
   if (consumed.length < minRegistered || !targetVals.length) return { ok: false, pct: null };
@@ -828,9 +856,11 @@ function evalTechoPeso(item, ctx) {
 // loss > DEFICIT_RATE_CAP.pctWk %/week of bodyweight sustained for its `weeks` → +carbs.
 function evalProteccion(ctx) {
   const { weightByDay, dailyTotals, today, vigenteVf, targets, phaseRows, rulesCfg } = ctx;
-  const windowDays = DEFICIT_RATE_CAP.weeks * 7;
+  const transition = rulesCfg.transition?.kind === 'coupled_band';
+  const weeks = transition && today <= addDaysISO(vigenteVf, 13) ? 1 : DEFICIT_RATE_CAP.weeks;
+  const windowDays = weeks * 7;
   const id = 'proteccion-ritmo';
-  if (!(vigenteVf && vigenteVf <= addDaysISO(today, -windowDays))) return null;
+  if (!(vigenteVf && vigenteVf <= addDaysISO(today, -(transition ? windowDays - 1 : windowDays)))) return null;
   const cooldownActive = targets.some((r) => r.dow != null && typeof r.applied_rule === 'string' &&
     r.applied_rule.startsWith(`${id} `) && r.valid_from > addDaysISO(today, -windowDays));
   if (cooldownActive) return null;
@@ -839,9 +869,14 @@ function evalProteccion(ctx) {
   const ma7Now = weightMA7(weightByDay, today);
   const ma7Past = weightMA7(weightByDay, addDaysISO(today, -windowDays));
   if (ma7Now == null || ma7Past == null) return null;
-  const ritmo = (ma7Now - ma7Past) / DEFICIT_RATE_CAP.weeks;
+  const ritmo = (ma7Now - ma7Past) / weeks;
   const pctWk = (ritmo / ma7Now) * 100;
   if (!(pctWk <= -DEFICIT_RATE_CAP.pctWk)) return null;
+
+  if (transition) return {
+    rule: 'proteccion-ritmo', auto: false, rows: [],
+    why: { text: `${fmtSigned(pctWk, 2)} %/sem · Revisar el plan y elevar la ingesta; la banda necesita revisión.`, ritmoKgSem: round(ritmo, 3), pctWk: round(pctWk, 2), ma7: ma7Now, adherencePct: adh.pct },
+  };
 
   const tomorrow = addDaysISO(today, 1);
   const whyText = `${fmtSigned(pctWk, 2)} %/sem × ${DEFICIT_RATE_CAP.weeks} sem · ${fmtSigned(DEFICIT_RATE_CAP.deltaCarbsG, 0)} g carbs`;
@@ -880,7 +915,8 @@ export function evalRules({ targets, bodyMetrics, dailyTotals, todayISO: today }
   );
   const ctx = { targets: targets || [], weightByDay, dailyTotals: dailyTotals || [], today, vigenteVf, phaseRows, rulesCfg };
 
-  const list = cfgRow.goal === 'deficit' ? [{ proteccion: true }, ...rulesCfg.items] : rulesCfg.items;
+  const items = rulesCfg.transition?.kind === 'coupled_band' ? rulesCfg.items.filter((r) => !['estancamiento', 'ritmo_lento'].includes(r.kind)) : rulesCfg.items;
+  const list = cfgRow.goal === 'deficit' ? [{ proteccion: true }, ...items] : items;
   for (const item of list) {
     const result = item.proteccion
       ? evalProteccion(ctx)

@@ -6,6 +6,15 @@ import { subscribeBands, getActiveBands, setActiveBands } from './domain.js';
 // Spanish (it never breaks, never renders "undefined"). Interpolation: the key
 // carries the literal %n / %s marker and the caller performs .replace() after t().
 const EN = {
+  'Tu banda del día': 'Your daily band',
+  'Cualquier punto dentro de la banda cumple energía. Sin deuda para mañana.': 'Any point within the band meets energy. Nothing to make up tomorrow.',
+  'Consulta macros para tu energía elegida': 'Check macros for your chosen energy',
+  'Elige una energía dentro de la banda.': 'Choose energy within the band.',
+  'Carbohidratos y grasa cambian juntos con la energía que elijas.': 'Carbs and fat change together with the energy you choose.',
+  'Consulta orientativa; no registra ingesta ni cambia tu plan.': 'A guide only; it does not log intake or change your plan.',
+  Revisiones: 'Reviews',
+  'Decisión del siguiente bloque': 'Next block decision',
+  'Revisión pendiente: la banda se conserva hasta aprobar el siguiente bloque.': 'Review pending: the band remains until the next block is approved.',
   // Body measurements (Body.jsx) + tab
   Medidas: 'Body',
   'Medidas del día': "Today's measurements",

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  computeRecipePer100g, resolveTarget, weekdayOf, kcalFromMacros, kcalSuspicious,
+  computeRecipePer100g, resolveTarget, coupledBandMacros, weekdayOf, kcalFromMacros, kcalSuspicious,
   macrosImplausible, componentsInconsistent, dayCompleteness, bayesAdherence,
   reorderLabels, eanChecksumValid, cleanNumericMap,
   nutrientKind, classifyBullseye, classifyKcal, classifyFloor, classifyBand,
@@ -179,6 +179,71 @@ describe('resolveTarget', () => {
     const dow = weekdayOf(dateISO);
     const wrongDow = { day: null, dow: (dow + 1) % 7, valid_from: '2026-01-01', kcal: 1800 };
     expect(resolveTarget([wrongDow], dateISO)).toBeNull();
+  });
+});
+
+describe('coupled transition bands', () => {
+  const transition = { kind: 'coupled_band', review_dates: ['2026-10-04', '2026-10-11'], decision_date: '2026-10-12', plan_version: 'v6.8' };
+  function band(kcal = [1680, 2292], carbs = [161, 296], fat = [44, 52]) {
+    return { valid_from: '2026-09-28', goal: 'deficit', kcal: null, protein_g: 160, carbs_g: null, fat_g: null, bounds: { kcal: { min: kcal[0], max: kcal[1] }, carbs_g: { min: carbs[0], max: carbs[1] }, fat_g: { min: fat[0], max: fat[1] } }, rules: { transition, items: [] } };
+  }
+  it.each([
+    [[1680, 2292], [161, 296], [44, 52]],
+    [[1880, 2443], [220, 327], [40, 55]],
+    [[2080, 2540], [279, 358], [36, 52]],
+  ])('preserves endpoints and exact energy at every intermediate fraction', (k, c, g) => {
+    const target = band(k, c, g);
+    for (const fraction of [0, 0.23, 0.5, 1]) {
+      const energy = k[0] + fraction * (k[1] - k[0]);
+      const result = coupledBandMacros(target, energy);
+      expect(result.protein_g).toBe(160);
+      expect(result.carbs_g).toBeCloseTo(c[0] + fraction * (c[1] - c[0]), 9);
+      expect(result.fat_g).toBeCloseTo(g[0] + fraction * (g[1] - g[0]), 9);
+      expect(4 * result.protein_g + 4 * result.carbs_g + 9 * result.fat_g).toBeCloseTo(energy, 9);
+      expect(classifyNutrient('kcal', energy, null, { bounds: target.bounds.kcal })).toBe('ok');
+    }
+    expect(target.kcal).toBeNull();
+  });
+  it('never invents a choice and rejects outside or inconsistent bands', () => {
+    for (const energy of ['', null, undefined, NaN, Infinity, 1679, 2293]) expect(coupledBandMacros(band(), energy)).toBeNull();
+    expect(coupledBandMacros(band([1680, 2292], [161, 300]), 2000)).toBeNull();
+    expect(coupledBandMacros({ ...band(), rules: {} }, 2000)).toBeNull();
+  });
+  it('preserves metadata when rules are edited and retains date/override priority', () => {
+    expect(cleanRules(band().rules).transition).toEqual(transition);
+    const original = { dow: 0, valid_from: '2026-09-27', kcal: 1880 };
+    const rows = Array.from({ length: 7 }, (_, dow) => ({ ...band(), dow }));
+    const trip = { day: '2026-11-01', kcal: 2080 };
+    const birthday = { day: '2026-11-29', kcal: 2080 };
+    const targets = [original, ...rows, trip, birthday];
+    expect(resolveTarget(targets, '2026-09-27')).toBe(original);
+    expect(resolveTarget(targets, '2026-10-12').rules.transition).toEqual(transition);
+    expect(resolveTarget(targets, trip.day)).toBe(trip);
+    expect(resolveTarget(targets, birthday.day)).toBe(birthday);
+  });
+  it('keeps fast-loss protection as a review without manufacturing targets on day 7', () => {
+    const targets = Array.from({ length: 7 }, (_, dow) => ({ ...band(), dow, owner: 'u' }));
+    const today = '2026-10-04';
+    const bodyMetrics = Array.from({ length: 14 }, (_, i) => ({ day: addDaysISO(today, -i), metrics: { peso_kg: i < 7 ? 60 : 61 } }));
+    const dailyTotals = Array.from({ length: 7 }, (_, i) => ({ day: addDaysISO(today, -i), kcal: 2200 }));
+    const result = evalRules({ targets, bodyMetrics, dailyTotals, todayISO: today });
+    expect(result.rule).toBe('proteccion-ritmo');
+    expect(result.auto).toBe(false);
+    expect(result.rows).toEqual([]);
+    expect(result.why.adherencePct).toBe(0);
+    expect(evalRules({ targets, bodyMetrics: [], dailyTotals: [], todayISO: today })).toBeNull();
+  });
+  it('does not restore slow-loss reductions after the decision date without approval', () => {
+    const today = '2026-10-20';
+    const targets = Array.from({ length: 7 }, (_, dow) => ({ ...band(), dow, rules: { transition, items: [{ id: 'slow', kind: 'ritmo_lento', value: 0.2, weeks: 2, delta_carbs_g: -25, scope: [1, 4], auto: true }] } }));
+    const bodyMetrics = Array.from({ length: 21 }, (_, i) => ({ day: addDaysISO(today, -i), metrics: { peso_kg: 61 } }));
+    const dailyTotals = Array.from({ length: 14 }, (_, i) => ({ day: addDaysISO(today, -i), kcal: 2292 }));
+    expect(evalRules({ targets, bodyMetrics, dailyTotals, todayISO: today })).toBeNull();
+    for (const row of bodyMetrics) row.metrics.peso_kg = row.day > addDaysISO(today, -7) ? 59 : 61;
+    const result = evalRules({ targets, bodyMetrics, dailyTotals, todayISO: today });
+    expect(result.rule).toBe('proteccion-ritmo');
+    expect(result.auto).toBe(false);
+    expect(result.rows).toEqual([]);
   });
 });
 
