@@ -25,6 +25,8 @@ const labelNodes = [...document.querySelectorAll('[data-es-label]')];
 labelNodes.forEach(n => { n.dataset.enLabel = n.getAttribute('aria-label'); });
 const btnES = document.getElementById('lang-es');
 const btnEN = document.getElementById('lang-en');
+const loginLink = document.getElementById('login-link');
+const demoLink = document.getElementById('demo-link');
 function setLang(lang) {
   nodes.forEach(n => {
     if (n.dataset.esHtml !== undefined) n.innerHTML = lang === 'es' ? n.dataset.esHtml : n.dataset.enHtml;
@@ -36,6 +38,8 @@ function setLang(lang) {
   btnEN.setAttribute('aria-pressed', lang === 'en');
   labelNodes.forEach(n => n.setAttribute('aria-label', lang === 'es' ? n.dataset.esLabel : n.dataset.enLabel));
   document.documentElement.lang = lang;
+  loginLink.href = `https://nutri.vryahn.com/login?lang=${lang}`;
+  demoLink.href = `https://nutri.vryahn.com/login?lang=${lang}&demo=1`;
   document.title = lang === 'es'
     ? 'nutri. — registro nutricional con precisión de laboratorio'
     : 'nutri. — nutrition tracking with laboratory-grade precision';

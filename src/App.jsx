@@ -7,6 +7,7 @@ import { subscribeSectionMenu } from './lib/sectionMenu.js';
 import { useOutsideClose } from './lib/useOutsideClose.js';
 import { watchSystem } from './lib/theme.js';
 import { t, useLang, registerLangUser, registerUnitsUser, registerProfile, registerAdherenceBands, registerSleepThreshold } from './lib/i18n.js';
+import { demoLoginPath } from './lib/demo.js';
 import PageSkeleton from './components/PageSkeleton.jsx';
 import UserMenu from './components/UserMenu.jsx';
 import Login from './pages/Login.jsx';
@@ -247,6 +248,8 @@ export default function App() {
   const session = useSession();
   const location = useLocation();
   const loginRedirect = location.state?.from || '/';
+  const demoRequested = new URLSearchParams(location.search).has('demo');
+  const demoLogin = demoLoginPath(location.search);
 
   useEffect(watchSystem, []);
 
@@ -276,14 +279,16 @@ export default function App() {
           finishes would show empty days and cache them. */}
       <Route
         path="/login"
-        element={session && !isSeedingDemo() ? <Navigate to={loginRedirect} replace /> : <Login />}
+        element={session && !isSeedingDemo() && !demoRequested ? <Navigate to={loginRedirect} replace /> : <Login />}
       />
       <Route
         path="/"
         element={
-          <RequireAuth session={session}>
-            <Today />
-          </RequireAuth>
+          demoRequested ? <Navigate to={demoLogin} replace /> : (
+            <RequireAuth session={session}>
+              <Today />
+            </RequireAuth>
+          )
         }
       />
       <Route

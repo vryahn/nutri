@@ -506,8 +506,8 @@ export function reorderLabels(labels, index, dir) {
   return next.flatMap((l, i) => (l.sort_order === i ? [] : [{ id: l.id, sort_order: i }]));
 }
 
-export function todayISO() {
-  return new Date().toLocaleDateString('sv-SE'); // yyyy-mm-dd in local time
+export function todayISO(now = new Date()) {
+  return now.toLocaleDateString('sv-SE'); // yyyy-mm-dd in local time
 }
 
 export function addDaysISO(iso, delta) {

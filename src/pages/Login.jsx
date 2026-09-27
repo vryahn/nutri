@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase, setSeedingDemo } from '../lib/supabase.js';
-import { t, useLang, getLang } from '../lib/i18n.js';
+import { t, useLang, getLang, setLang } from '../lib/i18n.js';
+import { todayISO } from '../lib/domain.js';
+import { demoLangFromSearch } from '../lib/demo.js';
 
 // Captured at module load: the router redirects to /login and clears the query
 // string before Login mounts, so ?dev=1 no longer exists inside the effect.
@@ -9,6 +11,14 @@ const devAutoLogin =
 // Same capture, but ?demo=1 works in production too: it is the link the /about
 // landing page (and any recruiter) uses to get straight into the demo.
 const demoAutoEnter = new URLSearchParams(window.location.search).has('demo');
+const requestedDemoLang = demoLangFromSearch(window.location.search);
+
+// A URL language is local to this demo entry; never write it into a user's prefs.
+if (requestedDemoLang) {
+  setLang(requestedDemoLang, { persist: false });
+}
+
+let enteringDemo = false;
 
 export default function Login() {
   useLang();
@@ -39,34 +49,57 @@ export default function Login() {
   // also empties the in-memory cache. Revisit only if the flash of the seed becomes
   // slower than a reload.
   async function enterDemo() {
-    if (demoLoading) return;
+    if (enteringDemo) return;
+    enteringDemo = true;
     setError('');
     setDemoLoading(true);
     setSeedingDemo(true);
-    const { error: authErr } = await supabase.auth.signInAnonymously();
-    if (authErr) {
-      setSeedingDemo(false);
-      setDemoLoading(false);
-      setError(t('No se pudo abrir la demo — intenta más tarde.'));
-      return;
+    let createdDemoSession = false;
+    let complete = false;
+    try {
+      const { data: { session: previousSession } } = await supabase.auth.getSession();
+      if (previousSession) {
+        const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
+        if (signOutError) throw new Error('signout');
+      }
+      const { data, error: authErr } = await supabase.auth.signInAnonymously();
+      createdDemoSession = !!data.session;
+      if (authErr) throw new Error('auth');
+      if (!data.session?.user?.is_anonymous) throw new Error('session');
+
+      const demoLang = requestedDemoLang ?? getLang();
+      setLang(demoLang, { persist: false });
+      const { error: seedErr } = await supabase.rpc('seed_demo', {
+        lang: demoLang,
+        demo_day: todayISO(),
+      });
+      if (seedErr) throw new Error('seed');
+      complete = true;
+      window.location.replace('/');
+    } catch (error) {
+      if (createdDemoSession) {
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch {
+          // Keep the original auth/seed failure visible; no empty demo is mounted.
+        }
+      }
+      setError(t(error.message === 'auth' || error.message === 'signout'
+        ? 'No se pudo abrir la demo — intenta más tarde.'
+        : 'No se pudo preparar la demo — intenta más tarde.'));
+    } finally {
+      if (!complete) {
+        setSeedingDemo(false);
+        setDemoLoading(false);
+        enteringDemo = false;
+      }
     }
-    // El seed siembra etiquetas, recetas y alimentos en el idioma del visitante.
-    const { error: seedErr } = await supabase.rpc('seed_demo', { lang: getLang() });
-    if (seedErr) {
-      await supabase.auth.signOut(); // nunca dejar una sesión anónima vacía sin aviso
-      setSeedingDemo(false);
-      setDemoLoading(false);
-      setError(t('No se pudo preparar la demo — intenta más tarde.'));
-      return;
-    }
-    window.location.replace('/');
   }
 
   useEffect(() => {
     // Mount-only action: entering the demo signs in and navigates away — not state derivable from a prop.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (demoAutoEnter) enterDemo();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleSubmit(e) {
