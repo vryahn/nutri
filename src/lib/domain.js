@@ -1107,7 +1107,7 @@ export function effectiveBound(key, target, goal, bounds) {
   if (!hasBound(bounds)) return null;
   const imp = impliedBounds(key, target, goal);
   const b = { min: bounds.min ?? imp.min, max: bounds.max ?? imp.max };
-  if (nutrientKind(key) === 'sodio') b.min = SODIUM_FLOOR_MG;
+  if (nutrientKind(key) === 'sodio') b.min = Math.max(SODIUM_FLOOR_MG, b.min ?? SODIUM_FLOOR_MG);
   return b;
 }
 

@@ -587,6 +587,9 @@ describe('bounds explícitos (targets.bounds)', () => {
     expect(classifyNutrient('calcio_mg', 900, null)).toBeNull();
     // sodium: medical floor is not relaxable, ceiling is
     expect(classifyNutrient('sodio_mg', 1400, null, { bounds: { min: 1000, max: 3000 } })).toBe('danger');
+    expect(effectiveBound('sodio_mg', null, null, { min: 1600, max: 1800 })).toEqual({ min: 1600, max: 1800 });
+    expect(classifyNutrient('sodio_mg', 1550, null, { bounds: { min: 1600, max: 1800 } })).toBe('warn');
+    expect(classifyNutrient('sodio_mg', 1600, null, { bounds: { min: 1600, max: 1800 } })).toBe('ok');
     expect(classifyNutrient('sodio_mg', 2800, null, { bounds: { max: 3000 } })).toBe('ok');
     expect(classifyNutrient('sodio_mg', 2800, null, { bounds: { min: 1800 } })).toBe('danger'); // min-only keeps the FDA ceiling
     expect(classifyNutrient('sodio_mg', 2800, null)).toBe('danger');

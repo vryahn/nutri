@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, Check, History, Copy, ClipboardPaste, ArrowLeftRight, Upload, Bookmark, CloudOff } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, History, Copy, ClipboardPaste, ArrowLeftRight, Upload, Bookmark, CloudOff } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
@@ -67,9 +67,9 @@ const statusColor = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger' };
 // everything is absent, the defaults replicate the original layouts.
 const BASE_ITEMS = ['kcal', 'protein_g', 'carbs_g', 'fat_g', 'sodio_mg', 'potasio_mg'];
 const CARD_DEFAULTS = {
-  estado: { mode: 'meta', items: BASE_ITEMS },
-  objetivos: { mode: 'delta', items: BASE_ITEMS },
-  mini: { mode: 'delta', items: BASE_ITEMS },
+  estado: { mode: 'meta', items: BASE_ITEMS, showRanges: false },
+  objetivos: { mode: 'delta', items: BASE_ITEMS, showRanges: false },
+  mini: { mode: 'delta', items: BASE_ITEMS, showRanges: false },
 };
 const VIEW_CYCLE = ['estado', 'objetivos', 'mini'];
 // Per-100 g of the user's own "Agua" food: grams = ml, no macros. Lets a queued glass
@@ -114,21 +114,19 @@ function targetFor(key, target) {
   return v > 0 ? Number(v) : null;
 }
 
-// Renderable state of a nutrient: value, target, %, color and "met" per its
-// archetype — or per its explicit bound (targets.bounds), which wins
-// (classifyNutrient in domain.js). The regimen (target.goal) biases the kcal
-// band; hasFood avoids flagging sodium on an empty day. `bound` = the effective
-// {min,max} (explicit sides + implied ones) or null; `pct` keeps measuring against
-// the objective.
+// Renderable state of a nutrient. The effective bound classifies and measures
+// deviations; explicitBound is the user-entered interval shown in the card.
 function itemState(key, totals, target, hasFood) {
   const meta = nutrientMeta(key);
   if (!meta) return null;
   const goal = target?.goal ?? null;
   const value = Number(totals[key] || 0);
   const tgt = targetFor(key, target);
-  const bound = effectiveBound(key, tgt, goal, target?.bounds?.[key]);
+  const coupled = target?.rules?.transition?.kind === 'coupled_band' && (key === 'carbs_g' || key === 'fat_g');
+  const explicitBound = target?.bounds?.[key];
+  const bound = effectiveBound(key, tgt, goal, explicitBound);
   const pct = tgt ? Math.round((value / tgt) * 100) : null;
-  const status = classifyNutrient(key, value, tgt, { goal, hasFood, bounds: bound });
+  const status = coupled ? null : classifyNutrient(key, value, tgt, { goal, hasFood, bounds: bound });
   let color;
   if (meta.kind === 'sodio') color = statusColor[status] || 'text-text';
   else if (meta.kind !== 'meta' || bound) color = statusColor[status] || meta.color;
@@ -137,9 +135,9 @@ function itemState(key, totals, target, hasFood) {
   // "On target": within the explicit bound, or per archetype (band ok / floor
   // reached / ceiling respected). Sodium is rendered separately (dual).
   let met = false;
-  if (bound) met = status === 'ok';
-  else if (tgt != null) met = meta.kind === 'techo' ? value <= tgt : meta.kind === 'diana' || meta.kind === 'rango' ? status === 'ok' : value >= tgt;
-  return { meta, value, tgt, bound, pct, color, goal, status, met };
+  if (hasFood && !coupled && (bound || meta.kind === 'sodio')) met = status === 'ok';
+  else if (hasFood && !coupled && tgt != null) met = meta.kind === 'techo' ? value <= tgt : meta.kind === 'diana' || meta.kind === 'rango' ? status === 'ok' : value >= tgt;
+  return { meta, value, tgt, bound, explicitBound, pct, color, goal, status, met, coupled };
 }
 
 // "1,900–2,100" / "≥ 150" / "≤ 20": explicit bound of a nutrient, for the labels.
@@ -150,7 +148,38 @@ function boundText(bound, d) {
   return bound.min != null ? `≥ ${f(bound.min)}` : `≤ ${f(bound.max)}`;
 }
 
-export function BandGuide({ target, date }) {
+function rangeLabel(state) {
+  const { explicitBound: bound, meta } = state;
+  if (!bound) return null;
+  const f = (n) => round(n, meta.decimals);
+  const label = bound.min != null && bound.max != null
+    ? `${f(bound.min)}–${f(bound.max)} ${meta.unit}`
+    : bound.min != null ? `${t('Mín.')} ${f(bound.min)} ${meta.unit}` : `${t('Máx.')} ${f(bound.max)} ${meta.unit}`;
+  return state.coupled ? `${label} · ${t('según energía')}` : label;
+}
+
+function deviation(state, mode) {
+  if (state.coupled) return null;
+  const { value, tgt, bound, meta } = state;
+  const limit = bound ? value < bound.min ? bound.min : value > bound.max ? bound.max : null
+    : meta.kind === 'sodio' ? value < SODIUM_FLOOR_MG ? SODIUM_FLOOR_MG : SODIUM_CEILING_MG : tgt;
+  if (!(limit > 0)) return null;
+  return deltaText(mode, value - limit, limit, meta.decimals);
+}
+
+function statusText(state, hasFood) {
+  if (!hasFood) return null;
+  if (state.coupled) return t('Según energía');
+  if (state.met) return t('En rango');
+  if (state.status === 'danger' || state.status === 'warn') {
+    const limit = state.bound ? state.value < state.bound.min ? state.bound.min : state.bound.max
+      : state.meta.kind === 'sodio' ? state.value < SODIUM_FLOOR_MG ? SODIUM_FLOOR_MG : SODIUM_CEILING_MG : state.tgt;
+    return t(state.value < limit ? 'Por debajo' : 'Por encima');
+  }
+  return null;
+}
+
+function BandGuide({ target }) {
   const [energy, setEnergy] = useState('');
   const inputId = useId();
   const transition = target?.rules?.transition;
@@ -159,18 +188,18 @@ export function BandGuide({ target, date }) {
   const macros = coupledBandMacros(target, energy);
   if (!band) return null;
   return (
-    <div className="rounded-2xl bg-surface border border-border p-4 lg:col-start-1">
-      <p className="text-sm font-medium">{t('Tu banda del día')}: {boundText(band, 0)} kcal</p>
-      <p className="text-xs text-text-2 mt-1">{t('Cualquier punto dentro de la banda cumple energía. Sin deuda para mañana.')}</p>
-      <label className="block text-xs mt-3" htmlFor={inputId}>{t('Consulta macros para tu energía elegida')}</label>
-      <input id={inputId} type="number" inputMode="decimal" min={band.min} max={band.max} step="any" value={energy} onChange={(e) => setEnergy(e.target.value)} placeholder={`${band.min}–${band.max}`} className="mt-1 min-h-[44px] w-full bg-surface-2 border border-border rounded-xl px-3 font-mono" />
-      <p className="text-xs text-text-2 mt-2" aria-live="polite">
-        {macros ? `P ${round(macros.protein_g, 1)} g · C ${round(macros.carbs_g, 1)} g · G ${round(macros.fat_g, 1)} g` : energy !== '' ? t('Elige una energía dentro de la banda.') : t('Carbohidratos y grasa cambian juntos con la energía que elijas.')}
-      </p>
-      <p className="text-xs text-text-3 mt-2">{t('Consulta orientativa; no registra ingesta ni cambia tu plan.')}</p>
-      {transition.review_dates?.length > 0 && <p className="text-xs text-text-2 mt-2">{t('Revisiones')}: {transition.review_dates.join(' · ')}</p>}
-      {transition.decision_date && <p className="text-xs text-text-2 mt-1">{date >= transition.decision_date ? t('Revisión pendiente: la banda se conserva hasta aprobar el siguiente bloque.') : `${t('Decisión del siguiente bloque')}: ${transition.decision_date}`}</p>}
-    </div>
+    <details className="border-t border-border pt-1 text-xs text-text-2">
+      <summary className="min-h-[44px] flex items-center cursor-pointer">{t('Ver relación')}</summary>
+      <div className="pb-1">
+        <p>{t('Carbohidratos y grasa cambian juntos con la energía que elijas.')}</p>
+        <label className="block mt-2" htmlFor={inputId}>{t('Consulta macros para tu energía elegida')} ({boundText(band, 0)} kcal)</label>
+        <input id={inputId} type="number" inputMode="decimal" min={band.min} max={band.max} step="any" value={energy} onChange={(e) => setEnergy(e.target.value)} placeholder={`${band.min}–${band.max}`} className="mt-1 min-h-[44px] w-full bg-surface-2 border border-border rounded-xl px-3 font-mono" />
+        <p className="text-xs text-text-2 mt-2" aria-live="polite">
+          {macros ? `P ${round(macros.protein_g, 1)} g · C ${round(macros.carbs_g, 1)} g · G ${round(macros.fat_g, 1)} g` : energy !== '' ? t('Elige una energía dentro de la banda.') : ''}
+        </p>
+        <p className="text-xs text-text-3 mt-2">{t('Consulta orientativa; no registra ingesta ni cambia tu plan.')}</p>
+      </div>
+    </details>
   );
 }
 
@@ -187,21 +216,22 @@ function deltaText(mode, delta, base, decimals) {
 // items — safety rule, not configurable.
 function pendingFor(items, totals, target, hasFood) {
   const sodium = Number(totals.sodio_mg || 0);
-  const sodMax = target?.bounds?.sodio_mg?.max ?? SODIUM_CEILING_MG; // the ceiling is the only relaxable side
   const sodLow = sodiumIsLow(sodium, hasFood);
-  const sodHigh = sodiumIsHigh(sodium, hasFood, sodMax);
-  // Sodium pending item: floor (deficit) or ceiling (excess), both critical and medical.
-  const sodPending = () =>
-    sodLow
-      ? { key: 'sodio_mg', critical: true, delta: sodium - SODIUM_FLOOR_MG, base: SODIUM_FLOOR_MG }
-      : { key: 'sodio_mg', critical: true, delta: sodium - sodMax, base: sodMax };
+  const sodiumState = itemState('sodio_mg', totals, target, hasFood);
+  const sodViolation = sodiumState.status && sodiumState.status !== 'ok';
+  const sodPending = () => {
+    const b = sodiumState.bound;
+    const limit = b ? sodium < b.min ? b.min : b.max : sodLow ? SODIUM_FLOOR_MG : SODIUM_CEILING_MG;
+    return { key: 'sodio_mg', critical: sodLow || sodiumState.status === 'danger', delta: sodium - limit, base: limit };
+  };
   const pending = [];
   for (const key of items) {
     const s = itemState(key, totals, target, hasFood);
     if (!s) continue;
     const { meta, value, tgt, bound, status } = s;
+    if (s.coupled) continue;
     if (meta.kind === 'sodio') {
-      if (sodLow || sodHigh) pending.push(sodPending());
+      if (sodViolation) pending.push(sodPending());
     } else if (bound) {
       // Explicit bound: the delta points at the violated side.
       if (status && status !== 'ok') {
@@ -216,7 +246,7 @@ function pendingFor(items, totals, target, hasFood) {
       pending.push({ key, critical: false, delta: value - tgt, base: tgt });
     }
   }
-  if ((sodLow || sodHigh) && !items.includes('sodio_mg')) pending.push(sodPending());
+  if (sodViolation && !items.includes('sodio_mg')) pending.push(sodPending());
   // A delta that rounds to 0 counts as met: showing "−0" as pending
   // (worse still, as critical) would contradict the displayed figure.
   return pending.filter((s) => Math.abs(round(s.delta, 0)) >= 1);
@@ -249,6 +279,7 @@ function SummaryCard({ view, cfg, onToggleView, onConfig, ...props }) {
         </div>
       </div>
       {view === 'objetivos' ? <GoalSummary cfg={cfg} {...props} /> : view === 'mini' ? <MiniGrid cfg={cfg} {...props} /> : <StateSummary cfg={cfg} {...props} />}
+      <BandGuide key={props.target?.id || 'none'} target={props.target} />
     </div>
   );
 }
@@ -258,7 +289,7 @@ function StateSummary({ cfg, totals, target, hasFood }) {
     <div className="grid grid-cols-3 gap-2 text-center">
       {cfg.items.map((key) => {
         const s = itemState(key, totals, target, hasFood);
-        return s && <Stat key={key} state={s} mode={cfg.mode} />;
+        return s && <Stat key={key} state={s} mode={cfg.mode} showRanges={cfg.showRanges} hasFood={hasFood} />;
       })}
     </div>
   );
@@ -272,12 +303,12 @@ function GoalSummary({ cfg, totals, target, hasFood }) {
   const tiles = cfg.items.slice(4).map((k) => itemState(k, totals, target, hasFood)).filter(Boolean);
   return (
     <div className="flex flex-col gap-4">
-      {hero && <HeroRing state={hero} mode={cfg.mode} />}
+      {hero && <HeroRing state={hero} mode={cfg.mode} showRanges={cfg.showRanges} hasFood={hasFood} />}
       {rails.length > 0 && (
         <>
           <div className="h-px bg-border" />
           <div className="flex flex-col gap-3">
-            {rails.map((s) => <RailStat key={s.meta.key} state={s} mode={cfg.mode} />)}
+            {rails.map((s) => <RailStat key={s.meta.key} state={s} mode={cfg.mode} showRanges={cfg.showRanges} hasFood={hasFood} />)}
           </div>
         </>
       )}
@@ -285,7 +316,7 @@ function GoalSummary({ cfg, totals, target, hasFood }) {
         <>
           <div className="h-px bg-border" />
           <div className="grid grid-cols-2 gap-2">
-            {tiles.map((s) => <Tile key={s.meta.key} state={s} mode={cfg.mode} hasFood={hasFood} />)}
+            {tiles.map((s) => <Tile key={s.meta.key} state={s} mode={cfg.mode} hasFood={hasFood} showRanges={cfg.showRanges} />)}
           </div>
         </>
       )}
@@ -293,140 +324,97 @@ function GoalSummary({ cfg, totals, target, hasFood }) {
   );
 }
 
-function HeroRing({ state, mode }) {
-  const { meta, value, tgt, bound, pct, color } = state;
+function NutrientDetail({ state, mode, showRanges, hasFood }) {
+  const { meta, value, tgt, bound, met } = state;
+  const lowSodium = meta.kind === 'sodio' && sodiumIsLow(value, hasFood);
+  const highSodium = meta.kind === 'sodio' && sodiumIsHigh(value, hasFood, bound?.max ?? SODIUM_CEILING_MG);
+  const status = statusText(state, hasFood);
+  const diff = !met && hasFood && mode !== 'meta' ? deviation(state, mode) : null;
+  return (
+    <span className="text-xs text-text-2">
+      {status && <span className={lowSodium || highSodium ? 'text-danger' : ''}>{status}</span>}
+      {diff && <span className="font-mono tabular-nums"> · {diff}{mode === 'delta' ? ` ${meta.unit}` : ''}{lowSodium ? ` ${t('al piso')}` : highSodium ? ` ${t('sobre el techo')}` : ''}</span>}
+      {lowSodium && <span className="text-danger"> · Na &lt;1500 mg</span>}
+      {!met && !diff && !lowSodium && !state.coupled && tgt != null && !bound && <span> · {t('meta')} {round(tgt, meta.decimals)} {meta.unit}</span>}
+      {showRanges && bound && <span className="block text-text-3">{rangeLabel(state)}</span>}
+    </span>
+  );
+}
+
+function HeroRing({ state, mode, showRanges, hasFood }) {
+  const { meta, value, tgt, pct, color } = state;
   const arc = pct != null ? 326.726 * (1 - Math.min(1, pct / 100)) : null;
-  const { met } = state;
   return (
     <div className="flex items-center gap-4">
       <div className={`relative w-[104px] h-[104px] flex-none ${color}`}>
         <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
           <circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface-2)" strokeWidth="11" />
-          {arc != null && (
-            <circle
-              cx="60" cy="60" r="52" fill="none" stroke="currentColor" strokeWidth="11" strokeLinecap="round"
-              strokeDasharray="326.726" strokeDashoffset={arc}
-            />
-          )}
+          {arc != null && <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeDasharray="326.726" strokeDashoffset={arc} />}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="font-mono tabular-nums text-2xl leading-none text-text">{round(value, meta.decimals)}</span>
           <span className="text-[10px] text-text-3 mt-0.5">{meta.unit}</span>
         </div>
       </div>
-      <div className={`min-w-0 ${color}`}>
-        {tgt == null ? (
-          <p className="text-xs text-text-3">{bound ? `${boundText(bound, meta.decimals)} ${meta.unit}` : `${t('sin meta de')} ${t(meta.label).toLowerCase()}`}</p>
-        ) : met ? (
-          <>
-            <p className="flex items-center gap-1.5 text-lg"><Check size={18} />{t('en meta')}</p>
-            <p className="text-xs text-text-3 mt-2">{t('meta')} {round(tgt, meta.decimals)} {meta.unit}{bound && ` · ${boundText(bound, meta.decimals)}`}</p>
-          </>
-        ) : mode === 'meta' ? (
-          <>
-            <p className="font-mono tabular-nums text-2xl leading-none">{round(tgt, meta.decimals)}</p>
-            <p className="text-xs text-text-3 mt-2">{meta.unit} · {t('meta')}</p>
-          </>
-        ) : (
-          <>
-            <p className="font-mono tabular-nums text-2xl leading-none">{deltaText(mode, value - tgt, tgt, meta.decimals)}</p>
-            <p className="text-xs text-text-3 mt-2">{meta.unit} · {t('meta')} {round(tgt, meta.decimals)}{bound && ` · ${boundText(bound, meta.decimals)}`}</p>
-          </>
-        )}
+      <div className="min-w-0">
+        <p className="text-xs text-text-3">{t(meta.label)}</p>
+        <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} />
+        {!tgt && !state.bound && <p className="text-xs text-text-3">{t('sin meta de')} {t(meta.label).toLowerCase()}</p>}
       </div>
     </div>
   );
 }
 
-// Mineral/micro tile. Sodium keeps its dual medical semantics (floor
-// SODIUM_FLOOR_MG + ceiling SODIUM_CEILING_MG), not configurable; the rest follow
-// their archetype (techo = do not exceed, meta = reach).
-function Tile({ state, mode, hasFood }) {
-  const { meta, value, tgt, bound, color } = state;
-  const d = meta.decimals;
-  const { met } = state;
-  const sodMax = bound?.max ?? SODIUM_CEILING_MG;
+function Tile({ state, mode, hasFood, showRanges }) {
+  const { meta, value, color } = state;
   return (
-    <div className="rounded-xl bg-surface-2 p-3">
+    <div className="rounded-xl bg-surface-2 p-3 min-w-0">
       <p className="text-[10px] uppercase tracking-wide text-text-3">{t(meta.label)}</p>
-      <p className={`font-mono tabular-nums text-lg mt-1 ${color}`}>{round(value, d)}</p>
-      {meta.kind === 'sodio' ? (
-        sodiumIsLow(value, hasFood) ? (
-          <p className="font-mono tabular-nums text-[11px] text-danger mt-0.5">
-            {mode === 'pct' ? deltaText('pct', value - SODIUM_FLOOR_MG, SODIUM_FLOOR_MG, 0) : `−${round(SODIUM_FLOOR_MG - value, 0)}`} {t('al piso')}
-          </p>
-        ) : sodiumIsHigh(value, hasFood, sodMax) ? (
-          <p className="font-mono tabular-nums text-[11px] text-danger mt-0.5">
-            {mode === 'pct' ? deltaText('pct', value - sodMax, sodMax, 0) : `+${round(value - sodMax, 0)}`} {t('sobre el techo')}
-          </p>
-        ) : (
-          <p className="text-[10px] text-text-3 mt-0.5">{meta.unit} · {t('piso')} {SODIUM_FLOOR_MG} · {t('techo')} {sodMax}</p>
-        )
-      ) : tgt == null ? (
-        <p className="text-[10px] text-text-3 mt-0.5">{bound && `${boundText(bound, d)} `}{meta.unit}</p>
-      ) : met ? (
-        <p className="flex items-center gap-1 text-[11px] text-ok mt-0.5"><Check size={12} />{t('meta')}</p>
-      ) : mode === 'meta' ? (
-        <p className="text-[10px] text-text-3 mt-0.5 font-mono tabular-nums">{t('de')} {round(tgt, d)}</p>
-      ) : (
-        <p className={`font-mono tabular-nums text-[11px] mt-0.5 ${color}`}>{deltaText(mode, value - tgt, tgt, d)} {t('de')} {round(tgt, d)}</p>
-      )}
+      <p className={`font-mono tabular-nums text-lg mt-1 ${color}`}>{round(value, meta.decimals)} <span className="text-xs">{meta.unit}</span></p>
+      <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} />
     </div>
   );
 }
 
-// Mini layout as a permanent card: in 'delta'/'pct' mode only chips for what
-// is missing (everything on target collapses to a ✓); in 'meta' mode, the current
-// value and the target of each item.
-function MiniGrid({ cfg, totals, target, hasFood }) {
-  if (cfg.mode === 'meta') {
-    return (
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-        {cfg.items.map((key) => {
-          const s = itemState(key, totals, target);
-          return s && (
-            <span key={key} className="flex items-baseline gap-1.5">
-              <span className={`font-mono tabular-nums text-sm ${s.color}`}>{round(s.value, s.meta.decimals)}</span>
-              <span className="text-[11px] text-text-3">
-                {s.bound ? `/${boundText(s.bound, s.meta.decimals)} ` : s.tgt != null && `/${round(s.tgt, s.meta.decimals)} `}{shortLabel(key)}
-              </span>
-            </span>
-          );
-        })}
-      </div>
-    );
-  }
+// Mini layout also powers the fixed summary. Compact modes show pending items;
+// enabling ranges shows each configured item and its explicit limits.
+function MiniGrid({ cfg, totals, target, hasFood, fixed = false }) {
   const pending = pendingFor(cfg.items, totals, target, hasFood);
-  if (pending.length === 0) {
-    return <p className="flex items-center gap-1.5 text-sm text-ok"><Check size={16} />{t('en meta')}</p>;
-  }
+  const keys = cfg.showRanges || cfg.mode === 'meta'
+    ? [...cfg.items, ...pending.filter((p) => !cfg.items.includes(p.key)).map((p) => p.key)]
+    : pending.map((p) => p.key);
+  const fixedKeys = pending.map((p) => p.key).sort((a, b) => (a === 'sodio_mg' ? -1 : b === 'sodio_mg' ? 1 : 0));
+  const shown = fixed ? fixedKeys.slice(0, 3) : keys;
+  if (shown.length === 0) return <p className="text-sm text-text-2">{!hasFood ? t('Sin registros') : !target ? t('Sin objetivos') : target.rules?.transition?.kind === 'coupled_band' ? t('C/G según energía') : t('En rango')}</p>;
   return (
-    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-      {pending.map((s) => <MiniStat key={s.key} mode={cfg.mode} pending={s} label={shortLabel(s.key)} />)}
+    <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+      {shown.map((key) => {
+        const state = itemState(key, totals, target, hasFood);
+        return state && <MiniStat key={key} state={state} mode={cfg.mode} showRanges={cfg.showRanges} hasFood={hasFood} fixed={fixed} />;
+      })}
+      {fixed && fixedKeys.length > shown.length && <span className="text-xs text-text-2 self-center">+{fixedKeys.length - shown.length} · {t('Ver resumen')}</span>}
     </div>
   );
 }
 
-// Fixed mini-summary (<lg): visible only when the summary card leaves the
-// viewport. Shows ONLY what is pending (items and mode of the mini layout) — delta
-// + short label and a 4px status dot; met items take no slot. Everything
-// on target collapses to a single ✓.
-function MiniStat({ mode, pending, label }) {
-  const { critical, delta, base } = pending;
+// Fixed mini-summary (<lg) uses the same renderer and preferences as the card.
+function MiniStat({ state, mode, showRanges, hasFood, fixed }) {
+  if (fixed) return <span className="text-xs text-text-2 whitespace-nowrap">
+    <span className={`font-mono tabular-nums ${state.color}`}>{round(state.value, state.meta.decimals)}</span> {shortLabel(state.meta.key)} · {state.meta.key === 'sodio_mg' && sodiumIsLow(state.value, hasFood) ? t('Na <1500') : statusText(state, hasFood)}
+  </span>;
   return (
-    <span className="flex items-baseline gap-1.5">
-      <span className={`w-1 h-1 rounded-full self-center flex-none ${critical ? 'bg-danger' : 'bg-warn'}`} />
-      <span className={`font-mono tabular-nums font-medium ${critical ? 'text-lg leading-none text-text' : 'text-sm text-text-2'}`}>
-        {mode === 'pct' ? deltaText('pct', delta, base, 0) : deltaText('delta', delta, base, 0)}
+    <span className="flex flex-col min-w-0">
+      <span className="flex items-baseline gap-1">
+        <span className={`font-mono tabular-nums text-sm ${state.color}`}>{round(state.value, state.meta.decimals)}</span>
+        <span className="text-[11px] text-text-3">{shortLabel(state.meta.key)} {state.meta.unit}</span>
       </span>
-      <span className="text-[11px] text-text-3">{label}</span>
+      <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} />
     </span>
   );
 }
 
-// The fixed mini-summary shares the 'mini' layout with the card: it reuses MiniGrid
-// so that EVERY config change (including 'meta' mode, not just pending items) is
-// reflected identically while scrolling. A dedicated renderer used to diverge in 'meta'.
+// The fixed summary shows up to three pending items, with sodium first, and opens
+// the full card for all configured items and ranges.
 function MiniSummary({ visible, top, cfg, totals, target, hasFood, onTap }) {
   // With no targets and no entries there is nothing to summarize.
   if (target == null && !hasFood) return null;
@@ -441,7 +429,7 @@ function MiniSummary({ visible, top, cfg, totals, target, hasFood, onTap }) {
       style={{ top }}
       className={`lg:hidden fixed left-0 right-0 md:left-52 z-20 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 py-2 min-h-[44px] bg-bg border-b border-border transition-opacity motion-reduce:transition-none ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
     >
-      <MiniGrid cfg={cfg} totals={totals} target={target} hasFood={hasFood} />
+      <MiniGrid cfg={cfg} totals={totals} target={target} hasFood={hasFood} fixed />
     </button>
   );
 }
@@ -1321,7 +1309,6 @@ export default function Today() {
           target={target}
           hasFood={foodEntries.length > 0}
         />
-        <BandGuide key={`${date}:${target?.id || ''}`} target={target} date={date} />
       </div>
 
       {ruleResult && (
@@ -1361,7 +1348,6 @@ export default function Today() {
           />
         </div>
 
-        <div className="hidden lg:block"><BandGuide key={`${date}:${target?.id || ''}`} target={target} date={date} /></div>
 
         {isLg && editing ? (
           <div key={editing.id} className="reveal-in rounded-2xl bg-surface border border-border p-4 flex flex-col gap-4">
@@ -1993,62 +1979,30 @@ function WaterSettingsForm({ glassMl, onSave }) {
   );
 }
 
-// Cell of the Estado grid. The mode decides the featured variable: 'meta' =
-// current value (+ /target), 'delta'/'pct' = remainder (✓ when met); the small
-// line always anchors the value/target context.
-function Stat({ state, mode }) {
-  const { meta, value, tgt, color } = state;
-  const d = meta.decimals;
-  const { met } = state;
-  const showDelta = mode !== 'meta' && tgt != null;
+// Estado cell: amount first, status and optional deviation/limits below.
+function Stat({ state, mode, showRanges, hasFood }) {
+  const { meta, value, color } = state;
   return (
-    <div>
-      <p className={`font-mono tabular-nums text-lg ${color}`}>
-        {!showDelta ? round(value, d) : met ? <Check size={18} className="inline" aria-label={t('en meta')} /> : deltaText(mode, value - tgt, tgt, d)}
-      </p>
-      <p className="text-xs text-text-3">{t(meta.label)}</p>
-      {tgt != null && (
-        <p className="text-xs text-text-3 font-mono tabular-nums">
-          {mode === 'meta' ? `/${round(tgt, d)}` : `${round(value, d)}/${round(tgt, d)}`}
-        </p>
-      )}
+    <div className="min-w-0">
+      <p className={`font-mono tabular-nums text-lg ${color}`}>{round(value, meta.decimals)}</p>
+      <p className="text-xs text-text-3">{t(meta.label)}{meta.key !== 'kcal' && ` · ${meta.unit}`}</p>
+      <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} />
     </div>
   );
 }
 
-// Bar row of the Objetivos layout: it features the mode's variable (−N,
-// −N% or value/target). Target met → check + dimmed row; the empty
-// stretch of the bar uses the nutrient's own color (faint).
-function RailStat({ state, mode }) {
+function RailStat({ state, mode, showRanges, hasFood }) {
   const { meta, value, tgt, pct, color } = state;
-  const d = meta.decimals;
-  const has = tgt != null;
-  const { met } = state;
   return (
-    <div className={`${color}${met ? ' opacity-60' : ''}`}>
-      <div className="flex items-baseline justify-between text-sm">
-        <span className="flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-sm bg-current" />
-          <span className="text-text-3">{t(meta.label)}</span>
-        </span>
-        <span className="flex items-baseline gap-2 font-mono tabular-nums">
-          {met ? (
-            <Check size={14} className="self-center" />
-          ) : !has ? (
-            <span>{round(value, d)} {meta.unit}</span>
-          ) : mode === 'meta' ? (
-            <span>{round(value, d)}/{round(tgt, d)} {meta.unit}</span>
-          ) : (
-            <span>{deltaText(mode, value - tgt, tgt, d)}{mode === 'delta' ? ` ${meta.unit}` : ''}</span>
-          )}
-          {has && mode !== 'meta' && <span className="text-text-3 text-xs">{round(value, d)}/{round(tgt, d)}</span>}
-        </span>
+    <div className={color}>
+      <div className="flex items-baseline justify-between gap-2 text-sm">
+        <span className="text-text-3">{t(meta.label)}</span>
+        <span className="font-mono tabular-nums">{round(value, meta.decimals)} {meta.unit}</span>
       </div>
-      {has && (
-        <div className="mt-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'color-mix(in srgb, currentColor 16%, transparent)' }}>
-          <div className="h-full bg-current rounded-full" style={{ width: `${Math.min(100, pct)}%` }} />
-        </div>
-      )}
+      <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} />
+      {tgt != null && <div className="mt-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'color-mix(in srgb, currentColor 16%, transparent)' }}>
+        <div className="h-full bg-current rounded-full" style={{ width: `${Math.min(100, pct)}%` }} />
+      </div>}
     </div>
   );
 }
@@ -2590,6 +2544,7 @@ function SummaryConfigSheet({ view, prefs, onPatch, onSync, onClose }) {
       </div>
 
       <div className="border-t border-border pt-1">
+        <CfgToggle label={t('Mostrar rangos')} checked={!!cfg.showRanges} onChange={(showRanges) => onPatch(view, { showRanges })} />
         <CfgToggle label={t('Aplicar a los 3 diseños')} checked={sync} onChange={onSync} />
       </div>
     </Sheet>
