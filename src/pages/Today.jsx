@@ -332,10 +332,12 @@ function NutrientDetail({ state, mode, showRanges, hasFood }) {
   const diff = !met && hasFood && mode !== 'meta' ? deviation(state, mode) : null;
   return (
     <span className="text-xs text-text-2">
-      {status && <span className={lowSodium || highSodium ? 'text-danger' : ''}>{status}</span>}
-      {diff && <span className="font-mono tabular-nums"> · {diff}{mode === 'delta' ? ` ${meta.unit}` : ''}{lowSodium ? ` ${t('al piso')}` : highSodium ? ` ${t('sobre el techo')}` : ''}</span>}
-      {lowSodium && <span className="text-danger"> · Na &lt;1500 mg</span>}
-      {!met && !diff && !lowSodium && !state.coupled && tgt != null && !bound && <span> · {t('meta')} {round(tgt, meta.decimals)} {meta.unit}</span>}
+      {status && (state.coupled
+        ? <span>{status}</span>
+        : <span className="sr-only">{status}</span>)}
+      {diff && <span className="font-mono tabular-nums">{diff}{mode === 'delta' ? ` ${meta.unit}` : ''}{lowSodium ? ` ${t('al piso')}` : highSodium ? ` ${t('sobre el techo')}` : ''}</span>}
+      {lowSodium && <span className="text-danger">{diff && ' · '}Na &lt;1500 mg</span>}
+      {!met && !diff && !lowSodium && !state.coupled && tgt != null && !bound && <span>{t('meta')} {round(tgt, meta.decimals)} {meta.unit}</span>}
       {showRanges && bound && <span className="block text-text-3">{rangeLabel(state)}</span>}
     </span>
   );
@@ -382,26 +384,36 @@ function MiniGrid({ cfg, totals, target, hasFood, fixed = false }) {
   const pending = pendingFor(cfg.items, totals, target, hasFood);
   const keys = cfg.showRanges || cfg.mode === 'meta'
     ? [...cfg.items, ...pending.filter((p) => !cfg.items.includes(p.key)).map((p) => p.key)]
-    : pending.map((p) => p.key);
+    : pending.length > 0 ? pending.map((p) => p.key) : hasFood && target ? cfg.items : [];
   const fixedKeys = pending.map((p) => p.key).sort((a, b) => (a === 'sodio_mg' ? -1 : b === 'sodio_mg' ? 1 : 0));
-  const shown = fixed ? fixedKeys.slice(0, 3) : keys;
-  if (shown.length === 0) return <p className="text-sm text-text-2">{!hasFood ? t('Sin registros') : !target ? t('Sin objetivos') : target.rules?.transition?.kind === 'coupled_band' ? t('C/G según energía') : t('En rango')}</p>;
+  const fixedShown = fixedKeys.length > 0 ? fixedKeys : hasFood && target ? cfg.items : [];
+  const shown = fixed ? fixedShown.slice(0, 3) : keys;
+  if (shown.length === 0) {
+    const emptyMessage = !hasFood ? 'Sin registros' : !target ? 'Sin objetivos' : target.rules?.transition?.kind === 'coupled_band' ? 'C/G según energía' : null;
+    return emptyMessage && <p className="text-sm text-text-2">{t(emptyMessage)}</p>;
+  }
   return (
     <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
       {shown.map((key) => {
         const state = itemState(key, totals, target, hasFood);
         return state && <MiniStat key={key} state={state} mode={cfg.mode} showRanges={cfg.showRanges} hasFood={hasFood} fixed={fixed} />;
       })}
-      {fixed && fixedKeys.length > shown.length && <span className="text-xs text-text-2 self-center">+{fixedKeys.length - shown.length} · {t('Ver resumen')}</span>}
+      {fixed && fixedShown.length > shown.length && <span className="text-xs text-text-2 self-center">+{fixedShown.length - shown.length} · {t('Ver resumen')}</span>}
     </div>
   );
 }
 
 // Fixed mini-summary (<lg) uses the same renderer and preferences as the card.
 function MiniStat({ state, mode, showRanges, hasFood, fixed }) {
-  if (fixed) return <span className="text-xs text-text-2 whitespace-nowrap">
-    <span className={`font-mono tabular-nums ${state.color}`}>{round(state.value, state.meta.decimals)}</span> {shortLabel(state.meta.key)} · {state.meta.key === 'sodio_mg' && sodiumIsLow(state.value, hasFood) ? t('Na <1500') : statusText(state, hasFood)}
-  </span>;
+  if (fixed) {
+    const lowSodium = state.meta.key === 'sodio_mg' && sodiumIsLow(state.value, hasFood);
+    const status = statusText(state, hasFood);
+    return <span className="text-xs text-text-2 whitespace-nowrap">
+      <span className={`font-mono tabular-nums ${state.color}`}>{round(state.value, state.meta.decimals)}</span> {shortLabel(state.meta.key)}
+      {status && (state.coupled ? <span> · {status}</span> : <span className="sr-only">{status}</span>)}
+      {lowSodium && <span className="text-danger"> · {t('Na <1500')}</span>}
+    </span>;
+  }
   return (
     <span className="flex flex-col min-w-0">
       <span className="flex items-baseline gap-1">
@@ -423,7 +435,6 @@ function MiniSummary({ visible, top, cfg, totals, target, hasFood, onTap }) {
       id="mini-summary"
       type="button"
       onClick={onTap}
-      aria-label={t('Ver resumen del día')}
       aria-hidden={!visible}
       tabIndex={visible ? 0 : -1}
       style={{ top }}
