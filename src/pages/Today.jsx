@@ -22,6 +22,7 @@ import {
   nutrientKind,
   classifyNutrient,
   effectiveBound,
+  impliedBounds,
   sodiumIsLow,
   sodiumIsHigh,
   SODIUM_FLOOR_MG,
@@ -1230,15 +1231,40 @@ export default function Today() {
 
   const target = resolveTarget(targets, date);
 
-  // Day-summary strip for the add/edit sheets (<lg): the sheet covers the
-  // summary card, so this strip keeps the day's context in view.
-  // Reuses MiniGrid (identical to the fixed mini-summary). Null if there is nothing to summarize.
-  const daySummaryStrip = (target != null || foodEntries.length > 0) && (
-    <div className="flex items-center gap-3">
-      <span className="text-[10px] uppercase tracking-wide text-text-3 flex-none">{t('Hoy')}</span>
-      <div className="min-w-0">
-        <MiniGrid cfg={miniCfg} totals={displayTotals} target={target} hasFood={foodEntries.length > 0} />
-      </div>
+  // The sheet's live difference keeps configured order; the fixed mini-summary
+  // and the main card retain their own renderers and semantics.
+  const hasPreviewFood = preview?.meta != null;
+  const hasSummaryFood = foodEntries.length > 0 || hasPreviewFood;
+  const lowSummarySodium = sodiumIsLow(displayTotals.sodio_mg, hasSummaryFood);
+  const summaryKeys = [...miniCfg.items];
+  if (lowSummarySodium && !summaryKeys.includes('sodio_mg')) summaryKeys.push('sodio_mg');
+  const summaryStates = target && hasSummaryFood ? summaryKeys.map((key) => {
+    const state = itemState(key, displayTotals, target, hasSummaryFood);
+    if (!state) return null;
+    const bound = state.bound || impliedBounds(key, state.tgt, state.goal);
+    if (!state.coupled && bound.min == null && bound.max == null) return null;
+    const difference = bound.min != null && state.value < bound.min ? state.value - bound.min
+      : bound.max != null && state.value > bound.max ? state.value - bound.max : 0;
+    const label = { kcal: 'Energía', protein_g: 'Proteína', carbs_g: 'Carbohidratos', fat_g: 'Grasa' }[key] || state.meta.label;
+    return { ...state, difference, label };
+  }).filter(Boolean) : [];
+  const daySummaryStrip = (
+    <div>
+      <p className="mb-2 text-[11px] uppercase tracking-wide text-text-3">{t('Hoy')} · {t('Diferencia en vivo')}</p>
+      {!hasSummaryFood ? <p className="text-sm text-text-2">{t('Sin registros')}</p>
+        : !target || summaryStates.length === 0 ? <p className="text-sm text-text-2">{t('Sin objetivos')}</p>
+          : <div className="grid grid-cols-2 rounded-xl bg-surface-2 px-3 py-1">
+              {summaryStates.map((state, index) => (
+                <div key={state.meta.key} className={`min-w-0 py-2.5 ${index % 2 ? 'border-l border-border pl-3' : 'pr-3'} ${index > 1 ? 'border-t border-border' : ''}`}>
+                  <span className="block text-xs leading-tight text-text-3">{t(state.label)}</span>
+                  {state.coupled ? <span className={`block mt-1 text-sm ${state.color}`}>{t('Según energía')}</span>
+                    : <span className={`block mt-1 font-mono tabular-nums text-lg leading-tight whitespace-nowrap ${state.color}`}>
+                        {state.difference > 0 ? '+' : ''}{round(state.difference, state.meta.decimals)} <span className="text-xs">{state.meta.unit}</span>
+                      </span>}
+                </div>
+              ))}
+            </div>}
+      {lowSummarySodium && <p className="mt-2 text-xs font-medium text-danger">{t('Na <1500')}</p>}
     </div>
   );
 

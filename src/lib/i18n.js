@@ -510,6 +510,8 @@ const EN = {
   'En rango': 'In range',
   'Sin objetivos': 'No targets',
   'Sin registros': 'No entries',
+  'Diferencia en vivo': 'Live difference',
+  Energía: 'Energy',
   'Por debajo': 'Below',
   'Por encima': 'Above',
   'Mín.': 'Min.',
