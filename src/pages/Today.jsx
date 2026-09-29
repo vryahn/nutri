@@ -390,7 +390,7 @@ function GoalProgress({ state, hasTarget, hasFood, showRanges, compact = false }
   return <div className={`relative ${compact ? 'mt-2' : 'mt-2 mb-1'}`} style={{ color: goalTone(state, hasTarget, hasFood) }} role="img" aria-label={`${t(state.meta.label)}: ${round(state.value, state.meta.decimals)} ${state.meta.unit}; ${boundText(bound, state.meta.decimals)} ${state.meta.unit}`}>
     <div className="relative h-2 rounded-full" style={{ background: 'color-mix(in srgb, currentColor 16%, transparent)' }}>
       <div className="h-full rounded-full bg-current" style={{ width: `${current}%` }} />
-      {floor != null && <svg viewBox="0 0 12 18" className="absolute bottom-1/2 w-3 h-[18px] -translate-x-1/2 overflow-visible" style={{ left: `${floor}%` }} aria-hidden="true"><path d="M6 18V2h5L8 5l3 3H6" fill="none" stroke="var(--text-3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+      {floor != null && <svg viewBox="0 0 16 18" className="absolute bottom-1/2 w-4 h-[18px] -translate-x-[31.25%] overflow-visible" style={{ left: `${floor}%` }} aria-hidden="true"><path d="M5 18V2" fill="none" stroke="var(--text-3)" strokeWidth="1.5" strokeLinecap="round" /><path d="M5 2h9l-3 3 3 3H5Z" fill="var(--text-3)" /></svg>}
       <span className="absolute top-1/2 size-3 rounded-full bg-current -translate-x-1/2 -translate-y-1/2" style={{ left: `${current}%` }} />
     </div>
     {showRanges && !compact && <div className="relative h-4 mt-1 text-[10px] text-text-3 font-mono tabular-nums">
