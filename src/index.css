@@ -25,6 +25,7 @@
   --accent-glass: #3CB8AE; /* same hue, +0.09 L: 4.6:1 on .glass with any data color behind */
   --on-accent: #F7FBFB;
   --ok: #4F9B53;
+  --near: #C5B640;
   --warn: #B97F2C;
   --danger: #DE6666;
   --d-kcal: #D56F46;
@@ -51,6 +52,7 @@
   --accent-glass: #076F69; /* same hue, -0.03 L: 4.6:1 on .glass with any data color behind */
   --on-accent: #F8FDFD;
   --ok: #2E7C35;
+  --near: #766000;
   --warn: #966104;
   --danger: #B84548;
   --d-kcal: #B24F25;

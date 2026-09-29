@@ -363,13 +363,32 @@ function goalScale(state, hasTarget) {
   return { bound, at };
 }
 
-function GoalProgress({ state, hasTarget, showRanges, compact = false }) {
+// One solid tone for the current value; coupled macros use their declared envelope.
+function goalTone(state, hasTarget, hasFood) {
+  if (!hasTarget || !hasFood) return 'var(--text-3)';
+  if (state.meta.kind === 'sodio' && state.value < SODIUM_FLOOR_MG) return 'var(--danger)';
+  const bound = state.coupled ? state.explicitBound : goalBounds(state, hasTarget);
+  if (!bound) return 'var(--text-3)';
+  const { min, max } = bound;
+  const { value } = state;
+  if (max != null && value > max) return 'var(--danger)';
+  if (min == null) return 'var(--ok)';
+  if (value < min) return `color-mix(in srgb, var(--ok) ${Math.max(0, Math.min(100, value / min * 100))}%, var(--text-3))`;
+  if (!(max > min)) return 'var(--ok)';
+  const position = (value - min) / (max - min);
+  if (position <= 0.5) return 'var(--ok)';
+  if (position <= 0.72) return `color-mix(in srgb, var(--near) ${(position - 0.5) / 0.22 * 100}%, var(--ok))`;
+  if (position <= 0.9) return `color-mix(in srgb, var(--warn) ${(position - 0.72) / 0.18 * 100}%, var(--near))`;
+  return 'var(--warn)';
+}
+
+function GoalProgress({ state, hasTarget, hasFood, showRanges, compact = false }) {
   const scale = goalScale(state, hasTarget);
   if (!scale) return null;
   const { bound, at } = scale;
   const current = at(state.value) * 100;
   const floor = bound.min != null ? at(bound.min) * 100 : null;
-  return <div className={`relative ${compact ? 'mt-2' : 'mt-2 mb-1'} ${state.color}`} role="img" aria-label={`${t(state.meta.label)}: ${round(state.value, state.meta.decimals)} ${state.meta.unit}; ${boundText(bound, state.meta.decimals)} ${state.meta.unit}`}>
+  return <div className={`relative ${compact ? 'mt-2' : 'mt-2 mb-1'}`} style={{ color: goalTone(state, hasTarget, hasFood) }} role="img" aria-label={`${t(state.meta.label)}: ${round(state.value, state.meta.decimals)} ${state.meta.unit}; ${boundText(bound, state.meta.decimals)} ${state.meta.unit}`}>
     <div className="relative h-2 rounded-full" style={{ background: 'color-mix(in srgb, currentColor 16%, transparent)' }}>
       <div className="h-full rounded-full bg-current" style={{ width: `${current}%` }} />
       {floor != null && <span className="absolute top-1/2 size-2.5 rounded-full border border-text-3 bg-transparent -translate-x-1/2 -translate-y-1/2" style={{ left: `${floor}%` }} />}
@@ -383,7 +402,7 @@ function GoalProgress({ state, hasTarget, showRanges, compact = false }) {
 }
 
 function HeroRing({ state, mode, showRanges, hasFood, hasTarget }) {
-  const { meta, value, tgt, color } = state;
+  const { meta, value, tgt } = state;
   const bound = goalBounds(state, hasTarget);
   const end = bound?.max ?? tgt;
   const progress = end > 0 ? Math.max(0, Math.min(1, value / end)) : null;
@@ -391,7 +410,7 @@ function HeroRing({ state, mode, showRanges, hasFood, hasTarget }) {
   const marker = (fraction) => ({ cx: 60 + 52 * Math.sin(2 * Math.PI * fraction), cy: 60 - 52 * Math.cos(2 * Math.PI * fraction) });
   return (
     <div className="flex items-center gap-4">
-      <div className={`relative w-[104px] h-[104px] flex-none ${color}`}>
+      <div className="relative w-[104px] h-[104px] flex-none" style={{ color: goalTone(state, hasTarget, hasFood) }}>
         <svg viewBox="0 0 120 120" className="w-full h-full" role="img" aria-label={`${t(meta.label)}: ${round(value, meta.decimals)} ${meta.unit}${end > 0 ? `; ${t('Máx.')} ${round(end, meta.decimals)} ${meta.unit}` : ''}`}>
           <circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface-2)" strokeWidth="11" />
           {arc != null && <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeDasharray="326.726" strokeDashoffset={arc} transform="rotate(-90 60 60)" />}
@@ -399,14 +418,14 @@ function HeroRing({ state, mode, showRanges, hasFood, hasTarget }) {
           {progress != null && <circle {...marker(progress)} r="6" fill="currentColor" />}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="font-mono tabular-nums text-2xl leading-none text-text">{round(value, meta.decimals)}</span>
+          <span className="font-mono tabular-nums text-2xl leading-none">{round(value, meta.decimals)}</span>
           <span className="text-[10px] text-text-3 mt-0.5">{meta.unit}</span>
         </div>
       </div>
       <div className="min-w-0">
         <p className="text-xs text-text-3">{t(meta.label)}</p>
         <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} hideCoupled />
-        {hasFood && state.status && !state.coupled && <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] ${color}`} style={{ background: 'color-mix(in srgb, currentColor 15%, transparent)' }}>{statusText(state, hasFood)}</span>}
+        {hasFood && state.status && !state.coupled && <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] ${meta.kind === 'sodio' && value < SODIUM_FLOOR_MG ? 'text-danger' : 'text-text-2'}`} style={{ background: 'color-mix(in srgb, currentColor 15%, transparent)' }}>{statusText(state, hasFood)}</span>}
         {!tgt && !state.bound && <p className="text-xs text-text-3">{t('sin meta de')} {t(meta.label).toLowerCase()}</p>}
       </div>
     </div>
@@ -414,13 +433,13 @@ function HeroRing({ state, mode, showRanges, hasFood, hasTarget }) {
 }
 
 function Tile({ state, mode, hasFood, showRanges, hasTarget }) {
-  const { meta, value, color } = state;
+  const { meta, value } = state;
   return (
     <div className="rounded-xl bg-surface-2 p-3 min-w-0">
       <p className="text-[10px] uppercase tracking-wide text-text-3">{t(meta.label)}</p>
-      <p className={`font-mono tabular-nums text-lg mt-1 ${color}`}>{round(value, meta.decimals)} <span className="text-xs">{meta.unit}</span></p>
+      <p className="font-mono tabular-nums text-lg mt-1" style={{ color: goalTone(state, hasTarget, hasFood) }}>{round(value, meta.decimals)} <span className="text-xs">{meta.unit}</span></p>
       <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} hideCoupled />
-      <GoalProgress state={state} hasTarget={hasTarget} showRanges={showRanges} compact />
+      <GoalProgress state={state} hasTarget={hasTarget} hasFood={hasFood} showRanges={showRanges} compact />
     </div>
   );
 }
@@ -2075,15 +2094,15 @@ function Stat({ state, mode, showRanges, hasFood }) {
 }
 
 function RailStat({ state, mode, showRanges, hasFood, hasTarget }) {
-  const { meta, value, color } = state;
+  const { meta, value } = state;
   return (
-    <div className={color}>
+    <div style={{ color: goalTone(state, hasTarget, hasFood) }}>
       <div className="flex items-baseline justify-between gap-2 text-sm">
         <span className="text-text-3">{t(meta.label)}</span>
         <span className="font-mono tabular-nums">{round(value, meta.decimals)} {meta.unit}</span>
       </div>
       <NutrientDetail state={state} mode={mode} showRanges={false} hasFood={hasFood} hideCoupled />
-      <GoalProgress state={state} hasTarget={hasTarget} showRanges={showRanges} />
+      <GoalProgress state={state} hasTarget={hasTarget} hasFood={hasFood} showRanges={showRanges} />
     </div>
   );
 }
