@@ -129,7 +129,7 @@ function itemState(key, totals, target, hasFood) {
   const pct = tgt ? Math.round((value / tgt) * 100) : null;
   const status = coupled ? null : classifyNutrient(key, value, tgt, { goal, hasFood, bounds: bound });
   let color;
-  if (hasFood && (key === 'sodio_mg' || key === 'potasio_mg') && value < (bound || impliedBounds(key, tgt, goal))?.min) color = 'text-text-3';
+  if ((key === 'sodio_mg' || key === 'potasio_mg') && value < (bound || impliedBounds(key, tgt, goal))?.min) color = 'text-text-3';
   else if (meta.kind === 'sodio') color = statusColor[status] || 'text-text';
   else if (meta.kind !== 'meta' || bound) color = statusColor[status] || meta.color;
   else if (meta.color) color = meta.color;
