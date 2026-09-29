@@ -9,7 +9,6 @@ const EN = {
   'Consulta macros para tu energía elegida': 'Check macros for your chosen energy',
   'Ver relación': 'View relationship',
   'Ver resumen': 'View summary',
-  'Na <1500': 'Na <1500',
   'Según energía': 'Depends on energy',
   'según energía': 'depends on energy',
   'C/G según energía': 'C/F depend on energy',

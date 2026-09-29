@@ -129,7 +129,8 @@ function itemState(key, totals, target, hasFood) {
   const pct = tgt ? Math.round((value / tgt) * 100) : null;
   const status = coupled ? null : classifyNutrient(key, value, tgt, { goal, hasFood, bounds: bound });
   let color;
-  if (meta.kind === 'sodio') color = statusColor[status] || 'text-text';
+  if (hasFood && (key === 'sodio_mg' || key === 'potasio_mg') && value < (bound || impliedBounds(key, tgt, goal))?.min) color = 'text-text-3';
+  else if (meta.kind === 'sodio') color = statusColor[status] || 'text-text';
   else if (meta.kind !== 'meta' || bound) color = statusColor[status] || meta.color;
   else if (meta.color) color = meta.color;
   else color = tgt != null && value >= tgt ? 'text-ok' : 'text-warn';
@@ -337,7 +338,6 @@ function NutrientDetail({ state, mode, showRanges, hasFood, hideCoupled = false 
         ? <span>{status}</span>
         : <span className="sr-only">{status}</span>)}
       {diff && <span className="font-mono tabular-nums">{diff}{mode === 'delta' ? ` ${meta.unit}` : ''}{lowSodium ? ` ${t('al piso')}` : highSodium ? ` ${t('sobre el techo')}` : ''}</span>}
-      {lowSodium && <span className="text-danger">{diff && ' · '}Na &lt;1500 mg</span>}
       {!met && !diff && !lowSodium && !state.coupled && tgt != null && !bound && <span>{t('meta')} {round(tgt, meta.decimals)} {meta.unit}</span>}
       {showRanges && bound && <span className="block text-text-3">{rangeLabel(state, !hideCoupled)}</span>}
     </span>
@@ -366,11 +366,11 @@ function goalScale(state, hasTarget) {
 // One solid tone for the current value; coupled macros use their declared envelope.
 function goalTone(state, hasTarget, hasFood) {
   if (!hasTarget || !hasFood) return 'var(--text-3)';
-  if (state.meta.kind === 'sodio' && state.value < SODIUM_FLOOR_MG) return 'var(--danger)';
   const bound = state.coupled ? state.explicitBound : goalBounds(state, hasTarget);
   if (!bound) return 'var(--text-3)';
   const { min, max } = bound;
   const { value } = state;
+  if ((state.meta.key === 'sodio_mg' || state.meta.key === 'potasio_mg') && min != null && value < min) return 'var(--text-3)';
   if (max != null && value > max) return 'var(--danger)';
   if (min != null && value < min) return `color-mix(in srgb, var(--ok) ${Math.max(0, Math.min(100, value / min * 100))}%, var(--text-3))`;
   if (!(max > (min ?? 0))) return 'var(--ok)';
@@ -432,7 +432,7 @@ function HeroRing({ state, mode, showRanges, hasFood, hasTarget }) {
       <div className="min-w-0">
         <p className="text-xs text-text-3">{t(meta.label)}</p>
         <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} hideCoupled />
-        {hasFood && state.status && !state.coupled && <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] ${meta.kind === 'sodio' && value < SODIUM_FLOOR_MG ? 'text-danger' : 'text-text-2'}`} style={{ background: 'color-mix(in srgb, currentColor 15%, transparent)' }}>{statusText(state, hasFood)}</span>}
+        {hasFood && state.status && !state.coupled && <span className="inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] text-text-2" style={{ background: 'color-mix(in srgb, currentColor 15%, transparent)' }}>{statusText(state, hasFood)}</span>}
         {!tgt && !state.bound && <p className="text-xs text-text-3">{t('sin meta de')} {t(meta.label).toLowerCase()}</p>}
       </div>
     </div>
@@ -479,12 +479,10 @@ function MiniGrid({ cfg, totals, target, hasFood, fixed = false }) {
 // Fixed mini-summary (<lg) uses the same renderer and preferences as the card.
 function MiniStat({ state, mode, showRanges, hasFood, fixed }) {
   if (fixed) {
-    const lowSodium = state.meta.key === 'sodio_mg' && sodiumIsLow(state.value, hasFood);
     const status = statusText(state, hasFood);
     return <span className="text-xs text-text-2 whitespace-nowrap">
       <span className={`font-mono tabular-nums ${state.color}`}>{round(state.value, state.meta.decimals)}</span> {shortLabel(state.meta.key)}
       {status && (state.coupled ? <span> · {status}</span> : <span className="sr-only">{status}</span>)}
-      {lowSodium && <span className="text-danger"> · {t('Na <1500')}</span>}
     </span>;
   }
   return (
@@ -1336,7 +1334,6 @@ export default function Today() {
                 </div>
               ))}
             </div>}
-      {lowSummarySodium && <p className="mt-2 text-xs font-medium text-danger">{t('Na <1500')}</p>}
     </div>
   );
 
