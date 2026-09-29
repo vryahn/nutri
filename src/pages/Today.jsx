@@ -149,14 +149,14 @@ function boundText(bound, d) {
   return bound.min != null ? `≥ ${f(bound.min)}` : `≤ ${f(bound.max)}`;
 }
 
-function rangeLabel(state) {
+function rangeLabel(state, includeContext = true) {
   const { explicitBound: bound, meta } = state;
   if (!bound) return null;
   const f = (n) => round(n, meta.decimals);
   const label = bound.min != null && bound.max != null
     ? `${f(bound.min)}–${f(bound.max)} ${meta.unit}`
     : bound.min != null ? `${t('Mín.')} ${f(bound.min)} ${meta.unit}` : `${t('Máx.')} ${f(bound.max)} ${meta.unit}`;
-  return state.coupled ? `${label} · ${t('según energía')}` : label;
+  return state.coupled && includeContext ? `${label} · ${t('según energía')}` : label;
 }
 
 function deviation(state, mode) {
@@ -304,12 +304,12 @@ function GoalSummary({ cfg, totals, target, hasFood }) {
   const tiles = cfg.items.slice(4).map((k) => itemState(k, totals, target, hasFood)).filter(Boolean);
   return (
     <div className="flex flex-col gap-4">
-      {hero && <HeroRing state={hero} mode={cfg.mode} showRanges={cfg.showRanges} hasFood={hasFood} />}
+      {hero && <HeroRing state={hero} mode={cfg.mode} showRanges={cfg.showRanges} hasFood={hasFood} hasTarget={!!target} />}
       {rails.length > 0 && (
         <>
           <div className="h-px bg-border" />
           <div className="flex flex-col gap-3">
-            {rails.map((s) => <RailStat key={s.meta.key} state={s} mode={cfg.mode} showRanges={cfg.showRanges} hasFood={hasFood} />)}
+            {rails.map((s) => <RailStat key={s.meta.key} state={s} mode={cfg.mode} showRanges={cfg.showRanges} hasFood={hasFood} hasTarget={!!target} />)}
           </div>
         </>
       )}
@@ -317,7 +317,7 @@ function GoalSummary({ cfg, totals, target, hasFood }) {
         <>
           <div className="h-px bg-border" />
           <div className="grid grid-cols-2 gap-2">
-            {tiles.map((s) => <Tile key={s.meta.key} state={s} mode={cfg.mode} hasFood={hasFood} showRanges={cfg.showRanges} />)}
+            {tiles.map((s) => <Tile key={s.meta.key} state={s} mode={cfg.mode} hasFood={hasFood} showRanges={cfg.showRanges} hasTarget={!!target} />)}
           </div>
         </>
       )}
@@ -325,7 +325,7 @@ function GoalSummary({ cfg, totals, target, hasFood }) {
   );
 }
 
-function NutrientDetail({ state, mode, showRanges, hasFood }) {
+function NutrientDetail({ state, mode, showRanges, hasFood, hideCoupled = false }) {
   const { meta, value, tgt, bound, met } = state;
   const lowSodium = meta.kind === 'sodio' && sodiumIsLow(value, hasFood);
   const highSodium = meta.kind === 'sodio' && sodiumIsHigh(value, hasFood, bound?.max ?? SODIUM_CEILING_MG);
@@ -333,26 +333,70 @@ function NutrientDetail({ state, mode, showRanges, hasFood }) {
   const diff = !met && hasFood && mode !== 'meta' ? deviation(state, mode) : null;
   return (
     <span className="text-xs text-text-2">
-      {status && (state.coupled
+      {status && !hideCoupled && (state.coupled
         ? <span>{status}</span>
         : <span className="sr-only">{status}</span>)}
       {diff && <span className="font-mono tabular-nums">{diff}{mode === 'delta' ? ` ${meta.unit}` : ''}{lowSodium ? ` ${t('al piso')}` : highSodium ? ` ${t('sobre el techo')}` : ''}</span>}
       {lowSodium && <span className="text-danger">{diff && ' · '}Na &lt;1500 mg</span>}
       {!met && !diff && !lowSodium && !state.coupled && tgt != null && !bound && <span>{t('meta')} {round(tgt, meta.decimals)} {meta.unit}</span>}
-      {showRanges && bound && <span className="block text-text-3">{rangeLabel(state)}</span>}
+      {showRanges && bound && <span className="block text-text-3">{rangeLabel(state, !hideCoupled)}</span>}
     </span>
   );
 }
 
-function HeroRing({ state, mode, showRanges, hasFood }) {
-  const { meta, value, tgt, pct, color } = state;
-  const arc = pct != null ? 326.726 * (1 - Math.min(1, pct / 100)) : null;
+function goalBounds(state, hasTarget) {
+  if (!hasTarget) return null;
+  const b = state.bound || impliedBounds(state.meta.key, state.tgt, state.goal);
+  return b?.min != null || b?.max != null ? b : null;
+}
+
+function goalScale(state, hasTarget) {
+  const bound = goalBounds(state, hasTarget);
+  if (!bound) return null;
+  const { min, max } = bound;
+  // ponytail: half a band before the floor separates close values; an open floor ends at 85% of the rail.
+  const start = min != null && max != null ? Math.max(0, min - (max - min) / 2) : 0;
+  if (min != null && max == null) return { bound, at: (value) => Math.max(0, Math.min(0.85, value / min * 0.85)) };
+  const end = max;
+  if (!(end > start)) return null;
+  const at = (value) => Math.max(0, Math.min(1, (value - start) / (end - start)));
+  return { bound, at };
+}
+
+function GoalProgress({ state, hasTarget, showRanges, compact = false }) {
+  const scale = goalScale(state, hasTarget);
+  if (!scale) return null;
+  const { bound, at } = scale;
+  const current = at(state.value) * 100;
+  const floor = bound.min != null ? at(bound.min) * 100 : null;
+  return <div className={`relative ${compact ? 'mt-2' : 'mt-2 mb-1'} ${state.color}`} role="img" aria-label={`${t(state.meta.label)}: ${round(state.value, state.meta.decimals)} ${state.meta.unit}; ${boundText(bound, state.meta.decimals)} ${state.meta.unit}`}>
+    <div className="relative h-2 rounded-full" style={{ background: 'color-mix(in srgb, currentColor 16%, transparent)' }}>
+      <div className="h-full rounded-full bg-current" style={{ width: `${current}%` }} />
+      {floor != null && <span className={`absolute top-1/2 size-3 rounded-full border-2 border-text -translate-x-1/2 -translate-y-1/2 ${compact ? 'bg-surface-2' : 'bg-surface'}`} style={{ left: `${floor}%` }} />}
+      <span className="absolute top-1/2 size-3 rounded-full bg-current -translate-x-1/2 -translate-y-1/2" style={{ left: `${current}%` }} />
+    </div>
+    {showRanges && !compact && <div className="relative h-4 mt-1 text-[10px] text-text-3 font-mono tabular-nums">
+      {bound.min != null && <span className={bound.max == null ? 'absolute right-0' : 'absolute -translate-x-1/2'} style={bound.max == null ? undefined : { left: `${floor}%` }}>{t('Mín.')} {round(bound.min, state.meta.decimals)} {state.meta.unit}</span>}
+      {bound.max != null && <span className="absolute right-0">{round(bound.max, state.meta.decimals)} {state.meta.unit}</span>}
+    </div>}
+  </div>;
+}
+
+function HeroRing({ state, mode, showRanges, hasFood, hasTarget }) {
+  const { meta, value, tgt, color } = state;
+  const bound = goalBounds(state, hasTarget);
+  const end = bound?.max ?? tgt;
+  const progress = end > 0 ? Math.max(0, Math.min(1, value / end)) : null;
+  const arc = progress != null ? 326.726 * (1 - progress) : null;
+  const marker = (fraction) => ({ cx: 60 + 52 * Math.sin(2 * Math.PI * fraction), cy: 60 - 52 * Math.cos(2 * Math.PI * fraction) });
   return (
     <div className="flex items-center gap-4">
       <div className={`relative w-[104px] h-[104px] flex-none ${color}`}>
-        <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+        <svg viewBox="0 0 120 120" className="w-full h-full" role="img" aria-label={`${t(meta.label)}: ${round(value, meta.decimals)} ${meta.unit}${end > 0 ? `; ${t('Máx.')} ${round(end, meta.decimals)} ${meta.unit}` : ''}`}>
           <circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface-2)" strokeWidth="11" />
-          {arc != null && <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeDasharray="326.726" strokeDashoffset={arc} />}
+          {arc != null && <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeDasharray="326.726" strokeDashoffset={arc} transform="rotate(-90 60 60)" />}
+          {bound?.min != null && end > 0 && <circle {...marker(Math.min(1, bound.min / end))} r="5" fill="var(--surface)" stroke="var(--text)" strokeWidth="2" />}
+          {progress != null && <circle {...marker(progress)} r="6" fill="currentColor" />}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="font-mono tabular-nums text-2xl leading-none text-text">{round(value, meta.decimals)}</span>
@@ -361,20 +405,22 @@ function HeroRing({ state, mode, showRanges, hasFood }) {
       </div>
       <div className="min-w-0">
         <p className="text-xs text-text-3">{t(meta.label)}</p>
-        <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} />
+        <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} hideCoupled />
+        {hasFood && state.status && !state.coupled && <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] ${color}`} style={{ background: 'color-mix(in srgb, currentColor 15%, transparent)' }}>{statusText(state, hasFood)}</span>}
         {!tgt && !state.bound && <p className="text-xs text-text-3">{t('sin meta de')} {t(meta.label).toLowerCase()}</p>}
       </div>
     </div>
   );
 }
 
-function Tile({ state, mode, hasFood, showRanges }) {
+function Tile({ state, mode, hasFood, showRanges, hasTarget }) {
   const { meta, value, color } = state;
   return (
     <div className="rounded-xl bg-surface-2 p-3 min-w-0">
       <p className="text-[10px] uppercase tracking-wide text-text-3">{t(meta.label)}</p>
       <p className={`font-mono tabular-nums text-lg mt-1 ${color}`}>{round(value, meta.decimals)} <span className="text-xs">{meta.unit}</span></p>
-      <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} />
+      <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} hideCoupled />
+      <GoalProgress state={state} hasTarget={hasTarget} showRanges={showRanges} compact />
     </div>
   );
 }
@@ -2028,18 +2074,16 @@ function Stat({ state, mode, showRanges, hasFood }) {
   );
 }
 
-function RailStat({ state, mode, showRanges, hasFood }) {
-  const { meta, value, tgt, pct, color } = state;
+function RailStat({ state, mode, showRanges, hasFood, hasTarget }) {
+  const { meta, value, color } = state;
   return (
     <div className={color}>
       <div className="flex items-baseline justify-between gap-2 text-sm">
         <span className="text-text-3">{t(meta.label)}</span>
         <span className="font-mono tabular-nums">{round(value, meta.decimals)} {meta.unit}</span>
       </div>
-      <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} />
-      {tgt != null && <div className="mt-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'color-mix(in srgb, currentColor 16%, transparent)' }}>
-        <div className="h-full bg-current rounded-full" style={{ width: `${Math.min(100, pct)}%` }} />
-      </div>}
+      <NutrientDetail state={state} mode={mode} showRanges={false} hasFood={hasFood} hideCoupled />
+      <GoalProgress state={state} hasTarget={hasTarget} showRanges={showRanges} />
     </div>
   );
 }
