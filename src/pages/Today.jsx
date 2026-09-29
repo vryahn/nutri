@@ -382,7 +382,7 @@ function goalTone(state, hasTarget, hasFood) {
 }
 
 function FloorFlag({ filled }) {
-  return <g stroke={filled ? 'currentColor' : 'var(--text-3)'} strokeWidth="1.5" strokeLinejoin="round">
+  return <g opacity={0.5} stroke={filled ? 'currentColor' : 'var(--text-3)'} strokeWidth="1.5" strokeLinejoin="round">
     <path d="M0 0V-18" fill="none" />
     <path d="M-1-17h-12l4 4-4 4h12z" fill={filled ? 'currentColor' : 'var(--surface)'} />
   </g>;
