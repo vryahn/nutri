@@ -394,7 +394,7 @@ function GoalProgress({ state, hasTarget, hasFood, showRanges, compact = false }
   const { bound, at } = scale;
   const current = at(state.value) * 100;
   const floor = bound.min != null ? at(bound.min) * 100 : null;
-  return <div className={`relative ${compact ? 'mt-2' : 'mt-2 mb-1'}`} style={{ color: goalTone(state, hasTarget, hasFood) }} role="img" aria-label={`${t(state.meta.label)}: ${round(state.value, state.meta.decimals)} ${state.meta.unit}; ${boundText(bound, state.meta.decimals)} ${state.meta.unit}`}>
+  return <div className={`relative ${compact ? showRanges && state.explicitBound ? 'mt-6' : 'mt-2' : 'mt-2 mb-1'}`} style={{ color: goalTone(state, hasTarget, hasFood) }} role="img" aria-label={`${t(state.meta.label)}: ${round(state.value, state.meta.decimals)} ${state.meta.unit}; ${boundText(bound, state.meta.decimals)} ${state.meta.unit}`}>
     <div className="relative h-2 rounded-full" style={{ background: 'color-mix(in srgb, currentColor 16%, transparent)' }}>
       <div className="h-full rounded-full bg-current" style={{ width: `${current}%` }} />
       {floor != null && <svg viewBox="-14 -19 14 19" className="absolute top-1/2 h-[19px] w-[14px] -translate-x-full -translate-y-full overflow-visible" style={{ left: `${floor}%` }} aria-hidden="true"><FloorFlag filled={state.value >= bound.min} /></svg>}
