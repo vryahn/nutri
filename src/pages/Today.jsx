@@ -372,7 +372,7 @@ function GoalProgress({ state, hasTarget, showRanges, compact = false }) {
   return <div className={`relative ${compact ? 'mt-2' : 'mt-2 mb-1'} ${state.color}`} role="img" aria-label={`${t(state.meta.label)}: ${round(state.value, state.meta.decimals)} ${state.meta.unit}; ${boundText(bound, state.meta.decimals)} ${state.meta.unit}`}>
     <div className="relative h-2 rounded-full" style={{ background: 'color-mix(in srgb, currentColor 16%, transparent)' }}>
       <div className="h-full rounded-full bg-current" style={{ width: `${current}%` }} />
-      {floor != null && <span className={`absolute top-1/2 size-3 rounded-full border-2 border-text -translate-x-1/2 -translate-y-1/2 ${compact ? 'bg-surface-2' : 'bg-surface'}`} style={{ left: `${floor}%` }} />}
+      {floor != null && <span className="absolute top-1/2 size-2.5 rounded-full border border-text-3 bg-transparent -translate-x-1/2 -translate-y-1/2" style={{ left: `${floor}%` }} />}
       <span className="absolute top-1/2 size-3 rounded-full bg-current -translate-x-1/2 -translate-y-1/2" style={{ left: `${current}%` }} />
     </div>
     {showRanges && !compact && <div className="relative h-4 mt-1 text-[10px] text-text-3 font-mono tabular-nums">
@@ -395,7 +395,7 @@ function HeroRing({ state, mode, showRanges, hasFood, hasTarget }) {
         <svg viewBox="0 0 120 120" className="w-full h-full" role="img" aria-label={`${t(meta.label)}: ${round(value, meta.decimals)} ${meta.unit}${end > 0 ? `; ${t('Máx.')} ${round(end, meta.decimals)} ${meta.unit}` : ''}`}>
           <circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface-2)" strokeWidth="11" />
           {arc != null && <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeDasharray="326.726" strokeDashoffset={arc} transform="rotate(-90 60 60)" />}
-          {bound?.min != null && end > 0 && <circle {...marker(Math.min(1, bound.min / end))} r="5" fill="var(--surface)" stroke="var(--text)" strokeWidth="2" />}
+          {bound?.min != null && end > 0 && <circle {...marker(Math.min(1, bound.min / end))} r="5" fill="none" stroke="var(--text-3)" strokeWidth="1" />}
           {progress != null && <circle {...marker(progress)} r="6" fill="currentColor" />}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
