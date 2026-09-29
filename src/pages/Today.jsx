@@ -372,10 +372,9 @@ function goalTone(state, hasTarget, hasFood) {
   const { min, max } = bound;
   const { value } = state;
   if (max != null && value > max) return 'var(--danger)';
-  if (min == null) return 'var(--ok)';
-  if (value < min) return `color-mix(in srgb, var(--ok) ${Math.max(0, Math.min(100, value / min * 100))}%, var(--text-3))`;
-  if (!(max > min)) return 'var(--ok)';
-  const position = (value - min) / (max - min);
+  if (min != null && value < min) return `color-mix(in srgb, var(--ok) ${Math.max(0, Math.min(100, value / min * 100))}%, var(--text-3))`;
+  if (!(max > (min ?? 0))) return 'var(--ok)';
+  const position = (value - (min ?? 0)) / (max - (min ?? 0));
   if (position <= 0.5) return 'var(--ok)';
   if (position <= 0.72) return `color-mix(in srgb, var(--near) ${(position - 0.5) / 0.22 * 100}%, var(--ok))`;
   if (position <= 0.9) return `color-mix(in srgb, var(--warn) ${(position - 0.72) / 0.18 * 100}%, var(--near))`;
