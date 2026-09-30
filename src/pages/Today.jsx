@@ -1365,7 +1365,7 @@ export default function Today() {
         cfg={miniCfg}
         totals={displayTotals}
         target={target}
-        hasFood={foodEntries.length > 0}
+        hasFood={hasSummaryFood}
         onTap={scrollToSummary}
       />
 
@@ -1377,7 +1377,7 @@ export default function Today() {
           onConfig={() => setCardConfigOpen(true)}
           totals={displayTotals}
           target={target}
-          hasFood={foodEntries.length > 0}
+          hasFood={hasSummaryFood}
         />
       </div>
 
@@ -1414,7 +1414,7 @@ export default function Today() {
             onConfig={() => setCardConfigOpen(true)}
             totals={displayTotals}
             target={target}
-            hasFood={foodEntries.length > 0}
+            hasFood={hasSummaryFood}
           />
         </div>
 
