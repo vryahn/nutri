@@ -38,6 +38,7 @@ import {
   evalRules,
 } from '../lib/domain.js';
 import { AI_AVAILABLE, embedText } from '../lib/ai.js';
+import { goalBounds, goalScale, goalTone } from '../lib/goalDisplay.js';
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, closestCenter, closestCorners, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
@@ -342,43 +343,6 @@ function NutrientDetail({ state, mode, showRanges, hasFood, hideCoupled = false 
       {showRanges && bound && <span className="block text-text-3">{rangeLabel(state, !hideCoupled)}</span>}
     </span>
   );
-}
-
-function goalBounds(state, hasTarget) {
-  if (!hasTarget) return null;
-  const b = state.bound || impliedBounds(state.meta.key, state.tgt, state.goal);
-  return b?.min != null || b?.max != null ? b : null;
-}
-
-function goalScale(state, hasTarget) {
-  const bound = goalBounds(state, hasTarget);
-  if (!bound) return null;
-  const { min, max } = bound;
-  // ponytail: half a band before the floor separates close values; an open floor ends at 85% of the rail.
-  const start = min != null && max != null ? Math.max(0, min - (max - min) / 2) : 0;
-  if (min != null && max == null) return { bound, at: (value) => Math.max(0, Math.min(0.85, value / min * 0.85)) };
-  const end = max;
-  if (!(end > start)) return null;
-  const at = (value) => Math.max(0, Math.min(1, (value - start) / (end - start)));
-  return { bound, at };
-}
-
-// One solid tone for the current value; coupled macros use their declared envelope.
-function goalTone(state, hasTarget, hasFood) {
-  if (!hasTarget || !hasFood) return 'var(--text-3)';
-  const bound = state.coupled ? state.explicitBound : goalBounds(state, hasTarget);
-  if (!bound) return 'var(--text-3)';
-  const { min, max } = bound;
-  const { value } = state;
-  if ((state.meta.key === 'sodio_mg' || state.meta.key === 'potasio_mg') && min != null && value < min) return 'var(--text-3)';
-  if (max != null && value > max) return 'var(--danger)';
-  if (min != null && value < min) return `color-mix(in srgb, var(--ok) ${Math.max(0, Math.min(100, value / min * 100))}%, var(--text-3))`;
-  if (!(max > (min ?? 0))) return 'var(--ok)';
-  const position = (value - (min ?? 0)) / (max - (min ?? 0));
-  if (position <= 0.5) return 'var(--ok)';
-  if (position <= 0.72) return `color-mix(in srgb, var(--near) ${(position - 0.5) / 0.22 * 100}%, var(--ok))`;
-  if (position <= 0.9) return `color-mix(in srgb, var(--warn) ${(position - 0.72) / 0.18 * 100}%, var(--near))`;
-  return 'var(--warn)';
 }
 
 function FloorFlag({ filled }) {
