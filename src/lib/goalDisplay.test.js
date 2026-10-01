@@ -24,23 +24,24 @@ describe('goal display', () => {
     expect(goalScale(state('carbs_g', 92, null), false)).toBeNull();
   });
 
-  it('keeps values below an applicable floor red and preserves the ceiling transitions', () => {
+  it('keeps values below an applicable floor neutral and preserves the ceiling transitions', () => {
     const sodium = { min: 1600, max: 1800 };
     const potassium = { min: 3000, max: 3500 };
     expect(goalTone(state('sodio_mg', 0, sodium), false, false)).toBe('var(--text-3)');
     expect(goalTone(state('sodio_mg', 0, sodium), true, false)).toBe('var(--text-3)');
-    expect(goalTone(state('protein_g', 159.5, { min: 160, max: null }), true, true)).toBe('var(--danger)');
-    expect(goalTone(state('carbs_g', 204, { min: 279, max: 327 }), true, true)).toBe('var(--danger)');
-    expect(goalTone(state('potasio_mg', 2266, potassium), true, true)).toBe('var(--danger)');
+    expect(goalTone(state('protein_g', 159.5, { min: 160, max: null }), true, true)).toBe('var(--text-3)');
+    expect(goalTone(state('carbs_g', 204, { min: 279, max: 327 }), true, true)).toBe('var(--text-3)');
+    expect(goalTone(state('potasio_mg', 2266, potassium), true, true)).toBe('var(--text-3)');
     expect(goalTone(state('sodio_mg', 1600, sodium), true, true)).toBe('var(--ok)');
     expect(goalTone(state('sodio_mg', 1705, sodium), true, true)).toContain('var(--near)');
     expect(goalTone(state('sodio_mg', 1800, sodium), true, true)).toBe('var(--warn)');
     expect(goalTone(state('sodio_mg', 1801, sodium), true, true)).toBe('var(--danger)');
+    expect(goalTone(state('sodio_mg', 3124, sodium), true, true)).toBe('var(--danger)');
     expect(goalTone(state('potasio_mg', 2495, null), true, true)).toBe('var(--text-3)');
   });
 
   it('supports floors and ceilings independently', () => {
-    expect(goalTone(state('protein_g', 0, { min: 160, max: null }), true, true)).toBe('var(--danger)');
+    expect(goalTone(state('protein_g', 0, { min: 160, max: null }), true, true)).toBe('var(--text-3)');
     expect(goalTone(state('protein_g', 160, { min: 160, max: null }), true, true)).toBe('var(--ok)');
     expect(goalTone(state('protein_g', 180, { min: 160, max: null }), true, true)).toBe('var(--ok)');
     expect(goalTone(state('sodio_mg', 0, { min: null, max: 1800 }), true, true)).toBe('var(--ok)');
@@ -49,12 +50,12 @@ describe('goal display', () => {
   });
 
   it('uses the declared envelope for coupled carbs and fat', () => {
-    const bound = { min: 40, max: 55 };
+    const bound = { min: 40, max: 52 };
     const coupled = { ...state('fat_g', 37.5, bound, true), bound: { min: 100, max: 120 } };
-    expect(goalTone(coupled, true, true)).toBe('var(--danger)');
+    expect(goalTone(coupled, true, true)).toBe('var(--text-3)');
     expect(goalTone({ ...coupled, value: 40 }, true, true)).toBe('var(--ok)');
-    expect(goalTone({ ...coupled, value: 55 }, true, true)).toBe('var(--warn)');
-    expect(goalTone({ ...coupled, value: 56 }, true, true)).toBe('var(--danger)');
-    expect(goalScale(coupled, true).at(37.5)).toBeCloseTo(37.5 / 55);
+    expect(goalTone({ ...coupled, value: 52 }, true, true)).toBe('var(--warn)');
+    expect(goalTone({ ...coupled, value: 82.8 }, true, true)).toBe('var(--danger)');
+    expect(goalScale(coupled, true).at(37.5)).toBeCloseTo(37.5 / 52);
   });
 });

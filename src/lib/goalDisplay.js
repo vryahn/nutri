@@ -22,7 +22,7 @@ export function goalTone(state, hasTarget, hasFood) {
   const { min, max } = bound;
   const { value } = state;
   if (max != null && value > max) return 'var(--danger)';
-  if (min != null && value < min) return 'var(--danger)';
+  if (min != null && value < min) return 'var(--text-3)';
   if (!(max > (min ?? 0))) return 'var(--ok)';
   const position = (value - (min ?? 0)) / (max - (min ?? 0));
   if (position <= 0.5) return 'var(--ok)';
