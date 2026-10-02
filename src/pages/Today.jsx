@@ -345,23 +345,17 @@ function NutrientDetail({ state, mode, showRanges, hasFood, hideCoupled = false 
   );
 }
 
-function FloorFlag({ filled }) {
-  return <g opacity={0.5} stroke={filled ? 'currentColor' : 'var(--text-3)'} strokeWidth="1.5" strokeLinejoin="round">
-    <path d="M0 0V-18" fill="none" />
-    <path d="M-1-17h-12l4 4-4 4h12z" fill={filled ? 'currentColor' : 'var(--surface)'} />
-  </g>;
-}
-
 function GoalProgress({ state, hasTarget, hasFood, showRanges, compact = false }) {
   const scale = goalScale(state, hasTarget);
   if (!scale) return null;
   const { bound, at } = scale;
   const current = at(state.value) * 100;
   const floor = bound.min != null ? at(bound.min) * 100 : null;
-  return <div className={`relative ${compact ? showRanges && state.explicitBound ? 'mt-6' : 'mt-2' : 'mt-2 mb-1'}`} style={{ color: goalTone(state, hasTarget, hasFood) }} role="img" aria-label={`${t(state.meta.label)}: ${round(state.value, state.meta.decimals)} ${state.meta.unit}; ${boundText(bound, state.meta.decimals)} ${state.meta.unit}`}>
+  const hasRange = bound.min != null && bound.max != null;
+  return <div className={`relative ${compact ? hasRange || showRanges && state.explicitBound ? 'mt-6' : 'mt-2' : hasRange ? 'mt-[17px] mb-1' : 'mt-2 mb-1'}`} style={{ color: goalTone(state, hasTarget, hasFood) }} role="img" aria-label={`${t(state.meta.label)}: ${round(state.value, state.meta.decimals)} ${state.meta.unit}; ${boundText(bound, state.meta.decimals)} ${state.meta.unit}`}>
     <div className="relative h-2 rounded-full" style={{ background: 'color-mix(in srgb, currentColor 16%, transparent)' }}>
       <div className="h-full rounded-full bg-current" style={{ width: `${current}%` }} />
-      {floor != null && <svg viewBox="-14 -19 14 19" className="absolute top-1/2 h-[19px] w-[14px] -translate-x-full -translate-y-full overflow-visible" style={{ left: `${floor}%` }} aria-hidden="true"><FloorFlag filled={state.value >= bound.min} /></svg>}
+      {hasRange && <span className="absolute -top-1.5 right-0 h-0.5 rounded-sm" style={{ left: `${floor}%`, background: 'currentColor', opacity: 0.55 }} aria-hidden="true"><span className="absolute -top-0.5 left-0 h-1.5 w-0.5 rounded-sm" style={{ background: 'var(--text)' }} /></span>}
       <span className="absolute top-1/2 size-3 rounded-full bg-current -translate-x-1/2 -translate-y-1/2" style={{ left: `${current}%` }} />
     </div>
     {showRanges && !compact && <div className="relative h-4 mt-1 text-[10px] text-text-3 font-mono tabular-nums">
@@ -377,15 +371,19 @@ function HeroRing({ state, mode, showRanges, hasFood, hasTarget }) {
   const end = bound?.max ?? tgt;
   const progress = end > 0 ? Math.max(0, Math.min(1, value / end)) : null;
   const arc = progress != null ? 326.726 * (1 - progress) : null;
-  const marker = (fraction) => ({ cx: 60 + 52 * Math.sin(2 * Math.PI * fraction), cy: 60 - 52 * Math.cos(2 * Math.PI * fraction) });
-  const floorMarker = bound?.min != null && end > 0 ? marker(Math.min(1, bound.min / end)) : null;
+  const marker = (fraction, radius = 52) => ({ cx: 60 + radius * Math.sin(2 * Math.PI * fraction), cy: 60 - radius * Math.cos(2 * Math.PI * fraction) });
+  const hasRange = bound?.min != null && bound?.max != null && end > 0;
+  const floorFraction = hasRange ? Math.min(1, bound.min / end) : null;
+  const rangeLength = hasRange ? 257.611 * ((bound.max - bound.min) / end) : null;
+  const floorEdge = hasRange ? [marker(floorFraction, 59), marker(floorFraction, 40.5)] : null;
   return (
     <div className="flex items-center gap-4">
       <div className="relative w-[104px] h-[104px] flex-none" style={{ color: goalTone(state, hasTarget, hasFood) }}>
         <svg viewBox="0 0 120 120" className="w-full h-full overflow-visible" role="img" aria-label={`${t(meta.label)}: ${round(value, meta.decimals)} ${meta.unit}${end > 0 ? `; ${t('Máx.')} ${round(end, meta.decimals)} ${meta.unit}` : ''}`}>
           <circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface-2)" strokeWidth="11" />
           {arc != null && <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeDasharray="326.726" strokeDashoffset={arc} transform="rotate(-90 60 60)" />}
-          {floorMarker && <g transform={`translate(${floorMarker.cx} ${floorMarker.cy})`}><FloorFlag filled={value >= bound.min} /></g>}
+          {hasRange && <circle cx="60" cy="60" r="41" fill="none" stroke="currentColor" strokeWidth="5.5" opacity="0.9" strokeDasharray={`${rangeLength} ${257.611 - rangeLength}`} strokeDashoffset={-257.611 * floorFraction} transform="rotate(-90 60 60)" />}
+          {floorEdge && <line x1={floorEdge[0].cx} y1={floorEdge[0].cy} x2={floorEdge[1].cx} y2={floorEdge[1].cy} stroke="var(--text)" strokeWidth="2" strokeLinecap="round" />}
           {progress != null && <circle {...marker(progress)} r="6" fill="currentColor" />}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
