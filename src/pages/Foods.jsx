@@ -242,6 +242,7 @@ export default function Foods() {
     return (
       <div className="px-4 py-4">
         <FoodForm
+          key={editing.id ?? 'new'}
           food={editing}
           favs={favs}
           onToggleFav={toggleFav}
@@ -476,6 +477,7 @@ export default function Foods() {
         {editing ? (
           <div className="rounded-2xl bg-surface border border-border p-6">
             <FoodForm
+              key={editing.id ?? 'new'}
               food={editing}
               favs={favs}
               onToggleFav={toggleFav}
