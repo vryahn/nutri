@@ -14,7 +14,7 @@ import { todayISO } from './domain.js';
 const KEY = 'nutri.cache';
 const PERSIST = new Set(['foods', 'recipes', 'labels', 'targets', 'frequent']);
 const persistable = (k) =>
-  PERSIST.has(k) || k.startsWith('foodmeta:') || k.startsWith('recipemeta:') || k === `entries:${todayISO()}`;
+  PERSIST.has(k) || k.startsWith('frequent:') || k.startsWith('foodmeta:') || k.startsWith('recipemeta:') || k === `entries:${todayISO()}`;
 
 function load() {
   try { return new Map(Object.entries(JSON.parse(localStorage.getItem(KEY) || '{}'))); }

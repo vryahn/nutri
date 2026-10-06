@@ -17,7 +17,7 @@ Nutri y Hevy son herramientas de captura y seguimiento dependientes del plan mae
 
 ## Feature highlights
 
-- Daily food log with meal sections, drag-to-reorder, per-meal templates, and a frequency-ranked quick-add (30-day window, portion size chosen by mode — validated by backtest against real logs).
+- Daily food log with meal sections, drag-to-reorder, per-meal templates, and a context-ranked quick-add (closed 30-day history, weekly recency decay, same-day repeat penalty, eight items; grams stay editable).
 - Custom food catalog: values per 100 g, custom portions, density-aware g/ml entry for liquids, plausibility warnings, semantic search (pgvector).
 - Recipes with cooked-weight math: per-100 g values derive from ingredients via a SQL view, mirrored by a pure JS function with a canonical test case.
 - Nutrition targets with weekly recurrence, versioned phases (bulk/cut/maintenance), and single-day overrides; deterministic date-resolution rule shared by all consumers.

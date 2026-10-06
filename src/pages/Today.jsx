@@ -557,6 +557,7 @@ export default function Today() {
   // SWR: renders the session cache instantly and the background refetch updates it.
   // Entries cached per date; 'targets' is shared with the Metas page.
   const [entries, setEntries] = useState(() => cacheGet(`entries:${todayISO()}`) || []);
+  const [entriesDate, setEntriesDate] = useState(() => cacheGet(`entries:${todayISO()}`) ? todayISO() : null);
   const [labels, setLabels] = useState(() => cacheGet('labels') || []);
   const [targets, setTargets] = useState(() => cacheGet('targets') || []);
   const [loading, setLoading] = useState(() => !cacheGet(`entries:${todayISO()}`));
@@ -641,7 +642,8 @@ export default function Today() {
     const cached = cacheGet(`entries:${date}`);
     // Paints the new day's cache BEFORE the refetch; without it the previous day's rows stay on screen while loading.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (cached) setEntries(cached);
+    if (cached) { setEntries(cached); setEntriesDate(date); }
+    else setEntriesDate(null);
     loadDay();
   // `loadDay` is rebuilt every render: the day is the dependency on purpose.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -702,9 +704,6 @@ export default function Today() {
     loadTargets();
     loadRuleSignals();
     loadPrefs();
-    // On a slow connection the frequent-items query takes a while: it is fired here
-    // (post-login) so that opening the add sheet is instant (it reads from the cache).
-    prefetchFrequent();
     // Fills the persisted catalog the first time, so a later cold start with no
     // connection can still search and log.
     prefetchCatalog();
@@ -714,6 +713,10 @@ export default function Today() {
   // Mount-only: the initial load and the labels-changed listener are set up once per session.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    prefetchFrequent(userId, date).catch(() => {});
+  }, [userId, date]);
 
   // Keyboard shortcuts lg+: ←/→ change the day, "/" focuses the quick-add, Esc
   // closes panel/sheet — inactive when focus is on a form field.
@@ -912,6 +915,7 @@ export default function Today() {
       .order('created_at');
     if (error) { showToast(t('No se pudo cargar el día — revisa tu conexión.')); setLoading(false); return; }
     setEntries(cacheSet(`entries:${date}`, data || []));
+    setEntriesDate(date);
     setLoading(false);
   }
 
@@ -1234,6 +1238,10 @@ export default function Today() {
   }
 
   const dayEntries = applyOutbox(entries, date, pendingOps);
+  const frequentDayEntries = useMemo(
+    () => applyOutbox(entries, date, pendingOps.filter((op) => !op.owner || op.owner === userId)),
+    [entries, date, pendingOps, userId]
+  );
   const waterEntries = dayEntries.filter((e) => e.food_id && e.food_id === prefs.water_food_id);
   const foodEntries = dayEntries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id));
   const waterMl = waterEntries.reduce((s, e) => s + Number(e.grams), 0); // density 1: grams = ml
@@ -1340,6 +1348,9 @@ export default function Today() {
           <AddEntryForm
             key={quickAddKey}
             date={date}
+            userId={userId}
+            dayEntries={frequentDayEntries}
+            dayEntriesReady={entriesDate === date}
             labels={labels}
             waterFoodId={prefs.water_food_id}
             initialLabelId={quickAddInitialLabel}
@@ -1349,7 +1360,7 @@ export default function Today() {
             onPreview={setPreview}
             onAdded={(labelId) => {
               setQuickAddKey((k) => k + 1);
-              setQuickAddInitialLabel(null);
+              setQuickAddInitialLabel(labelId);
               setLogItem(null);
               scrollToSection(labelId);
             }}
@@ -1570,6 +1581,9 @@ export default function Today() {
       {adding && (
         <AddEntrySheet
           date={date}
+          userId={userId}
+          dayEntries={frequentDayEntries}
+          dayEntriesReady={entriesDate === date}
           labels={labels}
           waterFoodId={prefs.water_food_id}
           initialLabelId={adding.labelId}
@@ -2111,8 +2125,9 @@ function useFoodMeta(foodId, recipeId) {
 // Core of "add entry": search box with recents, amount and label.
 // Reused by AddEntrySheet (sheet, <lg) and the inline quick-add (rail, lg+).
 // Keyboard navigation over results: ↓/↑ moves the selection, Enter confirms it.
-function AddEntryForm({ date, labels, waterFoodId, initialLabelId, initialItem, onAdded, inputRef, autoFocus, onPreview }) {
+function AddEntryForm({ date, userId, dayEntries, dayEntriesReady, labels, waterFoodId, initialLabelId, initialItem, onAdded, inputRef, autoFocus, onPreview }) {
   const navigate = useNavigate();
+  const labelSelectorId = useId();
   const [query, setQuery] = useState(initialItem?.name ?? '');
   const [results, setResults] = useState([]);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -2145,13 +2160,15 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, initialItem, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => onPreview?.(null), []); // cleans up on unmount (close/log)
 
-  // Frequent items from the src/lib/frequent.js cache (prefetched when Hoy mounts):
-  // opening the sheet does not wait for the network, it only derives the active label's list.
+  // History is cached per account and selected date; current visible rows override
+  // matching history ids so queued edits/deletes affect ranking immediately.
   useEffect(() => {
     let alive = true;
-    getFrequent(initialLabelId, waterFoodId).then((list) => { if (alive) setFrequent(list); });
+    getFrequent({ userId, date, labelId, waterFoodId, dayEntries, dayEntriesReady })
+      .then((list) => { if (alive) setFrequent(list); })
+      .catch(() => { if (alive) setFrequent([]); });
     return () => { alive = false; };
-  }, [initialLabelId, waterFoodId]);
+  }, [userId, date, labelId, waterFoodId, dayEntries, dayEntriesReady]);
 
   useEffect(() => {
     if (!query.trim() || selected) {
@@ -2224,7 +2241,6 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, initialItem, 
     setResults([]);
     setGrams('');
     setPresetGrams(null);
-    setLabelId(initialLabelId || '');
   }
 
   function handleQueryKeyDown(e) {
@@ -2259,23 +2275,35 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, initialItem, 
     queueInsert(payload, entryNutrients(payload, foodMeta, { item: selected.name, brand: selected.brand }));
     onAdded(labelId || null);
     // Reloads in the background; updates the list if the form is still mounted (lg+ rail).
-    refreshFrequent()
-      .then(() => getFrequent(initialLabelId, waterFoodId))
-      .then(setFrequent)
-      .catch(() => {});
+    refreshFrequent(userId, date).catch(() => {});
   }
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <label htmlFor={labelSelectorId} className="text-sm text-text-2">{t('Etiqueta')}</label>
+        <select
+          id={labelSelectorId}
+          value={labelId}
+          onChange={(e) => setLabelId(e.target.value)}
+          className="input min-h-[44px]"
+        >
+          <option value="">{t('Sin etiqueta')}</option>
+          {labels.map((l) => (
+            <option key={l.id} value={l.id}>{l.name}</option>
+          ))}
+        </select>
+      </div>
+
       {!selected && frequent.length > 0 && (
         <div className="flex flex-col gap-2">
           <p className="text-sm text-text-3">{t('Elementos frecuentes')}</p>
           <div className="flex flex-wrap gap-2">
             {frequent.map((r) => (
               <button
-                key={(r.food_id || r.recipe_id) + r.item}
+                key={`${r.food_id ? 'food' : 'recipe'}:${r.food_id || r.recipe_id}`}
                 onClick={() => pick({ id: r.food_id || r.recipe_id, name: r.item, type: r.food_id ? 'food' : 'recipe' }, r.grams)}
-                className="px-3 py-2 rounded-full bg-surface-2 border border-border text-sm press"
+                className="min-h-[44px] px-3 py-2 rounded-full bg-surface-2 border border-border text-sm press"
               >
                 {r.item}{r.brand && <span className="text-text-3 text-xs font-normal ml-1">{r.brand}</span>}
               </button>
@@ -2328,22 +2356,6 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, initialItem, 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <AmountField grams={grams} onGrams={setGrams} meta={foodMeta} placeholder={presetGrams ?? undefined} required={presetGrams == null} />
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm text-text-2">{t('Etiqueta')}</label>
-            <select
-              value={labelId}
-              onChange={(e) => setLabelId(e.target.value)}
-              className="input"
-            >
-              <option value="">{t('Sin etiqueta')}</option>
-              {labels.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <div className="flex gap-2">
             <button type="button" onClick={reset} className="min-h-[44px] flex-1 rounded-xl border border-border text-text-2 press">{t('Cancelar')}</button>
             <button type="submit" className="min-h-[44px] flex-1 rounded-xl bg-accent-deep text-on-accent font-medium press">{t('Registrar')}</button>
@@ -2354,11 +2366,14 @@ function AddEntryForm({ date, labels, waterFoodId, initialLabelId, initialItem, 
   );
 }
 
-function AddEntrySheet({ date, labels, waterFoodId, initialLabelId, initialItem, subheader, onClose, onAdded, onPreview }) {
+function AddEntrySheet({ date, userId, dayEntries, dayEntriesReady, labels, waterFoodId, initialLabelId, initialItem, subheader, onClose, onAdded, onPreview }) {
   return (
     <Sheet title={t('Añadir registro')} onClose={onClose} subheader={subheader}>
       <AddEntryForm
         date={date}
+        userId={userId}
+        dayEntries={dayEntries}
+        dayEntriesReady={dayEntriesReady}
         labels={labels}
         waterFoodId={waterFoodId}
         initialLabelId={initialLabelId}
