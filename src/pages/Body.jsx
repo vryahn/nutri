@@ -4,6 +4,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { supabase, isDemo } from '../lib/supabase.js';
 import { toJpegBlob } from '../lib/ai.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
+import { openDatePicker } from '../lib/datePicker.js';
 import { useToast } from '../lib/useToast.js';
 import ImportSheet from '../components/ImportSheet.jsx';
 import Hint from '../components/Hint.jsx';
@@ -354,7 +355,7 @@ export default function Body() {
             type="date"
             value={date}
             onChange={(e) => e.target.value && setDate(e.target.value)}
-            onClick={(e) => e.currentTarget.showPicker?.()}
+            onClick={openDatePicker}
             className="absolute inset-0 w-full opacity-0 cursor-pointer"
             aria-label={t('Elegir fecha')}
           />

@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater,
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
+import { openDatePicker } from '../lib/datePicker.js';
 import { outboxOps, onOutbox, setOutboxOwner, queueInsert, queueUpdate, queueDelete, applyOutbox, flushOutbox } from '../lib/outbox.js';
 import { prefetchFrequent, refreshFrequent, getFrequent } from '../lib/frequent.js';
 import { prefetchCatalog, searchCatalog, catalogFood } from '../lib/catalog.js';
@@ -1327,7 +1328,7 @@ export default function Today() {
             type="date"
             value={date}
             onChange={(e) => e.target.value && setDate(e.target.value)}
-            onClick={(e) => e.currentTarget.showPicker?.()}
+            onClick={openDatePicker}
             className="absolute inset-0 w-full opacity-0 cursor-pointer"
             aria-label={t('Elegir fecha')}
           />
