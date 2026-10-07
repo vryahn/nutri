@@ -29,6 +29,10 @@ export function setMode(mode) {
   applyMode(mode);
 }
 
+export function initializeDemoTheme() {
+  if (!MODES.includes(localStorage.getItem(KEY))) setMode('dark');
+}
+
 // The OS may switch themes while the app is open; only relevant in 'system' mode.
 export function watchSystem() {
   const m = mq();

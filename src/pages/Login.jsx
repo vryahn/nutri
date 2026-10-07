@@ -3,6 +3,7 @@ import { supabase, setSeedingDemo } from '../lib/supabase.js';
 import { t, useLang, getLang, setLang } from '../lib/i18n.js';
 import { todayISO } from '../lib/domain.js';
 import { demoLangFromSearch } from '../lib/demo.js';
+import { initializeDemoTheme } from '../lib/theme.js';
 
 // Captured at module load: the router redirects to /login and clears the query
 // string before Login mounts, so ?dev=1 no longer exists inside the effect.
@@ -57,6 +58,7 @@ export default function Login() {
     let createdDemoSession = false;
     let complete = false;
     try {
+      initializeDemoTheme();
       const { data: { session: previousSession } } = await supabase.auth.getSession();
       if (previousSession) {
         const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
