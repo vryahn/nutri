@@ -9,9 +9,12 @@
       // Before first paint: without this, the light theme starts with a dark flash.
       // Resolves 'system' to an explicit data-theme, so the CSS only defines one override.
       (function () {
-        var m = localStorage.getItem('nutri-theme');
+        var demoEntry = new URLSearchParams(location.search).has('demo');
+        if (demoEntry) sessionStorage.setItem('nutri-demo-theme', 'dark');
+        var m = demoEntry ? 'dark' : sessionStorage.getItem('nutri-demo-theme');
+        if (m !== 'system' && m !== 'light' && m !== 'dark') m = localStorage.getItem('nutri-theme');
         var valid = m === 'system' || m === 'light' || m === 'dark';
-        if (!valid) m = new URLSearchParams(location.search).has('demo') ? 'dark' : 'system';
+        if (!valid) m = 'system';
         var dark = m === 'dark' || (m !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
         document.documentElement.dataset.theme = dark ? 'dark' : 'light';
         if (!dark) document.querySelector('meta[name="theme-color"]').content = '#F3F9F9';

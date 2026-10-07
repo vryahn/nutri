@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { syncDemoTheme } from './theme.js';
 
 export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -24,5 +25,7 @@ export const setSeedingDemo = (v) => { seeding = v; };
 if (typeof window !== 'undefined') {
   supabase.auth.onAuthStateChange((_event, session) => {
     demo = !!session?.user?.is_anonymous;
+    if (demo) syncDemoTheme(true);
+    else if (!seeding && !new URLSearchParams(window.location.search).has('demo')) syncDemoTheme(false);
   });
 }
