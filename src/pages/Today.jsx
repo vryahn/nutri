@@ -355,6 +355,11 @@ function GoalProgress({ state, hasTarget, hasFood, showRanges, compact = false }
   const hasFloorReference = floor != null && bound.min < end;
   const targetMark = target != null && target < end ? at(target) * 100 : null;
   const hasReference = hasFloorReference || targetMark != null;
+  const floorLabel = bound.min != null ? `${t('Mín.')} ${round(bound.min, state.meta.decimals)} ${state.meta.unit}` : null;
+  const ceilingLabel = bound.max != null ? `${round(bound.max, state.meta.decimals)} ${state.meta.unit}` : null;
+  const floorLabelLeft = hasFloorReference
+    ? `clamp(0px, calc(${floor}% - ${floorLabel.length}ch), calc(100% - ${floorLabel.length + (ceilingLabel?.length ?? 0) + 1}ch))`
+    : undefined;
   const description = [
     bound.min != null && `${t('Mín.')} ${round(bound.min, state.meta.decimals)} ${state.meta.unit}`,
     bound.max != null && `${t('Máx.')} ${round(bound.max, state.meta.decimals)} ${state.meta.unit}`,
@@ -368,8 +373,8 @@ function GoalProgress({ state, hasTarget, hasFood, showRanges, compact = false }
       {current < 100 && <span className="absolute top-1/2 size-3 rounded-full bg-current -translate-x-1/2 -translate-y-1/2" style={{ left: `${current}%` }} />}
     </div>
     {showRanges && !compact && <div className="relative h-4 mt-1 text-[10px] text-text-3 font-mono tabular-nums">
-      {bound.min != null && <span className={hasFloorReference ? 'absolute -translate-x-1/2' : 'absolute right-0'} style={hasFloorReference ? { left: `${floor}%` } : undefined}>{t('Mín.')} {round(bound.min, state.meta.decimals)} {state.meta.unit}</span>}
-      {bound.max != null && <span className="absolute right-0">{round(bound.max, state.meta.decimals)} {state.meta.unit}</span>}
+      {floorLabel && <span className={`absolute whitespace-nowrap ${hasFloorReference ? '' : 'right-0'}`} style={hasFloorReference ? { left: floorLabelLeft } : undefined}>{floorLabel}</span>}
+      {ceilingLabel && <span className="absolute right-0 whitespace-nowrap">{ceilingLabel}</span>}
     </div>}
   </div>;
 }
