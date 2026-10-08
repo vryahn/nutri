@@ -57,5 +57,25 @@ describe('goal display', () => {
     expect(goalTone({ ...coupled, value: 52 }, true, true)).toBe('var(--warn)');
     expect(goalTone({ ...coupled, value: 82.8 }, true, true)).toBe('var(--danger)');
     expect(goalScale(coupled, true).at(37.5)).toBeCloseTo(37.5 / 52);
+    expect(goalScale({ ...coupled, tgt: 90 }, true).end).toBe(52);
+    expect(goalScale({ ...coupled, tgt: 90 }, true).target).toBeNull();
+  });
+
+  it('scales independent targets between explicit floors and ceilings', () => {
+    const cases = [
+      [{ min: 2000, max: 4000 }, 3000, 4000, 0.75],
+      [{ min: 2000, max: null }, 3000, 3000, 1],
+      [null, 3000, 3000, 1],
+      [{ min: 2000, max: null }, null, 2000, 1],
+      [{ min: null, max: 4000 }, 3000, 4000, 0.75],
+      [{ min: 2000, max: 4000 }, 4000, 4000, 1],
+    ];
+    for (const [bound, tgt, end, progress] of cases) {
+      const scale = goalScale({ ...state('agua_ml', 0, bound), tgt }, true);
+      expect(scale.end).toBe(end);
+      expect(scale.at(end * progress)).toBeCloseTo(progress);
+    }
+    expect(goalScale({ ...state('agua_ml', 0, null), tgt: null }, false)).toBeNull();
+    expect(goalScale({ ...state('agua_ml', 0, null), tgt: 3000 }, false)).toBeNull();
   });
 });

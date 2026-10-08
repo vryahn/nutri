@@ -7,11 +7,13 @@ export function goalBounds(state, hasTarget) {
 }
 
 export function goalScale(state, hasTarget) {
-  const bound = goalBounds(state, hasTarget);
-  if (!bound) return null;
-  const end = bound.max ?? bound.min;
+  if (!hasTarget) return null;
+  const bound = goalBounds(state, hasTarget) ?? { min: null, max: null };
+  const target = !state.coupled && state.tgt > 0 ? state.tgt : null;
+  if (!bound.min && !bound.max && target == null) return null;
+  const end = bound.max ?? target ?? bound.min;
   if (!(end > 0)) return null;
-  return { bound, at: (value) => Math.max(0, Math.min(1, value / end)) };
+  return { bound, end, target, at: (value) => Math.max(0, Math.min(1, value / end)) };
 }
 
 // One solid tone for the current value; coupled macros use their declared envelope.

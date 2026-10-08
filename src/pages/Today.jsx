@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, History, Copy, ClipboardPaste, ArrowLeftRight, Upload, Bookmark, CloudOff } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, History, Copy, ClipboardPaste, ArrowLeftRight, Upload, Bookmark, CloudOff, Target, ArrowUpToLine } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { setSectionMenu } from '../lib/sectionMenu.js';
@@ -349,18 +349,26 @@ function NutrientDetail({ state, mode, showRanges, hasFood, hideCoupled = false 
 function GoalProgress({ state, hasTarget, hasFood, showRanges, compact = false }) {
   const scale = goalScale(state, hasTarget);
   if (!scale) return null;
-  const { bound, at } = scale;
+  const { bound, end, target, at } = scale;
   const current = at(state.value) * 100;
   const floor = bound.min != null ? at(bound.min) * 100 : null;
-  const hasRange = bound.min != null && bound.max != null;
-  return <div className={`relative ${compact ? hasRange || showRanges && state.explicitBound ? 'mt-6' : 'mt-2' : hasRange ? 'mt-[17px] mb-1' : 'mt-2 mb-1'}`} style={{ color: goalTone(state, hasTarget, hasFood) }} role="img" aria-label={`${t(state.meta.label)}: ${round(state.value, state.meta.decimals)} ${state.meta.unit}; ${boundText(bound, state.meta.decimals)} ${state.meta.unit}`}>
+  const hasFloorReference = floor != null && bound.min < end;
+  const targetMark = target != null && target < end ? at(target) * 100 : null;
+  const hasReference = hasFloorReference || targetMark != null;
+  const description = [
+    bound.min != null && `${t('Mín.')} ${round(bound.min, state.meta.decimals)} ${state.meta.unit}`,
+    bound.max != null && `${t('Máx.')} ${round(bound.max, state.meta.decimals)} ${state.meta.unit}`,
+    target != null && `${t('meta')} ${round(target, state.meta.decimals)} ${state.meta.unit}`,
+  ].filter(Boolean).join('; ');
+  return <div className={`relative ${compact ? hasReference || showRanges && state.explicitBound ? 'mt-6' : 'mt-2' : hasReference ? 'mt-[17px] mb-1' : 'mt-2 mb-1'}`} style={{ color: goalTone(state, hasTarget, hasFood) }} role="img" aria-label={`${t(state.meta.label)}: ${round(state.value, state.meta.decimals)} ${state.meta.unit}${description ? `; ${description}` : ''}`}>
     <div className="relative h-2 rounded-full" style={{ background: 'color-mix(in srgb, currentColor 16%, transparent)' }}>
       <div className="h-full rounded-full bg-current" style={{ width: `${current}%` }} />
-      {hasRange && <span className="absolute -top-1.5 right-0 h-0.5 rounded-sm" style={{ left: `${floor}%`, background: 'currentColor', opacity: 0.55 }} aria-hidden="true"><span className="absolute -top-0.5 left-0 h-1.5 w-0.5 rounded-sm" style={{ background: 'var(--text)' }} /></span>}
-      <span className="absolute top-1/2 size-3 rounded-full bg-current -translate-x-1/2 -translate-y-1/2" style={{ left: `${current}%` }} />
+      {hasFloorReference && <span className="absolute -top-1.5 right-0 h-0.5 rounded-sm" style={{ left: `${floor}%`, background: 'currentColor', opacity: 0.55 }} aria-hidden="true">{targetMark == null || target !== bound.min ? <span className="absolute -top-0.5 left-0 h-1.5 w-0.5 rounded-sm" style={{ background: 'var(--text)' }} /> : null}</span>}
+      {targetMark != null && <span className="absolute -top-2 size-1.5 -translate-x-1/2 rotate-45 border border-current bg-surface" style={{ left: `${targetMark}%` }} aria-hidden="true" />}
+      {current < 100 && <span className="absolute top-1/2 size-3 rounded-full bg-current -translate-x-1/2 -translate-y-1/2" style={{ left: `${current}%` }} />}
     </div>
     {showRanges && !compact && <div className="relative h-4 mt-1 text-[10px] text-text-3 font-mono tabular-nums">
-      {bound.min != null && <span className={bound.max == null ? 'absolute right-0' : 'absolute -translate-x-1/2'} style={bound.max == null ? undefined : { left: `${floor}%` }}>{t('Mín.')} {round(bound.min, state.meta.decimals)} {state.meta.unit}</span>}
+      {bound.min != null && <span className={hasFloorReference ? 'absolute -translate-x-1/2' : 'absolute right-0'} style={hasFloorReference ? { left: `${floor}%` } : undefined}>{t('Mín.')} {round(bound.min, state.meta.decimals)} {state.meta.unit}</span>}
       {bound.max != null && <span className="absolute right-0">{round(bound.max, state.meta.decimals)} {state.meta.unit}</span>}
     </div>}
   </div>;
@@ -368,24 +376,29 @@ function GoalProgress({ state, hasTarget, hasFood, showRanges, compact = false }
 
 function HeroRing({ state, mode, showRanges, hasFood, hasTarget }) {
   const { meta, value, tgt } = state;
-  const bound = goalBounds(state, hasTarget);
-  const end = bound?.max ?? tgt;
-  const progress = end > 0 ? Math.max(0, Math.min(1, value / end)) : null;
+  const scale = goalScale(state, hasTarget);
+  const bound = scale?.bound ?? goalBounds(state, hasTarget);
+  const end = scale?.end;
+  const progress = end > 0 ? scale.at(value) : null;
   const arc = progress != null ? 326.726 * (1 - progress) : null;
   const marker = (fraction, radius = 52) => ({ cx: 60 + radius * Math.sin(2 * Math.PI * fraction), cy: 60 - radius * Math.cos(2 * Math.PI * fraction) });
   const hasRange = bound?.min != null && bound?.max != null && end > 0;
-  const floorFraction = hasRange ? Math.min(1, bound.min / end) : null;
+  const hasFloorReference = bound?.min != null && end > bound.min;
+  const floorFraction = hasFloorReference ? scale.at(bound.min) : null;
+  const targetFraction = scale?.target != null && scale.target < end ? scale.at(scale.target) : null;
   const rangeLength = hasRange ? 257.611 * ((bound.max - bound.min) / end) : null;
-  const floorEdge = hasRange ? [marker(floorFraction, 59), marker(floorFraction, 40.5)] : null;
+  const floorEdge = hasFloorReference && !(targetFraction != null && scale.target === bound.min) ? [marker(floorFraction, 59), marker(floorFraction, 40.5)] : null;
+  const targetPoint = targetFraction == null ? null : marker(targetFraction, hasRange ? 41 : 52);
   return (
     <div className="flex items-center gap-4">
       <div className="relative w-[104px] h-[104px] flex-none" style={{ color: goalTone(state, hasTarget, hasFood) }}>
-        <svg viewBox="0 0 120 120" className="w-full h-full overflow-visible" role="img" aria-label={`${t(meta.label)}: ${round(value, meta.decimals)} ${meta.unit}${end > 0 ? `; ${t('Máx.')} ${round(end, meta.decimals)} ${meta.unit}` : ''}`}>
+        <svg viewBox="0 0 120 120" className="w-full h-full overflow-visible" role="img" aria-label={`${t(meta.label)}: ${round(value, meta.decimals)} ${meta.unit}${end > 0 ? `; ${bound?.max != null ? `${t('Máx.')} ${round(bound.max, meta.decimals)}` : scale?.target != null ? `${t('meta')} ${round(scale.target, meta.decimals)}` : `${t('Mín.')} ${round(end, meta.decimals)}`} ${meta.unit}${scale?.target != null && scale.target < end ? `; ${t('meta')} ${round(scale.target, meta.decimals)} ${meta.unit}` : ''}` : ''}`}>
           <circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface-2)" strokeWidth="11" />
           {arc != null && <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeDasharray="326.726" strokeDashoffset={arc} transform="rotate(-90 60 60)" />}
           {hasRange && <circle cx="60" cy="60" r="41" fill="none" stroke="currentColor" strokeWidth="5.5" opacity="0.9" strokeDasharray={`${rangeLength} ${257.611 - rangeLength}`} strokeDashoffset={-257.611 * floorFraction} transform="rotate(-90 60 60)" />}
           {floorEdge && <line x1={floorEdge[0].cx} y1={floorEdge[0].cy} x2={floorEdge[1].cx} y2={floorEdge[1].cy} stroke="var(--text)" strokeWidth="2" strokeLinecap="round" />}
-          {progress != null && <circle {...marker(progress)} r="6" fill="currentColor" />}
+          {targetPoint && <rect x={targetPoint.cx - 3} y={targetPoint.cy - 3} width="6" height="6" fill="var(--surface)" stroke="currentColor" strokeWidth="1.5" transform={`rotate(45 ${targetPoint.cx} ${targetPoint.cy})`} />}
+          {progress != null && progress < 1 && <circle {...marker(progress)} r="6" fill="currentColor" />}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="font-mono tabular-nums text-2xl leading-none">{round(value, meta.decimals)}</span>
@@ -1453,6 +1466,7 @@ export default function Today() {
           <WaterCard
             waterMl={waterMl}
             goalMl={Number(target?.micros?.agua_ml) || 0}
+            bounds={target?.bounds?.agua_ml}
             glassMl={prefs.water_glass_ml}
             onGlass={() => addWater(prefs.water_glass_ml)}
             onUndo={undoWater}
@@ -1924,7 +1938,7 @@ function CardBody({ entry: e }) {
   );
 }
 
-function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSettings }) {
+function WaterCard({ waterMl, goalMl, bounds, glassMl, onGlass, onUndo, onCustom, onSettings }) {
   const units = useUnits();
   const isUS = units === 'us';
   const [customAmount, setCustomAmount] = useState('');
@@ -1933,7 +1947,17 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
   // so that sub-glass water (a manual log < one glass) IS visible.
   const frac = glassMl > 0 ? (waterMl % glassMl) / glassMl : 0;
   // ponytail: 16-glass cap in case target/glass yields an absurd number
-  const count = Math.min(Math.max(goalMl > 0 ? Math.ceil(goalMl / glassMl) : 3, filled + 1), 16);
+  const end = bounds?.max ?? (goalMl > 0 ? goalMl : bounds?.min);
+  const count = Math.min(Math.max(end > 0 ? Math.ceil(end / glassMl) : 3, filled + 1), 16);
+  const displayWater = (ml, current = false) => isUS
+    ? fmtMl(ml)
+    : `${String(current && ml >= 1000 ? Math.trunc(ml / 100) / 10 : ml / 1000)}L`;
+  const exactWater = (ml) => `${Math.round(ml)} ml`;
+  const accessibleBounds = [
+    bounds?.min != null && `mínimo ${exactWater(bounds.min)}`,
+    goalMl > 0 && `meta ${exactWater(goalMl)}`,
+    bounds?.max != null && `máximo ${exactWater(bounds.max)}`,
+  ].filter(Boolean);
 
   // On ADDING water (click or manual) the liquid of the highest glass with water rises
   // with a wave. Keyed on waterMl, NOT on `filled`: this way a partial manual add —one
@@ -1951,16 +1975,16 @@ function WaterCard({ waterMl, goalMl, glassMl, onGlass, onUndo, onCustom, onSett
 
   return (
     <section className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h2 className="font-medium">
+      <div className="flex items-center justify-between gap-1">
+        <h2 className="min-w-0 flex flex-1 flex-wrap items-center gap-x-1.5 gap-y-1 font-medium">
           {t('Agua')}{' '}
-          <span className="text-sm text-text-3 font-mono tabular-nums">
-            {fmtMl(waterMl)}{goalMl > 0 ? ` / ${fmtMl(goalMl)}` : ''}
+          <span className="text-sm text-text-3 font-mono tabular-nums" aria-label={`Actual: ${exactWater(waterMl)}${accessibleBounds.length ? `; ${accessibleBounds.join('; ')}` : ''}`}>
+            {displayWater(waterMl, true)}{accessibleBounds.length > 0 && <> / {bounds?.min != null && <>≥ {displayWater(bounds.min)}</>}{goalMl > 0 && <>{bounds?.min != null && ' – '}<span className="inline-flex items-center gap-1" title={t('Meta de agua')}><Target size={13} aria-hidden="true" />{displayWater(goalMl)}</span></>}{bounds?.max != null && <>{(bounds?.min != null || goalMl > 0) && ' – '}<span className="inline-flex items-center gap-1" title={t('Máximo de agua')}><ArrowUpToLine size={13} aria-hidden="true" />{displayWater(bounds.max)}</span></>}</>}
           </span>
         </h2>
         <button
           onClick={onSettings}
-          className="p-2 -mr-2 text-text-3 press"
+          className="shrink-0 p-2 -mr-2 text-text-3 press"
           aria-label={t('Ajustes de agua')}
         >
           <Settings size={18} />
