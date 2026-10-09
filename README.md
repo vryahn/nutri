@@ -79,13 +79,13 @@ All AI features are optional (gated by env keys) and none of them can write bad 
 2. **EAN (typed or read from the photo) → Open Food Facts**, but only after the barcode passes GS1 check-digit validation (typed EANs that fail block with an error; Gemini-read EANs that fail are silently discarded).
 3. **Otherwise → USDA-style estimation** prioritizing Mexican market data (`mode: 'estimacion'`), with up to 6 tappable match chips from USDA FoodData Central for generic unbranded foods.
 
-Requests use Gemini's `response_schema` for structured per-100 g JSON output, and photos are canvas-compressed to 1024 px before inline upload. The model cascade (`AI_CHAIN` in `src/lib/ai.js`) falls through on *any* error: `gemini-3.5-flash` → `gemini-2.5-flash` → `mistral-small-latest` (OpenAI-compatible endpoint; the Gemini-style schema is translated to strict JSON Schema by `toJsonSchema`).
+Requests use Gemini's `response_schema` for structured per-100 g JSON output, and photos are canvas-compressed to 1024 px before inline upload. The model cascade (`AI_CHAIN` in `src/lib/ai.js`) falls through on *any* error: `gemini-3.8-flash` → `gemini-3.6-flash` → `gemini-2.5-flash` → Mistral `mistral-small-latest` (OpenAI-compatible endpoint; the Gemini-style schema is translated to strict JSON Schema). The proxy keeps retired Gemini aliases for cached clients; cached Qwen requests are rejected by the proxy and continue to Mistral.
 
 Results are merged by confidence: a transcribed label wins over Open Food Facts (which only fills gaps); OFF wins over a Gemini estimate when there is a barcode match; Gemini fills only what remains. Seven fields (kcal, protein, carbs, fat, sodium, potassium, magnesium) always get a best estimate — everything else is filled only from reliable data or left null; a returned 0 never fills an input. When a transcribed label *and* an OFF match both exist, numeric fields are cross-checked and discrepancies > 25 % (minimum 5 units on both sides) produce an ephemeral warning.
 
 ### Semantic catalog search
 
-`foods.embedding vector(768)` (migration 017, pgvector) holds L2-normalized `gemini-embedding-001` embeddings of `name + brand`, generated fire-and-forget on save. Search is hybrid: `ilike` first; if it returns fewer than 8 hits, results are topped up via the `match_foods` RPC (cosine distance, 0.65 cutoff) and merged in `domain.js`. Foods without embeddings (created via REST/MCP) still surface through `ilike` — the feature degrades, never breaks.
+`foods.embedding vector(768)` (migration 017, pgvector) holds L2-normalized `gemini-embedding-001` embeddings of `name + brand`, generated fire-and-forget on save. Search is hybrid: `ilike` first; if it returns fewer than 8 hits, results are topped up via the `match_foods` RPC (cosine distance, 0.65 cutoff) and merged in `domain.js`. Foods without embeddings (created via REST/MCP) still surface through `ilike` — the feature degrades, never breaks. Google schedules `gemini-embedding-001` shutdown for May 14, 2028; any replacement must preserve 768 dimensions and requires a full re-embedding because vector spaces are incompatible.
 
 ### RAG: "ask your log"
 
@@ -93,7 +93,7 @@ The Dashboard's ask flow is a three-step structured RAG pipeline in `src/lib/ai.
 
 ### Scored evals
 
-`npm run eval` runs a golden set (7 cases: label transcriptions and estimates, ground truth from USDA FDC — never from model memory) through the real extraction path and scores per-field against tolerances (transcription: `max(2 %, 0.5 u)`; estimation: ±30 % macros / ±40 % micros). Any regression against the committed `baseline.json` — a previously passing case/field failing, or micro-hallucination counts growing past `1.5× + 3` — fails the suite. The model is pinned at `temperature: 0` for determinism, one baseline per model (the Mistral tail of the cascade has its own). Evals never run in CI (quota cost + nondeterminism); the scoring logic itself *is* CI-tested without network (`score.test.js`). Baseline updates are deliberate (`UPDATE_BASELINE=1 npm run eval`) and each one is committed with its rationale.
+`npm run eval` runs a golden set (7 cases: label transcriptions and estimates, ground truth from USDA FDC — never from model memory) through the real extraction path and scores per-field against tolerances (transcription: `max(2 %, 0.5 u)`; estimation: ±30 % macros / ±40 % micros). Any regression against that model's committed baseline — a previously passing case/field failing, or micro-hallucination counts growing past `1.5× + 3` — fails the suite. The model is pinned at `temperature: 0` for determinism, with a separate baseline for each model. Evals never run in CI (quota cost + nondeterminism); the scoring logic itself *is* CI-tested without network (`score.test.js`). Baseline updates are deliberate (`UPDATE_BASELINE=1 npm run eval`) and each one is committed with its rationale.
 
 ## Internationalization
 

@@ -81,17 +81,14 @@ function demoRecipe() {
   return r;
 }
 
-// Fallback cascade on error/quota exhaustion: Gemini 3.7 → 3.6 → 3.5 → 2.5 → Groq → Mistral.
+// Fallback cascade on error/quota exhaustion: Gemini 3.8 → 3.6 → 2.5 → Mistral.
 // In direct mode a step is skipped if its key is not configured; through the proxy
 // the client cannot know which keys the server holds, so every step is attempted and
 // its 501 ("not configured") simply falls through to the next one. See callAI.
 const AI_CHAIN = [
   { kind: 'gemini', model: 'gemini-3.8-flash' },
-  { kind: 'gemini', model: 'gemini-3.7-flash' },
   { kind: 'gemini', model: 'gemini-3.6-flash' },
-  { kind: 'gemini', model: 'gemini-3.5-flash' },
   { kind: 'gemini', model: 'gemini-2.5-flash' },
-  { kind: 'groq', model: 'qwen/qwen3.6-27b' },
   { kind: 'mistral', model: 'mistral-small-latest' },
 ];
 
@@ -360,7 +357,7 @@ async function callGroq(model, systemPrompt, parts, schema, temperature) {
     model,
     messages: [{ role: 'system', content: sys }, { role: 'user', content }],
     response_format: { type: 'json_object' },
-    // Without this, qwen3.6 burns the whole output on reasoning and returns empty
+    // Without this, Qwen burns the whole output on reasoning and returns empty
     // content → 400 json_validate_failed (verified live). Extraction is deterministic
     // work anyway; no reasoning needed.
     reasoning_effort: 'none',

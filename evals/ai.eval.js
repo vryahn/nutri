@@ -9,15 +9,13 @@ import { scoreCase, compareToBaseline } from './score.js';
 const DIR = import.meta.dirname;
 const CASES_DIR = path.join(DIR, 'cases');
 
-// Pinned model + temp 0: without this, the gate depends on which model answered after a 503
-// (3.5 vs 2.5 give different numbers → false regressions on the re-run). EVAL_MODEL can
-// override it via env; each model has its own baseline (the default goes to baseline.json,
-// the rest — e.g. Mistral, coverage of the cascade's last step — to baseline.<model>.json).
-const DEFAULT_MODEL = 'gemini-3.5-flash';
+// Pinned model + temp 0: each model has its own baseline; never compare one model's
+// scores as if they were another model's accepted history.
+const DEFAULT_MODEL = 'gemini-3.8-flash';
 const EVAL_MODEL = process.env.EVAL_MODEL || DEFAULT_MODEL;
 const EVAL_OPTS = { model: EVAL_MODEL, temperature: 0 };
 // '/' in model ids (e.g. meta-llama/llama-4-scout…) would break the baseline filename
-const suffix = EVAL_MODEL === DEFAULT_MODEL ? '' : `.${EVAL_MODEL.replace(/\//g, '_')}`;
+const suffix = `.${EVAL_MODEL.replace(/\//g, '_')}`;
 const BASELINE = path.join(DIR, `baseline${suffix}.json`);
 const LAST_RUN = path.join(DIR, `last-run${suffix}.json`);
 
@@ -118,7 +116,7 @@ describe.skipIf(!hasAI)('eval extracción IA', () => {
         throw new Error(`UPDATE_BASELINE: corrida incompleta (${results.length}/${readyIds.size} casos ready) — baseline NO escrito.`);
       }
       fs.writeFileSync(BASELINE, JSON.stringify({ generated_at: new Date().toISOString(), cases: results }, null, 2));
-      console.log(`baseline.json actualizado (${agg.p}/${agg.t}).`);
+      console.log(`${path.basename(BASELINE)} actualizado (${agg.p}/${agg.t}).`);
       return;
     }
 

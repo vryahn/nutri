@@ -8,8 +8,9 @@ pushing.
 ## Running
 
 ```sh
-npm run eval                      # runs the cases, scores them, compares vs baseline.json
-UPDATE_BASELINE=1 npm run eval    # also rewrites baseline.json from this run
+npm run eval                      # runs default model and compares its model-specific baseline
+EVAL_MODEL=qwen/qwen3.8-27b npm run eval  # audits the rejected candidate; compare to the Qwen 3.6 snapshot
+UPDATE_BASELINE=1 npm run eval    # deliberately rewrites baseline.gemini-3.8-flash.json
 ```
 
 Requires `VITE_GEMINI_KEY` (or `VITE_MISTRAL_KEY`) in `.env`. With no key at all: clean skip, no
@@ -23,7 +24,7 @@ within the budget. If you exhaust it, the 429 does not recover until the daily r
 `score.test.js` (no network).
 
 Output: a table per case (id, model that answered, `passed/total`, failed fields with expected
-vs got), `evals/last-run.json` (gitignored), and a comparison against `baseline.json`. Any
+vs got), `evals/last-run.<model>.json` (gitignored), and a comparison against that model’s baseline. Any
 **regression** fails the suite: a case/field pair that passed and now fails, a READY case from the
 baseline absent from the run (cases skipped due to a missing local photo do NOT count), or an
 extras (hallucinations) count growing beyond `1.5× + 3` vs the baseline — the identity of the
@@ -66,23 +67,20 @@ invented micros varies between runs; the count is the stable signal.
 
 ## Baseline policy
 
-`baseline.json` is committed (it is the last accepted run). It is updated **only
+`baseline.<model>.json` is the accepted run for that pinned model. It is updated **only
 deliberately** with `UPDATE_BASELINE=1 npm run eval`, and the commit explains why (prompt
-improvement, model change, new case). A seed case that fails against FDC is **not papered over
+improvement, model change, new case). `baseline.json` is retained as the historical Gemini 3.5 record. A seed case that fails against FDC is **not papered over
 by lowering the tolerance**: it is a real signal of model quality; it is documented in `notes` and
 the baseline captures the real state.
 
 ## Gate determinism
 
-The eval pins **a single model + `temperature: 0`** (`EVAL_MODEL`, default `gemini-3.5-flash` —
-the app's actual primary). Without this, the cascade in `ai.js` falls back to another model on a
-503 and the answering model changes per call: 3.5 vs 2.5 give different numbers and the re-run
-flags false regressions. By pinning the model, the baseline measures a consistent target. It
-retries on a transient 5xx error (3.5-flash gets saturated) so it does not die on a 503; a 429
-(quota) is NOT retried.
+The eval pins **a single model + `temperature: 0`** (`EVAL_MODEL`, default `gemini-3.8-flash`, the app's current primary). Without this, the cascade can answer with another model after a 503 and scores vary. By pinning the model, each baseline measures a consistent target. It retries on a transient 5xx error; a 429 (quota) is NOT retried.
 
-**One baseline per model.** The default goes to `baseline.json`; any other `EVAL_MODEL` goes to
-`baseline.<modelo>.json` (both committed). This also covers the **last step of the cascade,
+**One baseline per model.** Every `EVAL_MODEL`, including the default, uses
+`baseline.<modelo>.json` and `last-run.<modelo>.json`; `baseline.json` remains the historical
+Gemini 3.5 record and is never silently relabeled. Qwen 3.8 has no accepted baseline; compare it
+with `baseline.qwen_qwen3.6-27b.json` as a migration review, not a same-model regression gate. This also covers the **last step of the cascade,
 Mistral** (`mistral-small-latest`, which does support vision — verified), which would otherwise go
 untested (including the `toJsonSchema` Gemini→Mistral translation):
 `EVAL_MODEL=mistral-small-latest npm run eval` (requires `VITE_MISTRAL_KEY`). The pin routes to
@@ -108,8 +106,7 @@ RPM.
 ## Adding a photo case (`mode: "etiqueta"`)
 
 Photos are **local-only** (gitignored: `evals/cases/**/*.jpg`) — the repo is public and the shots
-usually show a hand/kitchen. The repo carries the transcription (`case.json`) and the
-`baseline.json`; the photos live only on your machine. The runner **skips cleanly** any case whose
+usually show a hand/kitchen. The repo carries the transcription (`case.json`) and model-specific baselines; the photos live only on your machine. The runner **skips cleanly** any case whose
 photo is missing, so a clone stays green even without the images.
 
 1. **Front-facing** photo of the nutrition facts table, good light, no angle. Compress it to
@@ -122,4 +119,4 @@ photo is missing, so a clone stays green even without the images.
    100 g; if the label declares per serving, normalize). Transcribing everything enables
    `strict_extras: true` (so a micro hallucination gets detected).
 4. `npm run eval` to see the score, and `UPDATE_BASELINE=1 npm run eval` to lock it in. Commit
-   `baseline.json` explaining the new case.
+   `baseline.<modelo>.json` explaining the new case.
