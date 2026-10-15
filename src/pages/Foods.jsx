@@ -592,22 +592,16 @@ function missingRequired(obj) {
   }).map(labelFor);
 }
 
-// A 0 returned by the source does not fill the input (visual anti-spam): empty field +
-// placeholder "0". Semantically identical to omitting it (an absent micro weighs 0).
+// Keep measured zeroes: an absent micro is unknown, not a measured zero.
 function stripZeros(obj) {
   const zeros = new Set();
   const cleaned = { ...obj, micros: { ...obj.micros } };
   for (const k of NUMERIC_KEYS) {
-    if (cleaned[k] === 0) {
-      zeros.add(k);
-      cleaned[k] = '';
-    }
+    if (cleaned[k] === 0) zeros.add(k);
   }
   for (const [k, v] of Object.entries(cleaned.micros)) {
-    if (v === 0) {
-      zeros.add(k);
-      delete cleaned.micros[k];
-    }
+    if (v === 0) zeros.add(k);
+    if (v === '' || v == null) delete cleaned.micros[k];
   }
   return { cleaned, zeros };
 }
@@ -628,8 +622,7 @@ function resultBadgeText(r) {
 function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   useLang();
   // density from the DB (numeric) may arrive as a string: it is normalized so the select matches.
-  // When editing, stored 0s (kcal/macros/micros) start out empty with placeholder "0" (same
-  // pattern as the AI prefill): a 0 adds no new information, and this way it is visible what remains to review.
+  // Stored zeroes remain visible and distinct from unknown micros.
   const { cleaned: initialForm, zeros: initialZeros } = stripZeros({
     ...EMPTY_FOOD,
     ...food,
@@ -648,7 +641,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const [aiFiles, setAiFiles] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
-  const [aiZeros, setAiZeros] = useState(initialZeros); // keys whose value (initial or from AI prefill) was 0 → placeholder, not a value
+  const [aiZeros, setAiZeros] = useState(initialZeros); // placeholder metadata; explicit zeroes remain values
   const [aiResult, setAiResult] = useState(null); // { source, name, confidence } for the result line
   const [aiMissing, setAiMissing] = useState([]); // labels of required fields lacking reliable data
   const [fdcChips, setFdcChips] = useState([]); // up to 6 FDC matches (from usda_query or manual search)

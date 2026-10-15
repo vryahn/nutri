@@ -9,7 +9,8 @@ import {
   DASH_VARS_BY_KEY, axisUnits, buildDashSeries, dashVarTarget,
   autoAgg, resolveAgg, reduceBucket, bucketRows, mergeFoodResults, normalizeTo100,
   cleanBounds, classifyBounds, classifyNutrient, impliedBounds, effectiveBound, draftToRows,
-  entryNutrients, addDaysISO, cleanRules, evalRules, DEFICIT_RATE_CAP,
+  entryNutrients, knownMicros, microCoverage, microCoverageForEntries,
+  addDaysISO, cleanRules, evalRules, DEFICIT_RATE_CAP,
 } from './domain.js';
 
 describe('temporal aggregation of custom charts', () => {
@@ -75,7 +76,7 @@ describe('temporal aggregation of custom charts', () => {
 
 describe('Dashboard custom charts', () => {
   const nutByDay = new Map([
-    ['2026-07-01', { day: '2026-07-01', kcal: 2000, protein_g: 150, micros: { sodio_mg: 1800 } }],
+    ['2026-07-01', { day: '2026-07-01', kcal: 2000, protein_g: 150, micros: { sodio_mg: 1800 }, micros_complete: { sodio_mg: true } }],
     // 07-02 not logged (no row) → nutrition must yield null, not 0
   ]);
   const bodyByDay = new Map([
@@ -151,6 +152,19 @@ describe('computeRecipePer100g', () => {
 
   it('weight 0 (no ingredients) -> null', () => {
     expect(computeRecipePer100g([], 0)).toBeNull();
+  });
+
+  it('distinguishes explicit zero, absent value and partial recipe sum', () => {
+    const zero = { ...A, micros: { magnesio_mg: 0, sodio_mg: 50 } };
+    const unknown = { ...B, micros: { sodio_mg: 30 } };
+    const mixed = computeRecipePer100g([{ food: zero, grams: 100 }, { food: unknown, grams: 200 }], 250);
+    expect(mixed.micros).toEqual({ magnesio_mg: 0, sodio_mg: 44 });
+    expect(mixed.micros_complete).toEqual({ sodio_mg: true });
+    expect(microCoverage(mixed, 'magnesio_mg')).toBe('partial');
+    expect(microCoverage(mixed, 'calcio_mg')).toBe('unknown');
+    const known = computeRecipePer100g([{ food: zero, grams: 100 }, { food: { ...B, micros: { magnesio_mg: 30, sodio_mg: 30 } }, grams: 200 }], 250);
+    expect(known.micros.magnesio_mg).toBe(24);
+    expect(known.micros_complete.magnesio_mg).toBe(true);
   });
 });
 
@@ -618,6 +632,7 @@ describe('entryNutrients (client replica of the entry_nutrients view)', () => {
     expect(r.carbs_g).toBe(34.26);
     expect(r.fat_g).toBe(0.5);
     expect(r.micros).toEqual({ potasio_mg: 537, sodio_mg: 1.5, magnesio_mg: 40.5 });
+    expect(r.micros_complete).toEqual({ potasio_mg: true, sodio_mg: true, magnesio_mg: true });
     expect(r.item).toBe('Plátano');
   });
 
@@ -631,7 +646,21 @@ describe('entryNutrients (client replica of the entry_nutrients view)', () => {
     expect(r.kcal).toBeNull();
     expect(r.protein_g).toBeNull();
     expect(r.micros).toEqual({});
+    expect(r.micros_complete).toEqual({});
     expect(r.grams).toBe(150);
+  });
+
+  it('daily coverage requires every entry, while zero stays known', () => {
+    const zero = entryNutrients({ grams: 100 }, { ...meta, micros: { magnesio_mg: 0 } });
+    const absent = entryNutrients({ grams: 200 }, { ...meta, micros: {} });
+    expect(knownMicros({ magnesio_mg: 0, calcio_mg: null })).toEqual({ magnesio_mg: true });
+    expect(microCoverageForEntries([zero], 'magnesio_mg')).toBe('complete');
+    expect(microCoverageForEntries([zero, absent], 'magnesio_mg')).toBe('partial');
+    expect(microCoverageForEntries([absent], 'magnesio_mg')).toBe('unknown');
+    expect(microCoverageForEntries([], 'magnesio_mg')).toBe('unknown');
+    const water = entryNutrients({ food_id: 'water', grams: 250 }, { kcal: 0, micros: { agua_ml: 100 } });
+    expect(microCoverageForEntries([zero, water], 'magnesio_mg')).toBe('partial');
+    expect(buildDashSeries(['2026-07-01'], [DASH_VARS_BY_KEY.magnesio_mg], new Map([['2026-07-01', { kcal: 100, micros: { magnesio_mg: 0 }, micros_complete: {} }]]), new Map())[0].magnesio_mg).toBeNull();
   });
 });
 

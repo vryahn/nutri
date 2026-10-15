@@ -36,6 +36,7 @@ import {
   MICROS,
   MICROS_DEFAULT,
   microGroups,
+  microCoverage,
   todayISO,
   addDaysISO,
   weekdayOf,
@@ -59,7 +60,6 @@ import {
   MIN_DAYS_STDDEV,
   MIN_DAYS_TREND,
   MIN_DAYS_BAYES,
-  STRUCTURAL_ZERO_FRACTION,
   BAYES_KCAL_TOL,
   dayCompleteness,
   targetPhases,
@@ -134,13 +134,14 @@ function calcDisabledReason(opt, ctx) {
 // days in the range (unchanged semantics); median/σ/trend over
 // `advancedDays` (complete days, and from the current phase when applicable — Fix 5).
 function computeMetricStats(registeredDays, advancedDays, key) {
-  const xsAll = registeredDays.map((d) => d.values[key]);
+  const xsAll = registeredDays.map((d) => d.values[key]).filter((v) => v != null);
   const n = xsAll.length;
   const total = sum(xsAll);
 
-  const advXs = advancedDays.map((d) => d.values[key]);
+  const advWithValue = advancedDays.filter((d) => d.values[key] != null);
+  const advXs = advWithValue.map((d) => d.values[key]);
   const advN = advXs.length;
-  const points = advancedDays.map((d) => ({ x: d.dayIndex, y: d.values[key] }));
+  const points = advWithValue.map((d) => ({ x: d.dayIndex, y: d.values[key] }));
 
   return {
     sum: total,
@@ -188,7 +189,7 @@ const scaleBound = (b, n) => (b ? { min: b.min == null ? null : b.min * n, max: 
 // bare numbers (the unit goes in its own column) so the CSV is
 // parseable in a spreadsheet. Empty cell = no data, same as the '–' in the UI.
 function summaryCells(calcMode, ms, objStats, b) {
-  const pct = (num, den) => (num != null && objStats.n && den > 0 ? `${Math.round((num / den) * 100)}%` : '');
+  const pct = (num, den) => (ms.n && num != null && objStats.n && den > 0 ? `${Math.round((num / den) * 100)}%` : '');
   const obj = (v) => (objStats.n && v != null ? round(v, 2) : '');
   switch (calcMode) {
     case 'suma':
@@ -221,13 +222,12 @@ const SUMMARY_MACROS = [
   { key: 'fat_g', label: 'Grasa', unit: 'g', field: 'targetFat' },
 ];
 
-// Fix 3: structural zeros — an exact 0 almost always means "no data for
-// this micro in the food", not "zero intake".
-function structuralZeroInfo(registeredDays, key) {
+// Coverage comes from every underlying food, including recipe ingredients.
+function coverageInfo(registeredDays, key) {
   const m = registeredDays.length;
   if (!m) return { warn: false, n: 0, m: 0 };
-  const n = registeredDays.filter((d) => Number(d.values[key] || 0) === 0).length;
-  return { warn: n / m > STRUCTURAL_ZERO_FRACTION, n, m };
+  const n = registeredDays.filter((d) => microCoverage(d, key) !== 'complete').length;
+  return { warn: n > 0, n, m };
 }
 
 // `chartData` field holding the daily objective for each two-tailed metric.
@@ -238,6 +238,7 @@ const BAYES_TARGET_FIELD = { kcal: 'targetKcal', carbs_g: 'targetCarbs', fat_g: 
 // are treated as a floor (≥); sodium with its fixed floor. `days` arrives already
 // filtered to complete days (it does not call `registrado`/completeness here).
 function bayesForMetric(days, key) {
+  if (!BAYES_TARGET_FIELD[key] && key !== 'protein_g' && days.some((d) => microCoverage(d, key) !== 'complete')) return null;
   const boundOf = (d) => (hasBound(d.bounds?.[key]) ? d.bounds[key] : null);
   const targetOf = (d) =>
     BAYES_TARGET_FIELD[key] ? d[BAYES_TARGET_FIELD[key]] : key === 'protein_g' ? d.proteinFloor : d.targetMicros?.[key] ?? null;
@@ -272,6 +273,7 @@ const NO_TARGET_HINT = () => t(NO_TARGET_HINT_ES);
 // Reason why bayesForMetric returned null, for the cell's Hint.
 function bayesUnavailableReason(days, key) {
   if (!days.length) return t('No registraste nada en este periodo.');
+  if (!BAYES_TARGET_FIELD[key] && key !== 'protein_g' && days.some((d) => microCoverage(d, key) !== 'complete')) return t('Cobertura parcial: faltan valores de este nutriente en algunos alimentos.');
   if (days.some((d) => hasBound(d.bounds?.[key]))) return null;
   if (key === 'kcal' || key === 'carbs_g' || key === 'fat_g') {
     const field = BAYES_TARGET_FIELD[key];
@@ -357,37 +359,19 @@ function metricDisplay(calcMode, ms, bayesInfo, unit, decimals) {
   return { ...formatMetric(calcMode, ms, unit, decimals), hint: null, degraded: false };
 }
 
-// Water for the Dashboard card/report: same per-mode calculation as
-// macros/micros (computeMetricStats/bayesCell), but formatted with fmtMl
-// (honors US units) and keeping its progress bar. Returns
-// { primary, secondary, targetStr, barWidth }. The level modes
-// (suma/promedio/mediana) carry a comparable objective and a bar; σ/trend are
-// dispersion (no objective, no bar); bayes is already a % (bar = adherence).
-function waterView(calcMode, ms, objStats, b) {
-  const mk = (primary, secondary, targetStr, barWidth) => ({ primary, secondary, targetStr, barWidth });
-  const tgtStr = (tgt) => (objStats.n > 0 && tgt != null ? fmtMl(tgt) : null);
-  const bar = (cons, tgt) => (objStats.n > 0 && tgt > 0 && cons != null ? Math.min(100, (cons / tgt) * 100) : null);
-  switch (calcMode) {
-    case 'suma':
-      return mk(fmtMl(ms.sum), null, tgtStr(objStats.sum), bar(ms.sum, objStats.sum));
-    case 'promedio':
-      return mk(fmtMl(ms.avg), null, tgtStr(objStats.avg), bar(ms.avg, objStats.avg));
-    case 'mediana':
-      return ms.median == null
-        ? mk('–', null, tgtStr(objStats.median), null)
-        : mk(fmtMl(ms.median), `P25–P75: ${fmtMl(ms.p25)}–${fmtMl(ms.p75)}`, tgtStr(objStats.median), bar(ms.median, objStats.median));
-    case 'stddev':
-      return ms.sd == null ? mk('–', null, null, null) : mk(`σ ${fmtMl(ms.sd)}`, ms.cv == null ? null : `CV ${round(ms.cv, 0)}%`, null, null);
-    case 'tendencia':
-      return ms.slope == null ? mk('–', null, null, null) : mk(`${ms.slope >= 0 ? '+' : ''}${fmtMl(ms.slope)}/${t('día')}`, null, null, null);
-    case 'bayes': {
-      if (!b) return mk('–', null, null, null);
-      const w = parseFloat(b.primary);
-      return mk(b.primary, b.secondary, null, Number.isFinite(w) ? Math.max(0, Math.min(100, w)) : null);
-    }
-    default:
-      return mk('', null, null, null);
-  }
+function microDisplay(calcMode, ms, bayesInfo, unit, decimals, coverage) {
+  if (!ms.n) return { primary: t('Sin dato'), secondary: null, hint: coverage.warn ? t('Faltan valores de este nutriente en algunos alimentos; la suma observada no prueba cumplimiento.') : null, degraded: true };
+  const display = metricDisplay(calcMode, ms, bayesInfo, unit, decimals);
+  if (!coverage.warn) return display;
+  const hint = t('Faltan valores de este nutriente en algunos alimentos; la suma observada no prueba cumplimiento.');
+  if (calcMode === 'bayes') return { primary: '–', secondary: null, hint, degraded: true };
+  return {
+    ...display,
+    primary: ms.n ? display.primary : t('Sin dato'),
+    secondary: ms.n ? t('Datos parciales') : null,
+    hint,
+    degraded: true,
+  };
 }
 
 // Plain-language interpretive sentence for the summary card, based on
@@ -459,6 +443,7 @@ function targetCell(calcMode, objStats, unit) {
 
 // % shown in the micros table, according to the mode (Fix 1). Bayes already IS a %.
 function pctCell(calcMode, ms, objStats) {
+  if (!ms.n) return '–';
   if (calcMode === 'suma') return objStats.n && objStats.sum > 0 ? `${Math.round((ms.sum / objStats.sum) * 100)}%` : '–';
   if (calcMode === 'promedio') return objStats.n && objStats.avg > 0 ? `${Math.round((ms.avg / objStats.avg) * 100)}%` : '–';
   if (calcMode === 'mediana') return objStats.median > 0 && ms.median != null ? `${Math.round((ms.median / objStats.median) * 100)}%` : '–';
@@ -524,10 +509,6 @@ function prevRangeOf(start, end) {
   const prevStart = addDaysISO(prevEnd, -(length - 1));
   return { prevStart, prevEnd };
 }
-
-// Micro keys defaulted to 0 (a micro absent from the jsonb weighs 0);
-// agua_ml is excluded because it has its own section and does not enter the selector.
-const MICROS_ZERO = Object.fromEntries(MICROS.filter((m) => m.key !== 'agua_ml').map((m) => [m.key, 0]));
 
 // Nutrients plottable in the "Tendencia por nutriente" card (macros + all
 // micros). `tgt(d)` extracts the daily objective from the chartData point: macros
@@ -602,11 +583,13 @@ function computeStats(dates, dailyTotals, targets) {
       goal: target?.goal ?? null, // day's regimen: biases the kcal band (diana)
       protein: registrado ? protein_g : null,
       proteinFloor: target?.protein_g ?? null,
-      sodio: registrado ? sodio : null,
+      sodio: registrado && microCoverage(row, 'sodio_mg') === 'complete' ? sodio : null,
+      micros: row?.micros || {},
+      micros_complete: row?.micros_complete || {},
       registrado,
       // Flat per-metric series (macros + micros), for the selector's advanced
       // calculations (Part A). null if the day has no record.
-      values: registrado ? { kcal, protein_g, carbs_g, fat_g, ...MICROS_ZERO, ...(row?.micros || {}) } : null,
+      values: registrado ? { kcal, protein_g, carbs_g, fat_g, ...(row?.micros || {}) } : null,
     };
   });
 
@@ -944,7 +927,7 @@ export default function Dashboard() {
       supabase.from('daily_totals').select('day,kcal').gte('day', historyStart).lte('day', historyEnd),
       supabase.from('targets').select('*'),
       supabase.from('prefs').select('data').maybeSingle(),
-      supabase.from('entry_nutrients').select('day,meal,food_id,recipe_id,item,kcal,protein_g').gte('day', start).lte('day', end),
+      supabase.from('entry_nutrients').select('day,meal,food_id,recipe_id,item,grams,kcal,protein_g,micros').gte('day', start).lte('day', end),
       supabase.from('body_metrics').select('day,metrics').gte('day', start).lte('day', end),
     ]);
     if (results.some((r) => r.error)) {
@@ -1005,7 +988,7 @@ export default function Dashboard() {
     setCsvNotice('');
     const { data: all } = await supabase
       .from('entry_nutrients')
-      .select('day,meal,item,food_id,recipe_id,grams,kcal,protein_g,carbs_g,fat_g,micros')
+      .select('day,meal,item,food_id,recipe_id,grams,kcal,protein_g,carbs_g,fat_g,micros,micros_complete')
       .gte('day', start)
       .lte('day', end)
       .order('day');
@@ -1014,7 +997,7 @@ export default function Dashboard() {
       setCsvNotice(t('Sin registros en el rango'));
       return;
     }
-    const header = ['day', 'meal_label', 'tipo', 'item', 'grams', 'kcal', 'protein_g', 'carbs_g', 'fat_g', ...MICROS.map((m) => m.key)];
+    const header = ['day', 'meal_label', 'tipo', 'item', 'grams', 'kcal', 'protein_g', 'carbs_g', 'fat_g', ...MICROS.map((m) => m.key), 'micros_complete'];
     const lines = [header.join(',')];
     for (const r of rows) {
       const cells = [
@@ -1028,6 +1011,7 @@ export default function Dashboard() {
         r.carbs_g,
         r.fat_g,
         ...MICROS.map((m) => r.micros?.[m.key] ?? ''),
+        JSON.stringify(r.micros_complete || {}),
       ];
       lines.push(cells.map(csvCell).join(','));
     }
@@ -1049,12 +1033,19 @@ export default function Dashboard() {
       setCsvNotice(t('Sin registros en el rango'));
       return;
     }
-    const header = ['nutriente', 'clave', 'unidad', calcTitle(calcMode), 'detalle', 'objetivo', '%_objetivo'];
+    const header = ['nutriente', 'clave', 'unidad', calcTitle(calcMode), 'detalle', 'objetivo', '%_objetivo', 'cobertura'];
     const lines = [header.map(csvCell).join(',')];
     const pushRow = (label, key, unit, objStats) => {
       const ms = computeMetricStats(registeredDays, advancedDays, key);
       const b = calcMode === 'bayes' ? bayesForMetric(completeDaysFull, key) : null;
-      lines.push([label, key, unit, ...summaryCells(calcMode, ms, objStats, b)].map(csvCell).join(','));
+      const cells = summaryCells(calcMode, ms, objStats, b);
+      const micro = !['kcal', 'protein_g', 'carbs_g', 'fat_g'].includes(key);
+      const coverage = micro ? coverageInfo(registeredDays, key) : null;
+      if (coverage?.warn || (micro && !ms.n)) {
+        cells[0] = calcMode === 'bayes' ? '' : ms.n ? cells[0] : t('Sin dato');
+        cells[3] = '';
+      }
+      lines.push([label, key, unit, ...cells, coverage?.warn ? t('Parcial') : t('Completa')].map(csvCell).join(','));
     };
     for (const m of SUMMARY_MACROS) {
       pushRow(t(m.label), m.key, m.unit, objectiveStatsOf(chartData.filter((d) => d[m.field] != null).map((d) => Number(d[m.field]))));
@@ -1106,6 +1097,9 @@ export default function Dashboard() {
   const nutByDay = new Map(dailyTotals.map((d) => [d.day, d]));
   const bodyByDay = new Map(bodyRows.map((d) => [d.day, d]));
   const rangeItems = phaseMode ? itemRows.filter((r) => dateSet.has(r.day)) : itemRows;
+  const simpleWaterEntries = waterFoodId ? rangeItems.filter((r) => r.food_id === waterFoodId) : [];
+  const simpleWaterMl = simpleWaterEntries.reduce((total, r) => total + Number(r.grams || 0), 0);
+  const simpleWaterDays = new Set(simpleWaterEntries.map((r) => r.day)).size;
   const stats = computeStats(dates, dailyTotals, targets);
   const daysWithTarget = dates.filter((d) => resolveTarget(targets, d)).length;
 
@@ -1192,7 +1186,9 @@ export default function Dashboard() {
     const tg = trendMeta.tgt(d);
     return {
       label: d.label,
-      val: d.registrado ? round(Number(d.values[trendMeta.key] ?? 0), trendMeta.dec) : null,
+      val: d.registrado && d.values[trendMeta.key] != null &&
+        (['kcal', 'protein_g', 'carbs_g', 'fat_g'].includes(trendMeta.key) || microCoverage(d, trendMeta.key) === 'complete')
+        ? round(Number(d.values[trendMeta.key]), trendMeta.dec) : null,
       target: tg != null ? Number(tg) : null,
     };
   });
@@ -1222,12 +1218,13 @@ export default function Dashboard() {
   const bCarbs = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'carbs_g') : null;
   const bFat = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'fat_g') : null;
   const bSodio = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'sodio_mg') : null;
-  const waterStats = waterView(
-    calcMode,
-    computeMetricStats(registeredDays, advancedDays, 'agua_ml'),
-    computeObjectiveStats(chartData, 'agua_ml'),
-    calcMode === 'bayes' ? bayesCell(completeDaysFull, 'agua_ml') : null
-  );
+  const sodiumCovered = !coverageInfo(registeredDays, 'sodio_mg').warn;
+  const totalWaterMl = stats.microsConsumed.agua_ml || 0;
+  const waterTotalDays = chartData.filter((d) => nutByDay.has(d.day));
+  const waterTotalPartial = waterTotalDays.some((d) => microCoverage(d, 'agua_ml') !== 'complete');
+  const simpleWaterText = !waterFoodId ? t('Agua simple sin configurar') : simpleWaterDays ? fmtMl(simpleWaterMl) : t('Sin registro');
+  const totalWaterText = waterTotalDays.length ? fmtMl(totalWaterMl) : t('Sin dato');
+  const waterPlanDays = chartData.filter((d) => d.day >= '2026-10-07' && d.day <= '2026-12-31' && d.targetMicros?.agua_ml === 3500 && d.bounds?.agua_ml?.min === 2000);
   const phaseHintText = unionMode
     ? `Estás viendo ${selectedPhases.length} fases de ${selectionLabel}, cada una con sus propios objetivos. El cálculo usa sus ${advancedDays.length} días completos.`
     : crossesPhases
@@ -1249,7 +1246,7 @@ export default function Dashboard() {
   // "Huella nutricional" radar: MICROS_DEFAULT micros with objective > 0,
   // % of the objective per the range's Suma-vs-objective (fixed, does not change with the selector).
   const radarData = MICROS.slice(0, MICROS_DEFAULT)
-    .filter((m) => m.key !== 'agua_ml' && stats.microsTarget[m.key] > 0)
+    .filter((m) => registeredDays.length > 0 && m.key !== 'agua_ml' && stats.microsTarget[m.key] > 0 && !coverageInfo(registeredDays, m.key).warn)
     .map((m) => ({
       label: m.label,
       value: Math.min(150, ((stats.microsConsumed[m.key] || 0) / stats.microsTarget[m.key]) * 100),
@@ -1273,18 +1270,18 @@ export default function Dashboard() {
       : computeObjectiveStats(chartData, m.key);
     const b = calcMode === 'bayes' ? bayesForMetric(completeDaysFull, m.key) : null;
     const [val, det, obj, pct] = summaryCells(calcMode, ms, objStats, b);
-    const zero = structuralZeroInfo(registeredDays, m.key);
+    const coverage = m.key && !m.field ? coverageInfo(registeredDays, m.key) : { warn: false };
     const danger = m.key === 'sodio_mg' && (sodiumIsLow(stats.avgSodio, stats.daysLogged > 0) || sodiumIsHigh(stats.avgSodio, stats.daysLogged > 0, sodCeil));
     const unit = calcMode === 'bayes' ? '' : ` ${m.unit}`;
     return (
       <tr key={m.key} className="border-t border-border">
-        <td className="py-1">{t(m.label)}{zero.warn ? ' ⚠' : ''}</td>
+        <td className="py-1">{t(m.label)}{coverage.warn ? ` ⚠ ${t('Parcial')}` : ''}</td>
         <td className={`py-1 text-right font-mono tabular-nums ${danger ? 'text-danger' : ''}`}>
-          {val === '' ? '—' : `${val}${unit}`}
+          {coverage.warn && calcMode === 'bayes' ? '—' : !ms.n && !m.field ? t('Sin dato') : val === '' ? '—' : `${val}${unit}`}
         </td>
         <td className="py-1 text-right font-mono tabular-nums text-text-2">{det}</td>
         <td className="py-1 text-right font-mono tabular-nums text-text-2">{obj === '' ? '—' : `${obj} ${m.unit}`}</td>
-        <td className="py-1 text-right font-mono tabular-nums text-text-2">{pct === '' ? '—' : pct}</td>
+        <td className="py-1 text-right font-mono tabular-nums text-text-2">{coverage.warn || pct === '' ? '—' : pct}</td>
       </tr>
     );
   }
@@ -1309,7 +1306,7 @@ export default function Dashboard() {
   const noHint = (d) => ({ ...d, hint: null });
   function renderInforme() {
     const visibles = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favs.includes(m.key)) && m.key !== 'agua_ml');
-    const anyZeroWarn = visibles.some((m) => structuralZeroInfo(registeredDays, m.key).warn);
+    const anyCoverageWarn = visibles.some((m) => coverageInfo(registeredDays, m.key).warn);
     const sodiumLow = sodiumIsLow(stats.avgSodio, stats.daysLogged > 0);
     const sodiumHigh = sodiumIsHigh(stats.avgSodio, stats.daysLogged > 0, sodCeil);
     return (
@@ -1374,13 +1371,9 @@ export default function Dashboard() {
             {partialDaysFull > 0 ? ` (+${partialDaysFull}p)` : ''}
           </p>
           {plainKcalPhrase && <p className="text-sm text-text-2 mt-1">{plainKcalPhrase}</p>}
-          {(stats.microsConsumed.agua_ml > 0 || stats.microsTarget.agua_ml > 0) && (
-            <p className="text-sm text-text-2 mt-1">
-              {t('Agua')}: {waterStats.primary}
-              {waterStats.targetStr ? ` / ${waterStats.targetStr}` : ''}
-              {waterStats.secondary ? ` (${waterStats.secondary})` : ''}
-            </p>
-          )}
+          <p className="text-sm text-text-2 mt-1">{t('Agua simple registrada')}: {simpleWaterText} ({simpleWaterDays}/{dates.length} {t('días con registro')})</p>
+          <p className="text-sm text-text-2">{t('Agua total observada')}: {totalWaterText}{waterTotalPartial ? ` · ${t('Datos parciales')}` : ''}</p>
+          {waterPlanDays.length > 0 && <p className="text-sm text-text-2">{t('Plan v6.6: piso operativo diario 2 L de agua simple; objetivo orientativo 3.5 L. No es techo ni cuota.')}</p>}
           {sodiumLow && (
             <p className="text-sm text-danger mt-1">⚠ {t('sodio promedio')} &lt; {SODIUM_FLOOR_MG} mg</p>
           )}
@@ -1448,7 +1441,7 @@ export default function Dashboard() {
 
         <footer className="mt-4 pt-2 border-t border-border text-xs text-text-3">
           <p>{t('— = sin dato o sin objetivo en el rango.')}</p>
-          {anyZeroWarn && <p>{t('⚠ = micro en 0 la mayoría de los días: puede significar "no anotado", no "no consumido".')}</p>}
+          {anyCoverageWarn && <p>{t('⚠ Parcial: faltan valores de algunos alimentos; la suma observada no prueba cumplimiento.')}</p>}
           {isPhaseScopedMode && phaseHintText && <p>{phaseHintText}</p>}
           {calcMode === 'bayes' && (
             <p>
@@ -1703,20 +1696,17 @@ export default function Dashboard() {
       {csvNotice && <p className="text-sm text-warn">{csvNotice}</p>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 grid-flow-dense">
-        <section className="md:col-span-2 lg:col-span-12 rounded-2xl bg-surface border border-border p-4">
-          <div className="flex justify-between items-baseline mb-2">
-            <p className="text-sm text-text-3">{t('Agua')}</p>
-            <p className="font-mono tabular-nums text-sm text-d-carb">
-              {waterStats.primary}
-              {waterStats.targetStr ? ` / ${waterStats.targetStr}` : ''}
-              {waterStats.secondary ? <span className="text-text-3"> ({waterStats.secondary})</span> : ''}
-            </p>
+        <section className="md:col-span-2 lg:col-span-12 rounded-2xl bg-surface border border-border p-4 space-y-2">
+          <div className="flex flex-wrap justify-between gap-1 text-sm">
+            <p className="text-text-3">{t('Agua simple registrada')}</p>
+            <p className="font-mono tabular-nums text-d-carb">{simpleWaterText}</p>
           </div>
-          {waterStats.barWidth != null && (
-            <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
-              <div className="h-full bg-d-carb rounded-full" style={{ width: `${waterStats.barWidth}%` }} />
-            </div>
-          )}
+          <p className="text-xs text-text-3">{simpleWaterDays}/{dates.length} {t('días con registro')}. {t('Solo cuenta el alimento de agua simple de Hoy.')}</p>
+          <div className="flex flex-wrap justify-between gap-1 text-sm">
+            <p className="text-text-3">{t('Agua total observada')}</p>
+            <p className="font-mono tabular-nums text-text-2">{totalWaterText}{waterTotalPartial ? ` · ${t('Datos parciales')}` : ''}</p>
+          </div>
+          {waterPlanDays.length > 0 && <p className="text-xs text-text-3">{t('Plan v6.6: piso operativo diario 2 L de agua simple; objetivo orientativo 3.5 L. No es techo ni cuota.')}</p>}
         </section>
 
         <section className="md:col-span-2 lg:col-span-12 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -1754,9 +1744,10 @@ export default function Dashboard() {
           />
           <KpiCard
             label={t("Sodio")}
-            display={metricDisplay(calcMode, msSodio, bSodio, ' mg', 0)}
-            delta={showDelta ? pctDelta(stats.avgSodio, prevStats.avgSodio) : null}
-            status={classifyNutrient('sodio_mg', stats.avgSodio, null, { hasFood: stats.daysLogged > 0, bounds: periodBound(chartData, 'sodio_mg') })}
+            display={microDisplay(calcMode, msSodio, bSodio, ' mg', 0, coverageInfo(registeredDays, 'sodio_mg'))}
+            delta={showDelta && sodiumCovered ? pctDelta(stats.avgSodio, prevStats.avgSodio) : null}
+            status={sodiumCovered || sodiumIsLow(stats.avgSodio, stats.daysLogged > 0) || sodiumIsHigh(stats.avgSodio, stats.daysLogged > 0, sodCeil)
+              ? classifyNutrient('sodio_mg', stats.avgSodio, null, { hasFood: stats.daysLogged > 0, bounds: periodBound(chartData, 'sodio_mg') }) : null}
             sparkline={chartData.map((d) => d.sodio)}
             sparkColor="var(--d-carb)"
           />
@@ -1881,7 +1872,9 @@ export default function Dashboard() {
             </Hint>
           </p>
           {radarData.length === 0 ? (
-            <p className="text-sm text-text-2 py-8 text-center">{t('Registra objetivos de micros en Metas')}</p>
+            <p className="text-sm text-text-2 py-8 text-center">{!registeredDays.length ? t('Sin registros en el rango')
+              : MICROS.slice(0, MICROS_DEFAULT).some((m) => stats.microsTarget[m.key] > 0)
+                ? t('Sin micros con cobertura completa en este periodo.') : t('Registra objetivos de micros en Metas')}</p>
           ) : (
             <div className="h-[220px] lg:h-80">
             <ResponsiveContainer width="100%" height="100%">
@@ -2435,6 +2428,7 @@ function MicrosTable({
   calcMode,
   phaseHintText,
 }) {
+  const sodiumCovered = !coverageInfo(registeredDays, 'sodio_mg').warn;
   const visible = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favs.includes(m.key)) && m.key !== 'agua_ml');
   const hidden = MICROS.filter(
     (m, i) =>
@@ -2447,9 +2441,9 @@ function MicrosTable({
   const renderRow = (m) => {
     const ms = computeMetricStats(registeredDays, advancedDays, m.key);
     const objStats = computeObjectiveStats(chartData, m.key);
-    const zero = structuralZeroInfo(registeredDays, m.key);
+    const coverage = coverageInfo(registeredDays, m.key);
     const bayesInfo = calcMode === 'bayes' ? bayesCell(completeDaysFull, m.key) : null;
-    const consumedDisplay = metricDisplay(calcMode, ms, bayesInfo, ` ${m.unit}`, 1);
+    const consumedDisplay = microDisplay(calcMode, ms, bayesInfo, ` ${m.unit}`, 1, coverage);
     const pBound = periodBound(chartData, m.key);
     const sodiumDanger = m.key === 'sodio_mg' && (sodiumIsLow(avgSodio, daysLogged > 0) || sodiumIsHigh(avgSodio, daysLogged > 0, pBound?.max ?? SODIUM_CEILING_MG));
     const degraded = consumedDisplay.degraded;
@@ -2471,15 +2465,15 @@ function MicrosTable({
         <td className="py-2">{t(m.label)}</td>
         <td className={`py-2 text-right whitespace-normal font-mono tabular-nums ${sodiumDanger ? 'text-danger' : statusText} ${degraded ? 'text-text-3' : ''}`}>
           <MetricCellText display={consumedDisplay} />
-          {zero.warn && (
-            <Hint text={t('En %a de %b días no registraste este nutriente. El 0 puede significar \'no lo anotaste\', no \'no lo comiste\'.').replace('%a', zero.n).replace('%b', zero.m)}>
+          {coverage.warn && (
+            <Hint text={t('En %a de %b días faltan valores de este nutriente en uno o más alimentos.').replace('%a', coverage.n).replace('%b', coverage.m)}>
               {' '}
               ⚠
             </Hint>
           )}
         </td>
         <td className="py-2 text-right font-mono tabular-nums text-text-2">{targetCell(calcMode, objStats, m.unit)}</td>
-        <td className="py-2 text-right font-mono tabular-nums text-text-2">{pctCell(calcMode, ms, objStats)}</td>
+        <td className="py-2 text-right font-mono tabular-nums text-text-2">{coverage.warn ? '–' : pctCell(calcMode, ms, objStats)}</td>
       </tr>
     );
   };
@@ -2521,10 +2515,10 @@ function MicrosTable({
         </details>
       )}
       {sodiumIsLow(avgSodio, daysLogged > 0) && (
-        <p className="mt-3 text-sm text-danger">⚠ {t('sodio promedio')} &lt; {SODIUM_FLOOR_MG} mg</p>
+        <p className="mt-3 text-sm text-danger">⚠ {t('sodio promedio')} &lt; {SODIUM_FLOOR_MG} mg{sodiumCovered ? '' : ` · ${t('Datos parciales')}`}</p>
       )}
       {sodiumIsHigh(avgSodio, daysLogged > 0, periodBound(chartData, 'sodio_mg')?.max ?? SODIUM_CEILING_MG) && (
-        <p className="mt-3 text-sm text-danger">⚠ {t('sodio promedio')} &gt; {periodBound(chartData, 'sodio_mg')?.max ?? SODIUM_CEILING_MG} mg</p>
+        <p className="mt-3 text-sm text-danger">⚠ {t('sodio promedio')} &gt; {periodBound(chartData, 'sodio_mg')?.max ?? SODIUM_CEILING_MG} mg{sodiumCovered ? '' : ` · ${t('Datos parciales')}`}</p>
       )}
     </section>
   );

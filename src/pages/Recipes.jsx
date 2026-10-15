@@ -127,26 +127,21 @@ export default function Recipes() {
         .map((p) => ({ name: p.name.trim(), grams: Number(p.grams) })),
       source: form.source || 'manual',
     };
-    let recipeId = form.id;
-    if (recipeId) {
-      await supabase.from('recipes').update(payload).eq('id', recipeId);
-      await supabase.from('recipe_items').delete().eq('recipe_id', recipeId);
-    } else {
-      const { data, error } = await supabase.from('recipes').insert(payload).select().single();
-      if (error) return;
-      recipeId = data.id;
-    }
-    if (form.ingredients.length > 0) {
-      const { error } = await supabase.from('recipe_items').insert(
-        form.ingredients.map((i) => ({ recipe_id: recipeId, food_id: i.food.id, grams: Number(i.grams) }))
-      );
-      if (error) {
-        showToast(t('Error al guardar los ingredientes.'));
-        return;
-      }
-    }
+    let error;
+    try {
+      ({ error } = await supabase.rpc('save_recipe_atomic', {
+        p_recipe_id: form.id || null,
+        p_name: payload.name,
+        p_cooked_weight_g: payload.cooked_weight_g,
+        p_portions: payload.portions,
+        p_source: payload.source,
+        p_items: form.ingredients.map((i) => ({ food_id: i.food.id, grams: Number(i.grams) })),
+      }));
+    } catch (e) { error = e; }
+    if (error) return error.message || t('No se pudo guardar la receta.');
     setEditing(null);
     load();
+    return null;
   }
 
   // Deletion without confirmation (swipe and the "Borrar" button): optimistic + 5 s "Undo"
@@ -737,7 +732,8 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       }
       resolved.push({ food: saved, grams: ing.grams, procedencia: ing.procedencia });
     }
-    onSave({ ...form, ingredients: resolved });
+    const error = await onSave({ ...form, ingredients: resolved });
+    if (error) setSaveError(error);
   }
 
   return (
@@ -965,12 +961,12 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
               <PreviewStat label={t('Grasa')} value={preview.fat_g} color="text-d-fat" />
             </div>
             {previewMicros.map((m) => {
-              const v = preview.micros?.[m.key] ?? 0;
+              const v = preview.micros?.[m.key];
               return (
                 <div key={m.key} className="flex justify-between py-1.5 border-t border-border text-sm">
                   <span className="text-text-2">{t(m.label)}</span>
-                  <span className={`font-mono tabular-nums ${v === 0 ? 'text-text-3' : ''}`}>
-                    {round(v, 2)} {m.unit}
+                  <span className={`font-mono tabular-nums ${v == null ? 'text-text-3' : ''}`}>
+                    {v == null ? t('Sin dato') : `${round(v, 2)} ${m.unit}${preview.micros_complete?.[m.key] === true ? '' : ` (${t('parcial')})`}`}
                   </span>
                 </div>
               );

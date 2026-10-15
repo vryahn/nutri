@@ -7,9 +7,8 @@
 //
 // Idempotent by construction: the row's uuid is generated on the client and travels in
 // the payload, so replaying an insert that already landed collides on the primary key
-// (23505) and is dropped instead of duplicating. At most ONE pending op exists per id
-// (a delete on a pending insert removes it, an update merges into it), which keeps the
-// replay order irrelevant.
+// (23505) and is dropped instead of duplicating. An insert already in flight stays
+// ahead of later edits/deletes, including across a reload.
 //
 // ponytail: entries only, and no reordering. Bulk copy/paste, meal templates and
 // sort_order live behind a desk with signal; queueing them would need multi-row ordering
@@ -20,6 +19,7 @@ const KEY = 'nutri.outbox';
 const listeners = new Set();
 let owner = null; // uid stamped on each op; flush skips ops of another user (see below)
 let inflight = null;
+let sending = null;
 
 function read() {
   try { return JSON.parse(localStorage.getItem(KEY) || '[]'); }
@@ -59,26 +59,29 @@ export function queueInsert(payload, row) {
   flushOutbox();
 }
 
-/** Patches a row. On a still-pending insert it rewrites that insert in place, so the
- *  entry reaches the server once, already corrected. */
+/** Patches a row. Only an insert never attempted on the network can be rewritten. */
 export function queueUpdate(id, patch, row) {
   const at = ops.findIndex((o) => o.id === id);
-  if (at >= 0 && ops[at].op === 'insert') {
+  if (at >= 0 && ops[at].op === 'insert' && !ops[at].attempted && ops[at] !== sending) {
     const next = [...ops];
     next[at] = { ...next[at], payload: { ...next[at].payload, ...patch }, row };
     write(next);
   } else {
-    write([...ops.filter((o) => o.id !== id), { id, op: 'update', owner, payload: patch, row }]);
+    const patches = ops.filter((o) => o.id === id && o !== sending && o.op === 'update').map((o) => o.payload);
+    const keep = ops.filter((o) => o.id !== id || o === sending || (o.op === 'insert' && o.attempted));
+    write([...keep, { id, op: 'update', owner: ops[at]?.owner ?? owner,
+      payload: Object.assign({}, ...patches, patch), row }]);
   }
   emit();
   flushOutbox();
 }
 
-/** Deletes a row. A still-pending insert is dropped outright — the server never sees it. */
+/** Deletes a row. Only an insert never attempted on the network can be dropped. */
 export function queueDelete(id) {
-  const pendingInsert = ops.some((o) => o.id === id && o.op === 'insert');
-  const rest = ops.filter((o) => o.id !== id);
-  write(pendingInsert ? rest : [...rest, { id, op: 'delete', owner, payload: null, row: null }]);
+  const first = ops.find((o) => o.id === id);
+  const rest = ops.filter((o) => o.id !== id || o === sending || (o.op === 'insert' && o.attempted));
+  write(first?.op === 'insert' && !first.attempted && first !== sending ? rest
+    : [...rest, { id, op: 'delete', owner: first?.owner ?? owner, payload: null, row: null }]);
   emit();
   flushOutbox();
 }
@@ -86,8 +89,7 @@ export function queueDelete(id) {
 /**
  * Server rows for `day` with the queue applied on top: pending inserts appended,
  * pending updates overlaid, pending deletes removed. Pending rows carry _pending so the
- * card can say so. A row already returned by the server wins over its queued insert
- * (the flush landed, the removal is a tick behind).
+ * card can say so. A later update/delete wins over an insert in flight.
  */
 export function applyOutbox(serverRows, day, queue = ops) {
   if (!queue.length) return serverRows;
@@ -99,8 +101,9 @@ export function applyOutbox(serverRows, day, queue = ops) {
     if (o?.op === 'delete') continue;
     merged.push(o?.op === 'update' && o.row ? { ...o.row, _pending: true } : r);
   }
-  for (const o of queue) {
-    if (o.op !== 'insert' || serverIds.has(o.id) || o.row?.day !== day) continue;
+  for (const o of byId.values()) {
+    if (serverIds.has(o.id) || o.op === 'delete' || o.row?.day !== day) continue;
+    if (o.op === 'update' && !queue.some((prior) => prior.id === o.id && prior.op === 'insert')) continue;
     merged.push({ ...o.row, _pending: true });
   }
   return merged;
@@ -132,16 +135,26 @@ async function drain() {
     const op = ops[0];
     // Not this user's queue: leave it untouched rather than writing it under the wrong
     // owner. Nothing behind it can be sent either (order is preserved).
-    if (op.owner && owner && op.owner !== owner) { stopped = true; break; }
+    if (op.owner && op.owner !== owner) { stopped = true; break; }
     let error;
+    sending = op;
+    op.attempted = true; // a timeout may happen after the server committed this insert
+    write([...ops]);
     try {
       ({ error } = await send(op));
     } catch (e) {
       error = e; // network failure: no SQLSTATE, therefore transient
     }
-    if (error && error.code !== DONE) {
+    sending = null;
+    if (error && !(op.op === 'insert' && error.code === DONE)) {
       if (!isPermanent(error)) { stopped = true; break; }
       dropped += 1;
+      if (op.op === 'insert') {
+        const rest = ops.filter((o) => o.id !== op.id);
+        dropped += ops.length - rest.length - 1; // dependent edits cannot succeed
+        write(rest);
+        continue;
+      }
     } else {
       synced += 1;
     }

@@ -297,9 +297,13 @@ export default function Targets() {
     const newVf = draft.validFrom;
     if (newVf !== oldVf && phaseVfs.includes(newVf)) return t('Ya existe una fase que aplica desde esa fecha.');
     const rules = rulesOf(oldVf);
-    if (newVf !== oldVf) await supabase.from('targets').delete().eq('valid_from', oldVf).not('dow', 'is', null);
     const rows = draftToRows(draft.groups, { validFrom: newVf, label: draft.label, description: draft.description, goal: draft.goal, owner: userId, rules });
-    const { error } = await supabase.from('targets').upsert(rows, { onConflict: 'owner,dow,valid_from' });
+    let error;
+    try {
+      ({ error } = await supabase.rpc('replace_phase_atomic', {
+        p_old_valid_from: oldVf, p_new_valid_from: newVf, p_rows: rows,
+      }));
+    } catch (e) { error = e; }
     if (error) return friendly(error, t('No se pudo guardar la fase.'));
     setSheet(null);
     load();

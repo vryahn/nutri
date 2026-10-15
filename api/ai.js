@@ -10,6 +10,8 @@ const ISSUER = `${SUPABASE_URL}/auth/v1`;
 const JWKS = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks.json`));
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const MAX_BODY_BYTES = 2_000_000; // two compressed label photos fit
+const UPSTREAM_TIMEOUT_MS = 45_000;
 
 // Allowlist cerrada: un modelo fuera de esta lista se rechaza (400) antes de
 // tocar al proveedor — el proxy no es un relay abierto a cualquier endpoint.
@@ -94,8 +96,14 @@ export default async function handler(req, res) {
     res.status(403).json({ error: 'demo' });
     return;
   }
+  // Check both advertised and parsed size: Content-Length is optional and untrusted.
+  if (Number(req.headers['content-length']) > MAX_BODY_BYTES
+    || Buffer.byteLength(JSON.stringify(req.body ?? {})) > MAX_BODY_BYTES) {
+    res.status(413).json({ error: 'payload_too_large' });
+    return;
+  }
   const { kind, model, payload } = req.body || {};
-  if (!ALLOWED[kind]?.includes(model) || !payload || typeof payload !== 'object') {
+  if (!ALLOWED[kind]?.includes(model) || !payload || typeof payload !== 'object' || Array.isArray(payload)) {
     res.status(400).json({ error: 'bad_request' });
     return;
   }
@@ -123,18 +131,54 @@ export default async function handler(req, res) {
     res.status(400).json({ error: 'bad_request' });
     return;
   }
+  const clientAbort = new AbortController();
+  const onClose = () => clientAbort.abort();
+  res.on?.('close', onClose);
   try {
-    // usda es GET (sin cuerpo); el resto de la cascada es POST con JSON.
-    const upstream = await fetch(url, kind === 'usda' ? undefined : {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...headers },
-      body: JSON.stringify(payload),
-    });
-    const body = await upstream.text();
-    res.status(upstream.status);
-    res.setHeader('Content-Type', 'application/json');
-    res.send(body);
-  } catch {
-    res.status(502).json({ error: 'upstream_unreachable' });
+    // SQL claim is atomic across Vercel instances. A quota-store failure must
+    // not silently become an unlimited provider call.
+    try {
+      const quota = await fetch(`${SUPABASE_URL}/rest/v1/rpc/claim_ai_quota`, {
+        method: 'POST',
+        headers: {
+          apikey: process.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: req.headers.authorization,
+          'Content-Profile': 'nutri',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ request_kind: kind }),
+        signal: AbortSignal.any([clientAbort.signal, AbortSignal.timeout(5_000)]),
+      });
+      if (!quota.ok) throw new Error('quota_unavailable');
+      if (await quota.json() !== true) {
+        res.status(429).json({ error: 'quota_exceeded' });
+        return;
+      }
+    } catch {
+      if (clientAbort.signal.aborted) return;
+      res.status(503).json({ error: 'quota_unavailable' });
+      return;
+    }
+    try {
+      // usda es GET (sin cuerpo); el resto de la cascada es POST con JSON.
+      const upstream = await fetch(url, {
+        ...(kind === 'usda' ? {} : {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify(payload),
+        }),
+        signal: AbortSignal.any([clientAbort.signal, AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)]),
+      });
+      const body = await upstream.text();
+      res.status(upstream.status);
+      res.setHeader('Content-Type', 'application/json');
+      res.send(body);
+    } catch (error) {
+      if (clientAbort.signal.aborted) return;
+      res.status(error.name === 'TimeoutError' ? 504 : 502)
+        .json({ error: error.name === 'TimeoutError' ? 'upstream_timeout' : 'upstream_unreachable' });
+    }
+  } finally {
+    res.off?.('close', onClose);
   }
 }

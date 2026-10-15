@@ -102,18 +102,28 @@ describe.skipIf(!hasAI)('eval extracción IA', () => {
       for (const e of r.extras) table += `    ✗ extra ${e} (alucinación)\n`;
     }
     const agg = results.reduce((a, r) => ({ p: a.p + r.passed, t: a.t + r.total }), { p: 0, t: 0 });
-    table += `\nAgregado: ${agg.p}/${agg.t} campos\n`;
+    const readyIds = new Set(cases.filter((c) => c.ready).map((c) => c.id));
+    table += `\nAgregado: ${agg.p}/${agg.t} campos; ${results.length}/${readyIds.size} casos listos completados\n`;
     console.log(table);
 
     fs.writeFileSync(LAST_RUN, JSON.stringify({ generated_at: new Date().toISOString(), cases: results }, null, 2));
 
-    const readyIds = new Set(cases.filter((c) => c.ready).map((c) => c.id));
+    if (results.length !== readyIds.size) {
+      throw new Error(`Corrida incompleta (${results.length}/${readyIds.size} casos ready); los campos agregados no son un éxito.`);
+    }
+
+    const hasBaseline = fs.existsSync(BASELINE);
+    const failed = results.filter((r) => r.passed !== r.total);
+    // The first accepted baseline for a model must describe a fully passing run.
+    // Historical baselines may include known failures, so their normal regression
+    // gate remains compareToBaseline below.
+    if (!hasBaseline && failed.length) {
+      throw new Error(`Sin baseline de ${EVAL_MODEL}: ${failed.length} casos tienen campos fallidos o micros extra; no se acepta baseline.`);
+    }
 
     if (process.env.UPDATE_BASELINE) {
-      // An incomplete run (a case died midway, typically a 429) must NOT set the baseline:
-      // it would be silently truncated and the lost cases would score as "new" forever.
-      if (results.length !== readyIds.size) {
-        throw new Error(`UPDATE_BASELINE: corrida incompleta (${results.length}/${readyIds.size} casos ready) — baseline NO escrito.`);
+      if (readyIds.size !== cases.length) {
+        throw new Error(`UPDATE_BASELINE: faltan fotos locales (${readyIds.size}/${cases.length} casos disponibles); baseline NO escrito.`);
       }
       fs.writeFileSync(BASELINE, JSON.stringify({ generated_at: new Date().toISOString(), cases: results }, null, 2));
       console.log(`${path.basename(BASELINE)} actualizado (${agg.p}/${agg.t}).`);
@@ -122,7 +132,7 @@ describe.skipIf(!hasAI)('eval extracción IA', () => {
 
     // Skipped cases (missing local-only photo) are excluded from the comparison: a clone with
     // keys but no photos stays green. The absence of a READY case (throw/429) does gate.
-    const baseline = (fs.existsSync(BASELINE) ? JSON.parse(fs.readFileSync(BASELINE, 'utf8')).cases : [])
+    const baseline = (hasBaseline ? JSON.parse(fs.readFileSync(BASELINE, 'utf8')).cases : [])
       .filter((b) => readyIds.has(b.id));
     const { regressions, improvements, newItems } = compareToBaseline(baseline, results);
     for (const n of newItems) console.log(`nuevo: ${n.id}${n.field ? ' · ' + n.field : ''}`);

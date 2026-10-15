@@ -24,11 +24,12 @@ within the budget. If you exhaust it, the 429 does not recover until the daily r
 `score.test.js` (no network).
 
 Output: a table per case (id, model that answered, `passed/total`, failed fields with expected
-vs got), `evals/last-run.<model>.json` (gitignored), and a comparison against that model’s baseline. Any
+vs got), `evals/last-run.<model>.json` (gitignored), and a comparison against that model’s baseline. A run with any missing ready case fails even if its partial field aggregate looks good; a provider 429 is an incomplete quota-limited run, not a quality regression. The first baseline for a model requires every ready case to finish with all expected fields passing and no undeclared micros. Any
 **regression** fails the suite: a case/field pair that passed and now fails, a READY case from the
 baseline absent from the run (cases skipped due to a missing local photo do NOT count), or an
 extras (hallucinations) count growing beyond `1.5× + 3` vs the baseline — the identity of the
 invented micros varies between runs; the count is the stable signal.
+`UPDATE_BASELINE=1` refuses to write unless every defined case has its local photos and finished.
 
 ## Case format — `cases/<id>/case.json`
 
@@ -79,7 +80,7 @@ The eval pins **a single model + `temperature: 0`** (`EVAL_MODEL`, default `gemi
 
 **One baseline per model.** Every `EVAL_MODEL`, including the default, uses
 `baseline.<modelo>.json` and `last-run.<modelo>.json`; `baseline.json` remains the historical
-Gemini 3.5 record and is never silently relabeled. Qwen 3.8 has no accepted baseline; compare it
+Gemini 3.5 record and is never silently relabeled. `gemini-3.8-flash` has no accepted baseline until a complete quality-green run; the earlier 4/7 run with photo timeouts and invented micros did not establish one. Qwen 3.8 has no accepted baseline; compare it
 with `baseline.qwen_qwen3.6-27b.json` as a migration review, not a same-model regression gate. This also covers the **last step of the cascade,
 Mistral** (`mistral-small-latest`, which does support vision — verified), which would otherwise go
 untested (including the `toJsonSchema` Gemini→Mistral translation):

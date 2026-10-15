@@ -32,6 +32,9 @@ import {
   POTASSIUM_HIGH_MG,
   round,
   entryNutrients,
+  microCoverage,
+  microCoverageForEntries,
+  knownMicros,
   MICROS,
   MICROS_DEFAULT,
   microGroups,
@@ -123,15 +126,19 @@ function itemState(key, totals, target, hasFood) {
   const meta = nutrientMeta(key);
   if (!meta) return null;
   const goal = target?.goal ?? null;
-  const value = Number(totals[key] || 0);
+  const coverage = MACRO_META[key] ? 'complete' : totals.__coverage?.[key] ?? 'unknown';
+  const value = coverage === 'unknown' ? null : Number(totals[key] || 0);
   const tgt = targetFor(key, target);
   const coupled = target?.rules?.transition?.kind === 'coupled_band' && (key === 'carbs_g' || key === 'fat_g');
   const explicitBound = target?.bounds?.[key];
   const bound = effectiveBound(key, tgt, goal, explicitBound);
-  const pct = tgt ? Math.round((value / tgt) * 100) : null;
-  const status = coupled ? null : classifyNutrient(key, value, tgt, { goal, hasFood, bounds: bound });
+  const pct = coverage === 'complete' && tgt ? Math.round((value / tgt) * 100) : null;
+  const status = coupled ? null : coverage === 'complete'
+    ? classifyNutrient(key, value, tgt, { goal, hasFood, bounds: bound })
+    : key === 'sodio_mg' && value != null && sodiumIsLow(value, hasFood) ? 'danger' : null;
   let color;
-  if ((key === 'sodio_mg' || key === 'potasio_mg') && value < (bound || impliedBounds(key, tgt, goal))?.min) color = 'text-text-3';
+  if (coverage !== 'complete') color = status === 'danger' ? 'text-danger' : 'text-text-3';
+  else if ((key === 'sodio_mg' || key === 'potasio_mg') && value < (bound || impliedBounds(key, tgt, goal))?.min) color = 'text-text-3';
   else if (meta.kind === 'sodio') color = statusColor[status] || 'text-text';
   else if (meta.kind !== 'meta' || bound) color = statusColor[status] || meta.color;
   else if (meta.color) color = meta.color;
@@ -139,9 +146,9 @@ function itemState(key, totals, target, hasFood) {
   // "On target": within the explicit bound, or per archetype (band ok / floor
   // reached / ceiling respected). Sodium is rendered separately (dual).
   let met = false;
-  if (hasFood && !coupled && (bound || meta.kind === 'sodio')) met = status === 'ok';
-  else if (hasFood && !coupled && tgt != null) met = meta.kind === 'techo' ? value <= tgt : meta.kind === 'diana' || meta.kind === 'rango' ? status === 'ok' : value >= tgt;
-  return { meta, value, tgt, bound, explicitBound, pct, color, goal, status, met, coupled };
+  if (coverage === 'complete' && hasFood && !coupled && (bound || meta.kind === 'sodio')) met = status === 'ok';
+  else if (coverage === 'complete' && hasFood && !coupled && tgt != null) met = meta.kind === 'techo' ? value <= tgt : meta.kind === 'diana' || meta.kind === 'rango' ? status === 'ok' : value >= tgt;
+  return { meta, value, tgt, bound, explicitBound, pct, color, goal, status, met, coupled, coverage };
 }
 
 // "1,900–2,100" / "≥ 150" / "≤ 20": explicit bound of a nutrient, for the labels.
@@ -163,7 +170,7 @@ function rangeLabel(state, includeContext = true) {
 }
 
 function deviation(state, mode) {
-  if (state.coupled) return null;
+  if (state.coupled || state.value == null || (state.coverage !== 'complete' && state.meta.kind !== 'sodio')) return null;
   const { value, tgt, bound, meta } = state;
   const limit = bound ? value < bound.min ? bound.min : value > bound.max ? bound.max : null
     : meta.kind === 'sodio' ? value < SODIUM_FLOOR_MG ? SODIUM_FLOOR_MG : SODIUM_CEILING_MG : tgt;
@@ -173,6 +180,8 @@ function deviation(state, mode) {
 
 function statusText(state, hasFood) {
   if (!hasFood) return null;
+  if (state.coverage === 'unknown') return t('Sin dato');
+  if (state.coverage === 'partial') return t('Datos parciales');
   if (state.coupled) return t('Según energía');
   if (state.met) return t('En rango');
   if (state.status === 'danger' || state.status === 'warn') {
@@ -222,7 +231,7 @@ function pendingFor(items, totals, target, hasFood) {
   const sodium = Number(totals.sodio_mg || 0);
   const sodLow = sodiumIsLow(sodium, hasFood);
   const sodiumState = itemState('sodio_mg', totals, target, hasFood);
-  const sodViolation = sodiumState.status && sodiumState.status !== 'ok';
+  const sodViolation = sodiumState?.status && sodiumState.status !== 'ok';
   const sodPending = () => {
     const b = sodiumState.bound;
     const limit = b ? sodium < b.min ? b.min : b.max : sodLow ? SODIUM_FLOOR_MG : SODIUM_CEILING_MG;
@@ -233,6 +242,7 @@ function pendingFor(items, totals, target, hasFood) {
     const s = itemState(key, totals, target, hasFood);
     if (!s) continue;
     const { meta, value, tgt, bound, status } = s;
+    if (s.coverage !== 'complete' && !(key === 'sodio_mg' && status === 'danger')) continue;
     if (s.coupled) continue;
     if (meta.kind === 'sodio') {
       if (sodViolation) pending.push(sodPending());
@@ -283,6 +293,9 @@ function SummaryCard({ view, cfg, onToggleView, onConfig, ...props }) {
         </div>
       </div>
       {view === 'objetivos' ? <GoalSummary cfg={cfg} {...props} /> : view === 'mini' ? <MiniGrid cfg={cfg} {...props} /> : <StateSummary cfg={cfg} {...props} />}
+      {props.hasFood && cfg.items.some((key) => !MACRO_META[key] && props.totals.__coverage?.[key] !== 'complete') && (
+        <p className="text-xs text-warn">{t('Faltan valores de nutrientes en uno o más registros, incluso agua simple; deja vacío lo desconocido, no captures 0.')}</p>
+      )}
       <BandGuide key={props.target?.id || 'none'} target={props.target} />
     </div>
   );
@@ -329,24 +342,26 @@ function GoalSummary({ cfg, totals, target, hasFood }) {
 }
 
 function NutrientDetail({ state, mode, showRanges, hasFood, hideCoupled = false }) {
-  const { meta, value, tgt, bound, met } = state;
-  const lowSodium = meta.kind === 'sodio' && sodiumIsLow(value, hasFood);
-  const highSodium = meta.kind === 'sodio' && sodiumIsHigh(value, hasFood, bound?.max ?? SODIUM_CEILING_MG);
+  const { meta, value, tgt, bound, met, coverage } = state;
+  const lowSodium = value != null && meta.kind === 'sodio' && sodiumIsLow(value, hasFood);
+  const highSodium = value != null && meta.kind === 'sodio' && sodiumIsHigh(value, hasFood, bound?.max ?? SODIUM_CEILING_MG);
   const status = statusText(state, hasFood);
   const diff = !met && hasFood && mode !== 'meta' ? deviation(state, mode) : null;
   return (
     <span className="text-xs text-text-2">
+      {coverage !== 'complete' && hasFood && <span className="block text-warn">{coverage === 'unknown' ? t('Sin dato') : t('Datos parciales')}{lowSodium ? ` · ${t('Sodio observado bajo el piso; faltan datos.')}` : ''}</span>}
       {status && !hideCoupled && (state.coupled
         ? <span>{status}</span>
         : <span className="sr-only">{status}</span>)}
       {diff && <span className="font-mono tabular-nums">{diff}{mode === 'delta' ? ` ${meta.unit}` : ''}{lowSodium ? ` ${t('al piso')}` : highSodium ? ` ${t('sobre el techo')}` : ''}</span>}
-      {!met && !diff && !lowSodium && !state.coupled && tgt != null && !bound && <span>{t('meta')} {round(tgt, meta.decimals)} {meta.unit}</span>}
+      {coverage === 'complete' && !met && !diff && !lowSodium && !state.coupled && tgt != null && !bound && <span>{t('meta')} {round(tgt, meta.decimals)} {meta.unit}</span>}
       {showRanges && bound && <span className="block text-text-3">{rangeLabel(state, !hideCoupled)}</span>}
     </span>
   );
 }
 
 function GoalProgress({ state, hasTarget, hasFood, showRanges, compact = false }) {
+  if (state.coverage !== 'complete') return null;
   const scale = goalScale(state, hasTarget);
   if (!scale) return null;
   const { bound, end, target, at } = scale;
@@ -381,7 +396,7 @@ function GoalProgress({ state, hasTarget, hasFood, showRanges, compact = false }
 
 function HeroRing({ state, mode, showRanges, hasFood, hasTarget }) {
   const { meta, value, tgt } = state;
-  const scale = goalScale(state, hasTarget);
+  const scale = state.coverage === 'complete' ? goalScale(state, hasTarget) : null;
   const bound = scale?.bound ?? goalBounds(state, hasTarget);
   const end = scale?.end;
   const progress = end > 0 ? scale.at(value) : null;
@@ -396,8 +411,8 @@ function HeroRing({ state, mode, showRanges, hasFood, hasTarget }) {
   const targetPoint = targetFraction == null ? null : marker(targetFraction, hasRange ? 41 : 52);
   return (
     <div className="flex items-center gap-4">
-      <div className="relative w-[104px] h-[104px] flex-none" style={{ color: goalTone(state, hasTarget, hasFood) }}>
-        <svg viewBox="0 0 120 120" className="w-full h-full overflow-visible" role="img" aria-label={`${t(meta.label)}: ${round(value, meta.decimals)} ${meta.unit}${end > 0 ? `; ${bound?.max != null ? `${t('Máx.')} ${round(bound.max, meta.decimals)}` : scale?.target != null ? `${t('meta')} ${round(scale.target, meta.decimals)}` : `${t('Mín.')} ${round(end, meta.decimals)}`} ${meta.unit}${scale?.target != null && scale.target < end ? `; ${t('meta')} ${round(scale.target, meta.decimals)} ${meta.unit}` : ''}` : ''}`}>
+      <div className="relative w-[104px] h-[104px] flex-none" style={{ color: state.status === 'danger' ? 'var(--danger)' : goalTone(state, hasTarget, hasFood && state.coverage === 'complete') }}>
+        <svg viewBox="0 0 120 120" className="w-full h-full overflow-visible" role="img" aria-label={`${t(meta.label)}: ${value == null ? t('Sin dato') : round(value, meta.decimals)} ${meta.unit}${end > 0 ? `; ${bound?.max != null ? `${t('Máx.')} ${round(bound.max, meta.decimals)}` : scale?.target != null ? `${t('meta')} ${round(scale.target, meta.decimals)}` : `${t('Mín.')} ${round(end, meta.decimals)}`} ${meta.unit}${scale?.target != null && scale.target < end ? `; ${t('meta')} ${round(scale.target, meta.decimals)} ${meta.unit}` : ''}` : ''}`}>
           <circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface-2)" strokeWidth="11" />
           {arc != null && <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" strokeWidth="11" strokeLinecap="round" strokeDasharray="326.726" strokeDashoffset={arc} transform="rotate(-90 60 60)" />}
           {hasRange && <circle cx="60" cy="60" r="41" fill="none" stroke="currentColor" strokeWidth="5.5" opacity="0.9" strokeDasharray={`${rangeLength} ${257.611 - rangeLength}`} strokeDashoffset={-257.611 * floorFraction} transform="rotate(-90 60 60)" />}
@@ -406,7 +421,7 @@ function HeroRing({ state, mode, showRanges, hasFood, hasTarget }) {
           {progress != null && progress < 1 && <circle {...marker(progress)} r="6" fill="currentColor" />}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="font-mono tabular-nums text-2xl leading-none">{round(value, meta.decimals)}</span>
+          <span className="font-mono tabular-nums text-2xl leading-none">{value == null ? t('Sin dato') : round(value, meta.decimals)}</span>
           <span className="text-[10px] text-text-3 mt-0.5">{meta.unit}</span>
         </div>
       </div>
@@ -425,7 +440,7 @@ function Tile({ state, mode, hasFood, showRanges, hasTarget }) {
   return (
     <div className="rounded-xl bg-surface-2 p-3 min-w-0">
       <p className="text-[10px] uppercase tracking-wide text-text-3">{t(meta.label)}</p>
-      <p className="font-mono tabular-nums text-lg mt-1" style={{ color: goalTone(state, hasTarget, hasFood) }}>{round(value, meta.decimals)} <span className="text-xs">{meta.unit}</span></p>
+      <p className="font-mono tabular-nums text-lg mt-1" style={{ color: state.status === 'danger' ? 'var(--danger)' : goalTone(state, hasTarget, hasFood && state.coverage === 'complete') }}>{value == null ? t('Sin dato') : round(value, meta.decimals)} <span className="text-xs">{meta.unit}</span></p>
       <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} hideCoupled />
       <GoalProgress state={state} hasTarget={hasTarget} hasFood={hasFood} showRanges={showRanges} compact />
     </div>
@@ -462,14 +477,14 @@ function MiniStat({ state, mode, showRanges, hasFood, fixed }) {
   if (fixed) {
     const status = statusText(state, hasFood);
     return <span className="text-xs text-text-2 whitespace-nowrap">
-      <span className={`font-mono tabular-nums ${state.color}`}>{round(state.value, state.meta.decimals)}</span> {shortLabel(state.meta.key)}
+      <span className={`font-mono tabular-nums ${state.color}`}>{state.value == null ? t('Sin dato') : round(state.value, state.meta.decimals)}</span> {shortLabel(state.meta.key)}
       {status && (state.coupled ? <span> · {status}</span> : <span className="sr-only">{status}</span>)}
     </span>;
   }
   return (
     <span className="flex flex-col min-w-0">
       <span className="flex items-baseline gap-1">
-        <span className={`font-mono tabular-nums text-sm ${state.color}`}>{round(state.value, state.meta.decimals)}</span>
+        <span className={`font-mono tabular-nums text-sm ${state.color}`}>{state.value == null ? t('Sin dato') : round(state.value, state.meta.decimals)}</span>
         <span className="text-[11px] text-text-3">{shortLabel(state.meta.key)} {state.meta.unit}</span>
       </span>
       <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} />
@@ -600,16 +615,12 @@ export default function Today() {
   // Phase rules (migration 021): recent weight + intake signals for evalRules.
   const [bodyMetrics35, setBodyMetrics35] = useState([]);
   const [dailyTotals35, setDailyTotals35] = useState([]);
-  // evalRules() result, derived in render (no effect-set state): auto:true items are
-  // applied by the effect below; auto:false ones surface as the "Aplicar" banner.
-  const ruleEval = useMemo(
+  // Rules are review signals. A new target requires a documented decision in
+  // the master plan before it is entered through Targets.
+  const ruleResult = useMemo(
     () => (userId && targets.length ? evalRules({ targets, bodyMetrics: bodyMetrics35, dailyTotals: dailyTotals35, todayISO: todayISO() }) : null),
     [targets, bodyMetrics35, dailyTotals35, userId]
   );
-  const ruleResult = ruleEval && !ruleEval.auto ? ruleEval : null;
-  const [ruleApplying, setRuleApplying] = useState(false);
-  const [ruleUndo, setRuleUndo] = useState(null); // { validFrom, timer } after an auto-applied rule, for "Deshacer"
-  const ruleAutoAppliedRef = useRef(new Set()); // valid_from already auto-applied this session — never re-insert on re-render
   const [activeEntry, setActiveEntry] = useState(null); // entry being dragged (for the DragOverlay ghost)
   const [dragOverSection, setDragOverSection] = useState(null); // label id (or 'none') under a dragged card
   const [draggingSection, setDraggingSection] = useState(null); // id of the section being dragged (dims the others)
@@ -845,63 +856,6 @@ export default function Today() {
   function undoWater() {
     const last = waterEntries[waterEntries.length - 1];
     if (last) queueDelete(last.id);
-  }
-
-  // Phase rules (migration 021): evaluate on every relevant change. auto:true items
-  // apply themselves (once per valid_from, guarded by ruleAutoAppliedRef); auto:false
-  // ones surface the "Aplicar" banner instead.
-  useEffect(() => {
-    if (!ruleEval?.auto) return;
-    const vf = ruleEval.rows[0]?.valid_from;
-    if (vf && !ruleAutoAppliedRef.current.has(vf)) {
-      ruleAutoAppliedRef.current.add(vf);
-      applyRuleResult(ruleEval, { auto: true });
-    }
-  // `applyRuleResult` is rebuilt every render; the evaluation result is the dependency on purpose.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ruleEval]);
-
-  // Refetches targets right before inserting (per spec: avoid acting on stale state),
-  // re-evaluates, and inserts (never upsert) the new version. A 23505 (unique
-  // owner/dow/valid_from) means another tab/session already applied it — treated as success.
-  async function applyRuleResult(res, { auto = false } = {}) {
-    setRuleApplying(true);
-    const { data: fresh, error: fetchErr } = await supabase.from('targets').select('*');
-    if (fetchErr) {
-      setRuleApplying(false);
-      showToast(t('No se pudo aplicar la regla — revisa tu conexión.'));
-      return;
-    }
-    const reeval = evalRules({ targets: fresh || [], bodyMetrics: bodyMetrics35, dailyTotals: dailyTotals35, todayISO: todayISO() });
-    if (!reeval || reeval.rule !== res.rule) {
-      setRuleApplying(false);
-      loadTargets();
-      return;
-    }
-    const { error } = await supabase.from('targets').insert(reeval.rows);
-    setRuleApplying(false);
-    if (error && error.code !== '23505') {
-      showToast(t('No se pudo aplicar la regla.'));
-      return;
-    }
-    await loadTargets(); // also refreshes the shared 'targets' cache key; the banner derives from the new targets
-    if (auto) {
-      const validFrom = reeval.rows[0]?.valid_from;
-      setRuleUndo((prev) => {
-        if (prev?.timer) clearTimeout(prev.timer);
-        const timer = setTimeout(() => setRuleUndo(null), 5000);
-        return { validFrom, timer };
-      });
-    }
-  }
-
-  async function undoRuleApply() {
-    if (!ruleUndo) return;
-    clearTimeout(ruleUndo.timer);
-    const vf = ruleUndo.validFrom;
-    setRuleUndo(null);
-    await supabase.from('targets').delete().eq('valid_from', vf).not('applied_rule', 'is', null);
-    loadTargets();
   }
 
   async function loadTargets() {
@@ -1273,9 +1227,21 @@ export default function Today() {
   const miniCfg = cardCfg(prefs, 'mini');
   const totalKeys = [...new Set([...BASE_ITEMS, ...viewCfg.items, ...miniCfg.items])];
   const totals = foodEntries.reduce((acc, e) => {
-    for (const k of totalKeys) acc[k] += Number((MACRO_META[k] ? e[k] : e.micros?.[k]) || 0);
+    for (const k of totalKeys) {
+      const v = MACRO_META[k] ? e[k] : e.micros?.[k];
+      if (v != null) acc[k] = (acc[k] || 0) + Number(v);
+    }
     return acc;
-  }, Object.fromEntries(totalKeys.map((k) => [k, 0])));
+  }, Object.fromEntries(totalKeys.map((k) => [k, MACRO_META[k] ? 0 : null])));
+  // Plain water is its own card, but any declared micros on that food still
+  // contribute to the observed nutrient sum, just as they do in daily_totals.
+  for (const e of waterEntries) {
+    for (const k of totalKeys.filter((key) => !MACRO_META[key])) {
+      const v = e.micros?.[k];
+      if (v != null) totals[k] = (totals[k] || 0) + Number(v);
+    }
+  }
+  totals.__coverage = Object.fromEntries(totalKeys.filter((k) => !MACRO_META[k]).map((k) => [k, microCoverageForEntries(dayEntries, k)]));
 
   // Totals the summary sees: the real ones + the delta of the entry being edited
   // (same per-100g scaling as AportaPanel). Without a preview, they are the real ones.
@@ -1287,6 +1253,11 @@ export default function Today() {
         return acc;
       }, { ...totals })
     : totals;
+  if (preview?.meta) {
+    const previewEntry = entryNutrients({ grams: preview.grams }, preview.meta);
+    const previewEntries = [...dayEntries.filter((e) => e.id !== preview.minus?.id), previewEntry];
+    displayTotals.__coverage = Object.fromEntries(totalKeys.filter((k) => !MACRO_META[k]).map((k) => [k, microCoverageForEntries(previewEntries, k)]));
+  }
 
   const target = resolveTarget(targets, date);
 
@@ -1294,7 +1265,7 @@ export default function Today() {
   // and the main card retain their own renderers and semantics.
   const hasPreviewFood = preview?.meta != null;
   const hasSummaryFood = foodEntries.length > 0 || hasPreviewFood;
-  const lowSummarySodium = sodiumIsLow(displayTotals.sodio_mg, hasSummaryFood);
+  const lowSummarySodium = displayTotals.__coverage?.sodio_mg !== 'unknown' && sodiumIsLow(displayTotals.sodio_mg, hasSummaryFood);
   const summaryKeys = [...miniCfg.items];
   if (lowSummarySodium && !summaryKeys.includes('sodio_mg')) summaryKeys.push('sodio_mg');
   const summaryStates = target && hasSummaryFood ? summaryKeys.map((key) => {
@@ -1302,7 +1273,7 @@ export default function Today() {
     if (!state) return null;
     const bound = state.bound || impliedBounds(key, state.tgt, state.goal);
     if (!state.coupled && bound.min == null && bound.max == null) return null;
-    const difference = bound.min != null && state.value < bound.min ? state.value - bound.min
+    const difference = state.coverage !== 'complete' ? null : bound.min != null && state.value < bound.min ? state.value - bound.min
       : bound.max != null && state.value > bound.max ? state.value - bound.max : 0;
     const label = { kcal: 'Energía', protein_g: 'Proteína', carbs_g: 'Carbohidratos', fat_g: 'Grasa' }[key] || state.meta.label;
     return { ...state, difference, label };
@@ -1318,7 +1289,7 @@ export default function Today() {
                   <span className="block text-xs leading-tight text-text-3">{t(state.label)}</span>
                   {state.coupled ? <span className={`block mt-1 text-sm ${state.color}`}>{t('Según energía')}</span>
                     : <span className={`block mt-1 font-mono tabular-nums text-lg leading-tight whitespace-nowrap ${state.color}`}>
-                        {state.difference > 0 ? '+' : ''}{round(state.difference, state.meta.decimals)} <span className="text-xs">{state.meta.unit}</span>
+                        {state.difference == null ? t(state.coverage === 'unknown' ? 'Sin dato' : 'Datos parciales') : <>{state.difference > 0 ? '+' : ''}{round(state.difference, state.meta.decimals)} <span className="text-xs">{state.meta.unit}</span></>}
                       </span>}
                 </div>
               ))}
@@ -1415,13 +1386,7 @@ export default function Today() {
             <p className="text-[13.5px] font-medium" style={{ margin: 0 }}>{t('Regla de fase')}</p>
             <p className="text-[12.5px] text-text-2 mt-0.5" style={{ margin: 0 }}>{ruleResult.why.text}</p>
           </div>
-          {ruleResult.rows.length > 0 && <button
-            onClick={() => applyRuleResult(ruleResult)}
-            disabled={ruleApplying}
-            className="shrink-0 min-h-[44px] px-4 rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60"
-          >
-            {ruleApplying ? t('Aplicando…') : t('Aplicar')}
-          </button>}
+          <p className="text-xs text-text-2">{t('Propuesta pendiente de revisión en el plan maestro. Los objetivos no se modifican automáticamente.')}</p>
         </div>
       )}
 
@@ -1653,9 +1618,7 @@ export default function Today() {
 
       {undoTpl && <UndoToast message={t('Plantilla borrada')} onUndo={undoDeleteTemplate} />}
 
-      {!undoTpl && ruleUndo && <UndoToast message={t('Regla aplicada')} onUndo={undoRuleApply} />}
-
-      {!undoData && !undoTpl && !ruleUndo && toast && (
+      {!undoData && !undoTpl && toast && (
         <div role="status" aria-live="polite" className="fixed bottom-24 left-4 right-4 mx-auto max-w-sm rounded-xl bg-surface-3 border border-border px-4 py-3 text-center text-sm lg:left-auto lg:right-6 lg:bottom-6">
           {toast}
         </div>
@@ -2096,7 +2059,7 @@ function Stat({ state, mode, showRanges, hasFood }) {
   const { meta, value, color } = state;
   return (
     <div className="min-w-0">
-      <p className={`font-mono tabular-nums text-lg ${color}`}>{round(value, meta.decimals)}</p>
+      <p className={`font-mono tabular-nums text-lg ${color}`}>{value == null ? t('Sin dato') : round(value, meta.decimals)}</p>
       <p className="text-xs text-text-3">{t(meta.label)}{meta.key !== 'kcal' && ` · ${meta.unit}`}</p>
       <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} />
     </div>
@@ -2106,10 +2069,10 @@ function Stat({ state, mode, showRanges, hasFood }) {
 function RailStat({ state, mode, showRanges, hasFood, hasTarget }) {
   const { meta, value } = state;
   return (
-    <div style={{ color: goalTone(state, hasTarget, hasFood) }}>
+    <div style={{ color: state.status === 'danger' ? 'var(--danger)' : goalTone(state, hasTarget, hasFood && state.coverage === 'complete') }}>
       <div className="flex items-baseline justify-between gap-2 text-sm">
         <span className="text-text-3">{t(meta.label)}</span>
-        <span className="font-mono tabular-nums">{round(value, meta.decimals)} {meta.unit}</span>
+        <span className="font-mono tabular-nums">{value == null ? t('Sin dato') : round(value, meta.decimals)} {meta.unit}</span>
       </div>
       <NutrientDetail state={state} mode={mode} showRanges={false} hasFood={hasFood} hideCoupled />
       <GoalProgress state={state} hasTarget={hasTarget} hasFood={hasFood} showRanges={showRanges} />
@@ -2125,7 +2088,11 @@ function useFoodMeta(foodId, recipeId) {
   // (portion chips included); the background refetch corrects it if it changed.
   // Seed: what this food's card showed last, else its row in the cached catalog (the
   // offline path — without it a food picked with no connection would log with no values).
-  const seed = () => (key && cacheGet(key)) || (foodId ? catalogFood(foodId) : null);
+  const seed = () => {
+    const value = (key && cacheGet(key)) || (foodId ? catalogFood(foodId) : null);
+    if (foodId && value) return { ...value, micros_complete: knownMicros(value.micros) };
+    return recipeId && value ? { ...value, micros_complete: value.micros_complete || {} } : value;
+  };
   const [meta, setMeta] = useState(seed);
   // Re-seed during render when the card switches food/recipe: from an effect the
   // previous food's values would paint for one frame.
@@ -2140,12 +2107,13 @@ function useFoodMeta(foodId, recipeId) {
     const query = foodId
       ? supabase.from('foods').select('kcal, protein_g, carbs_g, fat_g, micros, portions, density_g_ml').eq('id', foodId).maybeSingle()
       : Promise.all([
-          supabase.from('recipe_per_100g').select('kcal, protein_g, carbs_g, fat_g, micros').eq('recipe_id', recipeId).maybeSingle(),
+          supabase.from('recipe_per_100g').select('kcal, protein_g, carbs_g, fat_g, micros, micros_complete').eq('recipe_id', recipeId).maybeSingle(),
           supabase.from('recipes').select('portions').eq('id', recipeId).maybeSingle(),
         ]).then(([n, r]) => ({ data: n.data ? { ...n.data, portions: r.data?.portions || [] } : null }));
     query.then(({ data }) => {
-      if (data) cacheSet(key, data);
-      if (alive && data) setMeta(data);
+      const value = foodId && data ? { ...data, micros_complete: knownMicros(data.micros) } : data;
+      if (value) cacheSet(key, value);
+      if (alive && value) setMeta(value);
     });
     return () => { alive = false; };
   }, [foodId, recipeId, key]);
@@ -2507,12 +2475,13 @@ function AportaPanel({ grams, meta, favMicros, fallback }) {
   const hidden = MICROS.filter((m, i) => i >= MICROS_DEFAULT && !favMicros.includes(m.key) && m.key !== 'agua_ml');
 
   const microRow = (m) => {
-    const v = scale(src.micros?.[m.key], 2);
+    const coverage = microCoverage(src, m.key);
+    const v = src.micros?.[m.key] == null ? null : scale(src.micros[m.key], 2);
     return (
       <div key={m.key} className="flex justify-between py-1.5 border-t border-border text-sm">
         <span className="text-text-2">{t(m.label)}</span>
-        <span className={`font-mono tabular-nums ${v === 0 ? 'text-text-3' : ''}`}>
-          {v} {m.unit}
+        <span className={`font-mono tabular-nums ${coverage !== 'complete' ? 'text-text-3' : ''}`}>
+          {v == null ? t('Sin dato') : <>{v} {m.unit}{coverage === 'partial' ? ` · ${t('Datos parciales')}` : ''}</>}
         </span>
       </div>
     );

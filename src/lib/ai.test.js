@@ -1,14 +1,15 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { MICROS } from './domain.js';
 
 // i18n.js (imported by ai.js) reads localStorage at module load time (language
 // detection) — it does not exist in vitest's 'node' environment; it is minimally stubbed
 // and the import is done dynamically afterwards, instead of adding jsdom as a new dependency.
-let toJsonSchema, parseAmount, l2normalize, sanitizeAskPlan, formatAskContext, DEMO_FOOD, DEMO_RECIPE;
+let toJsonSchema, parseAmount, l2normalize, sanitizeAskPlan, formatAskContext, estimateFoodFromParts, DEMO_FOOD, DEMO_RECIPE;
 beforeAll(async () => {
   globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
-  ({ toJsonSchema, parseAmount, l2normalize, sanitizeAskPlan, formatAskContext, DEMO_FOOD, DEMO_RECIPE } = await import('./ai.js'));
+  ({ toJsonSchema, parseAmount, l2normalize, sanitizeAskPlan, formatAskContext, estimateFoodFromParts, DEMO_FOOD, DEMO_RECIPE } = await import('./ai.js'));
 });
+afterEach(() => vi.unstubAllGlobals());
 
 // The demo fixtures are saved by the user just like a real AI result: a free-form
 // key would fragment the SQL sums (MICROS is a closed contract).
@@ -19,6 +20,36 @@ describe('demo fixtures', () => {
     for (const micros of sets) {
       expect(Object.keys(micros).length).toBeGreaterThan(0);
       for (const key of Object.keys(micros)) expect(valid).toContain(key);
+    }
+  });
+});
+
+describe('AI request budget', () => {
+  it('aborts a single provider call at 45 seconds', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() =>
+      AbortSignal.abort(new DOMException('timed out', 'TimeoutError')));
+    const fetch = vi.fn().mockImplementation((_url, options) => Promise.reject(options.signal.reason));
+    vi.stubGlobal('fetch', fetch);
+    try {
+      await expect(estimateFoodFromParts([{ text: 'manzana' }], { model: 'gemini-3.8-flash' }))
+        .rejects.toMatchObject({ name: 'TimeoutError' });
+      expect(fetch.mock.calls[0][1].signal.aborted).toBe(true);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
+  it('stops the cascade after its total 90-second budget and leaves manual entry', async () => {
+    const realTimeout = AbortSignal.timeout;
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) =>
+      ms === 90_000 ? AbortSignal.abort(new DOMException('timed out', 'TimeoutError')) : realTimeout(ms));
+    const fetch = vi.fn().mockImplementation((_url, options) => Promise.reject(options.signal.reason));
+    vi.stubGlobal('fetch', fetch);
+    try {
+      await expect(estimateFoodFromParts([{ text: 'manzana' }])).rejects.toThrow(/manual/);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      timeout.mockRestore();
     }
   });
 });

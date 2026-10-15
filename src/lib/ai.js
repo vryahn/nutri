@@ -277,7 +277,7 @@ const DIRECT_TARGET = {
   mistral: () => ['https://api.mistral.ai/v1/chat/completions', { Authorization: `Bearer ${MISTRAL_KEY}` }],
 };
 
-async function aiFetch(kind, model, payload) {
+async function aiFetch(kind, model, payload, budget) {
   let url, headers, body;
   if (DIRECT) {
     [url, headers] = DIRECT_TARGET[kind](model);
@@ -292,6 +292,7 @@ async function aiFetch(kind, model, payload) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
+    signal: budget ? AbortSignal.any([budget, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000),
   });
   if (!res.ok) throw new Error(`${kind} ${model} ${res.status}`);
   return res.json();
@@ -311,7 +312,7 @@ export async function embedText(text) {
   }
 }
 
-async function callGemini(model, systemPrompt, parts, schema, temperature) {
+async function callGemini(model, systemPrompt, parts, schema, temperature, budget) {
   const generationConfig = {
     response_mime_type: 'application/json',
     response_schema: schema,
@@ -327,11 +328,11 @@ async function callGemini(model, systemPrompt, parts, schema, temperature) {
     systemInstruction: { parts: [{ text: systemPrompt }] },
     contents: [{ parts }],
     generationConfig,
-  });
+  }, budget);
   return JSON.parse(data.candidates[0].content.parts[0].text);
 }
 
-async function callMistral(model, systemPrompt, parts, schema, temperature) {
+async function callMistral(model, systemPrompt, parts, schema, temperature, budget) {
   const content = parts.map((p) => (p.text != null
     ? { type: 'text', text: p.text }
     : { type: 'image_url', image_url: `data:${p.inline_data.mime_type};base64,${p.inline_data.data}` }));
@@ -341,14 +342,14 @@ async function callMistral(model, systemPrompt, parts, schema, temperature) {
     response_format: { type: 'json_schema', json_schema: { name: 'nutri', strict: true, schema: toJsonSchema(schema) } },
   };
   body.temperature = temperature ?? 0; // deterministic extraction, same as callGemini
-  const data = await aiFetch('mistral', model, body);
+  const data = await aiFetch('mistral', model, body, budget);
   return JSON.parse(data.choices[0].message.content);
 }
 
 // Groq (OpenAI-compat). Its vision models do not support json_schema strict mode —
 // only json_object (valid JSON, schema not enforced) — so the schema goes embedded
 // in the system prompt and estimateFoodFromParts's normalization discards leftovers.
-async function callGroq(model, systemPrompt, parts, schema, temperature) {
+async function callGroq(model, systemPrompt, parts, schema, temperature, budget) {
   const content = parts.map((p) => (p.text != null
     ? { type: 'text', text: p.text }
     : { type: 'image_url', image_url: { url: `data:${p.inline_data.mime_type};base64,${p.inline_data.data}` } }));
@@ -363,7 +364,7 @@ async function callGroq(model, systemPrompt, parts, schema, temperature) {
     reasoning_effort: 'none',
   };
   body.temperature = temperature ?? 0; // deterministic extraction, same as callGemini
-  const data = await aiFetch('groq', model, body);
+  const data = await aiFetch('groq', model, body, budget);
   return JSON.parse(data.choices[0].message.content);
 }
 
@@ -375,14 +376,20 @@ const AI_KEYS = { get gemini() { return GEMINI_KEY; }, get mistral() { return MI
 // step is attempted (its 501 is just one more error). Propagates the last error if all fail.
 // Returns { data, model } — model = "kind:model" of the step that responded (for the eval harness).
 async function callAI(systemPrompt, parts, schema) {
+  const budget = AbortSignal.timeout(90_000);
   let lastErr;
   for (const step of AI_CHAIN) {
     if (DIRECT && !AI_KEYS[step.kind]) continue;
     try {
-      const data = await AI_CALLERS[step.kind](step.model, systemPrompt, parts, schema);
+      const data = await AI_CALLERS[step.kind](step.model, systemPrompt, parts, schema, undefined, budget);
       return { data, model: `${step.kind}:${step.model}` };
     } catch (e) {
       lastErr = e;
+      if (budget.aborted) {
+        throw new Error(getLang() === 'en'
+          ? 'AI timed out. Enter the data manually.'
+          : 'La IA tardó demasiado. Captura los datos manualmente.', { cause: e });
+      }
     }
   }
   throw lastErr || new Error('Sin proveedor de IA configurado');

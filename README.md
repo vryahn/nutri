@@ -12,7 +12,7 @@ Nutri y Hevy son herramientas de captura y seguimiento dependientes del plan mae
 
 - **Nutrients are computed, never copied.** Entries store only `(food, grams)`; SQL views derive every nutrient at read time. Fixing a food retroactively corrects all history for free — there is no denormalized data to backfill, ever.
 - **No app server.** The client talks to PostgREST directly; RLS policies are the sole authorization layer. The only server-side code is a stateless MCP endpoint (one Vercel function) that also delegates all authorization to RLS.
-- **AI with a regression gate.** LLM-based nutrition extraction (Gemini → Mistral fallback cascade) is guarded by a scored golden-set eval (`npm run eval`) with a committed baseline; prompt or model changes that degrade extraction quality block the push.
+- **AI with a regression gate.** LLM-based nutrition extraction (Gemini → Mistral fallback cascade) is guarded by a scored golden-set eval (`npm run eval`) against model-specific baselines; prompt or model regressions block the push. Gemini 3.8 does not yet have an accepted complete baseline (see `tech-logs/ia-2026-10-15.md`).
 - **Agent-friendly by design.** A remote MCP server with OAuth, plus documented curl playbooks, let an AI assistant log meals, audit the food catalog, and evaluate intake — with the exact same RLS guarantees as the app.
 
 ## Feature highlights
@@ -40,10 +40,10 @@ React 18 + Vite, JavaScript (JSX) — no TypeScript, by explicit decision: the p
 
 ### Database (schema `nutri`)
 
-- **Tables:** `foods`, `recipes`, `recipe_items`, `meal_labels`, `entries`, `targets`, `prefs`, `body_metrics`. Initial schema in [`supabase/migration.sql`](supabase/migration.sql); 21 incremental migrations in [`supabase/migrations/`](supabase/migrations/) (all applied in production).
+- **Tables:** `foods`, `recipes`, `recipe_items`, `meal_labels`, `entries`, `targets`, `prefs`, `body_metrics`. Initial schema in [`supabase/migration.sql`](supabase/migration.sql); incremental migrations through 025 in [`supabase/migrations/`](supabase/migrations/) (all applied in production).
 - **Views** (all `security_invoker = true`, so RLS applies through them): `entry_nutrients` (each entry with computed nutrients), `daily_totals` (per-day sums), `recipe_per_100g` (recipe values derived from ingredients and cooked weight).
 - **Micros as closed-vocabulary jsonb:** the `micros` column accepts exactly the 108 keys defined in `MICROS` (`src/lib/domain.js`). The views sum the jsonb generically with `jsonb_each_text`, so adding a micronutrient key requires no migration.
-- **RPCs:** `log_entry` (one-call logging by id or name, creates the meal label on demand), `match_foods` (pgvector cosine search over food embeddings).
+- **RPCs:** `save_recipe_atomic` and `replace_phase_atomic` (transactional writes under caller RLS), `claim_ai_quota` (atomic daily provider allowance scoped to the JWT UID), `log_entry` (one-call logging by id or name, creates the meal label on demand), `match_foods` (pgvector cosine search over food embeddings).
 
 ### RLS model
 
@@ -61,6 +61,8 @@ The rules that keep the numbers trustworthy:
 
 - **Per-100 g canonical storage.** Every nutritional value is stored per 100 g; every quantity is stored in grams. Unit conversion (ml → g) always requires an explicit density — never an assumed 1.0. If a food is being entered in ml and has no density, saving is blocked, not fudged.
 - **Computed, not copied.** Entry nutrients always come from the SQL views. `computeRecipePer100g` in `domain.js` replicates the `recipe_per_100g` view exactly, with a canonical verification case (100 g of A + 200 g of B at 250 g cooked weight ⇒ per 100 g = (A + 2B) / 2.5) enforced in tests.
+- **Coverage accompanies observed sums.** `micros_complete` is true only when every ingredient or entry declares the nutrient. Explicit zero is known; missing/null is unknown. UI and exports distinguish unknown and partial sums; incomplete coverage does not imply adherence. Water from the dedicated water entry is shown separately from total observed food-and-drink water.
+- **Atomic and retry-safe writes.** Recipe and phase replacement RPCs roll back entirely on failure. The offline outbox persists an attempted insert before sending it and retains later edits/deletes until its result is confirmed, including after reload. Phase-rule results are proposals for review in the master plan; Today does not write new targets.
 - **Atwater kcal validation.** `kcalFromMacros` computes expected kcal as `4·protein + 4·carbs + 9·fat + 7·alcohol − 2·fiber` (fiber at 2 kcal/g per NOM-051/EU labeling rules, since `carbs_g` is total carbohydrate), with a −1.6 kcal/g correction for sugar alcohols. `kcalSuspicious` flags a food when its stored kcal deviates from that by more than `max(20 kcal, 25 %)`. The flag is computed on the fly and never persisted — so tightening the criterion retroactively re-audits the whole catalog at zero cost.
 - **Plausibility checks.** `macrosImplausible` (macros + alcohol + water > 105 g per 100 g, any macro > 100 g, or any micro above its `MICRO_MAX` cap) and `componentsInconsistent` (compositional inequalities: sat + trans fat ≤ total fat, sugar ≤ carbs, added sugar ≤ sugar, fiber ≤ carbs, each with 0.5 g slack) surface non-blocking ⚠ warnings in both the food list and the form.
 - **High-intensity sweeteners and trace micros are never estimated** — they are filled only from declared or published data. Open Food Facts `additives_tags` only warn of presence (amounts are almost never declared).
@@ -79,9 +81,11 @@ All AI features are optional (gated by env keys) and none of them can write bad 
 2. **EAN (typed or read from the photo) → Open Food Facts**, but only after the barcode passes GS1 check-digit validation (typed EANs that fail block with an error; Gemini-read EANs that fail are silently discarded).
 3. **Otherwise → USDA-style estimation** prioritizing Mexican market data (`mode: 'estimacion'`), with up to 6 tappable match chips from USDA FoodData Central for generic unbranded foods.
 
-Requests use Gemini's `response_schema` for structured per-100 g JSON output, and photos are canvas-compressed to 1024 px before inline upload. The model cascade (`AI_CHAIN` in `src/lib/ai.js`) falls through on *any* error: `gemini-3.8-flash` → `gemini-3.6-flash` → `gemini-2.5-flash` → Mistral `mistral-small-latest` (OpenAI-compatible endpoint; the Gemini-style schema is translated to strict JSON Schema). The proxy keeps retired Gemini aliases for cached clients; cached Qwen requests are rejected by the proxy and continue to Mistral.
+Requests use Gemini's `response_schema` for structured per-100 g JSON output, and photos are canvas-compressed to 2048 px before inline upload. The model cascade (`AI_CHAIN` in `src/lib/ai.js`) falls through on *any* error: `gemini-3.8-flash` → `gemini-3.6-flash` → `gemini-2.5-flash` → Mistral `mistral-small-latest` (OpenAI-compatible endpoint; the Gemini-style schema is translated to strict JSON Schema). The proxy keeps retired Gemini aliases for cached clients; cached Qwen requests are rejected by the proxy and continue to Mistral.
 
-Results are merged by confidence: a transcribed label wins over Open Food Facts (which only fills gaps); OFF wins over a Gemini estimate when there is a barcode match; Gemini fills only what remains. Seven fields (kcal, protein, carbs, fat, sodium, potassium, magnesium) always get a best estimate — everything else is filled only from reliable data or left null; a returned 0 never fills an input. When a transcribed label *and* an OFF match both exist, numeric fields are cross-checked and discrepancies > 25 % (minimum 5 units on both sides) produce an ephemeral warning.
+Results are merged by confidence: a transcribed label wins over Open Food Facts (which only fills gaps); OFF wins over a Gemini estimate when there is a barcode match; Gemini fills only what remains. Seven fields (kcal, protein, carbs, fat, sodium, potassium, magnesium) always get a best estimate — everything else is filled only from reliable data or left null; an explicit numeric 0 is retained; missing or null values remain unknown. When a transcribed label *and* an OFF match both exist, numeric fields are cross-checked and discrepancies > 25 % (minimum 5 units on both sides) produce an ephemeral warning.
+
+The proxy caps requests at 2 MB and uses an atomic daily quota per authenticated user: Gemini plus embeddings 30, Mistral 15, USDA 100. Quota-store failure returns 503 without a provider request; exhausted quota returns 429. Provider calls stop at 45 seconds, and the client cascade has a 90-second total budget with manual entry available. These controls do not certify extraction accuracy.
 
 ### Semantic catalog search
 
@@ -93,7 +97,7 @@ The Dashboard's ask flow is a three-step structured RAG pipeline in `src/lib/ai.
 
 ### Scored evals
 
-`npm run eval` runs a golden set (7 cases: label transcriptions and estimates, ground truth from USDA FDC — never from model memory) through the real extraction path and scores per-field against tolerances (transcription: `max(2 %, 0.5 u)`; estimation: ±30 % macros / ±40 % micros). Any regression against that model's committed baseline — a previously passing case/field failing, or micro-hallucination counts growing past `1.5× + 3` — fails the suite. The model is pinned at `temperature: 0` for determinism, with a separate baseline for each model. Evals never run in CI (quota cost + nondeterminism); the scoring logic itself *is* CI-tested without network (`score.test.js`). Baseline updates are deliberate (`UPDATE_BASELINE=1 npm run eval`) and each one is committed with its rationale.
+`npm run eval` runs a golden set (7 cases: label transcriptions and estimates, ground truth from USDA FDC — never from model memory) through the real extraction path and scores per-field against tolerances (transcription: `max(2 %, 0.5 u)`; estimation: ±30 % macros / ±40 % micros). Any regression against that model's committed baseline — a previously passing case/field failing, or micro-hallucination counts growing past `1.5× + 3` — fails the suite. The model is pinned at `temperature: 0` for determinism, with a separate baseline for each model. Evals never run in CI (quota cost + nondeterminism); the scoring logic itself *is* CI-tested without network (`score.test.js`). Baseline updates are deliberate (`UPDATE_BASELINE=1 npm run eval`) and each one is committed with its rationale. A first baseline requires all cases and photos, no failed fields and no extra undeclared micros. An incomplete run is a failed evaluation, never a passing partial aggregate.
 
 ## Internationalization
 
@@ -396,9 +400,9 @@ No provider key ships in the bundle: in production the AI cascade and the USDA c
 
 ## Testing and quality
 
-- **147 unit tests** (`npm test`, Vitest) across 7 suites: domain math (targets resolution, recipe formula, adherence, plausibility checks), source mappers (OFF/FDC normalization), AI plumbing (schema translation, plan sanitizing), bulk importer, derived body metrics, MCP server logic, and eval scoring. The canonical recipe case and the "150 g of a food = 1.5× its per-100 g values" invariant are encoded as tests.
+- **Unit tests** (`npm test`, Vitest): domain math (targets resolution, recipe formula, adherence, plausibility checks), source mappers (OFF/FDC normalization), AI plumbing (schema translation, plan sanitizing), bulk importer, derived body metrics, MCP server logic, and eval scoring. The canonical recipe case and the "150 g of a food = 1.5× its per-100 g values" invariant are encoded as tests.
 - **Scored AI evals** (`npm run eval`) as described above — a deliberate before/after gate for prompt or model changes, never a CI step.
-- **Lint** (`npm run lint`, ESLint) and a clean `npm run build` are required before any commit; label photos for evals are local-only (the repo is public), and the runner skips cases whose photo is missing so a fresh clone stays green.
+- **Lint** (`npm run lint`, ESLint) and a clean `npm run build` are required before any commit; label photos for evals are local-only (the repo is public), and a missing photo or incomplete run cannot establish an accepted baseline; photos remain local-only.
 
 ## CI/CD and operations
 

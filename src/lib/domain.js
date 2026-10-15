@@ -334,7 +334,7 @@ export function axisUnits(vars) {
 export function dashVarValue(v, nut, registered, body, derived) {
   if (!v) return null;
   if (v.source === 'nut') return registered ? Number(nut?.[v.key] || 0) : null;
-  if (v.source === 'nutMicro') return registered ? Number(nut?.micros?.[v.key] || 0) : null;
+  if (v.source === 'nutMicro') return registered && microCoverage(nut, v.key) === 'complete' ? Number(nut.micros[v.key]) : null;
   if (v.source === 'body') { const x = body?.metrics?.[v.key]; return x == null ? null : Number(x); }
   if (v.source === 'derived') return derived?.[v.key] ?? null;
   return null;
@@ -1167,7 +1167,7 @@ export function normalizeTo100(f, basis, basisUnit) {
     protein_g: scale(f.protein_g, 2),
     carbs_g: scale(f.carbs_g, 2),
     fat_g: scale(f.fat_g, 2),
-    micros: Object.fromEntries(Object.entries(f.micros).map(([k, v]) => [k, round(Number(v) * s, 3)])),
+    micros: Object.fromEntries(Object.entries(f.micros).filter(([, v]) => v !== '' && v != null).map(([k, v]) => [k, round(Number(v) * s, 3)])),
   };
 }
 
@@ -1430,9 +1430,28 @@ export function entryNutrients(entry, meta, extra = {}) {
     fat_g: meta ? scale(meta.fat_g, 2) : null,
     // jsonb_scale rounds to 3 decimals
     micros: Object.fromEntries(
-      Object.entries(meta?.micros || {}).map(([k, v]) => [k, round(Number(v) * f, 3)])
+      Object.entries(meta?.micros || {}).filter(([, v]) => v !== '' && v != null).map(([k, v]) => [k, round(Number(v) * f, 3)])
     ),
+    micros_complete: meta?.micros_complete ?? knownMicros(meta?.micros),
   };
+}
+
+// `micros` is the observed sum; coverage is independent. Zero is known.
+export function knownMicros(micros) {
+  return Object.fromEntries(Object.entries(micros || {})
+    .filter(([, v]) => typeof v === 'number' && Number.isFinite(v))
+    .map(([k]) => [k, true]));
+}
+
+export function microCoverage(row, key) {
+  if (row?.micros_complete?.[key] === true) return 'complete';
+  return row?.micros?.[key] != null ? 'partial' : 'unknown';
+}
+
+export function microCoverageForEntries(entries, key) {
+  if (!entries.length) return 'unknown';
+  if (entries.every((entry) => microCoverage(entry, key) === 'complete')) return 'complete';
+  return entries.some((entry) => entry.micros?.[key] != null) ? 'partial' : 'unknown';
 }
 
 // Client-side replica of the SQL view nutri.recipe_per_100g (§4.3).
@@ -1443,13 +1462,17 @@ export function computeRecipePer100g(ingredients, cookedWeightG) {
 
   const sums = { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
   const micros = {};
+  let microsComplete = null;
   for (const { food, grams } of ingredients) {
     const factor = Number(grams || 0) / 100;
     sums.kcal += Number(food.kcal) * factor;
     sums.protein_g += Number(food.protein_g) * factor;
     sums.carbs_g += Number(food.carbs_g) * factor;
     sums.fat_g += Number(food.fat_g) * factor;
+    const known = knownMicros(food.micros);
+    microsComplete = microsComplete == null ? known : Object.fromEntries(Object.keys(microsComplete).filter((k) => known[k]).map((k) => [k, true]));
     for (const [k, v] of Object.entries(food.micros || {})) {
+      if (v === '' || v == null) continue;
       micros[k] = (micros[k] || 0) + Number(v) * factor;
     }
   }
@@ -1461,6 +1484,7 @@ export function computeRecipePer100g(ingredients, cookedWeightG) {
     carbs_g: round(sums.carbs_g * scale, 2),
     fat_g: round(sums.fat_g * scale, 2),
     micros: Object.fromEntries(Object.entries(micros).map(([k, v]) => [k, round(v * scale, 3)])),
+    micros_complete: microsComplete || {},
   };
 }
 
