@@ -511,7 +511,7 @@ function StepRules({ rules, setRules, activeGroupIdxs, daysInGroup, groupNames }
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-text-2" style={{ margin: 0 }}>
-        {t('Opcional: ajustes automáticos de carbohidratos según cómo evolucione tu peso.')}
+        {t('Opcional: propuestas de carbohidratos según la evolución de tu peso, sujetas a revisión en el plan maestro.')}
       </p>
       <RulesEditor rules={rules} onChange={setRules} scopeOptions={scopeOptions} />
     </div>

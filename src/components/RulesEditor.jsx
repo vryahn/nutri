@@ -32,7 +32,7 @@ function fmtSigned(n) {
 // so the user sees exactly what they are configuring, not a generic template.
 function helpText(item) {
   const dcg = item.delta_carbs_g;
-  const dcgTxt = dcg === '' || dcg == null ? t('ajusta los carbos') : `${fmtSigned(dcg)} g ${t('de carbs')}`;
+  const dcgTxt = dcg === '' || dcg == null ? t('se propone revisar los carbos') : `${fmtSigned(dcg)} g ${t('de carbs')}`;
   if (item.kind === 'ritmo_alto') {
     return t('Si el peso sube más de %v kg/sem durante %w semanas, %d.')
       .replace('%v', item.value ?? '–').replace('%w', item.weeks ?? '–').replace('%d', dcgTxt);
@@ -44,7 +44,7 @@ function helpText(item) {
   if (item.kind === 'estancamiento') {
     return t('Si el peso no baja en %n días, %d.').replace('%n', item.days ?? '–').replace('%d', dcgTxt);
   }
-  return t('Si el peso llega a %v kg, tus kcal pasan a mantenimiento.').replace('%v', item.value ?? '–');
+  return t('Si el peso llega a %v kg, se propone revisar las kcal de mantenimiento.').replace('%v', item.value ?? '–');
 }
 
 // rules: { paused_until?, kcal_min?, kcal_max?, items: [] } (raw/editable shape —
@@ -153,10 +153,9 @@ function RuleItemCard({ item, scopeOptions, onChange, onRemove }) {
       {item.kind !== 'techo_peso' && scopeOptions.length > 0 && (
         <ScopePicker scope={item.scope} options={scopeOptions} onChange={(scope) => onChange({ scope })} />
       )}
-      <label className="flex items-center gap-2 text-[12.5px] text-text-2 min-h-[44px]">
-        <input type="checkbox" checked={!!item.auto} onChange={(e) => onChange({ auto: e.target.checked })} className="w-[18px] h-[18px]" />
-        {t('Aplicar automáticamente')}
-      </label>
+      <p className="text-[12.5px] text-text-2" style={{ margin: 0 }}>
+        {t('Propuesta para revisar en el plan maestro; no modifica objetivos automáticamente.')}
+      </p>
     </div>
   );
 }
