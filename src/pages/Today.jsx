@@ -1398,8 +1398,9 @@ export default function Today() {
         {/* Day summary: always present in the rail (lg). While editing it stays pinned
             above the editor (sticky within the scrollable rail) so the totals/targets
             are not lost while adjusting an amount. Its own bg to cover the
-            editor scrolling underneath. */}
-        <div className="hidden lg:block lg:sticky lg:top-0 lg:z-10 bg-bg rounded-2xl">
+            editor scrolling underneath. Not sticky otherwise: a tall summary (coverage
+            warnings) would cover the water card below it. */}
+        <div className={`hidden lg:block bg-bg rounded-2xl ${editing ? 'lg:sticky lg:top-0 lg:z-10' : ''}`}>
           <SummaryCard
             view={activeView}
             cfg={viewCfg}
