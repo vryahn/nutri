@@ -10,7 +10,7 @@ const ISSUER = `${SUPABASE_URL}/auth/v1`;
 const JWKS = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks.json`));
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const MAX_BODY_BYTES = 2_000_000; // two compressed label photos fit
+const MAX_BODY_BYTES = 4_000_000; // two 2048 px label photos fit; Vercel hard cap is 4.5 MB
 const UPSTREAM_TIMEOUT_MS = 45_000;
 
 // Allowlist cerrada: un modelo fuera de esta lista se rechaza (400) antes de

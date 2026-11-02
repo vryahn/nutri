@@ -57,7 +57,7 @@ describe('proxy resource limits', () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     const res = response();
-    await handler(request({ ...usdaBody, payload: { query: 'x'.repeat(2_000_000) } }), res);
+    await handler(request({ ...usdaBody, payload: { query: 'x'.repeat(4_000_000) } }), res);
     expect(res.code).toBe(413);
     expect(fetch).not.toHaveBeenCalled();
   });
