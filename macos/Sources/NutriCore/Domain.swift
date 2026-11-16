@@ -274,6 +274,11 @@ public enum Domain {
         return food.number("kcal") == 0 && micros.count == 1 && micros["agua_ml"] != nil
     }
 
+    public static func waterEntry(_ entry: Record, waterID: String) -> Bool {
+        let foodID = entry.text("food_id")
+        return !foodID.isEmpty && entry.text("recipe_id").isEmpty && (foodID == waterID || water(entry))
+    }
+
     public static func kcalFromMacros(_ food: Record) -> Double {
         let micros = food.object("micros")
         let polyols = micros.number("polioles_g").flatMap { $0 != 0 ? $0 : nil }

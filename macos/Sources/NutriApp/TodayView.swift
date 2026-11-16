@@ -58,7 +58,7 @@ struct TodayView: View {
     private var rows: [Record] { store.queuedDay(loadedDay == day ? serverRows : [], day) }
     private var waterID: String { store.prefs.text("water_food_id") }
     private var foodRows: [Record] { journalFoods(rows, waterID: waterID) }
-    private var waterRows: [Record] { rows.filter { !$0.text("food_id").isEmpty && $0.text("food_id") == waterID } }
+    private var waterRows: [Record] { rows.filter { Domain.waterEntry($0, waterID: waterID) } }
     private var currentTarget: Record? { Domain.resolveTarget(targets, day) }
     private var totals: Record {
         let dayRows = rows.filter { $0.text("id") != previewedID } + (preview.map { [$0] } ?? [])
@@ -828,7 +828,7 @@ struct TodayView: View {
         }
         if food == nil {
             guard let owner = store.owner else { throw CancellationError() }
-            let own = try await store.read("foods", ["owner": "eq." + owner, "name": "eq.Agua"])
+            let own = try await store.read("foods", ["select": "id,kcal,micros", "owner": "eq." + owner, "kcal": "eq.0", "order": "id.asc"])
             if let existing = own.first(where: Domain.water) { food = existing }
             else {
                 food = try await store.insert("foods", meta.merging(["name": .string("Agua"), "source": .string("manual")]) { _, new in new })
@@ -956,7 +956,8 @@ private struct EntryEditor: View {
 
     private func mergedChoices(foods: [Record], recipes: [Record]) -> [Record] {
         let water = store.prefs.text("water_food_id")
-        let all = foods.filter { $0.text("id") != water } + recipes.map { $0.merging(["_recipe": .bool(true)]) { _, new in new } }
+        let foodChoices = foods.filter { $0.text("id") != water && !Domain.water($0) }
+        let all = foodChoices + recipes.map { $0.merging(["_recipe": .bool(true)]) { _, new in new } }
         return all.filter { $0.text("source") != "usda" } + all.filter { $0.text("source") == "usda" }
     }
 
@@ -1254,7 +1255,7 @@ private struct EntryEditor: View {
         do {
             try await Task.sleep(for: .milliseconds(250))
             let sanitized = query.replacingOccurrences(of: "[,()]", with: " ", options: .regularExpression)
-            async let foods = store.read("foods", ["select":"id,name,brand,source", "or":"(name.ilike.%\(sanitized)%,brand.ilike.%\(sanitized)%)", "limit":"8"])
+            async let foods = store.read("foods", ["select":"id,name,brand,source,kcal,micros", "or":"(name.ilike.%\(sanitized)%,brand.ilike.%\(sanitized)%)", "limit":"8"])
             async let recipes = store.read("recipes", ["select":"id,name", "name":"ilike.%\(sanitized)%", "limit":"8"])
             let (lexical, recipeHits) = try await (foods, recipes)
             var hits = lexical
@@ -1568,7 +1569,8 @@ private struct MealTemplatesView: View {
         async let foodRows = store.catalog()
         async let recipeRows = store.read("recipes", ["select": "id"])
         let (foods, recipes) = try await (foodRows, recipeRows)
-        let foodIDs = Set(foods.map { $0.text("id") })
+        let waterID = store.prefs.text("water_food_id")
+        let foodIDs = Set(foods.filter { $0.text("id") != waterID && !Domain.water($0) }.map { $0.text("id") })
         let recipeIDs = Set(recipes.map { $0.text("id") })
         let items = template.array("items").compactMap(\.object)
         let valid = items.filter { foodIDs.contains($0.text("food_id")) || recipeIDs.contains($0.text("recipe_id")) }
@@ -2596,10 +2598,7 @@ private func journalQuantity(_ value: Double, dimension: JournalQuantityDimensio
 }
 
 private func journalFoods(_ rows: [Record], waterID: String) -> [Record] {
-    rows.filter { row in
-        let foodID = row.text("food_id")
-        return foodID.isEmpty || foodID != waterID
-    }
+    rows.filter { !Domain.waterEntry($0, waterID: waterID) }
 }
 
 /// Day-keyed counterpart to rankFrequent in src/lib/frequent.js.
@@ -2667,7 +2666,18 @@ func checkJournalFidelity() throws {
         ["id": .string(id), "day": .string(Day.key(Day.add(date, -age))), "food_id": food.map(JSONValue.string) ?? .null,
          "recipe_id": recipe.map(JSONValue.string) ?? .null, "grams": .number(grams), "meal_label_id": .string(label)]
     }
-    let water = entry("water", age: 1, food: "water", grams: 1000)
+    let waterMeta: Record = ["kcal": .number(0), "micros": .object(["agua_ml": .number(100)])]
+    let water = entry("water", age: 1, food: "water", grams: 1000, label: "")
+        .merging(Domain.scaled(waterMeta, grams: 1000)) { _, new in new }
+    let queuedWater = entry("queued-water", age: 0, food: "new-water", grams: 250)
+        .merging(Domain.scaled(waterMeta, grams: 250)) { _, new in new }
+        .merging(["_pending": .bool(true)]) { _, new in new }
+    let waterRecipe = entry("water-recipe", age: 0, recipe: "distinct-recipe", grams: 100)
+        .merging(Domain.scaled(waterMeta, grams: 100)) { _, new in new }
+    let zeroFood = entry("zero-food", age: 0, food: "zero-kcal", grams: 50)
+        .merging(["kcal": .number(0), "item": .string("Agua"), "micros": .object(["sodio_mg": .number(0)])]) { _, new in new }
+    let unknown = entry("unknown", age: 0, food: "unknown", grams: 40)
+        .merging(["kcal": .null, "micros": .object(["agua_ml": .number(40)])]) { _, new in new }
     let original = [
         entry("a-old", age: 1, food: "a", grams: 150),
         entry("b-old", age: 1, food: "b", grams: 180),
@@ -2692,10 +2702,23 @@ func checkJournalFidelity() throws {
     let usual = journalFrequent(original + [entry("a-second", age: 2, food: "a", grams: 220)], date: date,
                                 label: "breakfast", waterID: "water", currentRows: current, dayReady: true)
     try check(usual.first { $0.text("food_id") == "a" }?.number("grams") == 220, "frequent grams mode")
-    let copied = journalFoods([water, original[0], original[3]], waterID: "water").map(entryPayload)
+    let copied = journalFoods([water, original[0], original[3]], waterID: "stale").map(entryPayload)
     try check(copied.count == 2 && copied[1]["food_id"] == .null && copied[1].text("recipe_id") == "r"
               && copied[0].text("meal_label_id") == "breakfast", "copy and templates omit the water food, preserve recipes and labels")
-    try check(journalFoods([water], waterID: "").count == 1, "only the configured water food is excluded")
+    let mixed = [water, queuedWater, waterRecipe, zeroFood, unknown]
+    for pref in ["", "water", "stale"] {
+        let plainWater = mixed.filter { Domain.waterEntry($0, waterID: pref) }
+        try check(plainWater.map { $0.text("id") } == ["water", "queued-water"], "water partition across IDs")
+        try check(plainWater.compactMap { $0.number("grams") }.reduce(0, +) == 1250, "water volume counted once")
+        try check(Domain.totals(plainWater).object("micros").number("agua_ml") == 1250, "water nutrient counted once")
+        try check(journalFoods(mixed, waterID: pref).map { $0.text("id") } == ["water-recipe", "zero-food", "unknown"],
+                  "food journal and bulk delete preserve recipes and ordinary foods")
+        let suggestions = journalFrequent([water], date: date, label: "", waterID: pref,
+                                          currentRows: [queuedWater, waterRecipe, zeroFood], dayReady: true)
+        try check(suggestions.map { $0.text("id") } == ["zero-food", "water-recipe"], "frequent suggestions omit historical and queued water")
+    }
+    try check(Domain.waterEntry(entry("configured", age: 0, food: "water", grams: 100), waterID: "water"),
+              "configured water with unavailable nutrients")
     try check(journalQuantity(12.345, dimension: .mass, us: false) == "12.3 g"
               && journalQuantity(150, dimension: .mass, us: true) == "5.3 oz"
               && journalQuantity(9, dimension: .mass, us: true) == "0.32 oz"

@@ -9,9 +9,30 @@ import {
   DASH_VARS_BY_KEY, axisUnits, buildDashSeries, dashVarTarget,
   autoAgg, resolveAgg, reduceBucket, bucketRows, mergeFoodResults, normalizeTo100, recipeWeightFromEstimate,
   cleanBounds, classifyBounds, classifyNutrient, impliedBounds, effectiveBound, draftToRows,
-  entryNutrients, knownMicros, microCoverage, microCoverageForEntries,
+  entryNutrients, isWaterEntry, knownMicros, microCoverage, microCoverageForEntries,
   addDaysISO, cleanRules, evalRules, DEFICIT_RATE_CAP,
 } from './domain.js';
+
+describe('journal water entries', () => {
+  it('finds each water entry once across IDs and preserves foods and recipes', () => {
+    const waterMeta = { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, micros: { agua_ml: 100 } };
+    const rows = [
+      entryNutrients({ id: 'imported', food_id: 'old-water', grams: 350, meal_label_id: null }, waterMeta),
+      entryNutrients({ id: 'queued', food_id: 'new-water', grams: 250, _pending: true }, waterMeta),
+      entryNutrients({ id: 'recipe', recipe_id: 'water-recipe', grams: 100 }, waterMeta),
+      { id: 'zero', food_id: 'zero-kcal', item: 'Agua', kcal: 0, micros: { agua_ml: 35, sodio_mg: 0 } },
+      { id: 'unknown', food_id: 'unknown-nutrition', kcal: null, micros: { agua_ml: 35 } },
+    ];
+    for (const pref of [null, 'old-water', 'different-id']) {
+      const water = rows.filter((row) => isWaterEntry(row, pref));
+      expect(water.map((row) => row.id)).toEqual(['imported', 'queued']);
+      expect(water.reduce((sum, row) => sum + row.grams, 0)).toBe(600);
+      expect(water.reduce((sum, row) => sum + row.micros.agua_ml, 0)).toBe(600);
+      expect(rows.filter((row) => !isWaterEntry(row, pref)).map((row) => row.id)).toEqual(['recipe', 'zero', 'unknown']);
+    }
+    expect(isWaterEntry({ food_id: 'configured' }, 'configured')).toBe(true);
+  });
+});
 
 describe('temporal aggregation of custom charts', () => {
   it('autoAgg derives the bucket from the range length', () => {

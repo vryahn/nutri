@@ -37,6 +37,7 @@ import {
   MICROS_DEFAULT,
   microGroups,
   microCoverage,
+  isWaterEntry,
   todayISO,
   addDaysISO,
   weekdayOf,
@@ -659,7 +660,7 @@ function weeklyProteinData(weeks, dateSet, dayInfo) {
 function topItems(rows, waterFoodId, metric) {
   const map = new Map();
   for (const r of rows) {
-    if (r.food_id && r.food_id === waterFoodId) continue;
+    if (isWaterEntry(r, waterFoodId)) continue;
     const key = r.food_id || r.recipe_id;
     if (!key) continue;
     const cur = map.get(key) || { name: r.item, kcal: 0, protein_g: 0 };
@@ -1097,7 +1098,7 @@ export default function Dashboard() {
   const nutByDay = new Map(dailyTotals.map((d) => [d.day, d]));
   const bodyByDay = new Map(bodyRows.map((d) => [d.day, d]));
   const rangeItems = phaseMode ? itemRows.filter((r) => dateSet.has(r.day)) : itemRows;
-  const simpleWaterEntries = waterFoodId ? rangeItems.filter((r) => r.food_id === waterFoodId) : [];
+  const simpleWaterEntries = rangeItems.filter((r) => isWaterEntry(r, waterFoodId));
   const simpleWaterMl = simpleWaterEntries.reduce((total, r) => total + Number(r.grams || 0), 0);
   const simpleWaterDays = new Set(simpleWaterEntries.map((r) => r.day)).size;
   const stats = computeStats(dates, dailyTotals, targets);
@@ -1222,7 +1223,9 @@ export default function Dashboard() {
   const totalWaterMl = stats.microsConsumed.agua_ml || 0;
   const waterTotalDays = chartData.filter((d) => nutByDay.has(d.day));
   const waterTotalPartial = waterTotalDays.some((d) => microCoverage(d, 'agua_ml') !== 'complete');
-  const simpleWaterText = !waterFoodId ? t('Agua simple sin configurar') : simpleWaterDays ? fmtMl(simpleWaterMl) : t('Sin registro');
+  const simpleWaterText = simpleWaterDays
+    ? fmtMl(simpleWaterMl)
+    : t(waterFoodId ? 'Sin registro' : 'Agua simple sin configurar');
   const totalWaterText = waterTotalDays.length ? fmtMl(totalWaterMl) : t('Sin dato');
   const waterPlanDays = chartData.filter((d) => d.day >= '2026-10-07' && d.day <= '2026-12-31' && d.targetMicros?.agua_ml === 3500 && d.bounds?.agua_ml?.min === 2000);
   const phaseHintText = unionMode

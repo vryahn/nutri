@@ -1079,10 +1079,11 @@ struct DashboardView: View {
         let observed = data.days.filter { !$0.total.isEmpty }
         let partial = observed.contains { $0.coverage("agua_ml") != .complete }
         let water = observed.compactMap { nutritionValue($0.total, "agua_ml") }.reduce(0, +)
-        let simple = data.entries.filter { !waterFoodID.isEmpty && $0.text("food_id") == waterFoodID }
+        let simple = data.entries.filter { Domain.waterEntry($0, waterID: waterFoodID) }
         let simpleTotal = simple.compactMap { $0.number("grams") }.reduce(0, +)
-        let simpleText = waterFoodID.isEmpty ? store.tr("Agua simple sin configurar") :
-            simple.isEmpty ? store.tr("Sin registro") : formatWater(simpleTotal)
+        let simpleText = simple.isEmpty
+            ? store.tr(waterFoodID.isEmpty ? "Agua simple sin configurar" : "Sin registro")
+            : formatWater(simpleTotal)
         let totalText = (observed.isEmpty ? store.tr("Sin dato") : formatWater(water)) + (partial ? " · " + store.tr("Datos parciales") : "")
         let plan = data.days.contains {
             $0.id >= "2026-10-07" && $0.id <= "2026-12-31" &&
@@ -1207,7 +1208,7 @@ struct DashboardView: View {
 
     private func topFoods(_ data: DashboardSnapshot) -> some View {
         let rows = data.entries.filter {
-            (waterFoodID.isEmpty || $0.text("food_id") != waterFoodID) &&
+            !Domain.waterEntry($0, waterID: waterFoodID) &&
             (!$0.text("food_id").isEmpty || !$0.text("recipe_id").isEmpty)
         }
         let groups = Dictionary(grouping: rows) { $0.text("food_id").isEmpty ? $0.text("recipe_id") : $0.text("food_id") }

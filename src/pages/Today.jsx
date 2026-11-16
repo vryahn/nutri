@@ -32,6 +32,8 @@ import {
   POTASSIUM_HIGH_MG,
   round,
   entryNutrients,
+  isWaterEntry,
+  isWaterSentinel,
   microCoverage,
   microCoverageForEntries,
   knownMicros,
@@ -818,18 +820,20 @@ export default function Today() {
     });
   }
 
-  // Water is logged as entries of the user's own "Agua" food (micros {agua_ml:100},
+  // Water is logged as entries of the user's own water sentinel (micros {agua_ml:100},
   // grams = ml). Find-or-create filtering by owner: the catalog is shared for
   // reading and the other user's "Agua" would not be editable by this one.
   async function getWaterFoodId() {
     // Validate the cache: a catalog import/cleanup may have deleted the food and
     // left the id dead (inserts would silently fail on the FK).
     if (prefs.water_food_id) {
-      const { data, error } = await supabase.from('foods').select('id').eq('id', prefs.water_food_id).maybeSingle();
+      const { data, error } = await supabase.from('foods').select('id,kcal,micros').eq('id', prefs.water_food_id).maybeSingle();
       // Offline the check cannot run: trust the cached id (the insert is queued anyway).
-      if (data || error) return prefs.water_food_id;
+      if (error || (data && isWaterSentinel(data))) return prefs.water_food_id;
     }
-    let { data: food } = await supabase.from('foods').select('id').eq('name', 'Agua').eq('owner', userId).maybeSingle();
+    const { data: own, error } = await supabase.from('foods').select('id,kcal,micros').eq('owner', userId).eq('kcal', 0).order('id');
+    if (error) return null;
+    let food = own?.find(isWaterSentinel);
     if (!food) {
       ({ data: food } = await supabase
         .from('foods')
@@ -1020,15 +1024,15 @@ export default function Today() {
   // it is logged with the day's glasses.
   async function copyEntriesFrom(sourceDay) {
     const { data: srcEntries } = await supabase
-      .from('entries')
-      .select('meal_label_id, food_id, recipe_id, grams')
+      .from('entry_nutrients')
+      .select('meal_label_id, food_id, recipe_id, grams, kcal, micros')
       .eq('day', sourceDay);
-    const toCopy = srcEntries?.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id)) || [];
+    const toCopy = srcEntries?.filter((e) => !isWaterEntry(e, prefs.water_food_id)) || [];
     if (toCopy.length === 0) {
       showToast(t('Ese día no tiene registros.'));
       return;
     }
-    const rows = toCopy.map((e) => ({ ...e, day: date }));
+    const rows = toCopy.map(({ meal_label_id, food_id, recipe_id, grams }) => ({ meal_label_id, food_id, recipe_id, grams, day: date }));
     const { error } = await supabase.from('entries').insert(rows);
     if (error) {
       showToast(t('Error al copiar.'));
@@ -1091,10 +1095,10 @@ export default function Today() {
     const foodIds = tpl.items.filter((i) => i.food_id).map((i) => i.food_id);
     const recipeIds = tpl.items.filter((i) => i.recipe_id).map((i) => i.recipe_id);
     const [{ data: fRows }, { data: rRows }] = await Promise.all([
-      foodIds.length ? supabase.from('foods').select('id').in('id', foodIds) : Promise.resolve({ data: [] }),
+      foodIds.length ? supabase.from('foods').select('id,kcal,micros').in('id', foodIds) : Promise.resolve({ data: [] }),
       recipeIds.length ? supabase.from('recipes').select('id').in('id', recipeIds) : Promise.resolve({ data: [] }),
     ]);
-    const okFoods = new Set((fRows || []).map((r) => r.id));
+    const okFoods = new Set((fRows || []).filter((r) => r.id !== prefs.water_food_id && !isWaterSentinel(r)).map((r) => r.id));
     const okRecipes = new Set((rRows || []).map((r) => r.id));
     const valid = tpl.items.filter((i) => (i.food_id ? okFoods.has(i.food_id) : okRecipes.has(i.recipe_id)));
     if (!valid.length) {
@@ -1215,8 +1219,8 @@ export default function Today() {
     () => applyOutbox(entries, date, pendingOps.filter((op) => !op.owner || op.owner === userId)),
     [entries, date, pendingOps, userId]
   );
-  const waterEntries = dayEntries.filter((e) => e.food_id && e.food_id === prefs.water_food_id);
-  const foodEntries = dayEntries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id));
+  const waterEntries = dayEntries.filter((e) => isWaterEntry(e, prefs.water_food_id));
+  const foodEntries = dayEntries.filter((e) => !isWaterEntry(e, prefs.water_food_id));
   const waterMl = waterEntries.reduce((s, e) => s + Number(e.grams), 0); // density 1: grams = ml
 
   // Config of the active layout and of the mini (the fixed mini-summary shares it).
@@ -1522,7 +1526,7 @@ export default function Today() {
           title={t('Borrar día')}
           body={t('¿Borrar los %n registros de alimentos de este día? No se puede deshacer.').replace(
             '%n',
-            entries.filter((e) => !(e.food_id && e.food_id === prefs.water_food_id)).length
+            foodEntries.length
           )}
           confirmLabel={t('Borrar día')}
           onConfirm={doDeleteDay}
@@ -2187,7 +2191,7 @@ function AddEntryForm({ date, userId, dayEntries, dayEntriesReady, labels, water
       let offline;
       try {
         const [f, r] = await Promise.all([
-          supabase.from('foods').select('id,name,brand,source').or(`name.ilike.%${q}%,brand.ilike.%${q}%`).limit(8),
+          supabase.from('foods').select('id,name,brand,source,kcal,micros').or(`name.ilike.%${q}%,brand.ilike.%${q}%`).limit(8),
           supabase.from('recipes').select('id,name').ilike('name', `%${q}%`).limit(8),
         ]);
         offline = !!(f.error || r.error);
@@ -2213,7 +2217,7 @@ function AddEntryForm({ date, userId, dayEntries, dayEntriesReady, labels, water
       }
       const combined = [
         // Agua is logged from its own card, not as food
-        ...foodHits.filter((f) => f.id !== waterFoodId).map((f) => ({ ...f, type: 'food' })),
+        ...foodHits.filter((f) => f.id !== waterFoodId && !isWaterSentinel(f)).map((f) => ({ ...f, type: 'food' })),
         ...(offline ? local.recipes : recipes || []).map((r) => ({ ...r, type: 'recipe' })),
       ];
       // base catalog (usda) last; stable, preserves the order within each group

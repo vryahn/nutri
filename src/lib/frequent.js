@@ -1,5 +1,6 @@
 import { supabase } from './supabase.js';
 import { cacheGet, cacheSet } from './cache.js';
+import { isWaterEntry } from './domain.js';
 
 const WINDOW_DAYS = 30;
 const MAX_ITEMS = 8;
@@ -45,20 +46,22 @@ async function load(userId, date) {
     loaded.clear();
   }
   if (loaded.has(key)) return loaded.get(key);
-  const stored = cacheGet(`frequent:${userId}`);
-  const cached = stored?.rows || [];
+  // Older cached rows lack the nutrition fields needed to recognize water.
+  const cacheKey = `frequent:${userId}`;
+  const stored = cacheGet(cacheKey);
+  const cached = stored?.version === 2 ? stored.rows : [];
   if (!inflight.has(key)) {
     const request = (async () => {
       try {
         const { data, error } = await supabase
           .from('entry_nutrients')
-          .select('id, day, food_id, recipe_id, item, brand, grams, meal_label_id')
+          .select('id, day, food_id, recipe_id, item, brand, grams, meal_label_id, kcal, micros')
           .gte('day', addCalendarDays(date, -WINDOW_DAYS))
           .lte('day', date);
         if (error) throw error;
         if (!await isCurrentUser(userId) || inflight.get(key) !== request) return [];
         const rows = data || [];
-        cacheSet(`frequent:${userId}`, { date, rows });
+        cacheSet(cacheKey, { version: 2, date, rows });
         loaded.set(key, rows);
         return rows;
       } catch {
@@ -99,7 +102,7 @@ export function rankFrequent(rows, { date, labelId, waterFoodId, dayEntries, day
 
   for (const row of candidates) {
     if (labelId && row.meal_label_id !== labelId) continue;
-    if (row.food_id && row.food_id === waterFoodId) continue;
+    if (isWaterEntry(row, waterFoodId)) continue;
     const type = row.food_id ? 'food' : 'recipe';
     const id = row.food_id || row.recipe_id;
     if (!id) continue;

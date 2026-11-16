@@ -1140,6 +1140,10 @@ export function isWaterSentinel(f) {
   return f.kcal === 0 && keys.length === 1 && keys[0] === 'agua_ml';
 }
 
+export function isWaterEntry(entry, waterFoodId) {
+  return Boolean(entry.food_id && !entry.recipe_id && (entry.food_id === waterFoodId || isWaterSentinel(entry)));
+}
+
 export function round(n, decimals) {
   const f = 10 ** decimals;
   return Math.round(n * f) / f;

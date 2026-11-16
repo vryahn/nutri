@@ -58,6 +58,17 @@ describe('frequent item ranking', () => {
     expect(rankFrequent(rows, { date: '2026-10-05', waterFoodId: 'water-id' }).map((item) => [item.food_id, item.recipe_id])).toEqual([['same', null], [null, 'same']]);
   });
 
+  it('excludes historical and queued water even when its ID is missing or stale', async () => {
+    const { rankFrequent } = await fresh();
+    const water = { kcal: 0, micros: { agua_ml: 100 } };
+    const date = '2026-10-05';
+    const rows = [row('water', 'old-water', '2026-10-04', water), row('food', 'food', date, { kcal: 0 })];
+    const dayEntries = [row('pending', 'new-water', date, { ...water, _pending: true }), row('recipe', null, date, { ...water, recipe_id: 'r' })];
+    for (const waterFoodId of [null, 'unrelated-water-id']) {
+      expect(rankFrequent(rows, { date, dayEntries, waterFoodId }).map((item) => item.food_id || item.recipe_id)).toEqual(['food', 'r']);
+    }
+  });
+
   it('uses seven-day half-life and balances repeated older rows against one recent row', async () => {
     const { rankFrequent } = await fresh();
     const rows = [
@@ -131,7 +142,7 @@ describe('frequent history loading', () => {
     const frequent = await fresh();
     mock.response = { data: [row('1', 'f', '2026-10-05')], error: null };
     expect((await frequent.getFrequent({ userId: 'user-a', date: '2026-10-05' })).map((item) => item.food_id)).toEqual(['f']);
-    expect(mock.queries[0]).toMatchObject({ table: 'entry_nutrients', columns: 'id, day, food_id, recipe_id, item, brand, grams, meal_label_id', from: '2026-09-05', to: '2026-10-05' });
+    expect(mock.queries[0]).toMatchObject({ table: 'entry_nutrients', columns: 'id, day, food_id, recipe_id, item, brand, grams, meal_label_id, kcal, micros', from: '2026-09-05', to: '2026-10-05' });
     mock.response = { data: [], error: null };
     await frequent.getFrequent({ userId: 'user-a', date: '2026-10-04' });
     mock.userId = 'user-b';
