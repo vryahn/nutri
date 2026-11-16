@@ -60,8 +60,8 @@ public enum Domain {
     public static let macroKeys = ["kcal", "protein_g", "carbs_g", "fat_g"]
     public static let macroLabels = ["kcal": "Energía", "protein_g": "Proteína", "carbs_g": "Carbohidratos", "fat_g": "Grasa"]
     public static let categories = ["Lípidos", "Carbohidratos", "Edulcorantes", "Vitaminas", "Minerales", "Antioxidantes", "Aminoácidos", "Otros"]
-    public static let gramsPerOunce = 28.349523125
-    public static let mlPerFluidOunce = 29.5735295625
+    public static let gramsPerOunce = 28.3495
+    public static let mlPerFluidOunce = 29.5735
     public static let sodiumFloor = 1500.0
     public static let sodiumCeiling = 2300.0
 
@@ -241,7 +241,7 @@ public enum Domain {
     }
 
     public static func classify(_ key: String, value observed: Double, target: Record?, hasFood: Bool = true, bands: Record = [:]) -> Adherence? {
-        guard hasFood else { return nil }
+        if key == "sodio_mg" && !hasFood { return nil }
         if key == "sodio_mg" && observed < sodiumFloor { return .danger }
         let raw = target?.object("bounds").object(key) ?? [:]
         let slack = tolerance(bands, kind: "techo", key: "warn", fallback: 0.10)
@@ -276,19 +276,31 @@ public enum Domain {
 
     public static func kcalFromMacros(_ food: Record) -> Double {
         let micros = food.object("micros")
-        let polyols = micros.number("polioles_g").flatMap { $0 > 0 ? $0 : nil }
+        let polyols = micros.number("polioles_g").flatMap { $0 != 0 ? $0 : nil }
             ?? polyolKeys.compactMap { micros.number($0) }.reduce(0, +)
         let macros = (food.number("protein_g") ?? 0) * 4 + (food.number("carbs_g") ?? 0) * 4 + (food.number("fat_g") ?? 0) * 9
-        return (macros + (micros.number("alcohol_g") ?? 0) * 7 - (micros.number("fibra_g") ?? 0) * 2 - polyols * 1.6).rounded()
+        return floor(macros + (micros.number("alcohol_g") ?? 0) * 7 - (micros.number("fibra_g") ?? 0) * 2 - polyols * 1.6 + 0.5)
     }
 
     private static let polyolKeys = ["eritritol_g", "xilitol_g", "sorbitol_g", "maltitol_g", "manitol_g", "isomalt_g", "lactitol_g"]
 
+    public static func kcalSuspicious(_ food: Record) -> Bool {
+        let expected = kcalFromMacros(food)
+        return abs((food.number("kcal") ?? 0) - expected) > max(20, expected * 0.25)
+    }
+
+    public static func macrosImplausible(_ food: Record) -> Bool {
+        let m = food.object("micros")
+        let macros = Array(macroKeys.dropFirst()).map { food.number($0) ?? 0 }
+        return macros.reduce(0, +) + (m.number("alcohol_g") ?? 0) + (m.number("agua_ml") ?? 0) > 105
+            || macros.contains { $0 > 100 }
+            || microMax.contains { key, maximum in (m.number(key) ?? 0) > maximum }
+    }
+
     public static func foodWarnings(_ food: Record) -> [String] {
         let m = food.object("micros")
         var warnings: [String] = []
-        let expected = kcalFromMacros(food)
-        if let kcal = food.number("kcal"), abs(kcal - expected) > max(20, expected * 0.25) {
+        if kcalSuspicious(food) {
             warnings.append("Las kcal no coinciden con los macros.")
         }
         let macros = Array(macroKeys.dropFirst())
@@ -301,6 +313,12 @@ public enum Domain {
                 warnings.append("Revisa la unidad de \(nutrient.label).")
             }
         }
+        if let component = componentsInconsistent(food) { warnings.append(component) }
+        return warnings
+    }
+
+    public static func componentsInconsistent(_ food: Record) -> String? {
+        let m = food.object("micros")
         let components: [([String], String, String)] = [
             (["grasa_sat_g", "grasa_trans_g"], "fat_g", "grasa saturada + trans supera la grasa total"),
             (["azucar_g"], "carbs_g", "azúcar supera los carbohidratos"),
@@ -315,10 +333,11 @@ public enum Domain {
             (["la_g", "aa_g"], "omega6_g", "LA + AA superan el omega-6 total")
         ]
         for (parts, total, message) in components {
-            if let limit = value(food, total), parts.compactMap({ m.number($0) }).reduce(0, +) > limit + 0.5 {
-                warnings.append(message)
+            let observed = parts.compactMap { m.number($0) }
+            if !observed.isEmpty, let limit = value(food, total), observed.reduce(0, +) > limit + 0.5 {
+                return message
             }
         }
-        return warnings
+        return nil
     }
 }

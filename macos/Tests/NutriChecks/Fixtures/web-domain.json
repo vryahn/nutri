@@ -950,6 +950,110 @@
         1805
       ],
       "expected": null
+    },
+    {
+      "name": "negative half energy uses JS rounding",
+      "fn": "kcalFromMacros",
+      "args": [
+        {
+          "protein_g": 0,
+          "carbs_g": 0,
+          "fat_g": 0,
+          "micros": {
+            "fibra_g": 0.25
+          }
+        }
+      ],
+      "expected": 0
+    },
+    {
+      "name": "no entries still classifies energy",
+      "fn": "classifyNutrient",
+      "args": [
+        "kcal",
+        0,
+        2000,
+        {
+          "hasFood": false
+        }
+      ],
+      "expected": "danger"
+    },
+    {
+      "name": "no entries still classifies protein",
+      "fn": "classifyNutrient",
+      "args": [
+        "protein_g",
+        0,
+        150,
+        {
+          "hasFood": false
+        }
+      ],
+      "expected": "danger"
+    },
+    {
+      "name": "first component inequality wins",
+      "fn": "componentsInconsistent",
+      "args": [
+        {
+          "fat_g": 2,
+          "carbs_g": 3,
+          "micros": {
+            "grasa_sat_g": 5,
+            "azucar_g": 6
+          }
+        }
+      ],
+      "expected": "grasa saturada + trans supera la grasa total"
+    },
+    {
+      "name": "missing components do not imply zero",
+      "fn": "componentsInconsistent",
+      "args": [
+        {
+          "fat_g": -1,
+          "micros": {}
+        }
+      ],
+      "expected": null
+    },
+    {
+      "name": "missing kcal uses zero for warning",
+      "fn": "kcalSuspicious",
+      "args": [
+        {
+          "protein_g": 10
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "water plus macros obeys 105g ceiling",
+      "fn": "macrosImplausible",
+      "args": [
+        {
+          "protein_g": 5,
+          "carbs_g": 1,
+          "fat_g": 0,
+          "micros": {
+            "agua_ml": 100
+          }
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "micronutrient maximum warning",
+      "fn": "macrosImplausible",
+      "args": [
+        {
+          "micros": {
+            "sodio_mg": 1000000
+          }
+        }
+      ],
+      "expected": true
     }
   ]
 }

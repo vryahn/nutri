@@ -27,6 +27,9 @@ describe('matchFood', () => {
     expect(matchFood('quinoa', foods)).toBeNull();
     expect(matchFood('', foods)).toBeNull();
   });
+  it('refuses exact duplicate names belonging to different foods', () => {
+    expect(matchFood('leche', [{ id: 1, name: 'Leche' }, { id: 2, name: 'LECHE' }])).toBeNull();
+  });
   it('ambiguous returns null (no guessing)', () => {
     const dup = [{ id: 1, name: 'Leche entera' }, { id: 2, name: 'Leche light' }];
     expect(matchFood('leche', dup)).toBeNull();
@@ -45,6 +48,24 @@ describe('foodsFromCSV', () => {
   it("flags ⚠ when declared kcal doesn't match macros", () => {
     const { rows } = parseCSV('name,protein_g,carbs_g,fat_g,kcal\nX,10,10,10,500');
     expect(foodsFromCSV(rows)[0].warnings).toContain('kcal');
+  });
+  it('retains a declared zero micro and refuses to invent a missing macro', () => {
+    const { rows } = parseCSV('name,protein_g,carbs_g,fat_g,fibra_g,sodio_mg\nAvena,17,66,7,0,\nSin datos,17,,,0,');
+    const [known, unknown] = foodsFromCSV(rows);
+    expect(known.valid).toBe(true);
+    expect(known.payload.micros).toEqual({ fibra_g: 0 });
+    expect(unknown).toMatchObject({ valid: false, payload: { carbs_g: null, fat_g: null, kcal: null } });
+    expect(unknown.warnings).toContain('sin macros válidos');
+  });
+  it('does not discard an invalid declared density silently', () => {
+    const base = { name: 'Leche', kcal: '20', protein_g: '0', carbs_g: '5', fat_g: '0' };
+    const [missing, zero, negative, bad] = foodsFromCSV([
+      base, { ...base, density_g_ml: '0' }, { ...base, density_g_ml: '-1' }, { ...base, density_g_ml: 'error' },
+    ]);
+    expect(missing).toMatchObject({ valid: true, payload: { density_g_ml: null } });
+    expect(zero).toMatchObject({ valid: true, payload: { density_g_ml: null } });
+    expect(negative).toMatchObject({ valid: false, warnings: ['densidad inválida'] });
+    expect(bad).toMatchObject({ valid: false, warnings: ['densidad inválida'] });
   });
   it('row without a name = invalid', () => {
     const { rows } = parseCSV('name,kcal\n,100');
@@ -110,6 +131,21 @@ describe('parseIngredientLines', () => {
     expect(out[0]).toMatchObject({ grams: 200, valid: true, food: { id: 'f1' } });
     expect(out[1]).toMatchObject({ grams: 15, food: { id: 'f2' } });
     expect(out[2].grams).toBe(120);
+  });
+  it('pastes volume only with explicit food density and preserves grams otherwise', () => {
+    const milk = { id: 'milk', name: 'Leche', density_g_ml: 1.03 };
+    const [vol, mass, noDensity, negative, mg] = parseIngredientLines('100 ml leche\n0,1 L leche\n100 ml Arroz\nArroz -120 g\nArroz 120 mg', [...foods, milk]);
+    expect([vol.grams, mass.grams]).toEqual([103, 103]);
+    expect([vol.valid, mass.valid]).toEqual([true, true]);
+    expect(noDensity).toMatchObject({ valid: false, grams: null, warnings: ['sin densidad'] });
+    expect([negative.valid, mg.valid]).toEqual([false, false]);
+  });
+  it.each(['100 mg arroz', '100 oz arroz', '1/2 kg arroz', 'arroz 1 / 2 kg',
+    '100 tazas arroz', '100 cups arroz', '100 cucharadas arroz', '100 piezas arroz'])('rejects ambiguous or unsupported quantity %s', (line) => {
+    expect(parseIngredientLines(line, foods)[0]).toMatchObject({ valid: false, grams: null });
+  });
+  it.each(['100 arroz', 'arroz 100'])('treats an unambiguous bare number as grams: %s', (line) => {
+    expect(parseIngredientLines(line, foods)[0]).toMatchObject({ valid: true, grams: 100 });
   });
   it('takes the number with unit even if the name has digits', () => {
     const foods2 = [{ id: 'x', name: 'Omega 3' }];

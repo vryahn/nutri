@@ -7,7 +7,7 @@ import {
   classifyCeiling, classifySodium, sodiumIsLow, sodiumIsHigh,
   SODIUM_FLOOR_MG, SODIUM_CEILING_MG,
   DASH_VARS_BY_KEY, axisUnits, buildDashSeries, dashVarTarget,
-  autoAgg, resolveAgg, reduceBucket, bucketRows, mergeFoodResults, normalizeTo100,
+  autoAgg, resolveAgg, reduceBucket, bucketRows, mergeFoodResults, normalizeTo100, recipeWeightFromEstimate,
   cleanBounds, classifyBounds, classifyNutrient, impliedBounds, effectiveBound, draftToRows,
   entryNutrients, knownMicros, microCoverage, microCoverageForEntries,
   addDaysISO, cleanRules, evalRules, DEFICIT_RATE_CAP,
@@ -559,6 +559,14 @@ describe('normalizeTo100', () => {
     expect(r.carbs_g).toBe(100);
   });
 
+  it('rejects negative nutrients before a scaled value could round to zero', () => {
+    const base = { kcal: 100, protein_g: 5, carbs_g: 0, fat_g: 0, micros: {} };
+    expect(normalizeTo100({ ...base, protein_g: -0.001 }, 1000, 'g')).toBeNull();
+    expect(normalizeTo100({ ...base, micros: { sodio_mg: -0.001 } }, 1000, 'g')).toBeNull();
+    expect(normalizeTo100({ ...base, protein_g: '0,5', micros: { fibra_g: 0 } }, 50, 'g'))
+      .toMatchObject({ protein_g: 1, micros: { fibra_g: 0 } });
+  });
+
   it('invalid basis (0, negative, non-numeric) -> object unchanged', () => {
     const f = { kcal: 100, protein_g: 5, carbs_g: 0, fat_g: 0, micros: {} };
     expect(normalizeTo100(f, 0, 'g')).toBe(f);
@@ -815,5 +823,24 @@ describe('evalRules', () => {
         expect(row.kcal).toBe(2000);
       }
     }
+  });
+});
+
+
+describe('recipeWeightFromEstimate', () => {
+  it('respects explicit grams and only converts ml with a founded density', () => {
+    const snap = (density) => Math.abs(density - 1.03) <= 0.015 ? 1.03 : density;
+    expect(recipeWeightFromEstimate({ unit: 'g', value: 250 }, 350, snap)).toBe(250);
+    expect(recipeWeightFromEstimate({ unit: 'ml', value: 100 }, 103, snap)).toBe(103);
+    expect(recipeWeightFromEstimate({ unit: 'ml', value: 100 }, 120, snap)).toBe(120);
+    expect(recipeWeightFromEstimate({ unit: 'ml', value: 100 }, null, snap)).toBeNull();
+    expect(recipeWeightFromEstimate({ unit: 'ml', value: 100 }, 450, snap)).toBeNull();
+    expect(recipeWeightFromEstimate({ unit: 'ml', value: 0.2 }, 0.2, snap)).toBeNull();
+    expect(recipeWeightFromEstimate(null, 350, snap)).toBe(350);
+  });
+
+  it('cannot normalize a volume unless both the amount and density are present', () => {
+    expect(normalizeTo100({ density_g_ml: 1.2 }, '', 'ml')).toBeNull();
+    expect(normalizeTo100({ density_g_ml: 1.2 }, 0, 'ml')).toBeNull();
   });
 });

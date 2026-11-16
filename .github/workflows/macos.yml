@@ -27,6 +27,7 @@ jobs:
       - name: Verify shared nutrition contracts
         run: |
           node macos/scripts/sync-domain.mjs
+          node macos/scripts/check-web-oracles.mjs
           git diff --exit-code -- macos/Sources/NutriCore/Resources
       - name: Native tests
         run: swift run --package-path macos NutriChecks

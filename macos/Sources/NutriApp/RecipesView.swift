@@ -12,10 +12,12 @@ struct RecipeIngredient: Identifiable {
     var usdaQuery = ""
     var fromAI = false
     var staged = false
+    var canonicalGrams: Double?
 
     var grams: Double? {
-        guard let n = Double(cleanText(amount).replacingOccurrences(of: ",", with: ".")), n.isFinite, n > 0 else { return nil }
-        return gramsPerUnit(unit).map { n * $0 }
+        if let canonicalGrams { return canonicalGrams > 0 ? canonicalGrams : nil }
+        guard let n = decimal(amount), n > 0 else { return nil }
+        return gramsPerUnit(unit).map { unit == "g" ? n : Domain.round(n * $0, 1) }
     }
 
     func gramsPerUnit(_ unit: String) -> Double? {
@@ -25,21 +27,20 @@ struct RecipeIngredient: Identifiable {
         return Domain.grams(1, unit: unit, density: food.number("density_g_ml"))
     }
 
-    mutating func changeUnit(to unit: String) {
+    mutating func changeUnit(to next: String) {
         let current = grams
-        if let current, let next = gramsPerUnit(unit) { amount = draftNumber(current / next) }
-        self.unit = unit
+        unit = next
+        setGrams(current)
     }
 
-    mutating func addPortion(_ portion: Double) {
-        if let factor = gramsPerUnit(unit) { amount = draftNumber(((grams ?? 0) + portion) / factor) }
+    mutating func setGrams(_ value: Double?) {
+        canonicalGrams = value
+        amount = value.flatMap { grams in gramsPerUnit(unit).map {
+            draftNumber(Domain.round(grams / $0, unit == "g" ? 9 : unit == "ml" ? 1 : 2))
+        } } ?? ""
     }
-}
 
-private struct RecipePortion: Identifiable {
-    let id = UUID()
-    var name = ""
-    var grams = ""
+    mutating func addPortion(_ portion: Double) { setGrams(Domain.round((grams ?? 0) + portion, 1)) }
 }
 
 private struct RecipeDraft: Identifiable {
@@ -49,7 +50,7 @@ private struct RecipeDraft: Identifiable {
     var cooked: String
     var source: String
     var ingredients: [RecipeIngredient]
-    var portions: [RecipePortion]
+    var portions: [CatalogPortion]
 
     init(_ row: Record = [:], items: [Record] = []) {
         recordID = row.text("id")
@@ -59,10 +60,10 @@ private struct RecipeDraft: Identifiable {
         ingredients = items.map { item in
             var food = item.object("foods")
             if food.isEmpty { food = ["id": .string(item.text("food_id")), "name": .string("Alimento no disponible")] }
-            return RecipeIngredient(food: food, amount: draftNumber(item.number("grams")))
+            return RecipeIngredient(food: food, amount: draftNumber(item.number("grams")), canonicalGrams: item.number("grams"))
         }
         portions = row.array("portions").compactMap(\.object).map {
-            RecipePortion(name: $0.text("name"), grams: draftNumber($0.number("grams")))
+            CatalogPortion(name: $0.text("name"), grams: draftNumber($0.number("grams")))
         }
     }
 }
@@ -76,118 +77,185 @@ private func recipePayload(_ recipe: Record, items: [Record], restore: Bool = fa
 
 struct RecipesView: View {
     @EnvironmentObject private var store: Store
+    @Environment(\.nutriPalette) private var palette
+    @Environment(\.nutriWindowWidth) private var windowWidth
+    @FocusState private var searchFocused: Bool
     @State private var rows: [Record] = []
     @State private var perHundred: [String: Record] = [:]
     @State private var query = ""
+    @State private var exactHits: (term: String, rows: [Record])?
     @State private var sourceFilter = ""
-    @State private var sort = "name"
+    @State private var sort = ""
     @State private var descending = false
     @State private var loading = true
     @State private var opening = false
     @State private var error = ""
     @State private var form: RecipeDraft?
 
+    private var desktop: Bool { windowWidth >= 1024 }
+    private var matching: [Record] {
+        let term = cleanText(query)
+        if term.isEmpty { return rows }
+        if let exactHits, exactHits.term == term { return exactHits.rows }
+        return rows.filter { $0.text("name").localizedCaseInsensitiveContains(term) }
+    }
     private var visible: [Record] {
-        let term = CSV.normalize(query)
-        let filtered = rows.filter {
-            (sourceFilter.isEmpty || $0.text("source") == sourceFilter) && (term.isEmpty || CSV.normalize($0.text("name")).contains(term))
-        }
+        let filtered = matching.filter { sourceFilter.isEmpty || $0.text("source") == sourceFilter }
+        guard !sort.isEmpty else { return filtered }
         return filtered.sorted { first, second in
-            let by: Bool
             if sort == "kcal" {
-                let a = perHundred[first.text("id")]?.number("kcal") ?? -1
-                let b = perHundred[second.text("id")]?.number("kcal") ?? -1
-                if a != b { by = a < b } else { return first.text("name").localizedStandardCompare(second.text("name")) == .orderedAscending }
-            } else {
-                let comparison = first.text("name").localizedStandardCompare(second.text("name"))
-                guard comparison != .orderedSame else { return first.text("id") < second.text("id") }
-                by = comparison == .orderedAscending
+                let x = perHundred[first.text("id")]?.number("kcal"), y = perHundred[second.text("id")]?.number("kcal")
+                guard let x else { return false }
+                guard let y else { return true }
+                return descending ? x > y : x < y
             }
-            return descending ? !by : by
+            let order = first.text("name").lowercased().compare(second.text("name").lowercased(), options: .literal)
+            return descending ? order == .orderedDescending : order == .orderedAscending
         }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(store.tr("Recetas")).font(.largeTitle.bold())
-                Spacer()
-                Button(store.tr("Nueva receta"), systemImage: "plus") { form = RecipeDraft() }.buttonStyle(.borderedProminent)
-            }
-            HStack {
-                TextField(store.tr("Buscar recetas"), text: $query).textFieldStyle(.roundedBorder)
-                Picker(store.tr("Fuente"), selection: $sourceFilter) {
-                    Text(store.tr("Todas")).tag("")
-                    Text(store.tr("Manual")).tag("manual")
-                    Text(store.tr("IA")).tag("gemini")
-                    Text(store.tr("IA personal")).tag("ia_personal")
-                }.frame(maxWidth: 170)
-                Menu(store.tr("Ordenar"), systemImage: "arrow.up.arrow.down") {
-                    Picker(store.tr("Ordenar por"), selection: $sort) {
-                        Text(store.tr("Nombre")).tag("name")
-                        Text("kcal / 100 g").tag("kcal")
-                    }
-                    Toggle(store.tr("Descendente"), isOn: $descending)
+        Group {
+            if desktop {
+                GeometryReader { space in
+                    let available = max(0, space.size.width - 56)
+                    HStack(alignment: .top, spacing: 24) {
+                        ScrollView { listing }.frame(width: available * 5 / 12)
+                        ScrollView {
+                            if let form { editor(form) }
+                            else { emptyEditor }
+                        }.coordinateSpace(name: "recipe-editor-scroll").frame(width: available * 7 / 12)
+                    }.padding(16)
                 }
-            }
-            if loading || opening { ProgressView().controlSize(.small) }
-            if !error.isEmpty {
-                HStack {
-                    Text(error).foregroundStyle(.red)
-                    Button(store.tr("Reintentar")) { Task { await reload() } }
-                }
-            }
-            if visible.isEmpty && !loading && error.isEmpty {
-                ContentUnavailableView(store.tr("Sin recetas"), systemImage: "book.closed")
+            } else if let form {
+                ScrollView { editor(form).padding(16) }
             } else {
-                List(visible.indices, id: \.self) { index in
-                    let row = visible[index]
-                    Button {
-                        Task { await open(row) }
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(row.text("name")).font(.headline)
-                                Text(source(row.text("source"))).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if let kcal = perHundred[row.text("id")]?.number("kcal") {
-                                Text("\(numberText(kcal, digits: 1)) kcal / 100 g").monospacedDigit()
-                            } else {
-                                Text(store.tr("Sin datos nutricionales")).foregroundStyle(.secondary)
-                            }
-                            Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-                        }.contentShape(Rectangle()).padding(.vertical, 5)
-                    }.buttonStyle(.plain)
-                    .contextMenu {
-                        Button(store.tr("Editar")) { Task { await open(row) } }
-                        Button(store.tr("Eliminar"), role: .destructive) { Task { await remove(row) } }
+                ScrollView { listing.padding(16).padding(.bottom, 56) }
+                    .overlay(alignment: .bottomTrailing) {
+                        if !loading && !matching.isEmpty {
+                            Button { form = RecipeDraft() } label: { NutriIcon("plus", size: 22) }
+                                .buttonStyle(NutriButtonStyle(.primary, height: 52, horizontal: 15, radius: 26))
+                                .accessibilityLabel(store.tr("Nueva receta")).padding(16)
+                        }
                     }
-                }.listStyle(.inset)
             }
-        }.padding(24)
-        .task { await reload() }
-        .sheet(item: $form) { draft in
-            RecipeEditor(draft: displayedDraft(draft), useUS: store.units == "us", recipes: rows, onSaved: {
-                form = nil
+        }.font(.nutriSans(14)).foregroundStyle(palette.text)
+            .task {
                 await reload()
-            }, onOpen: open, onRemove: deleteDraft)
+                #if DEBUG
+                if store.snapshotScenario == "recipe-editor", let recipe = rows.first { await open(recipe) }
+                #endif
+            }
+            .task(id: query) { await findRecipes() }
+            .onExitCommand { form = nil }
+            .onKeyPress("/") {
+                guard !searchFocused, form == nil else { return .ignored }
+                searchFocused = true; return .handled
+            }
+    }
+
+    private var listing: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(store.tr("Recetas")).font(.nutriDisplay(20))
+            HStack(spacing: 8) {
+                HStack(spacing: 10) {
+                    NutriIcon("search", size: 18).foregroundStyle(palette.text3)
+                    TextField(store.tr("Buscar…"), text: $query).font(.nutriSans(16)).textFieldStyle(.plain).focused($searchFocused)
+                }.padding(.horizontal, 12).frame(height: 44).nutriCard(radius: 12, fill: palette.surface2)
+                if desktop { sourceMenu }
+            }
+            if loading && rows.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach(0..<2) { _ in RoundedRectangle(cornerRadius: 16).fill(palette.surface).frame(height: 64).accessibilityHidden(true) }
+                }.accessibilityLabel(store.tr("Cargando…"))
+            } else if !error.isEmpty && rows.isEmpty {
+                Text(store.tr("No se pudieron cargar las recetas — revisa tu conexión.")).foregroundStyle(palette.text2)
+                Button(store.tr("Reintentar")) { Task { await reload() } }.buttonStyle(NutriButtonStyle(.secondary, height: 44))
+            } else if matching.isEmpty {
+                VStack(spacing: 12) {
+                    Text(store.tr("Sin recetas aún")).foregroundStyle(palette.text2)
+                    Button(store.tr("Crear la primera")) { form = RecipeDraft() }.buttonStyle(NutriButtonStyle(.primary, height: 44))
+                }.padding(.vertical, 48).frame(maxWidth: .infinity)
+            } else if desktop { table }
+            else {
+                LazyVStack(spacing: 16) {
+                    ForEach(matching.map(RecipeListItem.init)) { item in compactRow(item.row) }
+                }
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var sourceMenu: some View {
+        let sources = (["manual", "gemini"] + matching.map { $0.text("source") }).reduce(into: [String]()) { values, item in
+            if !item.isEmpty && !values.contains(item) { values.append(item) }
+        }
+        return NutriSelect(value: sourceFilter, select: { sourceFilter = $0 },
+            options: [("", store.tr("Todos"))] + sources.map { ($0, source($0)) })
+            .frame(width: 102).accessibilityLabel(store.tr("Fuente"))
+    }
+
+    private var table: some View {
+        LazyVStack(spacing: 0) {
+            HStack(spacing: 0) {
+                sortCell("Nombre", key: "name").frame(maxWidth: .infinity, alignment: .leading)
+                sortCell("Kcal/100g", key: "kcal").frame(width: 114, alignment: .trailing)
+                Text("⚠").frame(width: 80, height: 38)
+            }.foregroundStyle(palette.text2).background(palette.surface2)
+            if visible.isEmpty {
+                Text(store.tr("Sin resultados con estos filtros.")).foregroundStyle(palette.text2).frame(maxWidth: .infinity).padding(.vertical, 24)
+            }
+            ForEach(visible.map(RecipeListItem.init)) { item in
+                let row = item.row
+                Rectangle().fill(palette.border).frame(height: 1)
+                RecipeTableRow(name: row.text("name"), ai: row.text("source") == "gemini", kcal: perHundred[item.id]?.number("kcal"),
+                    active: form?.recordID == item.id, open: { Task { await open(row) } }, delete: { Task { await remove(row) } })
+            }
+        }.clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(palette.border).allowsHitTesting(false) }
+    }
+
+    private func sortCell(_ label: String, key: String) -> some View {
+        Button {
+            if sort == key { descending.toggle() } else { sort = key; descending = false }
+        } label: {
+            HStack(spacing: 4) {
+                Text(store.tr(label)).font(.nutriSans(14, weight: .medium)).lineLimit(1)
+                if sort == key { NutriIcon(descending ? "arrow-down" : "arrow-up", size: 11) }
+            }.padding(.horizontal, 12).frame(height: 36)
+        }.buttonStyle(.plain)
+    }
+
+    private func compactRow(_ row: Record) -> some View {
+        CatalogSwipeCard(open: { Task { await open(row) } }, delete: { Task { await remove(row) } }) {
+            HStack(spacing: 6) {
+                Text(row.text("name")).font(.nutriSans(14, weight: .medium))
+                if row.text("source") == "gemini" { Text("≈ " + store.tr("IA")).font(.nutriSans(10)).foregroundStyle(palette.accent) }
+                Spacer()
+                if let kcal = perHundred[row.text("id")]?.number("kcal") {
+                    Text("\(numberText(kcal, digits: 1)) kcal/100g").font(.nutriMono(14)).foregroundStyle(palette.text2)
+                }
+            }
         }
     }
 
-    private func displayedDraft(_ input: RecipeDraft) -> RecipeDraft {
-        guard store.units == "us" else { return input }
-        var draft = input
-        let factor = Domain.gramsPerOunce
-        draft.cooked = draftNumber(Double(draft.cooked).map { $0 / factor })
-        for index in draft.portions.indices {
-            draft.portions[index].grams = draftNumber(Double(draft.portions[index].grams).map { $0 / factor })
+    private var emptyEditor: some View {
+        VStack(spacing: 12) {
+            Text(store.tr("Selecciona una receta o crea una nueva")).font(.nutriSans(16)).foregroundStyle(palette.text2).frame(minHeight: 24)
+            Button { form = RecipeDraft() } label: { HStack { NutriIcon("plus", size: 16); Text(store.tr("Nueva receta")).font(.nutriSans(16, weight: .medium)) } }
+                .buttonStyle(NutriButtonStyle(.primary, height: 44, horizontal: 16))
+        }.padding(40).frame(maxWidth: .infinity).nutriCard()
+    }
+
+    private func editor(_ original: RecipeDraft) -> some View {
+        var draft = original
+        if store.units == "us" {
+            for index in draft.ingredients.indices { draft.ingredients[index].changeUnit(to: "oz") }
         }
-        for index in draft.ingredients.indices {
-            draft.ingredients[index].amount = draftNumber(Double(draft.ingredients[index].amount).map { $0 / factor })
-            draft.ingredients[index].unit = "oz"
-        }
-        return draft
+        return RecipeEditor(draft: draft, useUS: store.units == "us", desktop: desktop, recipes: rows, onSaved: {
+            form = nil; await reload()
+        }, onOpen: open, onRemove: deleteDraft, onClose: { form = nil })
+        .id(draft.id).padding(desktop ? 24 : 0).frame(maxWidth: .infinity, alignment: .leading)
+        .background { if desktop { Color.clear.nutriCard() } }
     }
 
     private func source(_ key: String) -> String {
@@ -199,7 +267,24 @@ struct RecipesView: View {
         }
     }
 
+    private func findRecipes() async {
+        exactHits = nil
+        let term = cleanText(query)
+        guard !term.isEmpty, !store.offline, !store.demoActive else { return }
+        do {
+            try await Task.sleep(for: .milliseconds(250))
+            let hits = try await searchCatalogNames(store: store, table: "recipes", term: term)
+            guard !Task.isCancelled, cleanText(query) == term else { return }
+            exactHits = (term, hits)
+        } catch { /* The loaded local recipe list remains usable. */ }
+    }
+
     private func reload() async {
+        exactHits = nil
+        if rows.isEmpty, let cached = store.cached("recipes", ["order": "name.asc"]) { rows = cached }
+        if let cached = store.cached("recipe_per_100g", ["select": "recipe_id,kcal"]) {
+            perHundred = Dictionary(cached.map { ($0.text("recipe_id"), $0) }, uniquingKeysWith: { first, _ in first })
+        }
         loading = true
         defer { loading = false }
         do {
@@ -225,7 +310,7 @@ struct RecipesView: View {
     }
 
     private func deleteDraft(_ id: String) async throws {
-        guard let row = rows.first(where: { $0.text("id") == id }) else { throw FeatureError("Receta no disponible.") }
+        guard let row = (rows + matching).first(where: { $0.text("id") == id }) else { throw FeatureError("Receta no disponible.") }
         try await removeRecipe(row)
         form = nil
     }
@@ -239,10 +324,15 @@ struct RecipesView: View {
         let id = row.text("id")
         let query = ["recipe_id": "eq.\(id)", "select": "food_id,grams"]
         let items = try await store.read("recipe_items", query)
-        let deleted = try await store.delete("recipes", ["id": "eq.\(id)"])
-        guard let snapshot = deleted.first else { throw FeatureError("La receta ya no está disponible.") }
         rows.removeAll { $0.text("id") == id }
-        store.undo(store.tr("Receta eliminada")) {
+        exactHits?.rows.removeAll { $0.text("id") == id }
+        let snapshot: Record
+        do {
+            guard let deleted = try await store.delete("recipes", ["id": "eq.\(id)"]).first else { throw FeatureError("La receta ya no está disponible.") }
+            snapshot = deleted
+        } catch { await reload(); throw error }
+        if form?.recordID == id { form = nil }
+        store.undo(store.tr("Receta borrada")) {
             if items.isEmpty {
                 _ = try await store.insert("recipes", snapshot)
             } else {
@@ -253,350 +343,427 @@ struct RecipesView: View {
     }
 }
 
+private struct RecipeListItem: Identifiable {
+    let row: Record
+    var id: String { row.text("id") }
+}
+
+private struct RecipeTableRow: View {
+    @EnvironmentObject private var store: Store
+    @Environment(\.nutriPalette) private var palette
+    @State private var hovering = false
+    let name: String
+    let ai: Bool
+    let kcal: Double?
+    let active: Bool
+    let open: () -> Void
+    let delete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button(action: open) {
+                HStack(spacing: 0) {
+                    Text(name).font(.nutriSans(14, weight: .medium)).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12)
+                    Text(kcal.map(draftNumber) ?? "—").font(.nutriMono(14, weight: .regular)).padding(.trailing, 12).frame(width: 114, alignment: .trailing)
+                }.padding(.vertical, 12).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+            HStack(spacing: 4) {
+                Text(ai ? "≈ " + store.tr("IA") : "").font(.nutriSans(10)).foregroundStyle(palette.accent).frame(width: 40)
+                Button(action: delete) { NutriIcon("trash-2", size: 16).frame(width: 28, height: 28) }
+                    .buttonStyle(.plain).foregroundStyle(palette.text2).opacity(hovering ? 1 : 0)
+                    .accessibilityLabel(store.tr("Borrar") + " " + name)
+            }.frame(width: 80)
+        }.background(active || hovering ? palette.surface2 : Color.clear)
+            .overlay { if active { Rectangle().strokeBorder(palette.accent).allowsHitTesting(false) } }
+            .onHover { hovering = $0 }
+            .contextMenu { Button(store.tr("Borrar"), role: .destructive, action: delete) }
+    }
+}
+
 private struct RecipeEditor: View {
     @EnvironmentObject private var store: Store
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.nutriPalette) private var palette
     @State var draft: RecipeDraft
     let useUS: Bool
+    let desktop: Bool
     let recipes: [Record]
     let onSaved: () async -> Void
     let onOpen: (Record) async -> Void
     let onRemove: (String) async throws -> Void
+    let onClose: () -> Void
     @State private var foods: [Record] = []
     @State private var loadingCatalog = true
     @State private var query = ""
     @State private var paste = ""
+    @State private var showPaste = false
     @State private var pasteNotice = ""
     @State private var aiText = ""
     @State private var aiPhotos: [URL] = []
-    @State private var attach = false
+    @State private var aiError = ""
+    @State private var aiWeightWarning = false
+    @State private var aiLoading = false
     @State private var error = ""
     @State private var busy = false
     @State private var confirm = false
-    @State private var confidence = ""
+    @State private var confidence: String?
     @State private var estimatedKcal: Double?
     @State private var dupes: [Record] = []
-    @State private var choice: UUID?
-    @State private var fdcID: UUID?
-    @State private var fdcQuery = ""
-    @State private var fdcRows: [Record] = []
-    @State private var fdcError = ""
-    @State private var fdcBusy = false
+    @State private var typedCooked: String?
+    @State private var recipeColumnsHeight: CGFloat = 0
 
-    private var unitUS: Bool { useUS }
-    private var weightUnit: String { unitUS ? "oz" : "g" }
-    private var cookedWeight: Double? {
-        guard let value = Double(draft.cooked.replacingOccurrences(of: ",", with: ".")) else { return nil }
-        return value > 0 ? inGrams(value) : nil
-    }
+    private var weightUnit: String { useUS ? "oz" : "g" }
+    private var cookedWeight: Double? { decimal(draft.cooked).flatMap { $0 > 0 ? $0 : nil } }
     private var ingredientWeight: Double { draft.ingredients.compactMap(\.grams).reduce(0, +) }
-    private var massDifference: Double? { cookedWeight.flatMap { ingredientWeight > 0 ? abs(ingredientWeight - $0) / $0 : nil } }
-    private var visibleCatalog: [Record] {
-        let term = CSV.normalize(query)
-        guard !term.isEmpty else { return [] }
-        return Array(foods.filter { CSV.normalize($0.text("name") + " " + $0.text("brand")).contains(term) }
-            .sorted { ($0.text("source") == "usda" ? 1 : 0) < ($1.text("source") == "usda" ? 1 : 0) }.prefix(12))
-    }
+    private var massDifference: Double { cookedWeight.map { ingredientWeight > 0 ? abs(ingredientWeight - $0) / $0 : 0 } ?? 0 }
+    private var staged: [RecipeIngredient] { draft.ingredients.filter(\.staged) }
     private var perHundred: Record? {
-        let pairs = draft.ingredients.compactMap { row in row.grams.map { (food: row.food, grams: $0) } }
-        guard pairs.count == draft.ingredients.count else { return nil }
+        let pairs = draft.ingredients.map { (food: $0.food, grams: $0.grams ?? 0) }
         return Domain.recipePer100g(pairs, cookedWeight: cookedWeight)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(store.tr(draft.recordID.isEmpty ? "Nueva receta" : "Editar receta")).font(.title2.bold())
-            Form {
-                Section(store.tr("Receta")) {
-                    TextField(store.tr("Nombre"), text: $draft.name)
-                    TextField("\(store.tr("Peso cocido")) (\(weightUnit))", text: $draft.cooked)
-                    LabeledContent(store.tr("Peso de ingredientes"), value: "\(numberText(toDisplay(ingredientWeight))) \(weightUnit)")
-                }
-                Section(store.tr("Ingredientes")) {
-                    catalogSearch
-                    ForEach($draft.ingredients) { $ingredient in
-                        ingredientRow($ingredient)
-                    }
-                    DisclosureGroup(store.tr("Importar ingredientes")) { pasteEditor }
-                }
-                Section(store.tr("Porciones")) { portions }
-                Section(store.tr("Nutrición por 100 g")) { preview }
-                if draft.recordID.isEmpty { DisclosureGroup(store.tr("Datos con IA")) { aiEditor } }
-            }.formStyle(.grouped).disabled(busy)
-            if !error.isEmpty { Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
-            HStack {
-                if !draft.recordID.isEmpty {
-                    Button(store.tr("Eliminar receta"), role: .destructive) {
-                        perform { try await onRemove(draft.recordID); dismiss() }
-                    }
-                }
-                Spacer()
-                if busy { ProgressView().controlSize(.small) }
-                Button(store.tr("Cancelar")) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(store.tr("Guardar")) {
-                    if draft.ingredients.contains(where: \.staged) { confirm = true }
-                    else { perform(save) }
-                }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
-            }.disabled(busy)
-        }.padding(18).frame(minWidth: 700, idealWidth: 850, minHeight: 650)
-        .interactiveDismissDisabled(busy)
-        .task { await loadCatalog() }
-        .confirmationDialog(store.tr("¿Guardar receta y nuevos alimentos?"), isPresented: $confirm) {
-            Button(store.tr("Guardar receta y alimentos")) { perform(save) }
-        } message: { Text(store.tr("Revisa los nombres, cantidades y valores de los ingredientes antes de guardarlos en el catálogo.")) }
-        .fileImporter(isPresented: $attach, allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
-            do {
-                let urls = try result.get()
-                guard urls.count <= 2 else { throw FeatureError("Elige hasta dos fotos del mismo platillo.") }
-                aiPhotos = urls
-            } catch { self.error = error.localizedDescription }
-        }
-        .sheet(isPresented: Binding(get: { fdcID != nil }, set: { if !$0 { fdcID = nil } })) {
-            fdcSheet
-        }
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                Button(action: onClose) { NutriIcon("chevron-left", size: 22).frame(width: 28, height: 38) }
+                    .buttonStyle(.plain).accessibilityLabel(store.tr("Volver"))
+                Text(store.tr(draft.recordID.isEmpty ? "Nueva receta" : "Editar receta")).font(.nutriDisplay(20))
+            }
+            if draft.recordID.isEmpty { aiEditor }
+            if desktop {
+                HStack(alignment: .top, spacing: 24) {
+                    recipeInputs.frame(maxWidth: .infinity, alignment: .leading)
+                    if let perHundred { stickyPreview(perHundred) }
+                    else { Color.clear.frame(maxWidth: .infinity).frame(height: 1) }
+                }.onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { recipeColumnsHeight = $0 }
+            } else {
+                recipeInputs
+                if let perHundred { preview(perHundred) }
+            }
+            if confirm && !staged.isEmpty { confirmCard }
+            if !error.isEmpty { Text(error).foregroundStyle(palette.danger).fixedSize(horizontal: false, vertical: true) }
+            Button {
+                if !staged.isEmpty && !confirm { confirm = true } else { perform(save) }
+            } label: { Text(store.tr("Guardar")).frame(maxWidth: .infinity) }
+                .buttonStyle(NutriButtonStyle(.primary, height: 44)).disabled(cleanText(draft.name).isEmpty || draft.ingredients.isEmpty || aiLoading)
+            if !draft.recordID.isEmpty {
+                Button { perform { try await onRemove(draft.recordID) } } label: { Text(store.tr("Borrar")).frame(maxWidth: .infinity) }
+                    .buttonStyle(NutriButtonStyle(.danger, height: 44))
+            }
+        }.disabled(busy).task { await loadCatalog() }
     }
 
-    private var catalogSearch: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            TextField(store.tr("Buscar en el catálogo"), text: $query)
-            if loadingCatalog { ProgressView().controlSize(.small) }
-            if !query.isEmpty, visibleCatalog.isEmpty, !loadingCatalog { Text(store.tr("Sin coincidencias")).foregroundStyle(.secondary) }
-            ForEach(visibleCatalog.indices, id: \.self) { index in
-                let food = visibleCatalog[index]
-                Button(displayName(food)) { select(food) }.buttonStyle(.borderless)
+    private var recipeInputs: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(store.tr("Nombre")).foregroundStyle(palette.text2)
+                TextField("", text: $draft.name).nutriInput().accessibilityLabel(store.tr("Nombre"))
             }
+            VStack(alignment: .leading, spacing: 8) {
+                Text(store.tr("Ingredientes")).foregroundStyle(palette.text2)
+                ForEach($draft.ingredients) { $ingredient in
+                    if ingredient.staged { stagedIngredient($ingredient) }
+                    else { ingredientRow($ingredient) }
+                }
+                TextField(store.tr("Añadir ingrediente…"), text: $query).nutriInput()
+                RecipeCatalogHits(foods: foods, query: query) { food in
+                    draft.ingredients.append(RecipeIngredient(food: food, amount: "", unit: weightUnit))
+                    query = ""
+                }
+                pasteEditor
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                let label = "\(store.tr("Peso cocido")) (\(weightUnit))"
+                Text(label).foregroundStyle(palette.text2)
+                TextField("", text: Binding(get: {
+                    useUS ? typedCooked ?? draftNumber(cookedWeight.map { Domain.round($0 / Domain.gramsPerOunce, 2) }) : draft.cooked
+                }, set: { value in
+                    if useUS {
+                        typedCooked = value
+                        draft.cooked = decimal(value).map { draftNumber(Domain.round($0 * Domain.gramsPerOunce, 1)) } ?? value
+                    } else { draft.cooked = value }
+                })).font(.nutriMono(14)).nutriInput().accessibilityLabel(label)
+                Text(store.tr("vacío = suma de ingredientes")).font(.nutriSans(12)).foregroundStyle(palette.text3)
+            }
+            CatalogPortionsEditor(portions: $draft.portions)
+            recipeWarnings
         }
     }
 
     private func ingredientRow(_ binding: Binding<RecipeIngredient>) -> some View {
         let row = binding.wrappedValue
-        return VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                Text(displayName(row.food)).font(.headline)
-                if !row.label.isEmpty { Text(store.tr(row.label)).font(.caption).foregroundStyle(.secondary) }
-                Spacer()
-                TextField(store.tr("Cantidad"), text: binding.amount).frame(width: 84).textFieldStyle(.roundedBorder)
-                Picker(store.tr("Unidad"), selection: Binding(
-                    get: { binding.wrappedValue.unit },
-                    set: { binding.wrappedValue.changeUnit(to: $0) }
-                )) {
-                    Text("g").tag("g")
-                    Text("oz").tag("oz")
-                    if let density = row.food.number("density_g_ml"), density > 0 {
-                        Text("ml").tag("ml")
-                        if unitUS { Text("fl oz").tag("fl oz") }
+        let density = row.food.number("density_g_ml") ?? 0
+        let alt = row.unit == "ml" || row.unit == "fl oz"
+        let portions = row.food.array("portions").compactMap(\.object).filter { ($0.number("grams") ?? 0) > 0 }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(displayName(row.food)).lineLimit(1)
+                    if !row.label.isEmpty { Text(store.tr(row.label)).font(.nutriSans(12)).foregroundStyle(palette.text3) }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                Button { removeIngredient(row.id) } label: { NutriIcon("trash-2", size: 16).foregroundStyle(palette.danger).padding(4) }
+                    .buttonStyle(.plain).accessibilityLabel(store.tr("Quitar ingrediente"))
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(store.tr(row.unit == "ml" ? "Mililitros" : row.unit == "fl oz" ? "Fl oz" : row.unit == "oz" ? "Oz" : "Gramos"))
+                        .foregroundStyle(palette.text2)
+                    Spacer(minLength: 0)
+                    if density > 0 {
+                        CatalogUnitToggle(units: useUS ? ["oz", "fl oz"] : ["g", "ml"], current: row.unit, height: 32) {
+                            binding.wrappedValue.changeUnit(to: $0)
+                        }
                     }
-                    let portions = row.food.array("portions").compactMap(\.object).map { $0.text("name") }
-                    ForEach(Array(Set(portions)).sorted(), id: \.self) { Text($0).tag("portion:" + $0) }
-                }.labelsHidden().frame(maxWidth: 130)
-                let portions = row.food.array("portions").compactMap(\.object).filter { ($0.number("grams") ?? 0) > 0 }
+                }
+                TextField("", text: ingredientAmount(binding)).font(.nutriMono(14)).nutriInput().accessibilityLabel(store.tr("Cantidad"))
+                if let grams = row.grams, alt || row.unit == "oz" {
+                    Text("≈ \(numberText(grams, digits: 1)) g" + (alt ? " (\(store.tr("densidad")) \(draftNumber(density)) g/ml)" : ""))
+                        .font(.nutriMono(12)).foregroundStyle(palette.text3)
+                }
                 if !portions.isEmpty {
-                    Menu(store.tr("Añadir porción"), systemImage: "plus.circle") {
+                    NutriFlow(spacing: 8) {
                         ForEach(portions.indices, id: \.self) { index in
-                            if let grams = portions[index].number("grams") {
-                                Button(portions[index].text("name")) { binding.wrappedValue.addPortion(grams) }
+                            let portion = portions[index]
+                            if let grams = portion.number("grams") {
+                                Button("+ " + portion.text("name") + " (" + (useUS ? "\(numberText(grams / Domain.gramsPerOunce, digits: 1)) oz" : "\(numberText(grams)) g") + ")") {
+                                    binding.wrappedValue.addPortion(grams)
+                                }.buttonStyle(NutriButtonStyle(.secondary, height: 36, radius: 18))
                             }
                         }
-                    }.labelStyle(.iconOnly)
-                }
-                Button(store.tr("Quitar ingrediente"), systemImage: "minus.circle", role: .destructive) {
-                    guard let index = draft.ingredients.firstIndex(where: { $0.id == row.id }) else { return }
-                    draft.ingredients.remove(at: index)
-                    store.undo(store.tr("Ingrediente quitado")) {
-                        draft.ingredients.insert(row, at: min(index, draft.ingredients.count))
-                    }
-                }.labelStyle(.iconOnly).buttonStyle(.borderless)
-            }
-            if row.staged {
-                DisclosureGroup(store.tr("Revisar alimento nuevo")) {
-                    TextField(store.tr("Nombre"), text: foodText(binding, "name"))
-                    TextField(store.tr("Marca"), text: foodText(binding, "brand"))
-                    ForEach(nutritionMacros, id: \.key) { field in
-                        TextField("\(store.tr(field.label)) (\(field.unit)/100 g)", text: foodNumber(binding, field.key))
-                    }
-                    if !row.food.text("source").isEmpty {
-                        LabeledContent(store.tr("Fuente"), value: row.food.text("source"))
-                    }
-                    TextField(store.tr("Densidad (g/ml)"), text: foodNumber(binding, "density_g_ml"))
-                    DisclosureGroup(store.tr("Micronutrientes")) {
-                        ForEach(Domain.micros.filter { $0.key != "agua_ml" }, id: \.key) { field in
-                            TextField("\(store.tr(field.label)) (\(field.unit))", text: foodNumber(binding, field.key, micro: true))
-                        }
-                    }
-                    ForEach(Domain.foodWarnings(row.food), id: \.self) { warning in
-                        Label(store.tr(warning), systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
-                    }
-                    HStack {
-                        Button(store.tr("Buscar catálogo")) { choice = row.id; query = row.food.text("name") }
-                        Button(store.tr("Buscar USDA")) {
-                            fdcQuery = row.usdaQuery.isEmpty ? row.food.text("name") : row.usdaQuery
-                            fdcRows = []
-                            fdcError = ""
-                            fdcID = row.id
-                        }
-                        Button(store.tr("Guardar alimento")) { perform { try await persistIngredient(row.id) } }
-                    }
+                    }.padding(.top, 4)
                 }
             }
-            if let grams = row.grams, row.unit != "g" {
-                Text("\(numberText(grams)) g").foregroundStyle(.secondary).font(.caption)
-            } else if !row.amount.isEmpty && row.grams == nil {
-                Text(store.tr("Cantidad inválida o falta densidad")).foregroundStyle(.red).font(.caption)
-            }
-        }.padding(.vertical, 3)
+        }.padding(.horizontal, 12).padding(.vertical, 8).nutriCard(radius: 12, fill: palette.surface2)
     }
+
+    private func ingredientAmount(_ binding: Binding<RecipeIngredient>) -> Binding<String> {
+        Binding(get: { binding.wrappedValue.amount }, set: {
+            binding.wrappedValue.canonicalGrams = nil
+            binding.wrappedValue.amount = $0
+        })
+    }
+
+    private func stagedIngredient(_ binding: Binding<RecipeIngredient>) -> some View {
+        let row = binding.wrappedValue
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                TextField(store.tr("Nombre del alimento"), text: foodText(binding, "name"))
+                    .nutriInput().background(palette.surface3, in: RoundedRectangle(cornerRadius: 12))
+                TextField(weightUnit, text: ingredientAmount(binding)).font(.nutriMono(14)).nutriInput().frame(width: 54)
+                    .accessibilityLabel(store.tr("Cantidad"))
+                Button { perform { try await persistIngredient(row.id) } } label: {
+                    NutriIcon("save", size: 16).foregroundStyle(palette.text2).padding(3)
+                }.buttonStyle(.plain).disabled(cleanText(row.food.text("name")).isEmpty)
+                    .help(store.tr("Guardar alimento")).accessibilityLabel(store.tr("Guardar") + " " + row.food.text("name"))
+                Button { removeIngredient(row.id) } label: { NutriIcon("x", size: 16).foregroundStyle(palette.danger) }
+                    .buttonStyle(.plain).accessibilityLabel(store.tr("Quitar") + " " + row.food.text("name"))
+            }
+            Text(store.tr(row.label.isEmpty ? "IA" : row.label) + " · " + store.tr("sin guardar") + " · " + store.tr("valores por 100 g"))
+                .font(.nutriSans(12)).foregroundStyle(palette.text3)
+            HStack(spacing: 8) {
+                ForEach(macroStats, id: \.key) { field in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(store.tr(field.label)).font(.nutriSans(10)).foregroundStyle(palette.text3)
+                        TextField("—", text: foodNumber(binding, field.key)).font(.nutriMono(14)).nutriInput()
+                            .accessibilityLabel(store.tr(field.label))
+                    }
+                }
+            }
+            RecipeStagedSources(foods: foods, usdaQuery: row.usdaQuery,
+                catalog: { swapToCatalog(row.id, food: $0) }, usda: { detail in swapToUSDA(row.id, food: detail) })
+        }.padding(12).nutriCard(radius: 12, fill: palette.surface2)
+            .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(palette.warn).allowsHitTesting(false) }
+    }
+
+    private func removeIngredient(_ id: UUID) { draft.ingredients.removeAll { $0.id == id } }
 
     private var pasteEditor: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(store.tr("Una línea por ingrediente. Ejemplo 120 g arroz.")).foregroundStyle(.secondary)
-            TextEditor(text: $paste).frame(minHeight: 85)
-                .accessibilityLabel(store.tr("Ingredientes para importar"))
-            Button(store.tr("Añadir ingredientes")) { importIngredients() }.disabled(paste.isEmpty || loadingCatalog)
-            if !pasteNotice.isEmpty { Text(pasteNotice).foregroundStyle(.secondary) }
-        }
+        VStack(alignment: .leading, spacing: 8) {
+            Button { showPaste.toggle() } label: {
+                HStack(spacing: 4) {
+                    NutriIcon(showPaste ? "chevron-down" : "chevron-right", size: 12)
+                    Text(store.tr("Pegar lista de ingredientes"))
+                }.frame(minHeight: 24)
+            }.buttonStyle(.plain).foregroundStyle(palette.text2)
+            if showPaste {
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $paste).scrollContentBackground(.hidden).font(.nutriMono(14)).padding(5).frame(height: 86)
+                        .accessibilityLabel(store.tr("Pegar lista de ingredientes"))
+                    if paste.isEmpty {
+                        Text("200 g arroz\n15 ml aceite de oliva\npechuga de pollo, 120").font(.nutriMono(14))
+                            .foregroundStyle(palette.text3).padding(8).allowsHitTesting(false)
+                    }
+                }.nutriCard(radius: 12, fill: palette.surface2)
+                Button(action: importIngredients) { Text(store.tr("Añadir del texto")).frame(maxWidth: .infinity) }
+                    .buttonStyle(NutriButtonStyle(.secondary, height: 40)).disabled(cleanText(paste).isEmpty || loadingCatalog)
+                if !pasteNotice.isEmpty { Text(pasteNotice).font(.nutriSans(12)).foregroundStyle(palette.text3) }
+            }
+        }.padding(.horizontal, 12).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
+            .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(palette.border).allowsHitTesting(false) }
     }
 
-    private var portions: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            ForEach($draft.portions) { $portion in
-                HStack {
-                    TextField(store.tr("Nombre de porción"), text: $portion.name)
-                    TextField(weightUnit, text: $portion.grams).frame(width: 100).accessibilityLabel(store.tr("Peso de porción"))
-                    Button(store.tr("Quitar porción"), systemImage: "minus.circle", role: .destructive) {
-                        draft.portions.removeAll { $0.id == portion.id }
-                    }.labelStyle(.iconOnly).buttonStyle(.borderless)
-                }
-            }
-            Button(store.tr("Añadir porción"), systemImage: "plus.circle") { draft.portions.append(RecipePortion()) }
-        }
+    private var macroStats: [(key: String, label: String, color: Color)] {
+        [("kcal", "Kcal", palette.kcal), ("protein_g", "Prot", palette.protein), ("carbs_g", "Carbs", palette.carbs), ("fat_g", "Grasa", palette.fat)]
     }
 
-    @ViewBuilder
-    private var preview: some View {
-        if let row = perHundred {
-            HStack {
-                ForEach(nutritionMacros, id: \.key) { field in
-                    VStack(alignment: .leading) {
-                        Text(store.tr(field.label)).font(.caption).foregroundStyle(.secondary)
-                        Text("\(numberText(row.number(field.key))) \(field.unit)").monospacedDigit()
-                    }.frame(maxWidth: .infinity, alignment: .leading)
+    private func stickyPreview(_ row: Record) -> some View {
+        let available = recipeColumnsHeight
+        return preview(row).frame(maxWidth: .infinity, alignment: .leading)
+            .visualEffect { content, geometry in
+                let y = geometry.frame(in: .named("recipe-editor-scroll")).minY
+                let travel = max(0, available - geometry.size.height)
+                return content.offset(y: max(0, min(travel, 24 - y)))
+            }.zIndex(1)
+    }
+
+    private func preview(_ row: Record) -> some View {
+        let favorites = Set(store.prefs.array("fav_micros").compactMap(\.string)).union(Domain.micros.prefix(8).map(\.key))
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(store.tr("Preview por 100 g")).foregroundStyle(palette.text3)
+            HStack(spacing: 8) {
+                ForEach(macroStats, id: \.key) { stat in
+                    VStack(spacing: 0) {
+                        Text(numberText(row.number(stat.key))).font(.nutriMono(18)).foregroundStyle(stat.color).lineLimit(1).minimumScaleFactor(0.7)
+                        Text(store.tr(stat.label)).font(.nutriSans(12)).foregroundStyle(palette.text3).lineLimit(1)
+                    }.frame(maxWidth: .infinity)
                 }
-            }
-            if (row.number("kcal") ?? 0) > 900 {
-                Label(store.tr("Densidad energética superior a 900 kcal / 100 g. Revisa pesos."), systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
-            }
-            if let massDifference, massDifference > 0.05, let cookedWeight {
-                HStack {
-                    Text(store.tr("El peso cocido difiere de la suma de ingredientes.")).foregroundStyle(massDifference > 0.2 ? .orange : .secondary)
-                    Button(store.tr("Ajustar cantidades al peso cocido")) {
-                        let factor = cookedWeight / ingredientWeight
-                        for index in draft.ingredients.indices {
-                            if let grams = draft.ingredients[index].grams {
-                                draft.ingredients[index].amount = draftNumber((grams * factor).rounded())
-                                draft.ingredients[index].unit = "g"
-                            }
-                        }
+            }.padding(.bottom, desktop ? 4 : 0)
+            if desktop {
+                ForEach(Domain.micros.filter { $0.key != "agua_ml" && favorites.contains($0.key) }) { micro in
+                    Rectangle().fill(palette.border).frame(height: 1)
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(store.tr(micro.label)).foregroundStyle(palette.text2)
+                        Spacer(minLength: 4)
+                        if let value = row.object("micros").number(micro.key) {
+                            Text("\(numberText(value)) \(micro.unit)" + (Domain.coverage(row, micro.key) == .partial ? " (" + store.tr("parcial") + ")" : ""))
+                                .font(.nutriMono(14)).multilineTextAlignment(.trailing)
+                        } else { Text(store.tr("Sin dato")).font(.nutriMono(14)).foregroundStyle(palette.text3) }
                     }
                 }
             }
-            if let estimatedKcal, estimatedKcal >= 50, let cookedWeight, let kcal = row.number("kcal") {
-                let total = kcal * cookedWeight / 100
-                if total >= 50 && abs(total - estimatedKcal) / max(total, estimatedKcal) > 0.25 {
-                    Text(store.tr("La estimación de IA y la suma de ingredientes difieren más de 25%.")).foregroundStyle(.orange)
-                }
+        }.padding(16).nutriCard()
+    }
+
+    private func countText(_ text: String) -> String {
+        store.tr(text).replacingOccurrences(of: "%n2", with: staged.count == 1 ? "" : "n")
+            .replacingOccurrences(of: "%n", with: String(staged.count)).replacingOccurrences(of: "%s", with: staged.count == 1 ? "" : "s")
+    }
+
+    private var recipeWarnings: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !staged.isEmpty {
+                Text(countText("%n alimento%s nuevo%s sin guardar — se crea%n2 al guardar la receta, o guárdalo con ⤓.")).foregroundStyle(palette.text3)
             }
-            DisclosureGroup(store.tr("Micronutrientes")) {
-                ForEach(Domain.micros.filter { $0.key != "agua_ml" }, id: \.key) { field in
-                    let coverage = Domain.coverage(row, field.key)
-                    LabeledContent(store.tr(field.label)) {
-                        Text(previewText(row, key: field.key, unit: field.unit, coverage: coverage))
-                            .foregroundStyle(coverage == .partial ? .orange : .secondary)
+            if massDifference > 0.05, let cookedWeight {
+                let factor = Domain.round(cookedWeight / ingredientWeight, 2)
+                if massDifference > 0.2 {
+                    Text("⚠ " + store.tr("La suma de ingredientes (%a) no cuadra con el total (%b).")
+                        .replacingOccurrences(of: "%a", with: showGrams(ingredientWeight)).replacingOccurrences(of: "%b", with: showGrams(cookedWeight)))
+                        .foregroundStyle(palette.warn)
+                }
+                Button(store.tr("Ajustar ingredientes al total (×%n)").replacingOccurrences(of: "%n", with: numberText(factor))) {
+                    for index in draft.ingredients.indices {
+                        if let grams = draft.ingredients[index].grams { draft.ingredients[index].setGrams(Domain.round(grams * factor, 0)) }
+                    }
+                }.buttonStyle(NutriButtonStyle(.secondary, height: 44))
+            }
+            if let kcal = perHundred?.number("kcal") {
+                if staged.isEmpty, let estimatedKcal, estimatedKcal >= 50, let cookedWeight {
+                    let total = Domain.round(kcal * cookedWeight / 100, 0)
+                    if total >= 50 && abs(total - estimatedKcal) / max(total, estimatedKcal) > 0.25 {
+                        Text("⚠ " + store.tr("Las kcal calculadas (%a) difieren de la estimación del platillo (%b) — revisa cantidades.")
+                            .replacingOccurrences(of: "%a", with: numberText(total)).replacingOccurrences(of: "%b", with: numberText(estimatedKcal)))
+                            .foregroundStyle(palette.warn)
                     }
                 }
+                if kcal > 900 { Text("⚠ " + store.tr("Densidad calórica fuera de rango físico.")).foregroundStyle(palette.warn) }
             }
-        } else {
-            Text(store.tr("Añade ingredientes con cantidades válidas para calcular.")).foregroundStyle(.secondary)
         }
+    }
+
+    private var confirmCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(countText("Se crearán %n alimento%s nuevo%s en tu catálogo:")).foregroundStyle(palette.text2)
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(staged) { Text("• " + $0.food.text("name")) }
+            }.padding(.leading, 8)
+            HStack(spacing: 8) {
+                Button(store.tr("Confirmar y guardar")) { perform(save) }.buttonStyle(NutriButtonStyle(.primary, height: 44))
+                Button(store.tr("Cancelar")) { confirm = false }.buttonStyle(NutriButtonStyle(.secondary, height: 44))
+            }
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).nutriCard(fill: palette.surface2)
     }
 
     private var aiEditor: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            TextField(store.tr("Describe el platillo y su cantidad"), text: $aiText, axis: .vertical).lineLimit(2...5)
-            HStack {
-                Button(store.tr("Añadir hasta dos fotos…")) { attach = true }
-                if !aiPhotos.isEmpty {
-                    Text("\(aiPhotos.count) \(store.tr("fotos"))")
-                    Button(store.tr("Quitar fotos")) { aiPhotos = [] }
-                }
-            }
-            if !confidence.isEmpty { Text("\(store.tr("Confianza de IA")) · \(store.tr(confidence))").foregroundStyle(.secondary) }
+        CatalogAIDataCard(text: $aiText, images: $aiPhotos, loading: aiLoading, error: aiError,
+            placeholder: store.tr("Describe el platillo o bebida (p. ej. «Caramel Macchiato 350ml») o adjunta una foto"),
+            hint: store.tr("Gemini descompone en ingredientes con nutrientes de respaldo (prefill revisable). Cada alimento nuevo se edita y guarda por separado; prioridad: catálogo › USDA › IA."),
+            submit: submitAI) {
             if !dupes.isEmpty {
-                Text(store.tr("Recetas similares")).font(.headline)
-                ForEach(dupes.indices, id: \.self) { index in
-                    Button(dupes[index].text("name")) {
-                        let row = dupes[index]
-                        Task { await onOpen(row) }
+                Text(store.tr("Ya la tienes:")).font(.nutriSans(12)).foregroundStyle(palette.text2)
+                NutriFlow(spacing: 8) {
+                    ForEach(dupes.map(RecipeListItem.init)) { item in
+                        Button(item.row.text("name")) { Task { await onOpen(item.row) } }
+                            .buttonStyle(NutriButtonStyle(.secondary, height: 44, radius: 22))
                     }
+                    Button(store.tr("Continuar de todos modos")) { runEstimate() }
+                        .buttonStyle(NutriButtonStyle(.secondary, height: 44, radius: 22))
                 }
             }
-            Button(store.tr(dupes.isEmpty ? "Obtener ingredientes" : "Estimar una receta nueva")) {
-                perform {
-                    if dupes.isEmpty {
-                        let key = CSV.normalize(aiText.replacingOccurrences(of: #"(?i)\b\d+(?:[.,]\d+)?\s*(?:ml|kg|gr|g|l)\b"#, with: "", options: .regularExpression))
-                        dupes = key.isEmpty ? [] : Array(recipes.filter { CSV.normalize($0.text("name")).contains(key) }.prefix(5))
-                        if !dupes.isEmpty { return }
-                    }
-                    try await estimateRecipe()
-                    dupes = []
-                }
-            }.disabled((cleanText(aiText).isEmpty && aiPhotos.isEmpty) || loadingCatalog)
+            if aiWeightWarning && (decimal(draft.cooked) ?? 0) <= 0 { Text(store.tr("Falta densidad para convertir el volumen. Introduce el peso cocido.")).font(.nutriSans(12)).foregroundStyle(palette.warn) }
+            if let confidence {
+                Text("≈ " + store.tr("Ingredientes por IA (confianza %n) — revisa cantidades y nutrientes; guarda cada alimento nuevo.")
+                    .replacingOccurrences(of: "%n", with: confidence.isEmpty ? "—" : store.tr(confidence)))
+                    .font(.nutriSans(12)).foregroundStyle(palette.text2)
+            }
         }
     }
 
-    private var fdcSheet: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text(store.tr("Buscar USDA")).font(.title2.bold())
-            HStack {
-                TextField(store.tr("Nombre en inglés"), text: $fdcQuery)
-                    .onSubmit { Task { await lookupFDC() } }
-                Button(store.tr("Buscar")) { Task { await lookupFDC() } }.disabled(fdcBusy || cleanText(fdcQuery).isEmpty)
-            }
-            if fdcBusy { ProgressView().controlSize(.small) }
-            if !fdcError.isEmpty { Text(fdcError).foregroundStyle(.red) }
-            List(fdcRows.indices, id: \.self) { index in
-                let row = fdcRows[index]
-                Button(row.text("description")) { Task { await chooseFDC(row) } }.disabled(fdcBusy)
-            }.frame(minHeight: 180)
-            Button(store.tr("Cancelar")) { fdcID = nil }.keyboardShortcut(.cancelAction).disabled(fdcBusy)
-        }.padding(18).frame(width: 460).interactiveDismissDisabled(fdcBusy)
-        .task { if !cleanText(fdcQuery).isEmpty { await lookupFDC() } }
+    private func submitAI() {
+        guard !aiLoading else { return }
+        aiError = ""; confidence = nil; estimatedKcal = nil; dupes = []
+        let text = cleanText(aiText)
+        let key = text.firstMatch(of: recipeAmountPattern).map { match in cleanText(text.replacingOccurrences(of: String(match.0), with: "", range: match.range)) } ?? text
+        if key.isEmpty { runEstimate(); return }
+        aiLoading = true
+        Task {
+            let local = Array(recipes.filter { $0.text("name").localizedCaseInsensitiveContains(key) }.prefix(5))
+            if !store.demoActive && !store.offline {
+                dupes = (try? await searchCatalogNames(store: store, table: "recipes", term: key, limit: 5)) ?? local
+            } else { dupes = local }
+            aiLoading = false
+            if dupes.isEmpty { runEstimate() }
+        }
+    }
+
+    private func runEstimate() {
+        guard !aiLoading else { return }
+        aiLoading = true; aiError = ""; dupes = []
+        Task {
+            defer { aiLoading = false }
+            do {
+                if loadingCatalog { await loadCatalog() }
+                try await estimateRecipe()
+            } catch { aiError = error.localizedDescription }
+        }
+    }
+
+    private func showGrams(_ grams: Double) -> String {
+        useUS ? "\(numberText(grams / Domain.gramsPerOunce, digits: 1)) oz" : "\(numberText(grams, digits: 1)) g"
     }
 
     private func displayName(_ row: Record) -> String {
-        let name = row.text("name").isEmpty ? store.tr("Alimento sin nombre") : row.text("name")
-        let brand = row.text("brand")
-        return brand.isEmpty ? name : name + " · " + brand
-    }
-
-    private func previewText(_ row: Record, key: String, unit: String, coverage: Domain.Coverage) -> String {
-        guard let value = row.object("micros").number(key) else { return store.tr("Sin datos") }
-        return "\(numberText(value, digits: 3)) \(unit)" + (coverage == .partial ? " · " + store.tr("Parcial") : "")
+        row.text("name").isEmpty ? store.tr("Alimento sin nombre") : row.text("name")
     }
 
     private func perform(_ action: @escaping () async throws -> Void) {
         Task {
             guard !busy else { return }
-            busy = true
-            error = ""
+            busy = true; error = ""
             defer { busy = false }
             do { try await action() }
             catch { self.error = error.localizedDescription }
         }
     }
-
-    private func toDisplay(_ grams: Double) -> Double { unitUS ? grams / Domain.gramsPerOunce : grams }
-
-    private func inGrams(_ amount: Double) -> Double { unitUS ? amount * Domain.gramsPerOunce : amount }
 
     private func loadCatalog() async {
         defer { loadingCatalog = false }
@@ -604,74 +771,53 @@ private struct RecipeEditor: View {
         catch { if !Task.isCancelled { self.error = error.localizedDescription } }
     }
 
-    private func select(_ food: Record) {
-        if let choice, let index = draft.ingredients.firstIndex(where: { $0.id == choice }) {
-            let alias = draft.ingredients[index].aiOrigin
-            let current = draft.ingredients[index].grams
-            let oldUnit = draft.ingredients[index].unit
-            draft.ingredients[index].food = food
-            draft.ingredients[index].staged = false
-            draft.ingredients[index].label = "Catálogo"
-            if oldUnit.hasPrefix("portion:") || (["ml", "fl oz"].contains(oldUnit) && (food.number("density_g_ml") ?? 0) <= 0) {
-                draft.ingredients[index].amount = draftNumber(current.map(toDisplay))
-                draft.ingredients[index].unit = weightUnit
+    private func swapToCatalog(_ id: UUID, food: Record) {
+        guard let index = draft.ingredients.firstIndex(where: { $0.id == id }) else { return }
+        let old = draft.ingredients.remove(at: index)
+        var item = RecipeIngredient(food: food, amount: "", unit: weightUnit, label: "catálogo", fromAI: old.fromAI)
+        item.setGrams(old.grams)
+        appendConsolidated(item, to: &draft.ingredients)
+        let alias = cleanText(old.aiOrigin).lowercased()
+        if !alias.isEmpty {
+            var aliases = store.prefs.object("ingredient_aliases")
+            aliases[alias] = .string(food.text("id"))
+            Task {
+                do { try await store.patchPrefs(["ingredient_aliases": .object(aliases)]) }
+                catch { store.report(error) }
             }
-            if !alias.isEmpty {
-                var aliases = store.prefs.object("ingredient_aliases")
-                aliases[cleanText(alias).lowercased()] = .string(food.text("id"))
-                Task {
-                    do { try await store.patchPrefs(["ingredient_aliases": .object(aliases)]) }
-                    catch { store.report(error) }
-                }
-            }
-        } else {
-            draft.ingredients.append(RecipeIngredient(food: food, amount: "", unit: weightUnit))
         }
-        choice = nil
-        query = ""
+    }
+
+    private func swapToUSDA(_ id: UUID, food: Record) {
+        guard let index = draft.ingredients.firstIndex(where: { $0.id == id }) else { return }
+        var detail = food
+        detail["id"] = .string(UUID().uuidString.lowercased())
+        let name = draft.ingredients[index].aiOrigin
+        if !name.isEmpty { detail["name"] = .string(name) }
+        draft.ingredients[index].food = detail
+    }
+
+    private func appendConsolidated(_ item: RecipeIngredient, to rows: inout [RecipeIngredient]) {
+        guard let index = rows.firstIndex(where: { !$0.staged && $0.fromAI == item.fromAI && $0.food.text("id") == item.food.text("id") }) else {
+            rows.append(item); return
+        }
+        let sum = (rows[index].grams ?? 0) + (item.grams ?? 0)
+        rows[index].setGrams(sum > 0 ? sum : nil)
     }
 
     private func importIngredients() {
-        var unresolved: [String] = []
-        var count = 0
-        for line in paste.split(whereSeparator: \.isNewline).map(String.init).map(cleanText) where !line.isEmpty {
-            guard let parsed = parseRecipeLine(line, catalog: foods) else { unresolved.append(line); continue }
-            draft.ingredients.append(parsed)
-            count += 1
+        let lines = paste.split(whereSeparator: \.isNewline).map(String.init).map(cleanText).filter { !$0.isEmpty }
+        let parsed = lines.compactMap { parseRecipeLine($0, catalog: foods) }
+        for var row in parsed {
+            let grams = row.grams
+            row.unit = weightUnit
+            row.setGrams(grams)
+            appendConsolidated(row, to: &draft.ingredients)
         }
-        paste = unresolved.joined(separator: "\n")
-        pasteNotice = "\(count) \(store.tr("ingredientes añadidos"))"
-        if !unresolved.isEmpty { pasteNotice += " · \(unresolved.count) \(store.tr("líneas ambiguas o sin cantidad válida"))" }
-    }
-
-    private func lookupFDC() async {
-        guard !fdcBusy else { return }
-        fdcBusy = true
-        fdcError = ""
-        defer { fdcBusy = false }
-        do {
-            fdcRows = try await searchFDC(store: store, query: fdcQuery)
-            if fdcRows.isEmpty { fdcError = store.tr("Sin coincidencias") }
-        } catch { fdcError = error.localizedDescription }
-    }
-
-    private func chooseFDC(_ row: Record) async {
-        guard let id = row.number("fdcId"), let selected = fdcID else { return }
-        fdcBusy = true
-        defer { fdcBusy = false }
-        do {
-            var food = try await fetchFDC(store: store, id: Int(id))
-            guard let index = draft.ingredients.firstIndex(where: { $0.id == selected }) else { return }
-            food["id"] = .string(UUID().uuidString.lowercased())
-            if store.lang != "en" {
-                let oldName = draft.ingredients[index].food.text("name")
-                if !oldName.isEmpty { food["name"] = .string(oldName) }
-            }
-            draft.ingredients[index].food = food
-            draft.ingredients[index].staged = true
-            draft.ingredients[index].label = "USDA"
-            fdcID = nil
-        } catch { fdcError = error.localizedDescription }
+        paste = ""
+        let missed = lines.count - parsed.count
+        pasteNotice = store.tr(missed > 0 ? "%n añadidos · %m sin coincidencia (agrégalos arriba)" : "%n añadidos")
+            .replacingOccurrences(of: "%n", with: String(parsed.count)).replacingOccurrences(of: "%m", with: String(missed))
     }
 
     private func foodText(_ binding: Binding<RecipeIngredient>, _ key: String) -> Binding<String> {
@@ -679,78 +825,53 @@ private struct RecipeEditor: View {
                 set: { binding.wrappedValue.food[key] = .string($0) })
     }
 
-    private func foodNumber(_ binding: Binding<RecipeIngredient>, _ key: String, micro: Bool = false) -> Binding<String> {
+    private func foodNumber(_ binding: Binding<RecipeIngredient>, _ key: String) -> Binding<String> {
         Binding(get: {
-            let row = micro ? binding.wrappedValue.food.object("micros") : binding.wrappedValue.food
+            let row = binding.wrappedValue.food
             return row[key]?.string ?? draftNumber(row.number(key))
-        }, set: { value in
-            if micro {
-                var micros = binding.wrappedValue.food.object("micros")
-                micros[key] = value.isEmpty ? nil : .string(value)
-                binding.wrappedValue.food["micros"] = .object(micros)
-            } else {
-                binding.wrappedValue.food[key] = value.isEmpty ? .null : .string(value)
-            }
-        })
+        }, set: { binding.wrappedValue.food[key] = $0.isEmpty ? .null : .string($0) })
     }
 
     private func estimateRecipe() async throws {
-        let micronutrients = Dictionary(uniqueKeysWithValues: Domain.micros.map { ($0.key, aiSchema("NUMBER", nullable: true)) })
-        var properties = Dictionary(uniqueKeysWithValues: nutritionMacros.map { ($0.key, aiSchema("NUMBER", nullable: true)) })
-        for key in ["name_es", "db_match", "usda_query"] { properties[key] = aiSchema("STRING", nullable: key != "name_es") }
-        properties["grams"] = aiSchema("NUMBER")
-        properties["micros"] = .object(aiObject(micronutrients))
-        let schema = aiObject([
-            "name": aiSchema("STRING"), "confidence": aiSchema("STRING"),
-            "total_weight_g": aiSchema("NUMBER", nullable: true),
-            "kcal_total_estimate": aiSchema("NUMBER", nullable: true),
-            "ingredients": aiArray(.object(aiObject(properties, required: ["name_es", "grams"])))
-        ], required: ["ingredients", "name"])
-        let parts = [["text": JSONValue.string(cleanText(aiText).isEmpty ? "Analiza las imágenes." : aiText)]] + (try aiPhotos.map { try aiImagePart($0) })
-        let names = foods.map { $0.text("name") }.joined(separator: ", ")
-        let units = Domain.micros.map { "\($0.key) (\($0.unit))" }.joined(separator: ", ")
-        let prompt = """
-        Eres un asistente de nutrición para México. El usuario describe un platillo, bebida o receta (texto y/o hasta dos fotos; si hay dos, son del MISMO platillo — combínalas). Descompón en ingredientes con su cantidad en GRAMOS tal como van en la preparación.
-        Prefiere pocos ingredientes compuestos ("leche entera", no "leche + grasa"). Máximo 15.
-        Se te da la lista EXACTA de alimentos del catálogo del usuario. Para cada ingrediente, si uno de esos nombres corresponde claramente al ingrediente, devuelve ese nombre LITERAL en "db_match"; si no hay correspondencia clara, "db_match" = null. Nunca inventes nombres que no estén en la lista.
-        Catálogo del usuario: \(names.isEmpty ? "(vacío)" : names)
-        Para ingredientes genéricos sin match, da "usda_query" (nombre en inglés apto para buscar en USDA FoodData Central); si no aplica, null.
-        Para CADA ingrediente da además sus valores nutricionales por 100 g de porción comestible, como respaldo revisable (base tipo USDA priorizando México). OBLIGATORIOS siempre con tu mejor estimación disponible: kcal, protein_g, carbs_g, fat_g, sodio_mg, potasio_mg, magnesio_mg (null SOLO si es imposible fundarlo, nunca 0 inventado). Resto de micros: solo con dato fiable, si no null. Unidades: kcal en kcal; protein_g/carbs_g/fat_g en gramos; micros: \(units).
-        Si el usuario indica tamaño total (p. ej. "350ml"), conviértelo a gramos con densidad razonable y devuélvelo en "total_weight_g"; si no lo indica, tu mejor estimación del peso total preparado; null si imposible.
-        "kcal_total_estimate": tu estimación gruesa de kcal TOTALES del platillo completo (solo para verificación cruzada, jamás se persiste); null si no puedes fundarla.
-        "name": nombre corto de la receta, \(store.lang == "en" ? "in English" : "en español"). "confidence": "alta"|"media"|"baja".
-        """
-        let result = try await generateNutritionJSON(store: store, prompt: prompt, parts: parts, schema: schema)
+        let result = try await estimateCatalogAI(store: store, recipe: true, text: aiText, images: aiPhotos, catalogNames: foods.map { $0.text("name") })
         let aliases = store.prefs.object("ingredient_aliases")
         let parsed: [RecipeIngredient] = result.array("ingredients").prefix(15).compactMap { item in
             guard var food = item.object, !cleanText(food.text("name_es")).isEmpty else { return nil }
             let name = cleanText(food.text("name_es"))
             let aliasID = aliases.text(name.lowercased())
             let alias = foods.first { $0.text("id") == aliasID && !aliasID.isEmpty }
-            let matches = foods.filter { CSV.normalize($0.text("name")) == CSV.normalize(food.text("db_match")) && !food.text("db_match").isEmpty }
+            let matches = foods.filter { cleanText($0.text("name")).lowercased() == cleanText(food.text("db_match")).lowercased() && !food.text("db_match").isEmpty }
             let match = alias ?? (matches.count == 1 ? matches.first : nil)
-            let grams = food.number("grams").flatMap { $0 > 0 && $0 <= 5000 ? $0 : nil }
+            let grams = food.number("grams").flatMap { $0 > 0 && $0 <= 2000 ? $0 : nil }
             let usda = food.text("usda_query")
             if let match {
-                return RecipeIngredient(food: match, amount: draftNumber(grams), label: alias == nil ? "Catálogo" : "Alias", aiOrigin: name, usdaQuery: usda, fromAI: true)
+                return RecipeIngredient(food: match, amount: draftNumber(grams), label: alias == nil ? "catálogo" : "alias", aiOrigin: name, usdaQuery: usda, fromAI: true)
             }
             food["id"] = .string(UUID().uuidString.lowercased())
             food["name"] = .string(name)
             food["source"] = .string("gemini")
             return RecipeIngredient(food: food, amount: draftNumber(grams), label: "IA", aiOrigin: name, usdaQuery: usda, fromAI: true, staged: true)
         }
-        guard !parsed.isEmpty else { throw FeatureError("La IA no identificó ingredientes.") }
-        draft.ingredients = draft.ingredients.filter { !$0.fromAI } + parsed
+        var ingredients = draft.ingredients.filter { !$0.fromAI }
+        for var row in parsed where !row.staged {
+            let grams = row.grams; row.unit = weightUnit; row.setGrams(grams)
+            appendConsolidated(row, to: &ingredients)
+        }
+        for var row in parsed where row.staged {
+            let grams = row.grams; row.unit = weightUnit; row.setGrams(grams)
+            ingredients.append(row)
+        }
+        draft.ingredients = ingredients
         if cleanText(draft.name).isEmpty { draft.name = result.text("name") }
-        if let explicit = explicitRecipeAmount(aiText), explicit.unit == "g" {
-            draft.cooked = draftNumber(toDisplay(explicit.value))
-        } else if let weight = result.number("total_weight_g"), weight > 0 {
-            if let explicit = explicitRecipeAmount(aiText), explicit.unit == "ml" {
-                let density = weight / explicit.value
-                if (0.5...2).contains(density) { draft.cooked = draftNumber(toDisplay(weight)) }
-            } else {
-                draft.cooked = draftNumber(toDisplay(weight))
-            }
+        let explicit = explicitRecipeAmount(aiText)
+        if let weight = recipeCookedEstimate(explicit, estimate: result.number("total_weight_g")) {
+            aiWeightWarning = false
+            draft.cooked = draftNumber(weight)
+            typedCooked = nil
+        } else if explicit?.unit == "ml" {
+            draft.cooked = ""
+            typedCooked = nil
+            aiWeightWarning = true
         }
         draft.source = "gemini"
         confidence = result.text("confidence")
@@ -774,7 +895,7 @@ private struct RecipeEditor: View {
         body["density_g_ml"] = try featureNumber(density, label: "Densidad", minimum: 0.000001).map(JSONValue.number) ?? .null
         var micros: Record = [:]
         let raw = food.object("micros")
-        for field in Domain.micros where field.key != "agua_ml" {
+        for field in Domain.micros {
             let input = raw[field.key]?.string ?? draftNumber(raw.number(field.key))
             micros[field.key] = try featureNumber(input, label: field.label).map(JSONValue.number)
         }
@@ -802,16 +923,15 @@ private struct RecipeEditor: View {
     private func save() async throws {
         let name = cleanText(draft.name)
         guard !name.isEmpty, !draft.ingredients.isEmpty else { throw FeatureError("Ingresa un nombre y al menos un ingrediente.") }
-        let cooked = try featureNumber(draft.cooked, label: "Peso cocido", minimum: 0.000001).map(inGrams)
-        let portions: [JSONValue] = try draft.portions.compactMap { row in
-            let name = cleanText(row.name)
-            if name.isEmpty, cleanText(row.grams).isEmpty { return nil }
-            guard !name.isEmpty, let grams = try featureNumber(row.grams, label: "Porción", minimum: 0.000001) else {
-                throw FeatureError("Cada porción requiere nombre y peso.")
-            }
-            return .object(["name": .string(name), "grams": .number(inGrams(grams))])
+        let cooked = try featureNumber(draft.cooked, label: "Peso cocido", minimum: 0.000001)
+        if aiWeightWarning && cooked == nil {
+            throw FeatureError(store.tr("Falta densidad para convertir el volumen. Introduce el peso cocido."))
         }
-        guard Set(portions.compactMap { $0.object?.text("name") }).count == portions.count else { throw FeatureError("Hay porciones con el mismo nombre.") }
+        let portions: [JSONValue] = draft.portions.compactMap { row in
+            let name = cleanText(row.name)
+            guard !name.isEmpty, let grams = decimal(row.grams), grams > 0 else { return nil }
+            return .object(["name": .string(name), "grams": .number(grams)])
+        }
         for row in draft.ingredients {
             guard let grams = row.grams, grams.isFinite, grams > 0, !row.food.text("id").isEmpty else {
                 throw FeatureError("Cantidad inválida · \(displayName(row.food))")
@@ -830,7 +950,6 @@ private struct RecipeEditor: View {
         let response = try await store.rpc("save_recipe_atomic", recipePayload(row, items: items))
         guard response.string?.isEmpty == false else { throw FeatureError("El servidor no identificó la receta guardada.") }
         await onSaved()
-        dismiss()
     }
 }
 
@@ -847,15 +966,31 @@ private func explicitRecipeAmount(_ text: String) -> (value: Double, unit: Strin
     }
 }
 
+func recipeCookedEstimate(_ explicit: (value: Double, unit: String)?, estimate: Double?) -> Double? {
+    if let explicit, explicit.value.isFinite, explicit.value > 0 {
+        if explicit.unit == "g" { return explicit.value }
+        let implied = (estimate ?? 0) / explicit.value
+        guard implied > 0.5, implied < 2 else { return nil }
+        let density = foodDensityPresets.first { abs($0.1 - implied) <= 0.015 }?.1 ?? implied
+        let grams = Domain.round(explicit.value * density, 0)
+        return grams.isFinite && grams > 0 ? grams : nil
+    }
+    return estimate.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+}
+
 func parseRecipeLine(_ line: String, catalog: [Record]) -> RecipeIngredient? {
     let explicit = line.firstMatch(of: recipeAmountPattern)
     let plain = line.matches(of: #/([+-]?[0-9]+(?:[.,][0-9]+)?)\b/#).last
     let range = explicit?.range ?? plain?.range
     guard let range else { return nil }
-    if explicit == nil,
-       line[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines).first?.isLetter == true,
-       !line[..<range.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        return nil
+    let prefix = String(line[..<range.lowerBound])
+    let suffix = String(line[range.upperBound...])
+    guard prefix.range(of: #"\d\s*/\s*$"#, options: .regularExpression) == nil,
+          suffix.range(of: #"^\s*/\s*\d"#, options: .regularExpression) == nil else { return nil }
+    if explicit == nil {
+        let rest = cleanText(suffix)
+        let unsupported = rest.range(of: #"(?i)^(mg|mcg|µg|μg|ug|oz|fl\s*oz|lb|lbs|tsp|tbsp|cups?|tazas?|cucharadas?|cucharaditas?|piezas?|pieces?)\b"#, options: .regularExpression) != nil
+        if unsupported || (!cleanText(prefix).isEmpty && rest.first?.isLetter == true) { return nil }
     }
     let amount = explicitRecipeAmount(line) ?? (plain.flatMap { Double($0.1.replacingOccurrences(of: ",", with: ".")) }.map { (value: $0, unit: "g") })
     guard let amount, amount.value.isFinite, amount.value > 0 else { return nil }
@@ -864,10 +999,108 @@ func parseRecipeLine(_ line: String, catalog: [Record]) -> RecipeIngredient? {
     let term = CSV.normalize(name.replacingOccurrences(of: #"[,;:\t]"#, with: " ", options: .regularExpression))
     guard !term.isEmpty else { return nil }
     let exact = catalog.filter { CSV.normalize($0.text("name")) == term }
-    let prefix = catalog.filter { let name = CSV.normalize($0.text("name")); return !name.isEmpty && (name.hasPrefix(term) || term.hasPrefix(name)) }
+    let prefixMatches = catalog.filter { let name = CSV.normalize($0.text("name")); return !name.isEmpty && (name.hasPrefix(term) || term.hasPrefix(name)) }
     let contains = catalog.filter { let name = CSV.normalize($0.text("name")); return !name.isEmpty && (name.contains(term) || term.contains(name)) }
-    let chosen = !exact.isEmpty ? exact : !prefix.isEmpty ? prefix : contains
+    let chosen = !exact.isEmpty ? exact : !prefixMatches.isEmpty ? prefixMatches : contains
     guard chosen.count == 1, let food = chosen.first,
-          Domain.grams(amount.value, unit: amount.unit, density: food.number("density_g_ml")) != nil else { return nil }
+          let grams = Domain.grams(amount.value, unit: amount.unit, density: food.number("density_g_ml")),
+          grams.isFinite else { return nil }
     return RecipeIngredient(food: food, amount: draftNumber(amount.value), unit: amount.unit)
+}
+
+private struct RecipeCatalogHits: View {
+    @Environment(\.nutriPalette) private var palette
+    let foods: [Record]
+    let query: String
+    let select: (Record) -> Void
+    @State private var filter = ""
+    @State private var exact: [Record]?
+    @EnvironmentObject private var store: Store
+
+    private var results: [Record] {
+        guard !filter.isEmpty, filter == cleanText(query) else { return [] }
+        let results = (exact ?? foods.filter { $0.text("name").localizedCaseInsensitiveContains(filter) }).prefix(8)
+        return results.filter { $0.text("source") != "usda" } + results.filter { $0.text("source") == "usda" }
+    }
+
+    var body: some View {
+        Group {
+            if !results.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(results.map(RecipeListItem.init)) { item in
+                        Button { select(item.row) } label: {
+                            Text(item.row.text("name")).padding(.horizontal, 12).padding(.vertical, 8)
+                                .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                    }
+                }.nutriCard(radius: 12, fill: palette.surface2)
+            }
+        }.task(id: query) {
+            exact = nil
+            let term = cleanText(query)
+            if term.isEmpty { filter = ""; return }
+            do {
+                try await Task.sleep(for: .milliseconds(250))
+                filter = term
+                if !store.demoActive, !store.offline {
+                    let rows = try await searchCatalogNames(store: store, table: "foods", term: term, limit: 8)
+                    guard !Task.isCancelled, cleanText(query) == term else { return }
+                    exact = rows
+                }
+            } catch { }
+        }
+    }
+}
+
+private struct RecipeStagedSources: View {
+    @EnvironmentObject private var store: Store
+    @Environment(\.nutriPalette) private var palette
+    let foods: [Record]
+    let usdaQuery: String
+    let catalog: (Record) -> Void
+    let usda: (Record) -> Void
+    @State private var query = ""
+    @State private var matches: [Record] = []
+    @State private var translated: [String: String] = [:]
+    @State private var error = ""
+    @State private var picking = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField(store.tr("¿Ya está en tu catálogo? Búscalo…"), text: $query).nutriInput()
+            RecipeCatalogHits(foods: foods, query: query, select: catalog)
+            if !matches.isEmpty {
+                NutriFlow {
+                    ForEach(matches.indices, id: \.self) { index in
+                        let row = matches[index]
+                        let description = row.text("description")
+                        Button("USDA: " + (translated[description] ?? description)) {
+                            Task {
+                                guard !picking, let id = row.number("fdcId").flatMap(Int.init(exactly:)) else { return }
+                                picking = true; error = ""
+                                defer { picking = false }
+                                do { usda(try await fetchFDC(store: store, id: id)) }
+                                catch { self.error = store.tr("No se pudo obtener el detalle de USDA.") }
+                            }
+                        }.buttonStyle(NutriButtonStyle(.secondary, height: 36, radius: 18)).font(.nutriSans(12))
+                            .disabled(picking)
+                    }
+                }
+            }
+            if !error.isEmpty { Text(error).font(.nutriSans(12)).foregroundStyle(palette.danger) }
+        }.task(id: usdaQuery) {
+            matches = []; translated = [:]
+            guard !usdaQuery.isEmpty, !store.demoActive, !store.anonymous else { return }
+            let hits = (try? await searchFDC(store: store, query: usdaQuery)) ?? []
+            guard !Task.isCancelled else { return }
+            matches = hits
+            await withTaskGroup(of: (String, String).self) { group in
+                for hit in hits {
+                    let description = hit.text("description")
+                    group.addTask { (description, await translateFDCEnEs(description)) }
+                }
+                for await (text, result) in group where !Task.isCancelled { translated[text] = result }
+            }
+        }
+    }
 }

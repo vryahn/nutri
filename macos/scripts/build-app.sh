@@ -25,6 +25,9 @@ install -m 755 "$bin_dir/Nutri" "$app/Contents/MacOS/Nutri"
 resource_bundle="$bin_dir/Nutri_NutriCore.bundle"
 [[ -d "$resource_bundle" ]] || { print -u2 "Faltan los contratos de nutrientes."; exit 1; }
 ditto "$resource_bundle" "$app/Contents/Resources/Nutri_NutriCore.bundle"
+design_bundle="$bin_dir/Nutri_Nutri.bundle"
+[[ -d "$design_bundle" ]] || { print -u2 "Faltan los recursos de diseño."; exit 1; }
+ditto "$design_bundle" "$app/Contents/Resources/Nutri_Nutri.bundle"
 
 iconset="$stage/Nutri.iconset"
 mkdir -p "$iconset"

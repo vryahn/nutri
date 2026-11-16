@@ -1,5 +1,8 @@
 // Native labels complement the web translations bundled in NutriCore.
 let nativeTranslations: [String: String] = [
+    "Meta de agua": "Water target",
+    "Máximo de agua": "Water maximum",
+    "parcial": "partial",
     "Ajustes…": "Settings…",
     "Ajustes": "Settings",
     "Error de Nutri": "Nutri Error",
@@ -306,4 +309,18 @@ let nativeTranslations: [String: String] = [
     "Incompleto": "Incomplete",
     "Completo": "Complete",
     "Sin evaluar": "Not Evaluated",
+    "Borrar rango": "Clear range",
+    "Faltan objetivos o cobertura completa": "Targets or complete coverage are missing",
+    "Importando…": "Importing…",
+    "La fecha de inicio no puede ser posterior al fin.": "The start date cannot be after the end date.",
+    "Líneas discontinuas · objetivos y límites": "Dashed lines · targets and bounds",
+    "Motivo (opcional)": "Reason (optional)",
+    "Pega o sube un CSV": "Paste or upload a CSV",
+    "Sin datos de macros": "No macro data",
+    "Sin fase previa": "No previous phase",
+    "Sin fases de este tipo": "No phases of this type",
+    "Vacío = el límite que la app asume hoy (en gris) y que sigue aplicando. Hoy y el Dashboard clasifican contra tu mín/máx cuando lo fijas.": "Empty = the bound the app currently assumes (in gray), which still applies. Today and Dashboard classify against your min/max when set.",
+    "máx": "max",
+    "mín": "min",
+    "mín/máx": "min/max",
 ]

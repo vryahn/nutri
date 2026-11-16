@@ -18,18 +18,23 @@ final class Store: ObservableObject {
     @Published var notice: String?
     @Published var undoTitle: String?
     @Published var logFood: Record?
-    @Published var loginLanguage = UserDefaults.standard.string(forKey: "nutri.loginLanguage") ?? "es" {
+    @Published var newFood: Record?
+    @Published var loginLanguage = UserDefaults.standard.string(forKey: "nutri.loginLanguage") ?? (Locale.preferredLanguages.first?.hasPrefix("es") == true ? "es" : "en") {
         didSet { UserDefaults.standard.set(loginLanguage, forKey: "nutri.loginLanguage") }
     }
     @Published var theme = UserDefaults.standard.string(forKey: "nutri.theme") ?? "system" {
-        didSet { UserDefaults.standard.set(theme, forKey: "nutri.theme") }
+        didSet { if !anonymous && !demoActive { UserDefaults.standard.set(theme, forKey: "nutri.theme") } }
     }
 
     var lang: String {
         let language = prefs["lang"]?.string ?? loginLanguage
         return language == "en" ? "en" : "es"
     }
-    var units: String { prefs.text("units") == "us" ? "us" : "metric" }
+    var units: String {
+        let local = UserDefaults.standard.string(forKey: "nutri.units")
+            ?? (["en", "en-US"].contains(Locale.preferredLanguages.first ?? "") ? "us" : "metric")
+        return (prefs["units"]?.string ?? local) == "us" ? "us" : "metric"
+    }
     var demoActive: Bool {
         #if DEBUG
         return demo != nil
@@ -54,6 +59,7 @@ final class Store: ObservableObject {
     private var noticeTask: Task<Void, Never>?
     #if DEBUG
     private var demo: DemoData?
+    var snapshotScenario = ""
     #endif
 
     init() {
@@ -94,11 +100,18 @@ final class Store: ObservableObject {
     deinit { network.cancel() }
 
     #if DEBUG
-    func activateDemo() {
+    init(snapshot: DemoData) {
+        root = URL.applicationSupportDirectory.appendingPathComponent("NutriNative", isDirectory: true)
+        api = nil
+        activateDemo(snapshot)
+    }
+
+    func activateDemo(_ fixture: DemoData = DemoData()) {
         guard owner == nil else { return }
-        let demo = DemoData()
+        let demo = fixture
         self.demo = demo
         owner = demo.owner
+        anonymous = demo.isAnonymous
         email = "demo@nutri.invalid"
         prefs = demo.prefs
         offline = false
@@ -111,6 +124,19 @@ final class Store: ObservableObject {
         let auth = try await api.signIn(email: email.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
         activate(auth)
         await bootstrap()
+    }
+
+    func activateRemoteDemo() async throws {
+        guard owner == nil, let api else { throw NutriError("No se pudo abrir la demo — intenta más tarde.") }
+        let auth = try await api.signInAnonymously()
+        do {
+            _ = try await api.rpc("seed_demo", ["lang": .string(loginLanguage), "demo_day": .string(Day.key(Date()))], owner: auth.user.id)
+            activate(auth)
+            await bootstrap()
+        } catch {
+            _ = try? await api.signOut(owner: auth.user.id)
+            throw error
+        }
     }
 
     func signOut() async throws {
@@ -140,6 +166,7 @@ final class Store: ObservableObject {
         owner = auth.user.id
         email = auth.user.email ?? ""
         anonymous = auth.user.is_anonymous ?? false
+        if anonymous { theme = "dark" }
         do {
             cache = try AccountCache(root: root, owner: auth.user.id)
             prefs = cached("prefs", ["select": "data"])?.first?.object("data") ?? [:]
@@ -164,12 +191,14 @@ final class Store: ObservableObject {
         owner = nil
         email = ""
         anonymous = false
+        theme = UserDefaults.standard.string(forKey: "nutri.theme") ?? "system"
         prefs = [:]
         cache = nil
         dayCacheVersion = [:]
         outbox = nil
         pending = 0
         logFood = nil
+        newFood = nil
         copiedDay = nil
         entryVersion += 1
     }
@@ -178,7 +207,13 @@ final class Store: ObservableObject {
         guard let uid = owner else { return }
         do {
             let rows = try await read("prefs", ["select": "data"])
-            if owner == uid { prefs = rows.first?.object("data") ?? [:] }
+            if owner == uid {
+                prefs = rows.first?.object("data") ?? [:]
+                if !demoActive {
+                    if let language = prefs["lang"]?.string, ["es", "en"].contains(language) { loginLanguage = language }
+                    if let unit = prefs["units"]?.string, ["metric", "us"].contains(unit) { UserDefaults.standard.set(unit, forKey: "nutri.units") }
+                }
+            }
         } catch { report(error) }
         flush()
         guard !demoActive, !offline, owner == uid else { return }
@@ -190,8 +225,10 @@ final class Store: ObservableObject {
     }
 
     func tr(_ s: String) -> String {
+        let canonical = Domain.translate(s, language: lang)
+        if canonical != s { return canonical }
         if lang == "en", let value = nativeTranslations[s] { return value }
-        return Domain.translate(s, language: lang)
+        return canonical
     }
 
     func report(_ error: Error) {
@@ -318,6 +355,15 @@ final class Store: ObservableObject {
         #endif
         guard let owner, let api else { throw NutriError("Inicia sesión para continuar.") }
         return try await api.rpc(name, body, owner: owner)
+    }
+
+    func setRegion(_ key: String, _ value: String) async throws {
+        guard (key == "lang" && ["es", "en"].contains(value)) || (key == "units" && ["metric", "us"].contains(value)) else { return }
+        if key == "lang" { loginLanguage = value }
+        else { UserDefaults.standard.set(value, forKey: "nutri.units") }
+        prefs[key] = .string(value)
+        try cache?.write(AccountCache.key("prefs", ["select": "data"]), [["data": .object(prefs)]])
+        try await patchPrefs([key: .string(value)])
     }
 
     func patchPrefs(_ patch: Record) async throws {

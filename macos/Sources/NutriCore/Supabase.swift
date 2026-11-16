@@ -114,6 +114,20 @@ public actor Supabase {
         return auth
     }
 
+    public func signInAnonymously() async throws -> AuthSession {
+        guard session == nil else { throw CancellationError() }
+        let current = generation
+        let request = try databaseRequest("POST", "auth/v1/signup", body: .object([:]))
+        let auth = try decoder.decode(AuthSession.self, from: await send(request))
+        guard current == generation, session == nil else { throw CancellationError() }
+        guard auth.user.is_anonymous == true else { throw NutriError("No se pudo abrir la demo — intenta más tarde.") }
+        let stored = StoredSession(auth)
+        try keychain?.store(stored)
+        generation += 1
+        session = stored
+        return auth
+    }
+
     @discardableResult
     public func signOut(owner: String) async throws -> Bool {
         guard let active = session, active.auth.user.id == owner else { throw CancellationError() }

@@ -9,9 +9,9 @@ import { FOOD_COLUMNS } from '../lib/catalog.js';
 import { useToast } from '../lib/useToast.js';
 import {
   MICROS, MICROS_DEFAULT, microGroups, round, kcalFromMacros, kcalSuspicious, macrosImplausible,
-  componentsInconsistent, isWaterSentinel, eanChecksumValid, mergeFoodResults, normalizeTo100,
+  componentsInconsistent, isWaterSentinel, eanChecksumValid, mergeFoodResults, normalizeTo100, nutritionNumber,
 } from '../lib/domain.js';
-import { fetchOFF, searchFDC, fetchFDC } from '../lib/sources.js';
+import { fetchOFF, searchFDC, fetchFDC, fillFoodSource } from '../lib/sources.js';
 import { AI_AVAILABLE, DENSITY_PRESETS, estimateFood, embedText } from '../lib/ai.js';
 import { t, useLang, useUnits, gToOz, mlToFlOz } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
@@ -169,15 +169,15 @@ export default function Foods() {
     const payload = {
       name: food.name,
       brand: food.brand || null,
-      kcal: Number(food.kcal) || 0,
-      protein_g: Number(food.protein_g) || 0,
-      carbs_g: Number(food.carbs_g) || 0,
-      fat_g: Number(food.fat_g) || 0,
+      kcal: nutritionNumber(food.kcal),
+      protein_g: nutritionNumber(food.protein_g),
+      carbs_g: nutritionNumber(food.carbs_g),
+      fat_g: nutritionNumber(food.fat_g),
       micros: food.micros,
       portions: (food.portions || [])
         .filter((p) => p.name.trim() && Number(p.grams) > 0)
         .map((p) => ({ name: p.name.trim(), grams: Number(p.grams) })),
-      density_g_ml: Number(food.density_g_ml) > 0 ? Number(food.density_g_ml) : null,
+      density_g_ml: nutritionNumber(food.density_g_ml) || null,
       source: food.source,
       // Only the form's "Marcar revisado" button sends a timestamp; any other
       // save leaves it null and the ⚠ warning reappears.
@@ -536,34 +536,6 @@ function labelFor(key) {
 
 const NUMERIC_KEYS = ['kcal', 'protein_g', 'carbs_g', 'fat_g'];
 
-// winner wins on every field it carries; filler only fills in what winner lacks.
-function fillAll(winner, filler) {
-  if (!filler) return winner;
-  const out = { ...winner, micros: { ...filler.micros, ...winner.micros } };
-  for (const k of NUMERIC_KEYS) {
-    if (out[k] === '' || out[k] == null) out[k] = filler[k] ?? '';
-  }
-  if (!out.name) out.name = filler.name || '';
-  if (!out.brand) out.brand = filler.brand || '';
-  return out;
-}
-
-// winner wins on everything it carries; filler only fills in the missing REQUIRED fields
-// (no other speculative micros from filler are let through when winner is authoritative).
-function fillRequired(winner, filler) {
-  if (!filler) return winner;
-  const out = { ...winner, micros: { ...winner.micros } };
-  for (const k of NUMERIC_KEYS) {
-    if ((out[k] === '' || out[k] == null) && filler[k] != null && filler[k] !== '') out[k] = filler[k];
-  }
-  for (const mk of REQUIRED_MICROS) {
-    if (out.micros[mk] == null && filler.micros?.[mk] != null) out.micros[mk] = filler.micros[mk];
-  }
-  if (!out.name) out.name = filler.name || '';
-  if (!out.brand) out.brand = filler.brand || '';
-  return out;
-}
-
 // Fields where a and b (both with numeric data) differ by >25% relative to the larger one.
 // Only counts if both exceed DISCREPANCY_MIN (avoids flagging 0.2 vs 0.3). Ephemeral,
 // solely for the label-vs-OFF UI warning — none of this is persisted.
@@ -588,20 +560,23 @@ function findDiscrepancies(a, b) {
 function missingRequired(obj) {
   return REQUIRED_KEYS.filter((k) => {
     const v = NUMERIC_KEYS.includes(k) ? obj[k] : obj.micros?.[k];
-    return v === '' || v == null;
+    return nutritionNumber(v) == null;
   }).map(labelFor);
 }
 
 // Keep measured zeroes: an absent micro is unknown, not a measured zero.
 function stripZeros(obj) {
   const zeros = new Set();
-  const cleaned = { ...obj, micros: { ...obj.micros } };
+  const cleaned = { ...obj, micros: {} };
   for (const k of NUMERIC_KEYS) {
+    cleaned[k] = nutritionNumber(obj[k]) ?? '';
     if (cleaned[k] === 0) zeros.add(k);
   }
-  for (const [k, v] of Object.entries(cleaned.micros)) {
-    if (v === 0) zeros.add(k);
-    if (v === '' || v == null) delete cleaned.micros[k];
+  for (const { key } of MICROS) {
+    const value = nutritionNumber(obj.micros?.[key]);
+    if (value == null) continue;
+    cleaned.micros[key] = value;
+    if (value === 0) zeros.add(key);
   }
   return { cleaned, zeros };
 }
@@ -641,6 +616,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const [aiFiles, setAiFiles] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
+  const [saveError, setSaveError] = useState('');
   const [aiZeros, setAiZeros] = useState(initialZeros); // placeholder metadata; explicit zeroes remain values
   const [aiResult, setAiResult] = useState(null); // { source, name, confidence } for the result line
   const [aiMissing, setAiMissing] = useState([]); // labels of required fields lacking reliable data
@@ -651,10 +627,12 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   // Touching any field invalidates the prior review: the values are no longer the ones the
   // user confirmed, so the ⚠ warning re-arms immediately (and handleSave persists it).
   function setField(key, value) {
+    setSaveError('');
     setForm((f) => ({ ...f, reviewed_at: null, [key]: value }));
   }
 
   function applyPrefill(merged, source, resultName, confidence, prefillBasisUnit = 'g') {
+    setSaveError('');
     const missing = missingRequired(merged);
     const { cleaned, zeros } = stripZeros(merged);
     setAiZeros(zeros);
@@ -725,9 +703,9 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           // Compare label vs OFF only if both are on the same basis; otherwise it is skipped
           // (never compared cross-basis g vs ml).
           setLabelMismatch(off && gemini.basis === off.per ? findDiscrepancies(gemini, off) : []);
-          applyPrefillWithBasis(fillAll(gemini, off), 'etiqueta', null, gemini.confidence, gemini.basis, gemini.density_g_ml);
+          applyPrefillWithBasis(fillFoodSource(gemini, off), 'etiqueta', null, gemini.confidence, gemini.basis, gemini.density_g_ml);
         } else if (off) {
-          applyPrefillWithBasis(fillRequired(off, gemini), 'off', off.name, null, off.per, gemini.density_g_ml);
+          applyPrefillWithBasis(fillFoodSource(off, gemini, true), 'off', off.name, null, off.per, gemini.density_g_ml);
         } else {
           applyPrefillWithBasis(gemini, 'gemini', null, gemini.confidence, gemini.basis, gemini.density_g_ml);
         }
@@ -770,14 +748,34 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const inconsistent = componentsInconsistent(normForCheck);
   const warned = Boolean(suspicious || implausible || inconsistent);
   // empty kcal → the macro-based computation (the placeholder the user sees) is saved
-  const submitValues = () => normalizeTo100({ ...form, kcal: form.kcal === '' ? kcalCalc : form.kcal }, basis, basisUnit);
   // Base-catalog food (owner null): saving ALWAYS creates the user's own copy
   // (no id → handleSave takes the insert branch; the server assigns owner = auth.uid()).
   const isBaseFood = food.owner === null;
-  const save = (values, alsoLog) => onSave(isBaseFood ? { ...values, id: undefined } : values, alsoLog);
+  const save = (alsoLog = false, reviewedAt = null) => {
+    const raw = { ...form, kcal: form.kcal === '' ? kcalCalc : form.kcal, reviewed_at: reviewedAt ?? form.reviewed_at };
+    const missing = NUMERIC_KEYS.filter((key) => nutritionNumber(raw[key]) == null).map(labelFor);
+    const invalidMicros = Object.entries(raw.micros).filter(([, value]) => nutritionNumber(value) == null).map(([key]) => labelFor(key));
+    missing.push(...invalidMicros);
+    if (String(raw.density_g_ml ?? '').trim() !== '' && nutritionNumber(raw.density_g_ml) == null) {
+      missing.push(t('Densidad'));
+    }
+    if (missing.length) {
+      setSaveError(`${t('Sin dato fiable de:')} ${missing.join(', ')}`);
+      return;
+    }
+    const values = normalizeTo100(raw, basis, basisUnit);
+    if (!values) {
+      setSaveError(t('Valores nutricionales fuera de rango.'));
+      return;
+    }
+    setSaveError('');
+    onSave(isBaseFood ? { ...values, id: undefined } : values, alsoLog);
+  };
   const hiddenMicros = MICROS.slice(MICROS_DEFAULT);
-  const basisDensity = Number(form.density_g_ml) || 0;
-  const basisBlocked = basisUnit === 'ml' && !(basisDensity > 0);
+  const basisDensity = nutritionNumber(form.density_g_ml) ?? 0;
+  const missingDensity = basisUnit === 'ml' && !(basisDensity > 0);
+  const invalidBasis = (basisUnit === 'ml' || String(basis).trim() !== '') && !(nutritionNumber(basis) > 0);
+  const basisBlocked = missingDensity || invalidBasis;
   // Silent hint with the US-units equivalent: composition is captured in g/ml (labeling
   // standard), but the US user is shown what their basis is equivalent to. Display only.
   const isUS = useUnits() === 'us';
@@ -847,7 +845,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
         onSubmit={(e) => {
           e.preventDefault();
           if (basisBlocked) return; // button already disabled; safeguard in case the submit arrives via Enter
-          save(submitValues());
+          save();
         }}
         className="flex flex-col gap-4"
       >
@@ -904,7 +902,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           )}
           {basisBlocked && (
             <span className="text-xs text-warn" role="status">
-              {t('Elige el tipo de líquido para convertir ml a gramos')}
+              {t(missingDensity ? 'Elige el tipo de líquido para convertir ml a gramos' : 'Indica una cantidad base mayor que cero.')}
             </span>
           )}
           {isUS && Number(basis) > 0 && (
@@ -1050,7 +1048,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           <button
             type="button"
             disabled={basisBlocked}
-            onClick={() => save({ ...submitValues(), reviewed_at: new Date().toISOString() })}
+            onClick={() => save(false, new Date().toISOString())}
             className="self-start min-h-[44px] px-4 rounded-xl border border-warn text-warn font-medium press disabled:opacity-40"
           >
             {t('Marcar revisado')}
@@ -1139,11 +1137,13 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           </select>
         </Field>
 
+        {saveError && <p className="text-sm text-danger" role="status">{saveError}</p>}
+
         {!form.id && (
           <button
             type="button"
             disabled={basisBlocked}
-            onClick={() => { if (!basisBlocked && form.name.trim()) save(submitValues(), true); }}
+            onClick={() => { if (!basisBlocked && form.name.trim()) save(true); }}
             className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-40"
           >
             {t('Guardar y registrar')}

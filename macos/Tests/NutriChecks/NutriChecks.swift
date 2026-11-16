@@ -53,6 +53,18 @@ struct NutriChecks {
             let computed: JSONValue
             let expected: JSONValue
             switch test.fn {
+            case "kcalFromMacros":
+                computed = .number(Domain.kcalFromMacros(row))
+                expected = test.expected
+            case "componentsInconsistent":
+                computed = Domain.componentsInconsistent(row).map(JSONValue.string) ?? .null
+                expected = test.expected
+            case "kcalSuspicious":
+                computed = .bool(Domain.kcalSuspicious(row))
+                expected = test.expected
+            case "macrosImplausible":
+                computed = .bool(Domain.macrosImplausible(row))
+                expected = test.expected
             case "entryNutrients":
                 computed = .object(Domain.scaled(args[1].object ?? [:], grams: row.number("grams") ?? 0))
                 let keys = Set(Domain.macroKeys + ["micros", "micros_complete"])
@@ -127,6 +139,7 @@ struct NutriChecks {
         try require(Domain.resolveTarget(candidates, "2026-11-16") == override &&
                     Domain.activePhase(candidates, day: "2026-11-16") == [recurring], "Daily override leaves active review phase intact")
         let grams = Domain.grams(28.35 / Domain.gramsPerOunce, unit: "oz")
+        try require(Domain.grams(1, unit: "oz") == 28.3495 && Domain.grams(1, unit: "fl oz", density: 1) == 29.5735, "US amount conversion matches web i18n constants")
         try require(grams.map { abs($0 - 28.35) < 0.000001 } == true, "US mass round-trip")
         let ounces = Domain.grams(250 / Domain.mlPerFluidOunce, unit: "fl oz", density: 1)
         try require(ounces.map { abs($0 - 250) < 0.000001 } == true, "US volume round-trip")
@@ -142,12 +155,13 @@ struct NutriChecks {
                     rows[0]["note"] == "first\nsecond \"quote\"" && rows[0]["value"] == "0", "CSV BOM/quotes/newline/zero")
         let roundTrip = try CSV.parse(CSV.encode([["name", "note"], ["A, B", "x\ny"]]))
         try require(roundTrip.first?["note"] == "x\ny", "CSV export round trip")
-        for invalid in ["name,Name\noats,rice", "name,note\na", "name\n\"broken"] {
-            do {
-                _ = try CSV.parse(invalid)
-                throw CheckError.failure("Ambiguous or malformed CSV was accepted.")
-            } catch is NutriError {}
-        }
+        let short = try CSV.parse("name,note\na")
+        try require(short == [["name": "a", "note": ""]], "CSV short rows match web empty-cell behavior")
+        let headers = try CSV.parse("name,Name,name\n oats , Rice , rye ")
+        try require(headers == [["name": "rye", "Name": "Rice"]], "CSV header case, duplicate and trimming match web")
+        let openQuote = try CSV.parse("name\n\"broken")
+        try require(openQuote == [["name": "broken"]], "CSV unfinished quoted cell matches web preview")
+
     }
 
     private static func checkOutbox() throws {
@@ -230,6 +244,10 @@ struct NutriChecks {
             _ = try await client.rows("GET", "entries", owner: owner)
             throw CheckError.failure("Signed out request accepted.")
         } catch is CancellationError {}
+        let anonymous = try await client.signInAnonymously()
+        try require(anonymous.user.is_anonymous == true, "Anonymous demo authenticates without credentials")
+        _ = try await client.rpc("seed_demo", ["lang": .string("en"), "demo_day": .string("2026-11-16")], owner: anonymous.user.id)
+        _ = try await client.signOut(owner: anonymous.user.id)
     }
 
     private static func liveReadOnly() async throws {
@@ -317,6 +335,24 @@ private final class RequestLog: @unchecked Sendable {
         let mode = request.url?.query ?? ""
         let token = request.value(forHTTPHeaderField: "Authorization")
         try require(request.value(forHTTPHeaderField: "apikey") == "public-test-key", "Public key header")
+        if path.hasSuffix("/signup") {
+            var bytes = request.httpBody ?? Data()
+            if bytes.isEmpty, let stream = request.httpBodyStream {
+                stream.open()
+                defer { stream.close() }
+                var buffer = [UInt8](repeating: 0, count: 1024)
+                while stream.hasBytesAvailable {
+                    let count = stream.read(&buffer, maxLength: buffer.count)
+                    if count <= 0 { break }
+                    bytes.append(contentsOf: buffer.prefix(count))
+                }
+            }
+            let body = try JSONDecoder().decode(Record.self, from: bytes)
+            try require(body.isEmpty, "Anonymous signup sends no personal credentials")
+            return (200, """
+            {"access_token":"fresh","refresh_token":"refresh-fresh","expires_in":3600,"user":{"id":"\(uid)","is_anonymous":true}}
+            """)
+        }
         if path.hasSuffix("/token") {
             let refresh = mode.contains("refresh_token")
             if refresh { lock.withLock { count += 1 } }

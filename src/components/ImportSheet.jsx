@@ -228,7 +228,7 @@ export default function ImportSheet({ kind, onClose, onDone }) {
                 >
                   <span className="truncate">
                     {kind === 'foods'
-                      ? `${p.payload.name || t('(sin nombre)')} · ${p.payload.kcal} kcal`
+                      ? `${p.payload.name || t('(sin nombre)')} · ${p.payload.kcal ?? '–'} kcal`
                       : kind === 'body'
                         ? `${p.display.day || '—'} · ${t('%n medidas').replace('%n', p.display.count)}`
                         : `${p.display.day || '—'} · ${p.display.meal || '—'} · ${p.display.food || '—'} · ${p.display.grams || 0} g`}

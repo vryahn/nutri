@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Plus, ChevronLeft, Trash2, Search, X, Save } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
-import { computeRecipePer100g, MICROS, MICROS_DEFAULT, round, isWaterSentinel } from '../lib/domain.js';
+import { computeRecipePer100g, MICROS, MICROS_DEFAULT, round, isWaterSentinel, nutritionNumber, recipeWeightFromEstimate } from '../lib/domain.js';
 import { useToast } from '../lib/useToast.js';
 import { AI_AVAILABLE, estimateRecipe, parseAmount, snapDensity } from '../lib/ai.js';
 import { searchFDC, fetchFDC, translateEnEs, FDC_AVAILABLE } from '../lib/sources.js';
@@ -429,6 +429,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiResult, setAiResult] = useState(null); // { confidence, kcalTotalEstimate }
+  const [needsCookedWeight, setNeedsCookedWeight] = useState(false);
   const [dupMatches, setDupMatches] = useState([]);
   const [confirmNew, setConfirmNew] = useState(false); // save gate: confirm the creation of staged foods
   const [saveError, setSaveError] = useState('');
@@ -534,21 +535,9 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
 
   function applyEstimate(result, catalogFoods, aliases) {
     const parsed = parseAmount(aiText);
-    let totalG = null;
-    if (parsed) {
-      if (parsed.unit === 'g') {
-        totalG = parsed.value;
-      } else {
-        let density = 1;
-        if (Number(result.total_weight_g) > 0) {
-          const implied = Number(result.total_weight_g) / parsed.value;
-          if (implied > 0.5 && implied < 2) density = snapDensity(implied);
-        }
-        totalG = Math.round(parsed.value * density);
-      }
-    } else if (Number(result.total_weight_g) > 0) {
-      totalG = Number(result.total_weight_g);
-    }
+    const totalG = recipeWeightFromEstimate(parsed, result.total_weight_g, snapDensity);
+    const unresolvedVolume = parsed?.unit === 'ml' && totalG == null;
+    if (unresolvedVolume || totalG != null) setNeedsCookedWeight(unresolvedVolume);
 
     // Ingredients with a catalog/alias match → real food (compact row). No match →
     // staged card (isNew) pre-filled with the AI's fallback nutrients, editable and
@@ -562,9 +551,10 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
         aiCatalog = mergeIngredient(aiCatalog, aliasFood, ing.grams, 'alias', false, true);
         continue;
       }
-      const dbFood = ing.db_match
-        ? catalogFoods.find((f) => f.name.trim().toLowerCase() === ing.db_match.trim().toLowerCase())
-        : null;
+      const dbMatches = ing.db_match
+        ? catalogFoods.filter((f) => f.name.trim().toLowerCase() === ing.db_match.trim().toLowerCase())
+        : [];
+      const dbFood = dbMatches.length === 1 ? dbMatches[0] : null;
       if (dbFood) {
         aiCatalog = mergeIngredient(aiCatalog, dbFood, ing.grams, t('catálogo'), false, true);
         continue;
@@ -599,7 +589,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       return {
         ...f,
         name: f.name || result.name,
-        cooked_weight_g: totalG ?? f.cooked_weight_g,
+        cooked_weight_g: unresolvedVolume ? '' : totalG ?? f.cooked_weight_g,
         ingredients: [...next, ...staged],
         source: 'gemini',
       };
@@ -646,15 +636,23 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     }));
   }
 
+  function validateStaged(food) {
+    const missing = [['kcal', 'Kcal'], ['protein_g', 'Prot'], ['carbs_g', 'Carbs'], ['fat_g', 'Grasa']]
+      .filter(([key]) => nutritionNumber(food[key]) == null).map(([, label]) => t(label));
+    if (!missing.length) return true;
+    setSaveError(`${food.name} · ${t('Sin dato fiable de:')} ${missing.join(', ')}`);
+    return false;
+  }
+
   // Inserts a staged food (no id) and returns the real row. Shared by the individual
   // save and the recipe save. Null if the insert fails.
   async function persistNewFood(food) {
     const payload = {
       name: food.name,
-      kcal: Number(food.kcal) || 0,
-      protein_g: Number(food.protein_g) || 0,
-      carbs_g: Number(food.carbs_g) || 0,
-      fat_g: Number(food.fat_g) || 0,
+      kcal: nutritionNumber(food.kcal),
+      protein_g: nutritionNumber(food.protein_g),
+      carbs_g: nutritionNumber(food.carbs_g),
+      fat_g: nutritionNumber(food.fat_g),
       micros: food.micros || {},
       source: food.source || 'gemini',
     };
@@ -664,6 +662,8 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
 
   async function saveIngredientNow(index) {
     const ing = form.ingredients[index];
+    if (!validateStaged(ing.food)) return;
+    setSaveError('');
     const saved = await persistNewFood(ing.food);
     if (!saved) {
       setSaveError(t('No se pudo guardar el alimento. Intenta de nuevo.'));
@@ -711,6 +711,11 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   const newFoods = form.ingredients.filter((i) => i.isNew);
 
   async function handleSaveClick() {
+    if (needsCookedWeight && !(nutritionNumber(form.cooked_weight_g) > 0)) {
+      setSaveError(t('Falta densidad para convertir el volumen. Introduce el peso cocido.'));
+      return;
+    }
+    if (newFoods.some((item) => !validateStaged(item.food))) return;
     if (newFoods.length > 0 && !confirmNew) {
       setConfirmNew(true);
       return;
@@ -783,6 +788,9 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
                 </button>
               </div>
             </div>
+          )}
+          {needsCookedWeight && !(nutritionNumber(form.cooked_weight_g) > 0) && (
+            <p className="text-xs text-warn" role="status">{t('Falta densidad para convertir el volumen. Introduce el peso cocido.')}</p>
           )}
           {aiResult && (
             <p className="text-xs text-text-2">

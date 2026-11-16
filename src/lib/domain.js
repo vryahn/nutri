@@ -1145,30 +1145,51 @@ export function round(n, decimals) {
   return Math.round(n * f) / f;
 }
 
+// An empty or invalid value cannot stand in for a measured zero in food capture.
+export function nutritionNumber(value) {
+  if (typeof value === 'string' && value.trim() !== '') value = Number(value.trim().replace(',', '.'));
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+// An explicit mass wins. A typed volume requires a defensible density from the
+// estimate; an absent or implausible estimate must not silently mean 1 g/ml.
+export function recipeWeightFromEstimate(amount, estimate, snapDensity) {
+  const estimatedGrams = nutritionNumber(estimate);
+  if (!amount || !(amount.value > 0)) return estimatedGrams > 0 ? estimatedGrams : null;
+  if (amount.unit === 'g') return amount.value;
+  const density = estimatedGrams / amount.value;
+  const grams = density > 0.5 && density < 2 ? nutritionNumber(Math.round(amount.value * snapDensity(density))) : null;
+  return grams > 0 ? grams : null;
+}
+
 // Values are always stored per 100 g: if the user captured against another basis, it is
 // scaled on save. If the basis is ml it is first converted to grams with the chosen
 // density (1 g/ml is NEVER assumed). Portions and density are absolute, not scaled.
-// Returns null = blocked, the basis is ml and there is no density.
+// Returns null if a supplied nutrient is invalid or a volume cannot be converted.
 export function normalizeTo100(f, basis, basisUnit) {
-  const b = Number(basis);
-  if (!b || b <= 0) return f;
+  const valid = (v) => v === '' || v == null || nutritionNumber(v) != null;
+  if (![f.kcal, f.protein_g, f.carbs_g, f.fat_g, ...Object.values(f.micros || {})].every(valid)) return null;
+  const b = nutritionNumber(basis);
   let baseGrams = b;
   if (basisUnit === 'ml') {
-    const density = Number(f.density_g_ml) || 0;
-    if (!(density > 0)) return null;
+    const density = nutritionNumber(f.density_g_ml);
+    if (!(b > 0) || !(density > 0)) return null;
     baseGrams = b * density;
-  }
+    if (!Number.isFinite(baseGrams)) return null;
+  } else if (!(b > 0)) return f;
   if (baseGrams === 100) return f;
   const s = 100 / baseGrams;
-  const scale = (v, d) => (v === '' || v == null ? v : round(Number(v) * s, d));
-  return {
+  if (!Number.isFinite(s)) return null;
+  const scale = (v, d) => (v === '' || v == null ? v : round(nutritionNumber(v) * s, d));
+  const result = {
     ...f,
     kcal: scale(f.kcal, 1),
     protein_g: scale(f.protein_g, 2),
     carbs_g: scale(f.carbs_g, 2),
     fat_g: scale(f.fat_g, 2),
-    micros: Object.fromEntries(Object.entries(f.micros).filter(([, v]) => v !== '' && v != null).map(([k, v]) => [k, round(Number(v) * s, 3)])),
+    micros: Object.fromEntries(Object.entries(f.micros || {}).filter(([, v]) => v !== '' && v != null).map(([k, v]) => [k, scale(v, 3)])),
   };
+  return [result.kcal, result.protein_g, result.carbs_g, result.fat_g, ...Object.values(result.micros)].every(valid) ? result : null;
 }
 
 // Minimum numbers of logged days required to enable each advanced Dashboard

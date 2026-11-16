@@ -49,6 +49,21 @@ struct BodyMetric: Identifiable {
         BodyMetric(key: "grasa_pierna_der_kg", label: "Grasa pierna der.", unit: "kg", category: "Segmental", max: 20),
     ]
 
+    static let englishHeaders = [
+        "day": "day", "note": "note",
+        "peso_kg": "weight", "grasa_pct": "body_fat", "musculo_kg": "muscle", "agua_pct": "body_water",
+        "agua_l": "body_water_l",
+        "hueso_kg": "bone_mass", "grasa_visceral": "visceral_fat", "metabolismo_basal_kcal": "bmr",
+        "cintura_cm": "waist", "cadera_cm": "hip", "pecho_cm": "chest", "cuello_cm": "neck",
+        "biceps_der_cm": "right_biceps", "biceps_izq_cm": "left_biceps",
+        "pierna_izq_cm": "left_leg", "pierna_der_cm": "right_leg",
+        "pantorrilla_izq_cm": "left_calf", "pantorrilla_der_cm": "right_calf",
+        "magra_tronco_kg": "ffm_trunk", "magra_brazo_izq_kg": "ffm_arm_l", "magra_brazo_der_kg": "ffm_arm_r",
+        "magra_pierna_izq_kg": "ffm_leg_l", "magra_pierna_der_kg": "ffm_leg_r",
+        "grasa_tronco_kg": "fat_trunk", "grasa_brazo_izq_kg": "fat_arm_l", "grasa_brazo_der_kg": "fat_arm_r",
+        "grasa_pierna_izq_kg": "fat_leg_l", "grasa_pierna_der_kg": "fat_leg_r",
+    ]
+
     static let aliases = [
         "weight": "peso_kg",
         "peso": "peso_kg",
@@ -121,64 +136,69 @@ struct BodyImportRow: Identifiable {
     let note: String
     let warnings: [String]
 
-    static func parse(_ text: String) throws -> [Self] {
-        let raw = try CSV.parse(text)
+    static func preview(_ text: String) throws -> [(value: Self?, preview: CatalogCSVRow)] {
         var days = Set<String>()
-        return try raw.enumerated().map { index, row in
-            let normalized = Dictionary(grouping: row.keys, by: { CSV.normalize($0) })
-            func aliasedValue(_ aliases: [String]) throws -> String {
-                let values = Set(aliases.flatMap { normalized[$0] ?? [] }
-                    .compactMap { row[$0].map(cleanText) }.filter { !$0.isEmpty })
-                guard values.count <= 1 else {
-                    throw FeatureError("Columnas contradictorias · \(aliases[0]) · fila \(index + 2)")
-                }
-                return values.first ?? ""
-            }
-            let date = try aliasedValue(["day", "date", "fecha"])
-            guard isoDate(date) != nil else {
-                throw FeatureError("Fecha inválida en la fila \(index + 2).")
-            }
-            guard days.insert(date).inserted else { throw FeatureError("Fecha repetida · \(date)") }
-            var metrics: Record = [:]
+        return try CSV.parse(text).map { row in
+            let date = ["day", "date", "fecha"].compactMap { row[$0].map(cleanText) }.first { !$0.isEmpty } ?? ""
             var warnings: [String] = []
+            var metrics: Record = [:]
             for column in row.keys.sorted() {
-                let lc = CSV.normalize(column)
-                let key = BodyMetric.aliases[lc] ?? lc
-                guard let metric = BodyMetric.fields.first(where: { $0.key == key }),
-                      let number = try featureNumber(row[column] ?? "", label: "\(metric.label) · \(date)") else { continue }
-                guard metrics[key] == nil else { throw FeatureError("Dos columnas para \(metric.label) · \(date)") }
-                if let max = metric.max, number > max { warnings.append(metric.label) }
+                let normalized = column.lowercased()
+                let key = BodyMetric.aliases[normalized] ?? normalized
+                guard let metric = BodyMetric.fields.first(where: { $0.key == key }), let number = decimal(row[column] ?? ""), number >= 0 else { continue }
+                if let max = metric.max, number > max, !warnings.contains("fuera de rango") { warnings.append("fuera de rango") }
+                if let previous = metrics[key]?.number, previous != number {
+                    warnings.append("Dos columnas para \(metric.label)")
+                }
                 metrics[key] = .number(number)
             }
-            guard !metrics.isEmpty else { throw FeatureError("Sin medidas en la fila \(index + 2).") }
-            let note = try aliasedValue(["note", "nota"])
-            return Self(day: date, metrics: metrics, note: note, warnings: warnings)
+            let count = metrics.count
+            if isoDate(date) == nil { warnings.append("fecha") }
+            else if count == 0 { warnings.append("sin medidas") }
+            let valid = isoDate(date) != nil && count > 0 && !warnings.contains(where: { $0.hasPrefix("Dos columnas") })
+            let note = cleanText(row["note"] ?? "").isEmpty ? cleanText(row["nota"] ?? "") : cleanText(row["note"] ?? "")
+            let unique = !valid || days.insert(date).inserted
+            if !unique { warnings.append("Fecha repetida") }
+            let value = valid && unique ? Self(day: date, metrics: metrics, note: note, warnings: warnings) : nil
+            return (value, CatalogCSVRow(label: (date.isEmpty ? "—" : date) + " · \(count)", suffix: "medidas", warnings: warnings, valid: value != nil))
         }
     }
+
 }
 
 struct BodyView: View {
     @EnvironmentObject private var store: Store
+    @Environment(\.nutriPalette) private var palette
+    @Environment(\.locale) private var locale
+    @Environment(\.nutriWindowWidth) private var windowWidth
+    @FocusState private var focus: String?
+    @State private var dateOpen = false
+    @State private var photoDrag = false
+    @State private var uploading = false
+    @State private var trendHover: String?
+    @State private var savedFlash = false
+    @State private var importText = ""
+    @State private var saveTask: Task<Void, Never>?
     @State private var day = Date()
     @State private var values: [String: String] = [:]
     @State private var note = ""
     @State private var photos: [String] = []
     @State private var existing: Record?
     @State private var history: [Record] = []
-    @State private var trendKey = "peso_kg"
+    @AppStorage("nutri.body.trendKey") private var trendKey = "peso_kg"
     @State private var more = false
     @State private var busy = false
     @State private var ready = false
     @State private var importingPhotos = false
-    @State private var importingCSV = false
     @State private var previewImport = false
-    @State private var importRows: [BodyImportRow] = []
     @State private var replace = false
     @State private var confirmDelete = false
     @State private var photoToDelete: String?
     @State private var message = ""
     @State private var selectedPhoto: String?
     @State private var importError = ""
+    @State private var existingDays: Set<String> = []
+    private let categories = ["Composición", "Circunferencias", "Segmental"]
 
     private var height: Double? { store.prefs.object("profile").number("height_cm") }
     private var favorites: [String] { store.prefs.array("fav_body").compactMap(\.string) }
@@ -199,210 +219,378 @@ struct BodyView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Text(store.tr("Medidas")).font(.largeTitle.bold())
-                    Spacer()
-                    Menu(store.tr("Importar"), systemImage: "square.and.arrow.down") {
-                        Button(store.tr("Importar CSV…")) { importingCSV = true }
-                        Button(store.tr("Descargar plantilla CSV…")) { exportTemplate() }
+                VStack(alignment: .leading, spacing: 16) {
+                    dateNavigation
+                    if !message.isEmpty { Text(message).font(.nutriSans(12)).foregroundStyle(palette.danger) }
+                    if ready {
+                        capture(columns: windowWidth < 640 ? 2 : 3)
+                        photoPanel
+                    } else if !busy {
+                        Button(store.tr("Reintentar")) { Task { await loadDay() } }.buttonStyle(NutriButtonStyle(.quiet, height: 44))
                     }
-                    .disabled(busy || pending)
+                    trendPanel
                 }
-                HStack {
-                    Button { day = addingDays(-1, to: day) } label: { Image(systemName: "chevron.left") }
-                        .accessibilityLabel(store.tr("Día anterior"))
-                    DatePicker(store.tr("Fecha"), selection: $day, displayedComponents: .date)
-                    Button { day = addingDays(1, to: day) } label: { Image(systemName: "chevron.right") }
-                        .accessibilityLabel(store.tr("Día siguiente"))
-                    Button(store.tr("Hoy")) { day = Date() }
-                }
-                .disabled(busy || pending)
-                if !message.isEmpty { Text(message).foregroundStyle(.secondary) }
-                if !ready && !busy {
-                    Button(store.tr("Reintentar")) { Task { await loadDay() } }
-                }
-                if busy { ProgressView().controlSize(.small) }
-                if ready { capture.disabled(busy) }
-                trendPanel
-            }.padding(24)
+                .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 32)
+                .frame(maxWidth: 768)
+                .frame(maxWidth: .infinity)
         }
+        .font(.nutriSans(14)).foregroundStyle(palette.text)
         .task(id: dayKey) { await loadDay() }
-        .task { await refreshHistory() }
+        .task {
+            await refreshHistory()
+            #if DEBUG
+            if store.snapshotScenario == "body-import" {
+                let recorded = history.last?.text("day") ?? "2026-07-07"
+                importText = "day,weight,body_fat,waist\n" + recorded + ",80.5,22,86\n2026-07-08,75,82,85\n2026-02-30,80,24,90"
+                previewImport = true
+            }
+            #endif
+        }
+        .onChange(of: focus) { previous, next in if previous != nil, previous != next { autosave() } }
+        .onDisappear { autosave() }
+        .nutriSectionActions([.init("importar", label: store.tr("Importar"), icon: "upload", action: openImport)])
         .fileImporter(isPresented: $importingPhotos, allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
             Task { await uploadPhotos(result) }
         }
-        .fileImporter(isPresented: $importingCSV, allowedContentTypes: [.commaSeparatedText, .plainText]) { result in
-            do {
-                let data = try secureFileData(result.get())
-                guard let text = String(data: data, encoding: .utf8) else { throw FeatureError("El archivo debe estar en UTF-8.") }
-                importRows = try BodyImportRow.parse(text)
-                guard !importRows.isEmpty else { throw FeatureError("No hay medidas en el CSV.") }
-                replace = false
-                importError = ""
-                previewImport = true
-            } catch { store.report(error) }
-        }
-        .sheet(isPresented: $previewImport) { importSheet }
+        .overlay { if previewImport { NutriModal(close: { if !busy { previewImport = false } }, maxWidth: 512) { importSheet } } }
         .sheet(isPresented: Binding(get: { selectedPhoto != nil }, set: { if !$0 { selectedPhoto = nil } })) {
             if let selectedPhoto {
                 VStack {
                     PrivateBodyPhoto(path: selectedPhoto).frame(minWidth: 550, minHeight: 420)
-                    Button(store.tr("Cerrar")) { self.selectedPhoto = nil }.keyboardShortcut(.cancelAction)
-                }.padding()
+                    Button(store.tr("Cerrar")) { self.selectedPhoto = nil }.buttonStyle(NutriButtonStyle(.secondary, height: 44)).keyboardShortcut(.cancelAction)
+                }.padding(16)
             }
         }
-        .confirmationDialog(store.tr("¿Eliminar esta foto permanentemente?"), isPresented: $confirmDelete) {
-            Button(store.tr("Eliminar foto"), role: .destructive) { Task { await deletePhoto() } }
-        } message: { Text(store.tr("La foto se eliminará de tu almacenamiento privado.")) }
-    }
-
-    private var capture: some View {
-        GroupBox(store.tr("Registro del día")) {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(BodyMetric.fields.filter { $0.key == "peso_kg" || $0.key == "sueno_corto" || favorites.contains($0.key) }) { metricField($0) }
-                DisclosureGroup(store.tr("Más medidas"), isExpanded: $more) {
-                    ForEach(["Composición", "Circunferencias", "Segmental"], id: \.self) { category in
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(store.tr(category)).font(.headline)
-                            ForEach(BodyMetric.fields.filter { $0.category == category && !["peso_kg", "sueno_corto"].contains($0.key) }) { metric in
-                                HStack {
-                                    metricField(metric)
-                                    Button { Task { await toggleFavorite(metric.key) } } label: {
-                                        Image(systemName: favorites.contains(metric.key) ? "star.fill" : "star")
-                                    }.accessibilityLabel(store.tr("Favorito"))
-                                }
-                            }
-                        }.padding(.vertical, 6)
-                    }
-                }
-                let draft = values.compactMapValues { decimal($0).map(JSONValue.number) }
-                let fat = inheritedFat
-                let derived = derivedBody(draft.merging(fat.map { ["grasa_pct": .number($0)] } ?? [:]) { current, _ in current }, heightCm: height)
-                HStack(spacing: 20) {
-                    ForEach(BodyMetric.derived) { metric in
-                        VStack(alignment: .leading) {
-                            Text(store.tr(metric.label)).font(.caption)
-                            Text(derived.number(metric.key).map { "\(numberText($0)) \(metric.unit)" } ?? store.tr("Faltan medidas o altura"))
+        .overlay {
+            if confirmDelete {
+                NutriModal(close: { confirmDelete = false; photoToDelete = nil }, maxWidth: 384) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(store.tr("¿Eliminar la foto?")).font(.nutriDisplay(19))
+                        Text(store.tr("Se borra del almacenamiento y no se puede deshacer.")).foregroundStyle(palette.text2)
+                        HStack {
+                            Button(store.tr("Cancelar")) { confirmDelete = false; photoToDelete = nil }
+                                .buttonStyle(NutriButtonStyle(.secondary, height: 44)).keyboardShortcut(.cancelAction)
+                            Spacer()
+                            Button(store.tr("Eliminar foto")) { confirmDelete = false; Task { await deletePhoto() } }
+                                .buttonStyle(NutriButtonStyle(.danger, height: 44))
                         }
-                    }
-                }.padding(.vertical, 4)
-                if let fat, derived.number("ffm_kg") != nil {
-                    Text("\(store.tr("Última grasa corporal registrada")) · \(numberText(fat)) %")
-                        .font(.caption).foregroundStyle(.secondary)
+                    }.padding(16).nutriGlass()
                 }
-                TextField(store.tr("Notas"), text: $note, axis: .vertical).lineLimit(2...8).textFieldStyle(.roundedBorder)
-                photoPanel
-                HStack {
-                    if pending {
-                        Button(store.tr("Descartar cambios")) { apply(existing) }
-                    }
-                    if existing != nil && photos.isEmpty {
-                        Button(store.tr("Eliminar registro"), role: .destructive) { Task { await deleteRecord() } }
-                    }
-                    Spacer()
-                    Button(store.tr("Guardar")) { Task { await save() } }
-                        .buttonStyle(.borderedProminent)
-                        .keyboardShortcut("s", modifiers: [.command])
-                        .disabled(!pending)
-                }
-            }.padding(8)
+            }
+        }
+        .onExitCommand {
+            if previewImport, !busy { previewImport = false }
+            if confirmDelete { confirmDelete = false; photoToDelete = nil }
         }
     }
 
-    private func metricField(_ metric: BodyMetric) -> some View {
+    private var dateNavigation: some View {
         HStack {
-            if metric.key == "sueno_corto" {
-                Toggle(store.tr("Sueño corto"), isOn: Binding(
-                    get: { (Double(values[metric.key] ?? "") ?? 0) > 0 },
-                    set: { values[metric.key] = $0 ? draftNumber(threshold) : "" }
-                ))
-                Text("< \(values[metric.key].flatMap(Double.init).map { numberText($0) } ?? numberText(threshold)) h").foregroundStyle(.secondary)
-            } else {
-                Text(store.tr(metric.label)).frame(maxWidth: .infinity, alignment: .leading)
-                TextField(metric.unit, text: Binding(get: { values[metric.key] ?? "" }, set: { values[metric.key] = $0 }))
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 100)
-                    .accessibilityLabel(store.tr(metric.label))
-                Text(metric.unit).foregroundStyle(.secondary).frame(width: 42, alignment: .leading)
-                if let max = metric.max, let number = Double((values[metric.key] ?? "").replacingOccurrences(of: ",", with: ".")), number > max {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).help(store.tr("Fuera de rango"))
+            Button { navigate(addingDays(-1, to: day)) } label: { NutriIcon("chevron-left", size: 22) }
+                .accessibilityLabel(store.tr("Día anterior"))
+            Spacer()
+            Button { dateOpen.toggle() } label: {
+                Text(dayKey == Day.key(Date()) ? store.tr("Hoy") : day.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).locale(locale)))
+                    .font(.nutriDisplay(18)).foregroundStyle(palette.text).frame(minWidth: 180)
+            }
+            .accessibilityLabel(store.tr("Elegir fecha"))
+            .popover(isPresented: $dateOpen) {
+                DatePicker(store.tr("Elegir fecha"), selection: Binding(get: { day }, set: { dateOpen = false; navigate($0) }), displayedComponents: .date)
+                    .labelsHidden().datePickerStyle(.graphical).padding(12)
+            }
+            Spacer()
+            Button { navigate(addingDays(1, to: day)) } label: { NutriIcon("chevron-right", size: 22) }
+                .accessibilityLabel(store.tr("Día siguiente"))
+        }
+        .buttonStyle(NutriButtonStyle(.quiet, height: windowWidth >= 768 ? 38 : 44))
+    }
+
+    private func capture(columns: Int) -> some View {
+        let grid = Array(repeating: GridItem(.flexible(), spacing: 12), count: columns)
+        let extra = BodyMetric.fields.dropFirst(2)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(store.tr("Medidas del día")).foregroundStyle(palette.text3)
+                Spacer()
+                if savedFlash { Text(store.tr("Guardado.")).font(.nutriSans(12)).foregroundStyle(palette.accent) }
+            }
+            LazyVGrid(columns: grid, spacing: 12) {
+                ForEach(BodyMetric.fields.prefix(2)) { metricField($0) }
+                ForEach(extra.filter { favorites.contains($0.key) }) { metricField($0, star: true) }
+            }
+            if !cleanText(values["peso_kg"] ?? "").isEmpty { derivedFields(grid) }
+            if more {
+                Text(store.tr("★ = favorito: aparece arriba junto a los principales.")).font(.nutriSans(12)).foregroundStyle(palette.text3)
+                ForEach(categories, id: \.self) { category in
+                    let fields = extra.filter { $0.category == category && !favorites.contains($0.key) }
+                    if !fields.isEmpty {
+                        Text(store.tr(category)).font(.nutriSans(12)).foregroundStyle(palette.text3)
+                        LazyVGrid(columns: grid, spacing: 12) { ForEach(fields) { metricField($0, star: true) } }
+                    }
                 }
+            }
+            Button(store.tr(more ? "Menos medidas ▴" : "Más medidas ▾")) { more.toggle() }
+                .buttonStyle(.plain).font(.nutriSans(12)).foregroundStyle(palette.accent).frame(minHeight: 44)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(store.tr("Nota")).font(.nutriSans(12)).foregroundStyle(palette.text3)
+                TextField(store.tr("Contexto del día (opcional)"), text: $note, axis: .vertical)
+                    .lineLimit(2...8).textFieldStyle(.plain).focused($focus, equals: "note")
+                    .font(.nutriSans(16)).padding(.horizontal, 12).padding(.vertical, 8).frame(minHeight: 66, alignment: .topLeading)
+                    .background(palette.surface2, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(focus == "note" ? palette.accent : palette.border).allowsHitTesting(false) }
+            }
+        }.padding(16).nutriCard()
+    }
+
+    private func derivedFields(_ grid: [GridItem]) -> some View {
+        let draft = values.compactMapValues { decimal($0).map(JSONValue.number) }
+        let fat = inheritedFat
+        let derived = derivedBody(draft.merging(fat.map { ["grasa_pct": .number($0)] } ?? [:]) { current, _ in current }, heightCm: height)
+        let formulas = ["ffm_kg": "peso × (1 − grasa% / 100)", "imc": "peso / altura² (altura del Perfil, en m)", "ffmi": "masa libre de grasa / altura² (altura del Perfil, en m)"]
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(store.tr("Derivadas")).font(.nutriSans(12)).foregroundStyle(palette.text3)
+            LazyVGrid(columns: grid, spacing: 12) {
+                ForEach(BodyMetric.derived) { metric in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 4) {
+                            Text(store.tr(metric.label))
+                            NutriIcon("circle-help", size: 12)
+                                .help("\(store.tr(metric.label)) = \(store.tr(formulas[metric.key] ?? ""))")
+                        }.font(.nutriSans(12)).foregroundStyle(palette.text3)
+                        HStack {
+                            Text(derived.number(metric.key).map { numberText($0) } ?? "–").font(.nutriSans(16)).monospacedDigit().foregroundStyle(palette.text2)
+                            Spacer()
+                            Text(metric.unit).font(.nutriSans(12)).foregroundStyle(palette.text3)
+                        }.padding(.horizontal, 12).frame(height: 44)
+                            .background(palette.surface2, in: RoundedRectangle(cornerRadius: 12))
+                            .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(palette.border, style: StrokeStyle(dash: [4, 3])) }
+                    }
+                }
+            }
+            if let fat {
+                Text(store.tr("Se calculan con tu peso del día y tu última %s registrada.")
+                    .replacingOccurrences(of: "%s", with: "\(store.tr("grasa")) \(numberText(fat)) %"))
+            }
+            if (height ?? 0) <= 0 { Text(store.tr("IMC y FFMI requieren tu altura — regístrala en tu Perfil (menú de usuario).")) }
+        }.font(.nutriSans(11)).foregroundStyle(palette.text3)
+    }
+
+    private func metricField(_ metric: BodyMetric, star: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Text(store.tr(metric.label))
+                if let max = metric.max, let value = decimal(values[metric.key] ?? ""), value > max {
+                    NutriIcon("triangle-alert", size: 12).foregroundStyle(palette.danger).help(store.tr("Valor fuera de rango — revísalo"))
+                }
+                Spacer(minLength: 0)
+                if star {
+                    let favorite = favorites.contains(metric.key)
+                    Button { Task { await toggleFavorite(metric.key) } } label: {
+                        Image(systemName: favorite ? "star.fill" : "star").foregroundStyle(favorite ? palette.accent : palette.text3)
+                    }.buttonStyle(.plain).accessibilityLabel(store.tr(favorite ? "Quitar de favoritos" : "Marcar como favorito") + " · " + store.tr(metric.label))
+                }
+            }.font(.nutriSans(12)).foregroundStyle(palette.text3)
+            if metric.key == "sueno_corto" {
+                let on = (decimal(values[metric.key] ?? "") ?? 0) > 0
+                Button {
+                    focus = nil
+                    values[metric.key] = on ? "" : draftNumber(threshold)
+                    autosave()
+                } label: {
+                    HStack(spacing: 8) {
+                        NutriIcon("moon", size: 16).foregroundStyle(on ? palette.accent : palette.text3)
+                        Text(store.tr("Dormí menos de %n h").replacingOccurrences(of: "%n", with: numberText(threshold))).font(.nutriSans(12))
+                        Spacer(minLength: 0)
+                    }.padding(.horizontal, 12).frame(height: 44)
+                }.buttonStyle(.plain)
+                    .background(on ? palette.accentDeep.opacity(0.15) : palette.surface2, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(on ? palette.accentDeep : palette.border) }
+                    .accessibilityAddTraits(on ? .isSelected : [])
+            } else {
+                HStack(spacing: 4) {
+                    TextField("–", text: Binding(get: { values[metric.key] ?? "" }, set: { values[metric.key] = $0 }))
+                        .textFieldStyle(.plain).font(.nutriSans(16)).monospacedDigit().foregroundStyle(palette.text)
+                        .focused($focus, equals: metric.key)
+                        .onSubmit { focus = nil; autosave() }
+                        .accessibilityLabel(store.tr(metric.label))
+                    Text(metric.unit).font(.nutriSans(12)).foregroundStyle(palette.text3)
+                }.padding(.horizontal, 12).frame(height: 44)
+                    .background(palette.surface2, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(focus == metric.key ? palette.accent : palette.border) }
             }
         }
     }
 
     private var photoPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button(store.tr("Añadir fotos privadas…"), systemImage: "photo.badge.plus") { importingPhotos = true }
-                .disabled(pending || store.anonymous)
-            ScrollView(.horizontal) {
-                HStack {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(store.tr("Fotos de progreso")).foregroundStyle(palette.text3)
+                Spacer()
+                if uploading { Text(store.tr("Subiendo…")).font(.nutriSans(12)).foregroundStyle(palette.accent) }
+            }
+            if !photos.isEmpty {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                     ForEach(photos, id: \.self) { path in
-                        VStack {
-                            Button { selectedPhoto = path } label: {
-                                PrivateBodyPhoto(path: path).frame(width: 100, height: 100).clipped()
-                            }.buttonStyle(.plain).accessibilityLabel(store.tr("Abrir foto"))
-                            Button(store.tr("Eliminar foto"), systemImage: "trash") {
+                        Color.clear.aspectRatio(1, contentMode: .fit).overlay {
+                            GeometryReader { region in
+                                Button { selectedPhoto = path } label: {
+                                    PrivateBodyPhoto(path: path, crop: true).frame(width: region.size.width, height: region.size.height).clipped()
+                                }.buttonStyle(.plain).accessibilityLabel(store.tr("Abrir foto"))
+                            }
+                        }.background(palette.surface2).clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(alignment: .topTrailing) {
+                            Button {
                                 photoToDelete = path
                                 confirmDelete = true
-                            }.labelStyle(.iconOnly).disabled(pending)
+                            } label: {
+                                NutriIcon("x", size: 16).foregroundStyle(.white).frame(width: 44, height: 44)
+                                    .background(.black.opacity(0.55), in: Circle())
+                            }.buttonStyle(.plain).padding(4).accessibilityLabel(store.tr("Eliminar foto"))
                         }
                     }
                 }
             }
-        }
+            if store.anonymous || store.demoActive {
+                Text(store.tr("En la demo no se pueden subir fotos de progreso.")).font(.nutriSans(12)).foregroundStyle(palette.text3)
+            } else {
+                Button { importingPhotos = true } label: {
+                    HStack(spacing: 8) { NutriIcon("camera", size: 18); Text(store.tr("Añadir fotos")) }.frame(minHeight: 44)
+                }.buttonStyle(.plain).foregroundStyle(palette.accent)
+            }
+        }.padding(16).nutriCard()
+            .overlay { if photoDrag { RoundedRectangle(cornerRadius: 16).strokeBorder(palette.accentDeep, lineWidth: 2).allowsHitTesting(false) } }
+            .dropDestination(for: URL.self) { urls, _ in
+                let supported = urls.filter { url in
+                    (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType?.conforms(to: .image)) == true
+                }
+                guard !store.anonymous, !store.demoActive, !supported.isEmpty else { return false }
+                Task { await uploadPhotos(.success(supported)) }; return true
+            } isTargeted: { photoDrag = $0 && !store.anonymous && !store.demoActive }
+            .disabled(busy)
     }
 
     private var trendPanel: some View {
-        GroupBox(store.tr("Tendencia · últimos 180 días")) {
-            VStack(alignment: .leading) {
-                Picker(store.tr("Medida"), selection: $trendKey) {
-                    ForEach(BodyMetric.fields.filter { $0.key != "sueno_corto" } + BodyMetric.derived) {
-                        Text(store.tr($0.label)).tag($0.key)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(store.tr("Tendencia")).foregroundStyle(palette.text3)
+                Spacer()
+                NutriSelect(value: trendKey, select: { trendKey = $0 }, groups: categories.map { category in
+                    NutriSelectGroup(label: store.tr(category), options: BodyMetric.fields
+                        .filter { $0.category == category && $0.key != "sueno_corto" }.map { ($0.key, store.tr($0.label)) })
+                }, height: 36, currentLabel: store.tr(trend.label))
+                    .frame(width: 168).accessibilityLabel(store.tr("Medida a graficar"))
+
+            }
+            let points = history.compactMap { row -> (String, Double)? in
+                guard let value = row.object("metrics").number(trend.key), value.isFinite else { return nil }
+                return (String(row.text("day").suffix(5)), value)
+            }
+            if points.count < 2 {
+                Text(store.tr("Registra esta medida en 2+ días para ver su tendencia."))
+                    .foregroundStyle(palette.text2).frame(maxWidth: .infinity).padding(.vertical, 32)
+            } else {
+                Chart {
+                    if let trendHover, let point = points.first(where: { $0.0 == trendHover }) {
+                        RuleMark(x: .value("Fecha", point.0)).foregroundStyle(palette.border)
+                            .annotation(position: .top, spacing: 4, overflowResolution: .init(x: .fit, y: .disabled)) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(point.0).foregroundStyle(palette.text)
+                                    Text(store.tr(trend.label) + ": \(numberText(point.1, digits: 1)) \(trend.unit)").foregroundStyle(palette.protein)
+                                }.font(.nutriSans(12)).padding(8).nutriCard(radius: 4, fill: palette.surface3)
+                            }
                     }
-                }.frame(maxWidth: 320)
-                let points = history.compactMap { row -> (Date, Double)? in
-                    guard let date = isoDate(row.text("day")) else { return nil }
-                    let values = row.object("metrics")
-                    guard let value = values.number(trendKey) ?? derivedBody(values, heightCm: height).number(trendKey) else { return nil }
-                    return (date, value)
-                }
-                if points.isEmpty {
-                    Text(store.tr("Sin medidas para esta tendencia")).foregroundStyle(.secondary).padding(.vertical, 8)
-                } else {
-                    Chart {
-                        ForEach(points.indices, id: \.self) { index in
-                            LineMark(x: .value("Fecha", points[index].0), y: .value(trend.unit, points[index].1))
-                            PointMark(x: .value("Fecha", points[index].0), y: .value(trend.unit, points[index].1))
+                    ForEach(points.indices, id: \.self) { index in
+                        LineMark(x: .value("Fecha", points[index].0), y: .value(trend.unit, points[index].1))
+                            .interpolationMethod(.monotone).lineStyle(StrokeStyle(lineWidth: 2)).foregroundStyle(palette.protein)
+                        PointMark(x: .value("Fecha", points[index].0), y: .value(trend.unit, points[index].1))
+                            .symbolSize(13).foregroundStyle(palette.protein)
+                            .accessibilityValue("\(numberText(points[index].1, digits: 1)) \(trend.unit)")
+                    }
+                }.chartYScale(domain: .automatic(includesZero: false))
+                    .chartXAxis { AxisMarks(values: .automatic(desiredCount: min(points.count, 14))) { value in AxisValueLabel { if let text = value.as(String.self) { Text(text).font(.nutriSans(10)).foregroundStyle(palette.text3) } } } }
+                    .chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine().foregroundStyle(palette.border); AxisValueLabel { if let number = value.as(Double.self) { Text(numberText(number, digits: 1)).font(.nutriSans(10)).foregroundStyle(palette.text3) } } } }
+                    .chartOverlay { proxy in
+                        GeometryReader { geometry in
+                            Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in
+                                switch phase {
+                                case let .active(location):
+                                    if let frame = proxy.plotFrame {
+                                        let origin = geometry[frame].origin
+                                        trendHover = proxy.value(atX: location.x - origin.x, as: String.self)
+                                    }
+                                case .ended: trendHover = nil
+                                }
+                            }
                         }
-                    }.chartYScale(domain: .automatic(includesZero: false)).frame(height: 180)
-                }
-            }.padding(8)
-        }
+                    }
+                    .frame(height: 220)
+            }
+        }.padding(16).nutriCard()
     }
 
     private var importSheet: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(store.tr("Importar medidas")).font(.title2.bold())
-            Toggle(store.tr("Reemplazar medidas y notas de fechas existentes"), isOn: $replace)
-            Text(store.tr(replace ? "Se conservan las fotos." : "El CSV complementa las medidas actuales y conserva notas sin reemplazo y fotos."))
-                .foregroundStyle(.secondary)
-            List(importRows) { row in
-                VStack(alignment: .leading) {
-                    Text("\(row.day) · \(row.metrics.count) \(store.tr("medidas"))")
-                    if !row.warnings.isEmpty {
-                        Text("\(store.tr("Fuera de rango")) · \(row.warnings.joined(separator: ", "))").foregroundStyle(.orange)
+        let parsed = Result { try BodyImportRow.preview(importText) }
+        let rows = (try? parsed.get()) ?? []
+        let valid = rows.compactMap(\.value)
+        let collisions = valid.filter { existingDays.contains($0.day) }.count
+        let parseError: String = { if case let .failure(error) = parsed { return error.localizedDescription }; return "" }()
+        return CatalogCSVSheet(
+            title: store.tr("Importar medidas"),
+            description: store.tr("Sube o pega un CSV con una fila por día: una columna day (AAAA-MM-DD) y una columna por cada medida (%s…). Descarga la plantilla para ver los nombres exactos de las columnas.")
+                .replacingOccurrences(of: "%s", with: store.lang == "en" ? "weight, body_fat, waist" : "peso_kg, grasa_pct, cintura_cm"),
+            example: (store.lang == "en" ? "day,weight,body_fat,waist" : "day,peso_kg,grasa_pct,cintura_cm") + "\n2026-07-07,80.5,22,86",
+            text: $importText, error: $importError, parseError: parseError, count: valid.count, busy: busy,
+            close: { previewImport = false }, template: exportTemplate,
+            commit: { Task { await commitImport(valid) } }
+        ) {
+            if collisions > 0 {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(store.tr("%n días del CSV ya tienen medidas registradas.").replacingOccurrences(of: "%n", with: String(collisions)), systemImage: "exclamationmark.triangle")
+                    HStack {
+                        Button(store.tr("Complementar")) { replace = false }.buttonStyle(NutriButtonStyle(replace ? .secondary : .primary, height: 36))
+                        Button(store.tr("Reemplazar")) { replace = true }.buttonStyle(NutriButtonStyle(replace ? .primary : .secondary, height: 36))
                     }
-                }
-            }.frame(minHeight: 180)
-            if !importError.isEmpty { Text(importError).foregroundStyle(.red) }
-            HStack {
-                Button(store.tr("Cancelar")) { previewImport = false }.keyboardShortcut(.cancelAction)
-                Spacer()
-                Button(store.tr("Importar")) { Task { await commitImport() } }.buttonStyle(.borderedProminent)
-            }.disabled(busy)
-        }.padding(20).frame(width: 560).interactiveDismissDisabled(busy)
+                    Text(store.tr(replace ? "Reemplazar: el CSV sustituye por completo las medidas de esos días." : "Complementar: conserva tus medidas y solo agrega o actualiza las del CSV."))
+                        .font(.nutriSans(11)).foregroundStyle(palette.text3)
+                }.padding(10).nutriCard(radius: 12)
+            }
+            CatalogCSVPreview(rows: rows.map(\.preview))
+        }.task {
+            do { existingDays = Set(try await store.read("body_metrics", ["select": "day"]).map { $0.text("day") }) }
+            catch { if !Task.isCancelled { store.report(error) } }
+        }
+    }
+
+    private func openImport() {
+        Task {
+            await flushEdits()
+            guard !busy, !pending else { return }
+            importText = ""; importError = ""; replace = false
+            previewImport = true
+        }
+    }
+
+    private func navigate(_ date: Date) {
+        Task {
+            await flushEdits()
+            guard !busy, !pending else { return }
+            day = date
+        }
+    }
+
+    private func autosave() {
+        guard ready, pending else { return }
+        let previous = saveTask
+        saveTask = Task {
+            await previous?.value
+            if pending { await save() }
+        }
+    }
+
+    private func flushEdits() async {
+        focus = nil
+        if pending { autosave() }
+        await saveTask?.value
     }
 
     private func apply(_ row: Record?) {
@@ -442,44 +630,57 @@ struct BodyView: View {
     }
 
     private func save() async {
-        guard !busy, let owner = store.owner else { return }
+        guard ready, pending, !busy, let owner = store.owner else { return }
         busy = true
         defer { busy = false }
         do {
             let key = dayKey
             let original = originalValues
-            let editedMetrics = Set(values.keys).union(original.keys).filter {
-                cleanText(values[$0] ?? "") != (original[$0] ?? "")
+            let snapshot = values
+            let savedNote = note
+            let saveNote = noteChanged
+            let editedMetrics = Set(snapshot.keys).union(original.keys).filter {
+                cleanText(snapshot[$0] ?? "") != (original[$0] ?? "")
+            }
+            func applySaved(_ row: Record?) {
+                let uncommitted = values.filter { key, value in value != snapshot[key] }
+                let uncommittedNote = note == savedNote ? nil : note
+                apply(row)
+                for (key, value) in uncommitted { values[key] = value }
+                if let uncommittedNote { note = uncommittedNote }
             }
             let latest = try await latestRecord(day: key, owner: owner)
             var metrics = latest?.object("metrics") ?? [:]
             for name in editedMetrics {
                 let label = BodyMetric.fields.first { $0.key == name }?.label ?? name
-                metrics[name] = try featureNumber(values[name] ?? "", label: label).map(JSONValue.number)
+                metrics[name] = try featureNumber(snapshot[name] ?? "", label: label).map(JSONValue.number)
             }
-            let nextNote = noteChanged ? optionalText(note) : (latest?["note"] ?? .null)
+            let nextNote = saveNote ? optionalText(savedNote) : (latest?["note"] ?? .null)
             if let latest {
                 if metrics.isEmpty, nextNote.string.map(cleanText)?.isEmpty ?? true, latest.array("photo_paths").isEmpty {
                     try await remove(latest)
-                    apply(nil)
+                    applySaved(nil)
                 } else {
                     var patch: Record = [:]
                     if !editedMetrics.isEmpty { patch["metrics"] = .object(metrics) }
-                    if noteChanged { patch["note"] = nextNote }
-                    if patch.isEmpty { apply(latest) }
+                    if saveNote { patch["note"] = nextNote }
+                    if patch.isEmpty { applySaved(latest) }
                     else {
                         let filter = try recordFilter(latest, matching: Array(patch.keys))
-                        apply(try await store.update("body_metrics", filter, patch).first)
+                        guard let written = try await store.update("body_metrics", filter, patch).first else { throw FeatureError("El registro cambió. Vuelve a salir del campo para reintentar.") }
+                        applySaved(written)
                     }
                 }
             } else if !metrics.isEmpty || nextNote != .null {
-                apply(try await store.insert("body_metrics", [
+                applySaved(try await store.insert("body_metrics", [
                     "owner": .string(owner), "day": .string(key), "metrics": .object(metrics), "note": nextNote
                 ]))
-            } else { apply(nil) }
-            message = store.tr("Guardado")
+            } else { applySaved(nil) }
+            message = ""
+            savedFlash = true
+            Task { try? await Task.sleep(for: .milliseconds(1200)); savedFlash = false }
             await refreshHistory()
-        } catch { store.report(error) }
+        } catch { message = error.localizedDescription; store.report(error) }
     }
 
     private func latestRecord(day key: String, owner: String) async throws -> Record? {
@@ -508,54 +709,52 @@ struct BodyView: View {
         guard row.array("photo_paths").isEmpty else {
             throw FeatureError("Elimina primero las fotos del registro.")
         }
-        _ = try await store.delete("body_metrics", recordFilter(row, matching: ["metrics", "note", "photo_paths"]))
-        store.undo(store.tr("Medidas eliminadas")) {
+        guard let deleted = try await store.delete("body_metrics", recordFilter(row, matching: ["metrics", "note", "photo_paths"])).first else {
+            throw FeatureError("El servidor no confirmó el borrado.")
+        }
+        store.undo(store.tr("Medida borrada")) {
             guard store.owner == row.text("owner") else { throw CancellationError() }
-            _ = try await store.insert("body_metrics", row)
-            if dayKey == row.text("day") { apply(row) }
+            _ = try await store.insert("body_metrics", deleted)
+            if dayKey == deleted.text("day") { apply(deleted) }
             await refreshHistory()
         }
     }
 
-    private func deleteRecord() async {
-        guard !busy, let existing else { return }
-        busy = true
-        defer { busy = false }
-        do {
-            try await remove(existing)
-            apply(nil)
-            await refreshHistory()
-        } catch { store.report(error) }
-    }
-
     private func uploadPhotos(_ result: Result<[URL], Error>) async {
-        guard !busy, !pending, !store.anonymous, let owner = store.owner else { return }
+        await flushEdits()
+        guard ready, !busy, !pending, !store.anonymous, !store.demoActive, let owner = store.owner else { return }
         let key = dayKey
-        busy = true
-        defer { busy = false }
+        busy = true; uploading = true
+        defer { busy = false; uploading = false }
         do {
+            var failure: Error?
             for url in try result.get() {
-                let path = "\(owner)/\(UUID().uuidString.lowercased()).jpg"
-                let bytes = try jpegData(url)
-                // Record the unique path before upload so an ambiguous response
-                // cannot leave the only copy of a private photo unreferenced.
-                let registered = try await setPhotoReference(path, present: true, day: key, owner: owner)
+                try Task.checkCancellation()
+                guard store.owner == owner else { return }
                 do {
-                    _ = try await store.storage("POST", "object/body-photos/\(path)", body: bytes, contentType: "image/jpeg")
-                    apply(registered)
-                } catch {
-                    apply(registered)
-                    if let status = (error as? NutriError)?.status, (400..<500).contains(status),
-                       ![408, 409, 429].contains(status) {
-                        apply(try await setPhotoReference(path, present: false, day: key, owner: owner))
+                    let path = "\(owner)/\(UUID().uuidString.lowercased()).jpg"
+                    let bytes = try jpegData(url, quality: 0.8)
+                    // Keep the unique path through an ambiguous upload result; do not repeat the write blindly.
+                    let registered = try await setPhotoReference(path, present: true, day: key, owner: owner)
+                    do {
+                        _ = try await store.storage("POST", "object/body-photos/\(path)", body: bytes, contentType: "image/jpeg")
+                        apply(registered)
+                    } catch {
+                        if store.owner == owner { apply(registered) }
+                        if let status = (error as? NutriError)?.status, (400..<500).contains(status),
+                           ![408, 409, 429].contains(status) {
+                            apply(try await setPhotoReference(path, present: false, day: key, owner: owner))
+                        }
+                        throw error
                     }
-                    throw error
-                }
+                } catch { if failure == nil { failure = error } }
             }
+            if let failure { store.report(failure) }
         } catch { store.report(error) }
     }
 
     private func deletePhoto() async {
+        await flushEdits()
         guard !busy, !pending, let path = photoToDelete, let owner = store.owner,
               path.hasPrefix("\(owner)/"), !path.contains("..") else { return }
         let key = dayKey
@@ -609,12 +808,12 @@ struct BodyView: View {
 
     private func exportTemplate() {
         do {
-            let csv = CSV.encode([["day"] + BodyMetric.fields.map(\.key) + ["note"]])
-            try saveFeatureFile(Data(csv.utf8), name: "nutri_medidas.csv", type: .commaSeparatedText)
+            let headers = ["day"] + BodyMetric.fields.map { store.lang == "en" ? BodyMetric.englishHeaders[$0.key] ?? $0.key : $0.key } + ["note"]
+            try saveFeatureFile(Data((headers.joined(separator: ",") + "\n").utf8), name: "nutri_medidas_plantilla.csv", type: .commaSeparatedText)
         } catch { store.report(error) }
     }
 
-    private func commitImport() async {
+    private func commitImport(_ importRows: [BodyImportRow]) async {
         guard let owner = store.owner else { return }
         busy = true
         importError = ""
@@ -636,7 +835,7 @@ struct BodyView: View {
             previewImport = false
             await loadDay()
             await refreshHistory()
-            message = "\(payload.count) \(store.tr("registros importados"))"
+            store.toast(store.tr("%n días importados.").replacingOccurrences(of: "%n", with: String(payload.count)))
         } catch { importError = error.localizedDescription }
     }
 }
@@ -644,13 +843,14 @@ struct BodyView: View {
 private struct PrivateBodyPhoto: View {
     @EnvironmentObject private var store: Store
     let path: String
+    var crop = false
     @State private var image: NSImage?
     @State private var error = false
 
     var body: some View {
         Group {
             if let image {
-                Image(nsImage: image).resizable().scaledToFit().accessibilityLabel(store.tr("Foto de progreso"))
+                Image(nsImage: image).resizable().aspectRatio(contentMode: crop ? .fill : .fit).accessibilityLabel(store.tr("Foto de progreso"))
             } else if error {
                 Label(store.tr("Foto no disponible"), systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
             } else {

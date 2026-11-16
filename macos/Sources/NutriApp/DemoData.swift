@@ -3,12 +3,14 @@ import Foundation
 import NutriCore
 
 struct DemoData {
-    let owner = "00000000-0000-4000-8000-000000000001"
+    let owner: String
+    var isAnonymous = false
     var prefs: Record = ["lang": .string("es"), "units": .string("metric"), "profile": .object(["first_name": .string("Demo"), "height_cm": .number(175)])]
     private var tables: [String: [Record]] = [:]
     private var files: [String: Data] = [:]
 
     init() {
+        owner = "00000000-0000-4000-8000-000000000001"
         let oats = identifier(11)
         let yogurt = identifier(12)
         let raspberries = identifier(13)
@@ -71,6 +73,15 @@ struct DemoData {
          "meal_label_id": label.map(JSONValue.string) ?? .null, "created_at": .string(day + "T09:00:00Z")]
     }
 
+    init(fixture: URL) throws {
+        let value = try JSONDecoder().decode(Record.self, from: Data(contentsOf: fixture))
+        guard let uid = value["owner"]?.string, !uid.isEmpty else { throw NutriError("Snapshot fixture requires owner") }
+        owner = uid
+        isAnonymous = value["anonymous"]?.bool ?? false
+        prefs = value.object("prefs")
+        tables = value.object("tables").mapValues { $0.array?.compactMap(\.object) ?? [] }
+    }
+
     func read(_ table: String, _ query: [String: String]) -> [Record] {
         let base: [Record]
         switch table {
@@ -125,7 +136,8 @@ struct DemoData {
                     guard let key = rule.first else { continue }
                     let descending = rule.count > 1 && rule[1] == "desc"
                     if let x = a.number(key), let y = b.number(key), x != y { return descending ? x > y : x < y }
-                    if a.text(key) != b.text(key) { return descending ? a.text(key) > b.text(key) : a.text(key) < b.text(key) }
+                    let comparison = a.text(key).compare(b.text(key), options: key == "name" ? [.caseInsensitive, .diacriticInsensitive] : [], locale: Locale(identifier: "en_US"))
+                    if comparison != .orderedSame { return descending ? comparison == .orderedDescending : comparison == .orderedAscending }
                 }
                 return false
             }

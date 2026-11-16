@@ -1,6 +1,6 @@
 // Clients for external nutrition data sources, per 100 g, mapped to the EXACT
 // MICROS keys (src/lib/domain.js). fetch only, no new dependencies.
-import { MICROS, round } from './domain.js';
+import { MICROS, nutritionNumber, round } from './domain.js';
 import { supabase } from './supabase.js';
 
 // La key SOLO existe en dev (dev server y vitest). En el build de producción
@@ -91,40 +91,59 @@ export function mapOFF(p) {
     sweeteners: sweetenerAdditives(p),
   };
 
-  if (n['energy-kcal_100g'] != null) out.kcal = round(n['energy-kcal_100g'], 1);
-  else if (n.energy_100g != null) out.kcal = round(n.energy_100g / 4.184, 1);
-  if (n.proteins_100g != null) out.protein_g = round(n.proteins_100g, 2);
-  if (n.carbohydrates_100g != null) out.carbs_g = round(n.carbohydrates_100g, 2);
-  if (n.fat_100g != null) out.fat_g = round(n.fat_100g, 2);
+  function assign(target, key, value, digits, multiplier = 1) {
+    const valid = nutritionNumber(value);
+    if (valid == null) return;
+    const rounded = nutritionNumber(round(valid * multiplier, digits));
+    if (rounded != null) target[key] = rounded;
+  }
+
+  const kcal = nutritionNumber(n['energy-kcal_100g']);
+  const kj = nutritionNumber(n.energy_100g);
+  assign(out, 'kcal', kcal ?? (kj == null ? null : kj / 4.184), 1);
+  for (const [key, source] of [['protein_g', 'proteins'], ['carbs_g', 'carbohydrates'], ['fat_g', 'fat']]) {
+    assign(out, key, n[source + '_100g'], 2);
+  }
 
   const m = out.micros;
-  if (n['saturated-fat_100g'] != null) m.grasa_sat_g = round(n['saturated-fat_100g'], 2);
-  if (n['trans-fat_100g'] != null) m.grasa_trans_g = round(n['trans-fat_100g'], 2);
-  if (n.sugars_100g != null) m.azucar_g = round(n.sugars_100g, 2);
-  if (n.fiber_100g != null) m.fibra_g = round(n.fiber_100g, 2);
-  // OFF normalizes sodium/potassium/magnesium/calcium/iron to grams (field *_unit = "g").
-  if (n.sodium_100g != null) m.sodio_mg = round(n.sodium_100g * 1000, 1);
-  else if (n.salt_100g != null) m.sodio_mg = round((n.salt_100g / 2.5) * 1000, 1);
-  if (n.potassium_100g != null) m.potasio_mg = round(n.potassium_100g * 1000, 1);
-  if (n.magnesium_100g != null) m.magnesio_mg = round(n.magnesium_100g * 1000, 1);
-  if (n.calcium_100g != null) m.calcio_mg = round(n.calcium_100g * 1000, 1);
-  if (n.iron_100g != null) m.hierro_mg = round(n.iron_100g * 1000, 2);
-  // OFF reports caffeine in grams (verified live: caffeine_unit "g"), like the minerals.
-  if (n.caffeine_100g != null) m.cafeina_mg = round(n.caffeine_100g * 1000, 1);
-  // Extended OFF fields, already in the domain unit (grams). Sparsely populated:
-  // an absent key is simply not assigned (a wrong value is never stored).
-  if (n.polyols_100g != null) m.polioles_g = round(n.polyols_100g, 2);
-  if (n.starch_100g != null) m.almidon_g = round(n.starch_100g, 2);
-  if (n.fructose_100g != null) m.fructosa_g = round(n.fructose_100g, 2);
-  if (n.glucose_100g != null) m.glucosa_g = round(n.glucose_100g, 2);
-  if (n.sucrose_100g != null) m.sacarosa_g = round(n.sucrose_100g, 2);
-  if (n.maltose_100g != null) m.maltosa_g = round(n.maltose_100g, 2);
-  if (n.lactose_100g != null) m.lactosa_g = round(n.lactose_100g, 2);
-  if (n['monounsaturated-fat_100g'] != null) m.grasa_mono_g = round(n['monounsaturated-fat_100g'], 2);
-  if (n['polyunsaturated-fat_100g'] != null) m.grasa_poli_g = round(n['polyunsaturated-fat_100g'], 2);
-  if (n['omega-3-fat_100g'] != null) m.omega3_g = round(n['omega-3-fat_100g'], 3);
-  if (n['omega-6-fat_100g'] != null) m.omega6_g = round(n['omega-6-fat_100g'], 3);
+  // OFF supplies the mapped nutrients in grams, including minerals and caffeine.
+  for (const [key, source] of [
+    ['grasa_sat_g', 'saturated-fat'], ['grasa_trans_g', 'trans-fat'], ['azucar_g', 'sugars'],
+    ['fibra_g', 'fiber'], ['polioles_g', 'polyols'], ['almidon_g', 'starch'],
+    ['fructosa_g', 'fructose'], ['glucosa_g', 'glucose'], ['sacarosa_g', 'sucrose'],
+    ['maltosa_g', 'maltose'], ['lactosa_g', 'lactose'], ['grasa_mono_g', 'monounsaturated-fat'],
+    ['grasa_poli_g', 'polyunsaturated-fat'], ['omega3_g', 'omega-3-fat'], ['omega6_g', 'omega-6-fat'],
+  ]) {
+    assign(m, key, n[source + '_100g'], key.startsWith('omega') ? 3 : 2);
+  }
+  for (const [key, source] of [
+    ['potasio_mg', 'potassium'], ['magnesio_mg', 'magnesium'], ['calcio_mg', 'calcium'],
+    ['hierro_mg', 'iron'], ['cafeina_mg', 'caffeine'],
+  ]) {
+    assign(m, key, n[source + '_100g'], key === 'hierro_mg' ? 2 : 1, 1000);
+  }
+  const sodium = nutritionNumber(n.sodium_100g);
+  const salt = nutritionNumber(n.salt_100g);
+  assign(m, 'sodio_mg', sodium ?? (salt == null ? null : salt / 2.5), 1, 1000);
 
+  return out;
+}
+
+// Metadata describes the product independently of the nutrition basis. Nutrients
+// may only fill gaps from a compatible basis; a measured zero is never a gap.
+export function fillFoodSource(winner, filler, requiredOnly = false) {
+  if (!filler) return winner;
+  const out = { ...winner, name: winner.name || filler.name || '', brand: winner.brand || filler.brand || '' };
+  const basis = winner.basis || winner.per;
+  if (!basis || basis !== (filler.basis || filler.per)) return out;
+  for (const key of ['kcal', 'protein_g', 'carbs_g', 'fat_g']) {
+    if (nutritionNumber(out[key]) == null && nutritionNumber(filler[key]) != null) out[key] = filler[key];
+  }
+  out.micros = { ...winner.micros };
+  const keys = requiredOnly ? ['sodio_mg', 'potasio_mg', 'magnesio_mg'] : MICROS.map((m) => m.key);
+  for (const key of keys) {
+    if (nutritionNumber(out.micros[key]) == null && nutritionNumber(filler.micros?.[key]) != null) out.micros[key] = filler.micros[key];
+  }
   return out;
 }
 

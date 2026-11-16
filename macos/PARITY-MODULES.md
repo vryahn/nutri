@@ -11,14 +11,15 @@
 
 `replace_phase_atomic` exige siete filas de origen. La corrección de una fase vigente antigua que tenga días faltantes usa el upsert semanal de la aplicación web. Las versiones nuevas salen con reglas independientes. Un ajuste calculado por la app exige revisión en el plan maestro y se presenta sin acción de aplicación automática.
 
-La presentación usa controles de macOS. La huella nutricional se muestra en barras horizontales, el informe usa PDF nativo paginado y los resultados USDA aparecen al solicitar la búsqueda desde el ingrediente. El lector de bitácora evita pasar a IA un valor parcial como cifra concluyente. La carga y el borrado de fotos usan Storage y PostgREST, con actualización de referencia y manejo de fallos por separado.
+La revisión 1.1 sustituye la presentación genérica de macOS por los componentes visuales de Nutri. La huella nutricional usa radar, el informe conserva la composición web sobre papel Carta y USDA participa en la resolución automática de ingredientes. Los datos parciales mantienen su marca de cobertura al consultar la bitácora. La carga y el borrado de fotos usan Storage y PostgREST, con actualización de referencia y manejo de fallos por separado. El detalle vigente está en [Alimentos, Recetas y Medidas](FIDELITY-CATALOG-BODY.md) y [Objetivos y Dashboard](FIDELITY-ANALYSIS.md).
 
 ## Verificación
 
 - [x] Compilación integrada SwiftUI DEBUG y firma local con el SDK macOS 26.5 de Command Line Tools.
 - [x] Ejecución de `Nutri --module-checks` en bundle DEBUG firmado. Casos sintéticos para importación de receta con densidad y rechazo de cantidades incompatibles, nombres ambiguos y masas negativas. Objetivos con cero declarado y piso de sodio. Evaluación de reglas con ámbito histórico de cadenas, ausencia de regla, umbral incompleto, cooldown y banda acoplada. Adherencia con cobertura parcial, cuantil Bayes comparado con la implementación web y rango permitido de la consulta de IA.
 - [x] Repetición de compilación DEBUG y `--module-checks` sobre la última versión de estos módulos.
-- [ ] Verificación visual y de interacción con datos de demostración. Incluye edición y deshacer, apertura de asistentes, cambios de filtros y exportación a un archivo local.
+- [x] Revisión visual de renders SwiftUI de los seis módulos en ambos temas, a 390, 768 y 1280 puntos, y de editores, asistentes y previa del informe con demo sintética.
+- [ ] Interacción real de edición/deshacer, gestos, filtros y exportación mediante diálogos. La captura nativa de escritorio falla con ScreenCaptureKit -3811; un render de prueba no sustituye esta comprobación.
 - [x] Smoke de lectura REST autenticada desde cliente nativo para objetivos, totales diarios, registros, vistas de recetas y medidas. Renovación, cierre de sesión y RLS verificados con cuenta de prueba. Las lecturas con cero filas no ejercitan contenido persistido.
 - [x] Prueba autenticada de guardado atómico de receta, objetivo por fecha, medida y foto privada con fixtures en la cuenta designada. Verificada la eliminación de todas las filas y el archivo sintéticos.
 - [ ] Prueba autenticada del proxy de IA con una cuenta autorizada.

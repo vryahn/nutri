@@ -29,14 +29,28 @@ func fetchOFF(_ ean: String) async throws -> Record {
         throw NutriError("Este código no figura en Open Food Facts.")
     }
 
+    return mapOFFProduct(product)
+}
+
+func mapOFFProduct(_ product: Record) -> Record {
     let nutrients = product.object("nutriments")
+    func value(_ key: String) -> Double? {
+        let amount = nutrients[key]?.string.flatMap(decimal) ?? nutrients.number(key)
+        return amount.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
+    }
+    func rounded(_ amount: Double, digits: Int, multiplier: Double = 1) -> JSONValue? {
+        let scaled = amount * multiplier
+        guard scaled.isFinite else { return nil }
+        let result = Domain.round(scaled, digits)
+        return result.isFinite ? .number(result) : nil
+    }
     let basis = product.text("nutrition_data_per") == "100ml" ? "100ml" : "100g"
     let brand = product.text("brands").components(separatedBy: ",").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     var record: Record = ["name": .string(product.text("product_name")), "brand": .string(brand), "per": .string(basis), "source": .string("off")]
-    let energy = nutrients.number("energy-kcal_100g") ?? nutrients.number("energy_100g").map { $0 / 4.184 }
-    if let energy { record["kcal"] = .number(Domain.round(energy, 1)) }
+    let energy = value("energy-kcal_100g") ?? value("energy_100g").map { $0 / 4.184 }
+    if let energy { record["kcal"] = rounded(energy, digits: 1) }
     for (nutriKey, offKey) in [("protein_g", "proteins"), ("carbs_g", "carbohydrates"), ("fat_g", "fat")] {
-        if let value = nutrients.number(offKey + "_100g") { record[nutriKey] = .number(Domain.round(value, 2)) }
+        if let amount = value(offKey + "_100g") { record[nutriKey] = rounded(amount, digits: 2) }
     }
     let grams: [(String, String)] = [
         ("grasa_sat_g", "saturated-fat"), ("grasa_trans_g", "trans-fat"), ("azucar_g", "sugars"),
@@ -47,14 +61,14 @@ func fetchOFF(_ ean: String) async throws -> Record {
     ]
     var micros: Record = [:]
     for (key, source) in grams {
-        if let amount = nutrients.number(source + "_100g") { micros[key] = .number(Domain.round(amount, key.hasPrefix("omega") ? 3 : 2)) }
+        if let amount = value(source + "_100g") { micros[key] = rounded(amount, digits: key.hasPrefix("omega") ? 3 : 2) }
     }
     for (key, source) in [("potasio_mg", "potassium"), ("magnesio_mg", "magnesium"), ("calcio_mg", "calcium"),
                           ("hierro_mg", "iron"), ("cafeina_mg", "caffeine")] {
-        if let amount = nutrients.number(source + "_100g") { micros[key] = .number(Domain.round(amount * 1000, key == "hierro_mg" ? 2 : 1)) }
+        if let amount = value(source + "_100g") { micros[key] = rounded(amount, digits: key == "hierro_mg" ? 2 : 1, multiplier: 1000) }
     }
-    let sodium = nutrients.number("sodium_100g") ?? nutrients.number("salt_100g").map { $0 / 2.5 }
-    if let sodium { micros["sodio_mg"] = .number(Domain.round(sodium * 1000, 1)) }
+    let sodium = value("sodium_100g") ?? value("salt_100g").map { $0 / 2.5 }
+    if let sodium { micros["sodio_mg"] = rounded(sodium, digits: 1, multiplier: 1000) }
     record["micros"] = .object(micros)
     let sweeteners = [
         "e420": "sorbitol", "e421": "manitol", "e953": "isomalt", "e965": "maltitol", "e966": "lactitol",
@@ -99,7 +113,12 @@ private let fdcNutrients: [Int: String] = [
 @MainActor
 func searchFDC(store: Store, query: String) async throws -> [Record] {
     let result = try await store.ai(["kind": .string("usda"), "model": .string("search"), "payload": .object(["query": .string(query)])])
-    return result.object?.array("foods").compactMap(\.object) ?? []
+    var seen = Set<Int>()
+    return Array((result.object?.array("foods").compactMap(\.object) ?? []).filter { row in
+        guard let id = row.number("fdcId").flatMap(Int.init(exactly:)), id > 0 else { return false }
+        let type = row.text("dataType")
+        return (type.isEmpty || ["Foundation", "SR Legacy"].contains(type)) && seen.insert(id).inserted
+    }.prefix(6))
 }
 
 @MainActor
@@ -107,6 +126,10 @@ func fetchFDC(store: Store, id: Int) async throws -> Record {
     guard id > 0 else { throw NutriError("Identificador USDA inválido.") }
     let result = try await store.ai(["kind": .string("usda"), "model": .string("food"), "payload": .object(["fdcId": .number(Double(id))])])
     guard let data = result.object else { throw NutriError("Respuesta USDA inválida.") }
+    return mapFDCFood(data)
+}
+
+func mapFDCFood(_ data: Record) -> Record {
     var food: Record = ["source": .string("usda"), "brand": .string(""), "name": .string(data.text("description"))]
     var micros: Record = [:]
     let macroKeys = Set(Domain.macroKeys.dropFirst())
@@ -152,4 +175,38 @@ func searchSemanticFoods(store: Store, query: String) async throws -> [Record] {
     let vector = try await foodEmbedding(store: store, text: query)
     let result = try await store.rpc("match_foods", ["q": vector, "n": .number(8), "max_dist": .number(0.65)])
     return result.array?.compactMap(\.object) ?? []
+}
+
+@MainActor private var fdcSpanishNames: [String: String] = [:]
+
+/// Visual aid only: English USDA descriptions are kept as the fallback and never stored as translated data.
+@MainActor
+func translateFDCEnEs(_ text: String) async -> String {
+    guard !text.isEmpty else { return text }
+    if let name = fdcSpanishNames[text] { return name }
+    var url = URLComponents()
+    url.scheme = "https"
+    url.host = "api.mymemory.translated.net"
+    url.path = "/get"
+    url.queryItems = [.init(name: "q", value: text), .init(name: "langpair", value: "en|es")]
+    var result = text
+    if let url = url.url,
+       let (data, response) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 15)),
+       (response as? HTTPURLResponse)?.statusCode == 200,
+       let value = try? JSONDecoder().decode(Record.self, from: data), value.number("responseStatus") == 200 {
+        let translated = value.object("responseData").text("translatedText")
+        if !translated.isEmpty { result = translated }
+    }
+    if !Task.isCancelled { fdcSpanishNames[text] = result }
+    return result
+}
+
+/// Mirrors the web ilike name query; the base list remains the offline fallback.
+@MainActor
+func searchCatalogNames(store: Store, table: String, term: String, limit: Int? = nil) async throws -> [Record] {
+    var query = table == "foods" ? Store.catalogQuery : ["order": "name.asc"]
+    query["name"] = "ilike.%\(term)%"
+    if let limit { query["limit"] = String(limit); query["order"] = nil }
+    let rows = try await store.read(table, query)
+    return table == "foods" ? rows.filter { !Domain.water($0) } : rows
 }

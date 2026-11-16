@@ -4,8 +4,6 @@ import NutriCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-let nutriAccent = Color(red: 0.008, green: 0.50, blue: 0.47)
-
 func decimal(_ value: String) -> Double? {
     let text = value.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")
     guard let number = Double(text), number.isFinite else { return nil }
@@ -14,7 +12,7 @@ func decimal(_ value: String) -> Double? {
 
 func formText(_ value: Double?) -> String { value.map { String($0) } ?? "" }
 
-func jpegData(_ url: URL, maxSide: Int = 1280) throws -> Data {
+func jpegData(_ url: URL, maxSide: Int = 1280, quality: Double = 0.85) throws -> Data {
     let granted = url.startAccessingSecurityScopedResource()
     defer { if granted { url.stopAccessingSecurityScopedResource() } }
     guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { throw NutriError("No se pudo abrir la imagen.") }
@@ -25,7 +23,7 @@ func jpegData(_ url: URL, maxSide: Int = 1280) throws -> Data {
         kCGImageSourceShouldCacheImmediately: true
     ] as CFDictionary
     guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options),
-          let result = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.85]) else {
+          let result = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: quality]) else {
         throw NutriError("No se pudo convertir la imagen.")
     }
     return result
@@ -50,13 +48,12 @@ struct Panel<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title).font(.headline)
+            Text(title).font(.nutriDisplay(16))
             content
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-        .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary, lineWidth: 1) }
+        .nutriCard()
     }
 }
 
@@ -71,12 +68,12 @@ struct ColumnHeader<Trailing: View>: View {
 
     var body: some View {
         HStack {
-            Text(title).font(.system(size: 29, weight: .semibold))
+            Text(title).font(.nutriDisplay(24))
             Spacer()
             trailing
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 16)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
     }
 }
 
@@ -86,10 +83,153 @@ struct EditorTitle: View {
 
     var body: some View {
         HStack {
-            Text(title).font(.title2.weight(.semibold))
+            Text(title).font(.nutriDisplay(19))
             Spacer()
-            Button(action: close) { Image(systemName: "xmark.circle.fill").font(.title3) }
+            Button(action: close) { NutriIcon("x", size: 16).frame(width: 36, height: 36) }
                 .buttonStyle(.borderless).keyboardShortcut(.cancelAction).accessibilityLabel("Cerrar")
         }
     }
+}
+
+struct NutriSheet<Content: View, Footer: View>: View {
+    @EnvironmentObject private var store: Store
+    @Environment(\.nutriPalette) private var palette
+    let title: String
+    let close: () -> Void
+    let content: Content
+    let footer: Footer
+    let showsFooter: Bool
+
+    init(_ title: String, close: @escaping () -> Void, showsFooter: Bool = true, @ViewBuilder content: () -> Content, @ViewBuilder footer: () -> Footer) {
+        self.title = title
+        self.close = close
+        self.content = content()
+        self.footer = footer()
+        self.showsFooter = showsFooter
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(title).font(.nutriDisplay(19))
+                Spacer()
+                Button(action: close) {
+                    NutriIcon("x", size: 16).frame(width: 36)
+                }
+                .buttonStyle(NutriButtonStyle(.quiet, height: 36, horizontal: 0))
+                .keyboardShortcut(.cancelAction)
+                .accessibilityLabel(store.tr("Cerrar"))
+            }
+            .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
+            Rectangle().fill(palette.border).frame(height: 1)
+            ViewThatFits(in: .vertical) {
+                content.padding(.horizontal, 20).padding(.vertical, 16).fixedSize(horizontal: false, vertical: true)
+                ScrollView { content.padding(.horizontal, 20).padding(.vertical, 16) }
+            }
+            if showsFooter {
+                Rectangle().fill(palette.border).frame(height: 1)
+                footer.padding(.horizontal, 20).padding(.vertical, 12)
+            }
+        }
+        .nutriGlass(modal: true)
+    }
+}
+
+struct NutriModal<Content: View>: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let close: () -> Void
+    var maxWidth: CGFloat = 448
+    var scrimOpacity: Double = 0.4
+    var fullscreen = false
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        GeometryReader { geometry in
+            let compact = geometry.size.width < 640
+            ZStack(alignment: compact ? .bottom : .center) {
+                Color.black.opacity(scrimOpacity)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: close)
+                    .accessibilityHidden(true)
+                content
+                    .frame(width: fullscreen ? geometry.size.width : min(geometry.size.width, maxWidth),
+                           height: fullscreen ? geometry.size.height : nil)
+                    .frame(maxHeight: fullscreen ? geometry.size.height : geometry.size.height * 0.88)
+                    .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: 16)))
+                    .accessibilityAddTraits(.isModal)
+            }
+        }
+    }
+}
+
+/// Wraps chips and controls at the proposed width, like a flex-wrap row.
+struct NutriFlow: Layout {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat = 8
+
+    private func positions(_ width: CGFloat, _ subviews: Subviews) -> ([CGRect], CGSize) {
+        var result: [CGRect] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var lineHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
+        for view in subviews {
+            let natural = view.sizeThatFits(.unspecified)
+            let size = natural.width > width ? view.sizeThatFits(.init(width: width, height: nil)) : natural
+            if x > 0 && x + size.width > width {
+                x = 0
+                y += lineHeight + lineSpacing
+                lineHeight = 0
+            }
+            result.append(CGRect(origin: CGPoint(x: x, y: y), size: size))
+            usedWidth = max(usedWidth, x + size.width)
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
+        return (result, CGSize(width: usedWidth, height: y + lineHeight))
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        positions(proposal.width ?? .infinity, subviews).1
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let (frames, _) = positions(bounds.width, subviews)
+        for (view, frame) in zip(subviews, frames) {
+            view.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                       anchor: .topLeading, proposal: ProposedViewSize(frame.size))
+        }
+    }
+}
+
+struct NutriPresentedModal {
+    let id: String
+    let close: () -> Void
+    let maxWidth: CGFloat
+    let scrimOpacity: Double
+    let fullscreen: Bool
+    let content: AnyView
+
+    init<Content: View>(_ id: String, close: @escaping () -> Void, maxWidth: CGFloat = 448,
+                        scrimOpacity: Double = 0.4, fullscreen: Bool = false, @ViewBuilder content: () -> Content) {
+        self.id = id
+        self.close = close
+        self.maxWidth = maxWidth
+        self.scrimOpacity = scrimOpacity
+        self.fullscreen = fullscreen
+        self.content = AnyView(content())
+    }
+}
+
+struct NutriPresentedModalKey: PreferenceKey {
+    static let defaultValue: NutriPresentedModal? = nil
+
+    static func reduce(value: inout NutriPresentedModal?, nextValue: () -> NutriPresentedModal?) {
+        value = nextValue() ?? value
+    }
+}
+
+struct NutriModalVisibleKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }

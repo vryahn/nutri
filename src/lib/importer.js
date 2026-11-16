@@ -6,7 +6,7 @@
 import { supabase } from './supabase.js';
 import {
   MICROS, BODY_METRICS, BODY_METRIC_MAX,
-  kcalFromMacros, kcalSuspicious, macrosImplausible, componentsInconsistent,
+  kcalFromMacros, kcalSuspicious, macrosImplausible, componentsInconsistent, nutritionNumber, round,
 } from './domain.js';
 
 export const MICRO_KEYS = MICROS.map((m) => m.key);
@@ -61,8 +61,8 @@ export function matchFood(name, foods) {
   const n = normName(name);
   if (!n) return null;
   const norm = foods.map((f) => [normName(f.name), f]);
-  const exact = norm.find(([fn]) => fn === n);
-  if (exact) return exact[1];
+  const exact = norm.filter(([fn]) => fn === n);
+  if (exact.length) return exact.length === 1 ? exact[0][1] : null;
   const starts = norm.filter(([fn]) => fn.startsWith(n) || n.startsWith(fn));
   if (starts.length === 1) return starts[0][1];
   const inc = norm.filter(([fn]) => fn.includes(n) || n.includes(fn));
@@ -86,28 +86,36 @@ function foodWarnings(f) {
 }
 
 export function foodsFromCSV(rows) {
-  const num = (v) => { const x = Number(v); return v === '' || v == null || Number.isNaN(x) ? 0 : x; };
   return rows.map((r) => {
     const micros = {};
+    let invalidMicros = false;
     for (const k of MICRO_KEYS) {
-      if (r[k] !== undefined && r[k] !== '') {
-        const x = Number(r[k]);
-        if (!Number.isNaN(x) && x !== 0) micros[k] = x; // a 0 weighs the same as an absent key in the SQL views
-      }
+      if (r[k] == null || r[k] === '') continue;
+      const value = nutritionNumber(r[k]);
+      if (value == null) invalidMicros = true;
+      else micros[k] = value;
     }
+    const densityRaw = (r.density_g_ml ?? '').toString().trim();
+    const density = nutritionNumber(densityRaw);
+    const invalidDensity = densityRaw !== '' && density == null;
     const payload = {
       name: (r.name || '').trim(),
       brand: (r.brand || '').trim() || null,
-      protein_g: num(r.protein_g), carbs_g: num(r.carbs_g), fat_g: num(r.fat_g),
+      protein_g: nutritionNumber(r.protein_g), carbs_g: nutritionNumber(r.carbs_g), fat_g: nutritionNumber(r.fat_g),
       micros,
-      density_g_ml: Number(r.density_g_ml) > 0 ? Number(r.density_g_ml) : null,
+      density_g_ml: density || null,
       source: (r.source || 'manual').trim() || 'manual',
       portions: [],
     };
-    // Empty kcal → computed from the macros (same default FoodForm applies on save).
+    // Empty kcal → Atwater from valid, explicitly captured macros.
+    const validMacros = [payload.protein_g, payload.carbs_g, payload.fat_g].every((value) => value != null);
     const kcalRaw = (r.kcal ?? '').toString().trim();
-    payload.kcal = kcalRaw === '' ? kcalFromMacros(payload) : num(kcalRaw);
-    return { payload, warnings: foodWarnings(payload), valid: !!payload.name };
+    payload.kcal = kcalRaw === '' ? (validMacros ? nutritionNumber(kcalFromMacros(payload)) : null) : nutritionNumber(kcalRaw);
+    const warnings = validMacros && payload.kcal != null ? foodWarnings(payload) : ['sin macros válidos'];
+    if (invalidMicros) warnings.push('micros inválidos');
+    if (invalidDensity) warnings.push('densidad inválida');
+    if (!payload.name) warnings.push('(sin nombre)');
+    return { payload, warnings, valid: !!payload.name && validMacros && payload.kcal != null && !invalidMicros && !invalidDensity };
   });
 }
 
@@ -220,14 +228,25 @@ export function bodyMetricsFromCSV(rows) {
 // at the end); the rest is the name.
 export function parseIngredientLines(text, foods) {
   return (text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((line) => {
-    const nums = [...line.matchAll(/(\d+(?:[.,]\d+)?)\s*(g|gr|grs|gramos|ml)?\b/gi)];
+    const nums = [...line.matchAll(/([+-]?\d+(?:[.,]\d+)?)\s*(kg|ml|grs|gramos|gr|g|l)?\b/gi)];
     const pick = nums.find((m) => m[2]) || nums[nums.length - 1];
-    const grams = pick ? Number(pick[1].replace(',', '.')) : null;
-    const name = (pick ? line.replace(pick[0], '') : line).replace(/[,;:\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const unit = pick?.[2]?.toLowerCase();
+    const prefix = pick ? line.slice(0, pick.index) : '';
+    const suffix = pick ? line.slice(pick.index + pick[0].length) : '';
+    const partialNumber = /\d\s*\/\s*$/u.test(prefix) || /^\s*\/\s*\d/u.test(suffix);
+    const unsupported = !unit && (/^(?:mg|mcg|µg|μg|ug|oz|fl\s*oz|lb|lbs|tsp|tbsp|cups?|tazas?|cucharadas?|cucharaditas?|piezas?|pieces?)\b/iu.test(suffix.trim())
+      || (prefix.trim() !== '' && /^\p{L}/u.test(suffix.trim())));
+    const amount = !pick || partialNumber || unsupported ? null : nutritionNumber(pick[1]);
+    const name = (pick ? prefix + ' ' + suffix : line).replace(/[,;:\t]+/g, ' ').replace(/\s+/g, ' ').trim();
     const food = matchFood(name, foods);
+    const volume = unit === 'ml' || unit === 'l';
+    const density = nutritionNumber(food?.density_g_ml);
+    const grams = amount == null || (volume && !(density > 0)) ? null
+      : nutritionNumber(volume ? round(amount * density * (unit === 'l' ? 1000 : 1), 1)
+        : amount * (unit === 'kg' ? 1000 : 1));
     const warnings = [];
     if (!food) warnings.push('sin alimento');
-    if (!(grams > 0)) warnings.push('gramos');
+    if (!(grams > 0)) warnings.push(volume && food && !(density > 0) ? 'sin densidad' : 'gramos');
     return { name, grams, food, valid: !!(food && grams > 0), warnings };
   });
 }

@@ -14,6 +14,17 @@ func runModuleChecks() throws {
     try check(parseRecipeLine("arroz -120 g", catalog: [dryFood]) == nil, "recipe paste rejects negative mass")
     try check(parseRecipeLine("arroz 120 mg", catalog: [dryFood]) == nil, "recipe paste rejects unknown mass units")
     try check(parseRecipeLine("120 g arroz", catalog: [dryFood, dryFood]) == nil, "recipe paste rejects ambiguous catalog match")
+    for line in ["100 mg arroz", "100 oz arroz", "1/2 kg arroz", "arroz 1 / 2 kg", "100 tazas arroz", "100 cups arroz", "100 cucharadas arroz", "100 piezas arroz"] {
+        try check(parseRecipeLine(line, catalog: [dryFood]) == nil, "recipe paste rejects unsafe quantity: " + line)
+    }
+    try check(parseRecipeLine("100 arroz", catalog: [dryFood])?.grams == 100 &&
+              parseRecipeLine("arroz 100", catalog: [dryFood])?.grams == 100, "recipe paste preserves bare gram quantities")
+    try check(recipeCookedEstimate((0.2, "ml"), estimate: 0.2) == nil &&
+              recipeCookedEstimate((100, "ml"), estimate: nil) == nil &&
+              recipeCookedEstimate((100, "ml"), estimate: 450) == nil &&
+              recipeCookedEstimate((100, "ml"), estimate: 103) == 103 &&
+              recipeCookedEstimate((250, "g"), estimate: 350) == 250, "typed cooked volume requires density and mass wins")
+    try checkCatalogFidelity()
 
     var values = TargetValues()
     values.point["potasio_mg"] = "0"
@@ -65,10 +76,11 @@ func runModuleChecks() throws {
               abs(post.high - 0.9324140135114569) < 1e-10, "Bayes matches web Beta oracle")
     let plan = DashboardAskPlan(["date_from": .string("2025-01-01"), "date_to": .string("2030-01-01"),
                                  "nutrients": .array([.string("kcal"), .string("unrecognized"), .string("kcal")])], today: today)
-    try check(plan.from == key(-91) && plan.to == key(0) && plan.nutrients == ["kcal"] && plan.clamped, "ask planner range, schema and cap")
+    try check(plan.from == key(-91) && plan.to == key(0) && plan.nutrients == ["kcal", "kcal"] && plan.clamped, "ask planner range, schema and cap")
     let future = DashboardAskPlan(["date_from": .string("2030-01-01"), "date_to": .string("2030-02-01")], today: today)
-    try check(future.from == key(0) && future.to == key(0), "ask planner excludes future dates")
+    try check(future.from == "2029-10-02" && future.to == "2030-01-01" && future.clamped, "ask planner follows web clamp-and-swap")
     try checkDashboardCoverage(today: today)
+    try checkJournalFidelity()
     print("Nutri module checks passed")
 }
 #endif

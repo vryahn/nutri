@@ -58,4 +58,4 @@ No modificar targets del usuario, plan maestro, políticas RLS, esquema ni cambi
 
 Implementación de seis módulos instalada en `/Applications/Nutri.app`. Desarrollo y release compilados y firmados localmente. Las pruebas de dominio, cola, sesión, llavero, lectura autenticada y escrituras sintéticas con limpieza están verificadas.
 
-La revisión gráfica comprobó el login del bundle instalado y el registro de 150 g en Hoy con el fixture local. ScreenCaptureKit falló durante la revisión de los demás módulos. La matriz de paridad registra la cobertura de las pruebas y lo pendiente.
+La revisión de fidelidad 1.1 reemplazó la presentación genérica por la composición, fuentes, iconos, estados y flujos del original. El usuario autorizó corregir los errores de conversión y datos faltantes en ambas versiones. Se añadieron comparación ejecutable con el dominio web y renders sintéticos de seis módulos y 17 estados en ambos temas. ScreenCaptureKit sigue fallando al acceder al escritorio; la matriz de paridad separa esas pruebas de la interacción real todavía no comprobada.

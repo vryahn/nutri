@@ -128,7 +128,7 @@ func generateNutritionJSON(store: Store, prompt: String, parts: [Record], schema
                 if let text = part["text"] { return .object(["type": .string("text"), "text": text]) }
                 let image = part.object("inline_data")
                 let url = "data:\(image.text("mime_type"));base64,\(image.text("data"))"
-                return .object(["type": .string("image_url"), "image_url": .object(["url": .string(url)])])
+                return .object(["type": .string("image_url"), "image_url": .string(url)])
             }
             let messages: [JSONValue] = [
                 .object(["role": .string("system"), "content": .string(prompt)]),
@@ -164,13 +164,13 @@ func generateNutritionJSON(store: Store, prompt: String, parts: [Record], schema
             guard let text, let value = try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8)).object else {
                 throw FeatureError("Respuesta de IA inválida.")
             }
-            return value
+            return value.merging(["ai_model": .string("\(kind):\(model)")]) { _, model in model }
         } catch { lastError = error }
     }
     throw lastError
 }
 
 func aiImagePart(_ url: URL, maxSide: Int = 1024) throws -> Record {
-    let jpeg = try jpegData(url, maxSide: maxSide)
+    let jpeg = try jpegData(url, maxSide: maxSide, quality: 0.8)
     return ["inline_data": .object(["mime_type": .string("image/jpeg"), "data": .string(jpeg.base64EncodedString())])]
 }
