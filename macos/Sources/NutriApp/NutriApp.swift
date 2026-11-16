@@ -175,7 +175,6 @@ struct RootView: View {
                 VStack(spacing: 0) {
                     if store.anonymous || store.demoActive { demoStrip }
                     if !wide { mobileHeader }
-                    if store.offline || store.pending > 0 { outboxStrip }
                     activeModule
                         .frame(maxWidth: module == .dashboard && wide ? 1600 : width >= 1024 ? 1152 : 768)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -220,9 +219,13 @@ struct RootView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            wordmark()
-                .frame(height: 28)
-                .padding(.horizontal, 8).padding(.bottom, 16)
+            HStack {
+                wordmark()
+                Spacer()
+                syncStatus
+            }
+            .frame(height: 28)
+            .padding(.horizontal, 8).padding(.bottom, 16)
             VStack(spacing: 4) {
                 ForEach(Module.allCases) { item in
                     Button { select(item) } label: {
@@ -275,6 +278,7 @@ struct RootView: View {
         HStack {
             wordmark(glass: true)
             Spacer()
+            syncStatus
             if !actions.isEmpty {
                 Button { toggleMenu(.more) } label: { NutriIcon("ellipsis").frame(width: 36) }
                     .buttonStyle(NutriButtonStyle(.quiet, height: 36, horizontal: 0))
@@ -325,18 +329,25 @@ struct RootView: View {
         .overlay(alignment: .bottom) { Rectangle().fill(palette.border).frame(height: 1) }
     }
 
-    private var outboxStrip: some View {
-        HStack {
-            NutriIcon("cloud-off", size: 16)
-            Text(store.offline ? store.tr("Sin conexión") : store.tr("Sincronizando"))
-            Spacer()
-            if store.pending > 0 { Text("\(store.pending) \(store.tr("pendientes"))").font(.nutriMono(12)) }
-            Button(store.tr("Reintentar")) { store.flush() }
-                .buttonStyle(NutriButtonStyle(.quiet, height: 32))
+    private var syncStatus: some View {
+        Group {
+            if store.offline || store.pending > 0 {
+                let state = store.tr(store.offline ? "Sin conexión" : "Sincronizando")
+                let count = store.pending > 0 ? " · \(store.pending) \(store.tr("pendientes"))" : ""
+                let retry = store.tr("Reintentar")
+                let help = "\(state)\(count) · \(retry)"
+                Button(action: store.flush) {
+                    NutriIcon(store.offline ? "cloud-off" : "loader-circle", size: 16)
+                        .foregroundStyle(palette.text2)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(help)
+                .help(help)
+            }
         }
-        .foregroundStyle(palette.text2).font(.nutriSans(12))
-        .padding(.horizontal, 16)
-        .background(palette.surface2)
+        .frame(width: 28, height: 28)
     }
 
     @ViewBuilder
