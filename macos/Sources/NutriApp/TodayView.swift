@@ -1135,8 +1135,11 @@ private struct EntryEditor: View {
                             let entered = amount.isEmpty ? 0 : grams ?? 0
                             amount = draftNumber(convert(Domain.round(entered + g, 1), to: unit))
                         } label: {
-                            Text("+ " + portion.text("name") + " (" +
-                                 (store.units == "us" ? journalNumber(g / Domain.gramsPerOunce) + " oz" : journalNumber(g, digits: 3) + " g") + ")")
+                            let name = portion.text("name")
+                            let shown = store.units == "us"
+                                ? "\(journalNumber(g / Domain.gramsPerOunce)) oz"
+                                : "\(journalNumber(g, digits: 3)) g"
+                            Text(verbatim: "+ \(name) (\(shown))")
                                 .foregroundStyle(palette.text)
                         }
                         .buttonStyle(NutriButtonStyle(.secondary, height: 36, radius: 18))
@@ -2033,7 +2036,10 @@ private struct JournalSummary: View {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(alignment: .firstTextBaseline, spacing: 4) {
                                 Text(s.amount(store)).font(.nutriMono(fixed ? 12 : 14)).foregroundStyle(s.color(palette))
-                                Text(store.tr(s.short) + (fixed ? (s.coupled ? " · " + store.tr("Según energía") : "") : " " + s.unit))
+                                let label = store.tr(s.short)
+                                let energy = s.coupled ? " · \(store.tr("Según energía"))" : ""
+                                let suffix = fixed ? energy : " \(s.unit)"
+                                Text(verbatim: "\(label)\(suffix)")
                                     .font(.nutriSans(fixed ? 12 : 11)).foregroundStyle(fixed ? palette.text2 : palette.text3)
                             }
                             if !fixed { nutrientDetail(s, showRanges: ranges) }
@@ -2050,8 +2056,9 @@ private struct JournalSummary: View {
     @ViewBuilder
     private func nutrientDetail(_ s: JournalNutrient, showRanges: Bool, hideCoupled: Bool = false) -> some View {
         if hasFood, s.coverage != .complete {
-            Text(store.tr(s.coverage == .unknown ? "Sin dato" : "Datos parciales") +
-                 (s.lowSodium ? " · " + store.tr("Sodio observado bajo el piso; faltan datos.") : ""))
+            let coverage = store.tr(s.coverage == .unknown ? "Sin dato" : "Datos parciales")
+            let sodium = s.lowSodium ? " · \(store.tr("Sodio observado bajo el piso; faltan datos."))" : ""
+            Text(verbatim: "\(coverage)\(sodium)")
                 .font(.nutriSans(12)).foregroundStyle(palette.warn)
         }
         if s.coupled && hasFood && !hideCoupled {
@@ -2059,17 +2066,21 @@ private struct JournalSummary: View {
         }
         let difference = !s.met && hasFood && details != "meta" ? s.deviation : nil
         if let difference {
-            let magnitude = details == "pct" ? journalNumber(abs(floor(difference.delta / difference.base * 100 + 0.5)), digits: 0) + "%"
-                : journalNumber(abs(difference.delta), digits: s.decimals) + " " + s.unit
-            Text((difference.delta < 0 ? "−" : "+") + magnitude + (s.lowSodium ? " " + store.tr("al piso") : s.highSodium ? " " + store.tr("sobre el techo") : ""))
+            let magnitude = details == "pct"
+                ? "\(journalNumber(abs(floor(difference.delta / difference.base * 100 + 0.5)), digits: 0))%"
+                : "\(journalNumber(abs(difference.delta), digits: s.decimals)) \(s.unit)"
+            let sign = difference.delta < 0 ? "−" : "+"
+            let sodium = s.lowSodium ? " \(store.tr("al piso"))" : s.highSodium ? " \(store.tr("sobre el techo"))" : ""
+            Text(verbatim: "\(sign)\(magnitude)\(sodium)")
                 .font(.nutriMono(12)).foregroundStyle(palette.text2)
         } else if s.coverage == .complete, !s.met, !s.lowSodium, !s.coupled, let target = s.target, !s.hasExplicit {
             Text(store.tr("meta") + " " + journalNumber(target, digits: s.decimals) + " " + s.unit)
                 .font(.nutriSans(12)).foregroundStyle(palette.text2)
         }
         if showRanges && s.hasExplicit {
-            Text(rangeText(s.explicit.number("min"), s.explicit.number("max"), digits: s.decimals) +
-                 " " + s.unit + (s.coupled && !hideCoupled ? " · " + store.tr("según energía") : ""))
+            let range = rangeText(s.explicit.number("min"), s.explicit.number("max"), digits: s.decimals)
+            let energy = s.coupled && !hideCoupled ? " · \(store.tr("según energía"))" : ""
+            Text(verbatim: "\(range) \(s.unit)\(energy)")
                 .font(.nutriSans(12)).foregroundStyle(palette.text3)
         }
     }
@@ -2225,9 +2236,16 @@ private struct JournalSummary: View {
     private func liveValue(_ s: JournalNutrient) -> String {
         if s.coupled { return store.tr("Según energía") }
         guard let value = s.value, s.coverage == .complete else { return store.tr(s.coverage == .unknown ? "Sin dato" : "Datos parciales") }
-        let delta = s.bounds.min.flatMap { value < $0 ? value - $0 : nil }
-            ?? s.bounds.max.flatMap { value > $0 ? value - $0 : nil } ?? 0
-        return (delta > 0 ? "+" : "") + journalNumber(delta, digits: s.decimals) + " " + s.unit
+        let delta: Double
+        if let minimum = s.bounds.min, value < minimum {
+            delta = value - minimum
+        } else if let maximum = s.bounds.max, value > maximum {
+            delta = value - maximum
+        } else {
+            delta = 0
+        }
+        let sign = delta > 0 ? "+" : ""
+        return "\(sign)\(journalNumber(delta, digits: s.decimals)) \(s.unit)"
     }
 
     @ViewBuilder
