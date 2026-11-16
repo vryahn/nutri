@@ -1,0 +1,955 @@
+{
+  "source": "src/lib/domain.js",
+  "cases": [
+    {
+      "name": "150 g scales macros and micros while preserving zero",
+      "fn": "entryNutrients",
+      "args": [
+        {
+          "id": "synthetic-entry",
+          "grams": 150
+        },
+        {
+          "kcal": 100,
+          "protein_g": 10,
+          "carbs_g": 20,
+          "fat_g": 5,
+          "micros": {
+            "sodio_mg": 50,
+            "magnesio_mg": 0,
+            "calcio_mg": null
+          }
+        }
+      ],
+      "expected": {
+        "id": "synthetic-entry",
+        "grams": 150,
+        "item": null,
+        "brand": null,
+        "meal": null,
+        "sort_order": null,
+        "kcal": 150,
+        "protein_g": 15,
+        "carbs_g": 30,
+        "fat_g": 7.5,
+        "micros": {
+          "sodio_mg": 75,
+          "magnesio_mg": 0
+        },
+        "micros_complete": {
+          "sodio_mg": true,
+          "magnesio_mg": true
+        }
+      }
+    },
+    {
+      "name": "missing cached food leaves nutrients unknown",
+      "fn": "entryNutrients",
+      "args": [
+        {
+          "id": "synthetic-entry",
+          "grams": 150
+        },
+        null
+      ],
+      "expected": {
+        "id": "synthetic-entry",
+        "grams": 150,
+        "item": null,
+        "brand": null,
+        "meal": null,
+        "sort_order": null,
+        "kcal": null,
+        "protein_g": null,
+        "carbs_g": null,
+        "fat_g": null,
+        "micros": {},
+        "micros_complete": {}
+      }
+    },
+    {
+      "name": "explicit zero is complete",
+      "fn": "microCoverage",
+      "args": [
+        {
+          "id": "synthetic-entry",
+          "grams": 150,
+          "item": null,
+          "brand": null,
+          "meal": null,
+          "sort_order": null,
+          "kcal": 150,
+          "protein_g": 15,
+          "carbs_g": 30,
+          "fat_g": 7.5,
+          "micros": {
+            "sodio_mg": 75,
+            "magnesio_mg": 0
+          },
+          "micros_complete": {
+            "sodio_mg": true,
+            "magnesio_mg": true
+          }
+        },
+        "magnesio_mg"
+      ],
+      "expected": "complete"
+    },
+    {
+      "name": "explicit null is unknown",
+      "fn": "microCoverage",
+      "args": [
+        {
+          "id": "synthetic-entry",
+          "grams": 150,
+          "item": null,
+          "brand": null,
+          "meal": null,
+          "sort_order": null,
+          "kcal": 150,
+          "protein_g": 15,
+          "carbs_g": 30,
+          "fat_g": 7.5,
+          "micros": {
+            "sodio_mg": 75,
+            "magnesio_mg": 0
+          },
+          "micros_complete": {
+            "sodio_mg": true,
+            "magnesio_mg": true
+          }
+        },
+        "calcio_mg"
+      ],
+      "expected": "unknown"
+    },
+    {
+      "name": "unknown entry makes zero partial",
+      "fn": "microCoverageForEntries",
+      "args": [
+        [
+          {
+            "id": "synthetic-entry",
+            "grams": 150,
+            "item": null,
+            "brand": null,
+            "meal": null,
+            "sort_order": null,
+            "kcal": 150,
+            "protein_g": 15,
+            "carbs_g": 30,
+            "fat_g": 7.5,
+            "micros": {
+              "sodio_mg": 75,
+              "magnesio_mg": 0
+            },
+            "micros_complete": {
+              "sodio_mg": true,
+              "magnesio_mg": true
+            }
+          },
+          {
+            "id": "synthetic-entry",
+            "grams": 150,
+            "item": null,
+            "brand": null,
+            "meal": null,
+            "sort_order": null,
+            "kcal": null,
+            "protein_g": null,
+            "carbs_g": null,
+            "fat_g": null,
+            "micros": {},
+            "micros_complete": {}
+          }
+        ],
+        "magnesio_mg"
+      ],
+      "expected": "partial"
+    },
+    {
+      "name": "all recorded entries lacking a micro is unknown",
+      "fn": "microCoverageForEntries",
+      "args": [
+        [
+          {
+            "id": "synthetic-entry",
+            "grams": 150,
+            "item": null,
+            "brand": null,
+            "meal": null,
+            "sort_order": null,
+            "kcal": 150,
+            "protein_g": 15,
+            "carbs_g": 30,
+            "fat_g": 7.5,
+            "micros": {
+              "sodio_mg": 75,
+              "magnesio_mg": 0
+            },
+            "micros_complete": {
+              "sodio_mg": true,
+              "magnesio_mg": true
+            }
+          },
+          {
+            "id": "synthetic-entry",
+            "grams": 150,
+            "item": null,
+            "brand": null,
+            "meal": null,
+            "sort_order": null,
+            "kcal": null,
+            "protein_g": null,
+            "carbs_g": null,
+            "fat_g": null,
+            "micros": {},
+            "micros_complete": {}
+          }
+        ],
+        "calcio_mg"
+      ],
+      "expected": "unknown"
+    },
+    {
+      "name": "(A + 2B)/2.5, plus a partial known zero",
+      "fn": "computeRecipePer100g",
+      "args": [
+        [
+          {
+            "food": {
+              "kcal": 100,
+              "protein_g": 10,
+              "carbs_g": 20,
+              "fat_g": 5,
+              "micros": {
+                "sodio_mg": 50,
+                "magnesio_mg": 0,
+                "calcio_mg": null
+              }
+            },
+            "grams": 100
+          },
+          {
+            "food": {
+              "kcal": 200,
+              "protein_g": 20,
+              "carbs_g": 10,
+              "fat_g": 8,
+              "micros": {
+                "sodio_mg": 30
+              }
+            },
+            "grams": 200
+          }
+        ],
+        250
+      ],
+      "expected": {
+        "kcal": 200,
+        "protein_g": 20,
+        "carbs_g": 16,
+        "fat_g": 8.4,
+        "micros": {
+          "sodio_mg": 44,
+          "magnesio_mg": 0
+        },
+        "micros_complete": {
+          "sodio_mg": true
+        }
+      }
+    },
+    {
+      "name": "recipe uses sum of ingredients when cooked weight is absent",
+      "fn": "computeRecipePer100g",
+      "args": [
+        [
+          {
+            "food": {
+              "kcal": 100,
+              "protein_g": 10,
+              "carbs_g": 20,
+              "fat_g": 5,
+              "micros": {
+                "sodio_mg": 50,
+                "magnesio_mg": 0,
+                "calcio_mg": null
+              }
+            },
+            "grams": 100
+          },
+          {
+            "food": {
+              "kcal": 200,
+              "protein_g": 20,
+              "carbs_g": 10,
+              "fat_g": 8,
+              "micros": {
+                "sodio_mg": 30
+              }
+            },
+            "grams": 200
+          }
+        ],
+        null
+      ],
+      "expected": {
+        "kcal": 166.7,
+        "protein_g": 16.67,
+        "carbs_g": 13.33,
+        "fat_g": 7,
+        "micros": {
+          "sodio_mg": 36.667,
+          "magnesio_mg": 0
+        },
+        "micros_complete": {
+          "sodio_mg": true
+        }
+      }
+    },
+    {
+      "name": "empty recipe has no nutrients",
+      "fn": "computeRecipePer100g",
+      "args": [
+        [],
+        0
+      ],
+      "expected": null
+    },
+    {
+      "name": "recipe partial micro",
+      "fn": "microCoverage",
+      "args": [
+        {
+          "kcal": 200,
+          "protein_g": 20,
+          "carbs_g": 16,
+          "fat_g": 8.4,
+          "micros": {
+            "sodio_mg": 44,
+            "magnesio_mg": 0
+          },
+          "micros_complete": {
+            "sodio_mg": true
+          }
+        },
+        "magnesio_mg"
+      ],
+      "expected": "partial"
+    },
+    {
+      "name": "recipe complete micro",
+      "fn": "microCoverage",
+      "args": [
+        {
+          "kcal": 200,
+          "protein_g": 20,
+          "carbs_g": 16,
+          "fat_g": 8.4,
+          "micros": {
+            "sodio_mg": 44,
+            "magnesio_mg": 0
+          },
+          "micros_complete": {
+            "sodio_mg": true
+          }
+        },
+        "sodio_mg"
+      ],
+      "expected": "complete"
+    },
+    {
+      "name": "date override wins over recurring target",
+      "fn": "resolveTarget",
+      "args": [
+        [
+          {
+            "id": "current",
+            "day": null,
+            "dow": 5,
+            "valid_from": "2026-06-01",
+            "kcal": 2100
+          },
+          {
+            "id": "future",
+            "day": null,
+            "dow": 5,
+            "valid_from": "2026-08-01",
+            "kcal": 2200
+          },
+          {
+            "id": "old",
+            "day": null,
+            "dow": 5,
+            "valid_from": "2026-01-01",
+            "kcal": 1800
+          },
+          {
+            "id": "override",
+            "day": "2026-07-10",
+            "dow": null,
+            "valid_from": "2026-07-10",
+            "kcal": 1600
+          }
+        ],
+        "2026-07-10"
+      ],
+      "expected": {
+        "id": "override",
+        "day": "2026-07-10",
+        "dow": null,
+        "valid_from": "2026-07-10",
+        "kcal": 1600
+      }
+    },
+    {
+      "name": "choose most recent applicable recurrence",
+      "fn": "resolveTarget",
+      "args": [
+        [
+          {
+            "id": "current",
+            "day": null,
+            "dow": 5,
+            "valid_from": "2026-06-01",
+            "kcal": 2100
+          },
+          {
+            "id": "future",
+            "day": null,
+            "dow": 5,
+            "valid_from": "2026-08-01",
+            "kcal": 2200
+          },
+          {
+            "id": "old",
+            "day": null,
+            "dow": 5,
+            "valid_from": "2026-01-01",
+            "kcal": 1800
+          }
+        ],
+        "2026-07-10"
+      ],
+      "expected": {
+        "id": "current",
+        "day": null,
+        "dow": 5,
+        "valid_from": "2026-06-01",
+        "kcal": 2100
+      }
+    },
+    {
+      "name": "future or wrong weekday yields no target",
+      "fn": "resolveTarget",
+      "args": [
+        [
+          {
+            "id": "future",
+            "day": null,
+            "dow": 5,
+            "valid_from": "2026-08-01",
+            "kcal": 2200
+          },
+          {
+            "id": "old",
+            "day": null,
+            "dow": 6,
+            "valid_from": "2026-01-01",
+            "kcal": 1800
+          }
+        ],
+        "2026-07-10"
+      ],
+      "expected": null
+    },
+    {
+      "name": "normalize gram basis; portions and density stay absolute",
+      "fn": "normalizeTo100",
+      "args": [
+        {
+          "kcal": 100,
+          "protein_g": 10,
+          "carbs_g": 20,
+          "fat_g": 5,
+          "micros": {
+            "sodio_mg": 50,
+            "magnesio_mg": 0,
+            "calcio_mg": null
+          },
+          "density_g_ml": 0.92,
+          "portions": [
+            {
+              "name": "Taza",
+              "grams": 200
+            }
+          ]
+        },
+        50,
+        "g"
+      ],
+      "expected": {
+        "kcal": 200,
+        "protein_g": 20,
+        "carbs_g": 40,
+        "fat_g": 10,
+        "micros": {
+          "sodio_mg": 100,
+          "magnesio_mg": 0
+        },
+        "density_g_ml": 0.92,
+        "portions": [
+          {
+            "name": "Taza",
+            "grams": 200
+          }
+        ]
+      }
+    },
+    {
+      "name": "normalize explicit milliliter basis",
+      "fn": "normalizeTo100",
+      "args": [
+        {
+          "kcal": 100,
+          "protein_g": 10,
+          "carbs_g": 20,
+          "fat_g": 5,
+          "micros": {
+            "sodio_mg": 50,
+            "magnesio_mg": 0,
+            "calcio_mg": null
+          },
+          "density_g_ml": 0.92,
+          "portions": [
+            {
+              "name": "Taza",
+              "grams": 200
+            }
+          ]
+        },
+        100,
+        "ml"
+      ],
+      "expected": {
+        "kcal": 108.7,
+        "protein_g": 10.87,
+        "carbs_g": 21.74,
+        "fat_g": 5.43,
+        "micros": {
+          "sodio_mg": 54.348,
+          "magnesio_mg": 0
+        },
+        "density_g_ml": 0.92,
+        "portions": [
+          {
+            "name": "Taza",
+            "grams": 200
+          }
+        ]
+      }
+    },
+    {
+      "name": "milliliter basis requires density",
+      "fn": "normalizeTo100",
+      "args": [
+        {
+          "kcal": 100,
+          "protein_g": 10,
+          "carbs_g": 20,
+          "fat_g": 5,
+          "micros": {
+            "sodio_mg": 50,
+            "magnesio_mg": 0,
+            "calcio_mg": null
+          }
+        },
+        100,
+        "ml"
+      ],
+      "expected": null
+    },
+    {
+      "name": "zero density cannot convert",
+      "fn": "normalizeTo100",
+      "args": [
+        {
+          "kcal": 100,
+          "protein_g": 10,
+          "carbs_g": 20,
+          "fat_g": 5,
+          "micros": {
+            "sodio_mg": 50,
+            "magnesio_mg": 0,
+            "calcio_mg": null
+          },
+          "density_g_ml": 0,
+          "portions": [
+            {
+              "name": "Taza",
+              "grams": 200
+            }
+          ]
+        },
+        100,
+        "ml"
+      ],
+      "expected": null
+    },
+    {
+      "name": "sodium medical floor cannot be lowered",
+      "fn": "classifyNutrient",
+      "args": [
+        "sodio_mg",
+        1499,
+        null,
+        {
+          "bounds": {
+            "min": 1000,
+            "max": 3000
+          }
+        }
+      ],
+      "expected": "danger"
+    },
+    {
+      "name": "sodium floor endpoint is inclusive",
+      "fn": "classifySodium",
+      "args": [
+        1500,
+        true
+      ],
+      "expected": "ok"
+    },
+    {
+      "name": "sodium ceiling endpoint is inclusive",
+      "fn": "classifySodium",
+      "args": [
+        2300,
+        true
+      ],
+      "expected": "ok"
+    },
+    {
+      "name": "sodium default ceiling is a strict limit",
+      "fn": "classifySodium",
+      "args": [
+        2301,
+        true
+      ],
+      "expected": "danger"
+    },
+    {
+      "name": "sodium explicit ceiling can be raised",
+      "fn": "classifyNutrient",
+      "args": [
+        "sodio_mg",
+        2800,
+        null,
+        {
+          "bounds": {
+            "max": 3000
+          }
+        }
+      ],
+      "expected": "ok"
+    },
+    {
+      "name": "sodium min-only keeps default ceiling",
+      "fn": "classifyNutrient",
+      "args": [
+        "sodio_mg",
+        2800,
+        null,
+        {
+          "bounds": {
+            "min": 1800
+          }
+        }
+      ],
+      "expected": "danger"
+    },
+    {
+      "name": "sodium raised minimum can warn above medical floor",
+      "fn": "classifyNutrient",
+      "args": [
+        "sodio_mg",
+        1550,
+        null,
+        {
+          "bounds": {
+            "min": 1600,
+            "max": 1800
+          }
+        }
+      ],
+      "expected": "warn"
+    },
+    {
+      "name": "sodium without food has no classification",
+      "fn": "classifyNutrient",
+      "args": [
+        "sodio_mg",
+        100,
+        null,
+        {
+          "hasFood": false
+        }
+      ],
+      "expected": null
+    },
+    {
+      "name": "coupled macros use the same fraction and preserve chosen energy",
+      "fn": "coupledBandMacros",
+      "args": [
+        {
+          "kcal": null,
+          "protein_g": 140,
+          "carbs_g": null,
+          "fat_g": null,
+          "bounds": {
+            "kcal": {
+              "min": 1560,
+              "max": 2050
+            },
+            "carbs_g": {
+              "min": 160,
+              "max": 260
+            },
+            "fat_g": {
+              "min": 40,
+              "max": 50
+            }
+          },
+          "rules": {
+            "transition": {
+              "kind": "coupled_band"
+            },
+            "items": []
+          }
+        },
+        1805
+      ],
+      "expected": {
+        "kcal": 1805,
+        "protein_g": 140,
+        "carbs_g": 210,
+        "fat_g": 45
+      }
+    },
+    {
+      "name": "coupled lower endpoint is valid",
+      "fn": "coupledBandMacros",
+      "args": [
+        {
+          "kcal": null,
+          "protein_g": 140,
+          "carbs_g": null,
+          "fat_g": null,
+          "bounds": {
+            "kcal": {
+              "min": 1560,
+              "max": 2050
+            },
+            "carbs_g": {
+              "min": 160,
+              "max": 260
+            },
+            "fat_g": {
+              "min": 40,
+              "max": 50
+            }
+          },
+          "rules": {
+            "transition": {
+              "kind": "coupled_band"
+            },
+            "items": []
+          }
+        },
+        1560
+      ],
+      "expected": {
+        "kcal": 1560,
+        "protein_g": 140,
+        "carbs_g": 160,
+        "fat_g": 40
+      }
+    },
+    {
+      "name": "coupled upper endpoint is valid",
+      "fn": "coupledBandMacros",
+      "args": [
+        {
+          "kcal": null,
+          "protein_g": 140,
+          "carbs_g": null,
+          "fat_g": null,
+          "bounds": {
+            "kcal": {
+              "min": 1560,
+              "max": 2050
+            },
+            "carbs_g": {
+              "min": 160,
+              "max": 260
+            },
+            "fat_g": {
+              "min": 40,
+              "max": 50
+            }
+          },
+          "rules": {
+            "transition": {
+              "kind": "coupled_band"
+            },
+            "items": []
+          }
+        },
+        2050
+      ],
+      "expected": {
+        "kcal": 2050,
+        "protein_g": 140,
+        "carbs_g": 260,
+        "fat_g": 50
+      }
+    },
+    {
+      "name": "outside coupled band returns no choices",
+      "fn": "coupledBandMacros",
+      "args": [
+        {
+          "kcal": null,
+          "protein_g": 140,
+          "carbs_g": null,
+          "fat_g": null,
+          "bounds": {
+            "kcal": {
+              "min": 1560,
+              "max": 2050
+            },
+            "carbs_g": {
+              "min": 160,
+              "max": 260
+            },
+            "fat_g": {
+              "min": 40,
+              "max": 50
+            }
+          },
+          "rules": {
+            "transition": {
+              "kind": "coupled_band"
+            },
+            "items": []
+          }
+        },
+        1559
+      ],
+      "expected": null
+    },
+    {
+      "name": "blank energy never infers target",
+      "fn": "coupledBandMacros",
+      "args": [
+        {
+          "kcal": null,
+          "protein_g": 140,
+          "carbs_g": null,
+          "fat_g": null,
+          "bounds": {
+            "kcal": {
+              "min": 1560,
+              "max": 2050
+            },
+            "carbs_g": {
+              "min": 160,
+              "max": 260
+            },
+            "fat_g": {
+              "min": 40,
+              "max": 50
+            }
+          },
+          "rules": {
+            "transition": {
+              "kind": "coupled_band"
+            },
+            "items": []
+          }
+        },
+        ""
+      ],
+      "expected": null
+    },
+    {
+      "name": "null energy never infers target",
+      "fn": "coupledBandMacros",
+      "args": [
+        {
+          "kcal": null,
+          "protein_g": 140,
+          "carbs_g": null,
+          "fat_g": null,
+          "bounds": {
+            "kcal": {
+              "min": 1560,
+              "max": 2050
+            },
+            "carbs_g": {
+              "min": 160,
+              "max": 260
+            },
+            "fat_g": {
+              "min": 40,
+              "max": 50
+            }
+          },
+          "rules": {
+            "transition": {
+              "kind": "coupled_band"
+            },
+            "items": []
+          }
+        },
+        null
+      ],
+      "expected": null
+    },
+    {
+      "name": "inconsistent endpoints invalidate band",
+      "fn": "coupledBandMacros",
+      "args": [
+        {
+          "kcal": null,
+          "protein_g": 140,
+          "carbs_g": null,
+          "fat_g": null,
+          "bounds": {
+            "kcal": {
+              "min": 1560,
+              "max": 2050
+            },
+            "carbs_g": {
+              "min": 160,
+              "max": 260
+            },
+            "fat_g": {
+              "min": 40,
+              "max": 51
+            }
+          },
+          "rules": {
+            "transition": {
+              "kind": "coupled_band"
+            },
+            "items": []
+          }
+        },
+        1805
+      ],
+      "expected": null
+    }
+  ]
+}

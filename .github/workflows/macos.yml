@@ -1,0 +1,36 @@
+name: Nutri macOS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'macos/**'
+      - 'src/lib/domain.js'
+      - 'src/lib/i18n.js'
+      - '.github/workflows/macos.yml'
+  pull_request:
+    paths:
+      - 'macos/**'
+      - 'src/lib/domain.js'
+      - 'src/lib/i18n.js'
+      - '.github/workflows/macos.yml'
+  workflow_dispatch:
+
+jobs:
+  native:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify shared nutrition contracts
+        run: |
+          node macos/scripts/sync-domain.mjs
+          git diff --exit-code -- macos/Sources/NutriCore/Resources
+      - name: Native tests
+        run: swift run --package-path macos NutriChecks
+      - name: Native module checks
+        run: swift run --package-path macos Nutri --module-checks
+      - name: Release compilation
+        run: swift build --package-path macos -c release

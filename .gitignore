@@ -13,3 +13,7 @@ evals/cases/**/*.jpg
 .vercel
 .env*
 node_modules
+
+macos/.build/
+macos/.swiftpm/
+macos/scripts/__pycache__/
