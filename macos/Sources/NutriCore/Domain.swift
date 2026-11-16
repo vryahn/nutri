@@ -271,7 +271,15 @@ public enum Domain {
 
     public static func water(_ food: Record) -> Bool {
         let micros = food.object("micros")
-        return food.number("kcal") == 0 && micros.count == 1 && micros["agua_ml"] != nil
+        guard food.number("kcal") == 0, let water = micros.number("agua_ml") else { return false }
+        let grams = food.number("grams") ?? 100
+        // Legacy water foods have explicit zero/null minerals. Preserve them as
+        // water, but do not hide other zero-calorie foods or mineral drinks.
+        return grams > 0 && abs(water - grams) < 0.01
+            && ["protein_g", "carbs_g", "fat_g"].allSatisfy { key in
+                food[key] == nil || food[key] == .null || food.number(key) == 0
+            }
+            && micros.allSatisfy { key, value in key == "agua_ml" || value == .null || value.number == 0 }
     }
 
     public static func waterEntry(_ entry: Record, waterID: String) -> Bool {

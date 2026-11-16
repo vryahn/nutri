@@ -88,7 +88,7 @@ struct RecipesView: View {
     @State private var sort = ""
     @State private var descending = false
     @State private var loading = true
-    @State private var opening = false
+    @State private var opening: UUID?
     @State private var error = ""
     @State private var form: RecipeDraft?
 
@@ -132,8 +132,8 @@ struct RecipesView: View {
             } else {
                 ScrollView { listing.padding(16).padding(.bottom, 56) }
                     .overlay(alignment: .bottomTrailing) {
-                        if !loading && !matching.isEmpty {
-                            Button { form = RecipeDraft() } label: { NutriIcon("plus", size: 22) }
+                        if !matching.isEmpty {
+                            Button { showEditor(RecipeDraft()) } label: { NutriIcon("plus", size: 22) }
                                 .buttonStyle(NutriButtonStyle(.primary, height: 52, horizontal: 15, radius: 26))
                                 .accessibilityLabel(store.tr("Nueva receta")).padding(16)
                         }
@@ -147,7 +147,7 @@ struct RecipesView: View {
                 #endif
             }
             .task(id: query) { await findRecipes() }
-            .onExitCommand { form = nil }
+            .onExitCommand { showEditor(nil) }
             .onKeyPress("/") {
                 guard !searchFocused, form == nil else { return .ignored }
                 searchFocused = true; return .handled
@@ -156,7 +156,11 @@ struct RecipesView: View {
 
     private var listing: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(store.tr("Recetas")).font(.nutriDisplay(20))
+            HStack {
+                Text(store.tr("Recetas")).font(.nutriDisplay(20))
+                Spacer()
+                if opening != nil { ProgressView().controlSize(.small).accessibilityLabel(store.tr("Cargando…")) }
+            }
             HStack(spacing: 8) {
                 HStack(spacing: 10) {
                     NutriIcon("search", size: 18).foregroundStyle(palette.text3)
@@ -174,7 +178,7 @@ struct RecipesView: View {
             } else if matching.isEmpty {
                 VStack(spacing: 12) {
                     Text(store.tr("Sin recetas aún")).foregroundStyle(palette.text2)
-                    Button(store.tr("Crear la primera")) { form = RecipeDraft() }.buttonStyle(NutriButtonStyle(.primary, height: 44))
+                    Button(store.tr("Crear la primera")) { showEditor(RecipeDraft()) }.buttonStyle(NutriButtonStyle(.primary, height: 44))
                 }.padding(.vertical, 48).frame(maxWidth: .infinity)
             } else if desktop { table }
             else {
@@ -186,7 +190,7 @@ struct RecipesView: View {
     }
 
     private var sourceMenu: some View {
-        let sources = (["manual", "gemini"] + matching.map { $0.text("source") }).reduce(into: [String]()) { values, item in
+        let sources = (["manual", "gemini", sourceFilter] + matching.map { $0.text("source") }).reduce(into: [String]()) { values, item in
             if !item.isEmpty && !values.contains(item) { values.append(item) }
         }
         return NutriSelect(value: sourceFilter, select: { sourceFilter = $0 },
@@ -241,7 +245,7 @@ struct RecipesView: View {
     private var emptyEditor: some View {
         VStack(spacing: 12) {
             Text(store.tr("Selecciona una receta o crea una nueva")).font(.nutriSans(16)).foregroundStyle(palette.text2).frame(minHeight: 24)
-            Button { form = RecipeDraft() } label: { HStack { NutriIcon("plus", size: 16); Text(store.tr("Nueva receta")).font(.nutriSans(16, weight: .medium)) } }
+            Button { showEditor(RecipeDraft()) } label: { HStack { NutriIcon("plus", size: 16); Text(store.tr("Nueva receta")).font(.nutriSans(16, weight: .medium)) } }
                 .buttonStyle(NutriButtonStyle(.primary, height: 44, horizontal: 16))
         }.padding(40).frame(maxWidth: .infinity).nutriCard()
     }
@@ -252,8 +256,9 @@ struct RecipesView: View {
             for index in draft.ingredients.indices { draft.ingredients[index].changeUnit(to: "oz") }
         }
         return RecipeEditor(draft: draft, useUS: store.units == "us", desktop: desktop, recipes: rows, onSaved: {
-            form = nil; await reload()
-        }, onOpen: open, onRemove: deleteDraft, onClose: { form = nil })
+            if form?.id == original.id { form = nil }
+            await reload()
+        }, onOpen: open, onRemove: deleteDraft, onClose: { showEditor(nil) })
         .id(draft.id).padding(desktop ? 24 : 0).frame(maxWidth: .infinity, alignment: .leading)
         .background { if desktop { Color.clear.nutriCard() } }
     }
@@ -268,7 +273,6 @@ struct RecipesView: View {
     }
 
     private func findRecipes() async {
-        exactHits = nil
         let term = cleanText(query)
         guard !term.isEmpty, !store.offline, !store.demoActive else { return }
         do {
@@ -280,9 +284,8 @@ struct RecipesView: View {
     }
 
     private func reload() async {
-        exactHits = nil
         if rows.isEmpty, let cached = store.cached("recipes", ["order": "name.asc"]) { rows = cached }
-        if let cached = store.cached("recipe_per_100g", ["select": "recipe_id,kcal"]) {
+        if perHundred.isEmpty, let cached = store.cached("recipe_per_100g", ["select": "recipe_id,kcal"]) {
             perHundred = Dictionary(cached.map { ($0.text("recipe_id"), $0) }, uniquingKeysWith: { first, _ in first })
         }
         loading = true
@@ -290,9 +293,12 @@ struct RecipesView: View {
         do {
             async let recipes = store.read("recipes", ["order": "name.asc"])
             async let view = store.read("recipe_per_100g", ["select": "recipe_id,kcal"])
+            let term = cleanText(query)
             let (a, b) = try await (recipes, view)
+            guard !Task.isCancelled else { return }
             rows = a
             perHundred = Dictionary(b.map { ($0.text("recipe_id"), $0) }, uniquingKeysWith: { first, _ in first })
+            if !term.isEmpty, term == cleanText(query) { await findRecipes() }
             error = ""
         } catch {
             if !Task.isCancelled { self.error = error.localizedDescription; store.report(error) }
@@ -300,19 +306,27 @@ struct RecipesView: View {
     }
 
     private func open(_ row: Record) async {
-        guard !opening else { return }
-        opening = true
-        defer { opening = false }
+        let request = UUID()
+        opening = request
         do {
             let ingredients = try await store.read("recipe_items", ["recipe_id": "eq.\(row.text("id"))", "select": "grams,food_id,foods(id,name,brand,kcal,protein_g,carbs_g,fat_g,micros,density_g_ml,portions,source)"])
-            form = RecipeDraft(row, items: ingredients)
-        } catch { store.report(error) }
+            guard opening == request, !Task.isCancelled else { return }
+            showEditor(RecipeDraft(row, items: ingredients))
+        } catch {
+            guard opening == request, !Task.isCancelled else { return }
+            opening = nil
+            store.report(error)
+        }
+    }
+
+    private func showEditor(_ next: RecipeDraft?) {
+        opening = nil
+        form = next
     }
 
     private func deleteDraft(_ id: String) async throws {
         guard let row = (rows + matching).first(where: { $0.text("id") == id }) else { throw FeatureError("Receta no disponible.") }
         try await removeRecipe(row)
-        form = nil
     }
 
     private func remove(_ row: Record) async {

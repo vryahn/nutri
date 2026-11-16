@@ -823,38 +823,39 @@ export default function Today() {
   // Water is logged as entries of the user's own water sentinel (micros {agua_ml:100},
   // grams = ml). Find-or-create filtering by owner: the catalog is shared for
   // reading and the other user's "Agua" would not be editable by this one.
-  async function getWaterFoodId() {
+  async function getWaterFood() {
     // Validate the cache: a catalog import/cleanup may have deleted the food and
     // left the id dead (inserts would silently fail on the FK).
     if (prefs.water_food_id) {
-      const { data, error } = await supabase.from('foods').select('id,kcal,micros').eq('id', prefs.water_food_id).maybeSingle();
+      const { data, error } = await supabase.from('foods').select('id,kcal,protein_g,carbs_g,fat_g,micros').eq('id', prefs.water_food_id).maybeSingle();
       // Offline the check cannot run: trust the cached id (the insert is queued anyway).
-      if (error || (data && isWaterSentinel(data))) return prefs.water_food_id;
+      if (error) return { ...WATER_META, id: prefs.water_food_id };
+      if (data && isWaterSentinel(data)) return data;
     }
-    const { data: own, error } = await supabase.from('foods').select('id,kcal,micros').eq('owner', userId).eq('kcal', 0).order('id');
+    const { data: own, error } = await supabase.from('foods').select('id,kcal,protein_g,carbs_g,fat_g,micros').eq('owner', userId).eq('kcal', 0).order('id');
     if (error) return null;
     let food = own?.find(isWaterSentinel);
     if (!food) {
       ({ data: food } = await supabase
         .from('foods')
         .insert({ name: 'Agua', kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0, micros: { agua_ml: 100 }, source: 'manual' })
-        .select('id')
+        .select('id,kcal,protein_g,carbs_g,fat_g,micros')
         .single());
     }
     if (!food) return null;
     await savePrefs({ water_food_id: food.id });
-    return food.id;
+    return food;
   }
 
   async function addWater(ml) {
     if (!userId || !(ml > 0)) return;
-    const foodId = await getWaterFoodId();
-    if (!foodId) {
+    const food = await getWaterFood();
+    if (!food) {
       showToast(t('Error al registrar agua.'));
       return;
     }
-    const payload = { id: crypto.randomUUID(), day: date, grams: ml, meal_label_id: null, food_id: foodId, recipe_id: null };
-    queueInsert(payload, entryNutrients(payload, WATER_META, { item: 'Agua' }));
+    const payload = { id: crypto.randomUUID(), day: date, grams: ml, meal_label_id: null, food_id: food.id, recipe_id: null };
+    queueInsert(payload, entryNutrients(payload, { ...WATER_META, ...food }, { item: 'Agua' }));
   }
 
   function undoWater() {
@@ -1095,7 +1096,7 @@ export default function Today() {
     const foodIds = tpl.items.filter((i) => i.food_id).map((i) => i.food_id);
     const recipeIds = tpl.items.filter((i) => i.recipe_id).map((i) => i.recipe_id);
     const [{ data: fRows }, { data: rRows }] = await Promise.all([
-      foodIds.length ? supabase.from('foods').select('id,kcal,micros').in('id', foodIds) : Promise.resolve({ data: [] }),
+      foodIds.length ? supabase.from('foods').select('id,kcal,protein_g,carbs_g,fat_g,micros').in('id', foodIds) : Promise.resolve({ data: [] }),
       recipeIds.length ? supabase.from('recipes').select('id').in('id', recipeIds) : Promise.resolve({ data: [] }),
     ]);
     const okFoods = new Set((fRows || []).filter((r) => r.id !== prefs.water_food_id && !isWaterSentinel(r)).map((r) => r.id));

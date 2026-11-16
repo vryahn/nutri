@@ -271,7 +271,11 @@ final class Store: ObservableObject {
 
     func read(_ table: String, _ query: [String: String] = [:]) async throws -> [Record] {
         #if DEBUG
-        if let demo { return demo.read(table, query) }
+        if let demo {
+            if snapshotScenario.hasSuffix("-loading") { try await Task.sleep(for: .seconds(5)) }
+            if snapshotScenario.hasSuffix("-error") { throw URLError(.notConnectedToInternet) }
+            return demo.read(table, query)
+        }
         #endif
         guard let owner, let api else { throw NutriError("Inicia sesión para continuar.") }
         let current = identity

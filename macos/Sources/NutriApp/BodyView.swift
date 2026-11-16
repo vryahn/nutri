@@ -180,6 +180,10 @@ struct BodyView: View {
     @State private var importText = ""
     @State private var saveTask: Task<Void, Never>?
     @State private var day = Date()
+    @State private var requestedDay: Date?
+    @State private var loadingDay = true
+    @State private var dayLoadFailed = false
+    @State private var dayRequest = UUID()
     @State private var values: [String: String] = [:]
     @State private var note = ""
     @State private var photos: [String] = []
@@ -204,6 +208,8 @@ struct BodyView: View {
     private var favorites: [String] { store.prefs.array("fav_body").compactMap(\.string) }
     private var threshold: Double { store.prefs.number("sueno_umbral_h") ?? 6 }
     private var dayKey: String { Day.key(day) }
+    private var requestedKey: String { Day.key(requestedDay ?? day) }
+    private var navigationDay: Date { loadingDay ? requestedDay ?? day : day }
     private var trend: BodyMetric { (BodyMetric.fields + BodyMetric.derived).first { $0.key == trendKey } ?? BodyMetric.fields[0] }
     private var originalValues: [String: String] {
         (existing?.object("metrics") ?? [:]).compactMapValues { $0.number.map(draftNumber) }
@@ -221,13 +227,11 @@ struct BodyView: View {
         ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     dateNavigation
-                    if !message.isEmpty { Text(message).font(.nutriSans(12)).foregroundStyle(palette.danger) }
-                    if ready {
+                    Group {
                         capture(columns: windowWidth < 640 ? 2 : 3)
                         photoPanel
-                    } else if !busy {
-                        Button(store.tr("Reintentar")) { Task { await loadDay() } }.buttonStyle(NutriButtonStyle(.quiet, height: 44))
                     }
+                    .disabled(!ready || loadingDay)
                     trendPanel
                 }
                 .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 32)
@@ -235,7 +239,7 @@ struct BodyView: View {
                 .frame(maxWidth: .infinity)
         }
         .font(.nutriSans(14)).foregroundStyle(palette.text)
-        .task(id: dayKey) { await loadDay() }
+        .task(id: requestedKey) { await loadDay() }
         .task {
             await refreshHistory()
             #if DEBUG
@@ -253,12 +257,14 @@ struct BodyView: View {
             Task { await uploadPhotos(result) }
         }
         .overlay { if previewImport { NutriModal(close: { if !busy { previewImport = false } }, maxWidth: 512) { importSheet } } }
-        .sheet(isPresented: Binding(get: { selectedPhoto != nil }, set: { if !$0 { selectedPhoto = nil } })) {
+        .overlay {
             if let selectedPhoto {
-                VStack {
-                    PrivateBodyPhoto(path: selectedPhoto).frame(minWidth: 550, minHeight: 420)
-                    Button(store.tr("Cerrar")) { self.selectedPhoto = nil }.buttonStyle(NutriButtonStyle(.secondary, height: 44)).keyboardShortcut(.cancelAction)
-                }.padding(16)
+                NutriModal(close: { self.selectedPhoto = nil }, maxWidth: 640) {
+                    VStack {
+                        PrivateBodyPhoto(path: selectedPhoto).frame(maxWidth: .infinity, maxHeight: 420)
+                        Button(store.tr("Cerrar")) { self.selectedPhoto = nil }.buttonStyle(NutriButtonStyle(.secondary, height: 44)).keyboardShortcut(.cancelAction)
+                    }.padding(16).nutriGlass()
+                }
             }
         }
         .overlay {
@@ -281,12 +287,13 @@ struct BodyView: View {
         .onExitCommand {
             if previewImport, !busy { previewImport = false }
             if confirmDelete { confirmDelete = false; photoToDelete = nil }
+            if selectedPhoto != nil { selectedPhoto = nil }
         }
     }
 
     private var dateNavigation: some View {
         HStack {
-            Button { navigate(addingDays(-1, to: day)) } label: { NutriIcon("chevron-left", size: 22) }
+            Button { navigate(addingDays(-1, to: navigationDay)) } label: { NutriIcon("chevron-left", size: 22) }
                 .accessibilityLabel(store.tr("Día anterior"))
             Spacer()
             Button { dateOpen.toggle() } label: {
@@ -299,10 +306,21 @@ struct BodyView: View {
                     .labelsHidden().datePickerStyle(.graphical).padding(12)
             }
             Spacer()
-            Button { navigate(addingDays(1, to: day)) } label: { NutriIcon("chevron-right", size: 22) }
+            Button { navigate(addingDays(1, to: navigationDay)) } label: { NutriIcon("chevron-right", size: 22) }
                 .accessibilityLabel(store.tr("Día siguiente"))
         }
         .buttonStyle(NutriButtonStyle(.quiet, height: windowWidth >= 768 ? 38 : 44))
+        .overlay(alignment: .trailing) {
+            Group {
+                if loadingDay {
+                    ProgressView().controlSize(.small).accessibilityLabel(store.tr("Cargando…"))
+                } else if dayLoadFailed {
+                    Button { Task { await loadDay() } } label: { NutriIcon("arrow.clockwise", size: 16).frame(width: 44, height: 44) }
+                        .buttonStyle(.plain).foregroundStyle(palette.danger)
+                        .accessibilityLabel(store.tr("Reintentar")).help(store.tr("Reintentar"))
+                }
+            }.padding(.trailing, 48)
+        }
     }
 
     private func capture(columns: Int) -> some View {
@@ -312,7 +330,11 @@ struct BodyView: View {
             HStack {
                 Text(store.tr("Medidas del día")).foregroundStyle(palette.text3)
                 Spacer()
-                if savedFlash { Text(store.tr("Guardado.")).font(.nutriSans(12)).foregroundStyle(palette.accent) }
+                if !message.isEmpty {
+                    Text(message).font(.nutriSans(12)).foregroundStyle(palette.danger).lineLimit(1).help(message)
+                } else if savedFlash {
+                    Text(store.tr("Guardado.")).font(.nutriSans(12)).foregroundStyle(palette.accent)
+                }
             }
             LazyVGrid(columns: grid, spacing: 12) {
                 ForEach(BodyMetric.fields.prefix(2)) { metricField($0) }
@@ -564,7 +586,7 @@ struct BodyView: View {
     private func openImport() {
         Task {
             await flushEdits()
-            guard !busy, !pending else { return }
+            guard !busy, !pending, !loadingDay else { return }
             importText = ""; importError = ""; replace = false
             previewImport = true
         }
@@ -574,7 +596,13 @@ struct BodyView: View {
         Task {
             await flushEdits()
             guard !busy, !pending else { return }
-            day = date
+            if Day.key(date) == requestedKey {
+                if dayLoadFailed { await loadDay() }
+            } else {
+                dayRequest = UUID()
+                loadingDay = true
+                requestedDay = date
+            }
         }
     }
 
@@ -601,23 +629,34 @@ struct BodyView: View {
     }
 
     private func loadDay() async {
-        let key = dayKey
-        ready = false
-        message = ""
+        let date = requestedDay ?? day
+        let key = Day.key(date)
+        let request = UUID()
+        dayRequest = request
+        loadingDay = true
+        dayLoadFailed = false
         do {
             let result = try await store.read("body_metrics", ["day": "eq.\(key)"])
-            guard key == dayKey, !Task.isCancelled else { return }
+            guard request == dayRequest, key == requestedKey, !Task.isCancelled else { return }
             apply(result.first)
+            day = date
             ready = true
+            message = ""
+            savedFlash = false
         } catch {
-            guard !Task.isCancelled else { return }
+            guard request == dayRequest, key == requestedKey, !Task.isCancelled else { return }
+            dayLoadFailed = true
             store.report(error)
         }
+        loadingDay = false
     }
 
     private func refreshHistory() async {
+        let query = ["select": "day,metrics", "day": "gte.\(Day.key(addingDays(-179, to: Date())))", "order": "day.asc"]
+        if history.isEmpty, let cached = store.cached("body_metrics", query) { history = cached }
         do {
-            history = try await store.read("body_metrics", ["select": "day,metrics", "day": "gte.\(Day.key(addingDays(-179, to: Date())))", "order": "day.asc"])
+            let rows = try await store.read("body_metrics", query)
+            if !Task.isCancelled { history = rows }
         } catch {
             if !Task.isCancelled { store.report(error) }
         }
@@ -722,7 +761,7 @@ struct BodyView: View {
 
     private func uploadPhotos(_ result: Result<[URL], Error>) async {
         await flushEdits()
-        guard ready, !busy, !pending, !store.anonymous, !store.demoActive, let owner = store.owner else { return }
+        guard ready, !loadingDay, !busy, !pending, !store.anonymous, !store.demoActive, let owner = store.owner else { return }
         let key = dayKey
         busy = true; uploading = true
         defer { busy = false; uploading = false }
@@ -755,7 +794,7 @@ struct BodyView: View {
 
     private func deletePhoto() async {
         await flushEdits()
-        guard !busy, !pending, let path = photoToDelete, let owner = store.owner,
+        guard ready, !loadingDay, !busy, !pending, let path = photoToDelete, let owner = store.owner,
               path.hasPrefix("\(owner)/"), !path.contains("..") else { return }
         let key = dayKey
         busy = true

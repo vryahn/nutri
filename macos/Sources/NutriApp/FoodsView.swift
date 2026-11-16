@@ -194,7 +194,7 @@ struct FoodsView: View {
     @Environment(\.nutriWindowWidth) private var windowWidth
     @FocusState private var searchFocused: Bool
     @State private var foods: [Record] = []
-    @State private var semantic: [Record] = []
+    @State private var semantic: (term: String, rows: [Record])?
     @State private var exactHits: (term: String, rows: [Record])?
     @State private var query = ""
     @State private var source = ""
@@ -205,7 +205,6 @@ struct FoodsView: View {
     @State private var loading = true
     @State private var failed = false
     @State private var draft: FoodDraft?
-    @State private var fromToday: Record?
     @State private var importText = ""
     @State private var importReview = false
     @State private var importError = ""
@@ -219,9 +218,9 @@ struct FoodsView: View {
     }
     private var results: [Record] {
         let hits = matching
-        guard !semantic.isEmpty else { return hits }
+        guard let semantic, semantic.term == term, !semantic.rows.isEmpty else { return hits }
         let found = Set(hits.map { $0.text("id") })
-        return Array((hits + semantic.filter { !found.contains($0.text("id")) }).prefix(8))
+        return Array((hits + semantic.rows.filter { !found.contains($0.text("id")) }).prefix(8))
     }
     private var visible: [Record] {
         let filtered = results.filter { (source.isEmpty || $0.text("source") == source) && (!warnOnly || foodWarningPending($0)) }
@@ -258,9 +257,11 @@ struct FoodsView: View {
             } else {
                 ScrollView { listing.padding(16).padding(.bottom, 56) }
                     .overlay(alignment: .bottomTrailing) {
-                        Button { draft = FoodDraft() } label: { NutriIcon("plus", size: 22) }
-                            .buttonStyle(NutriButtonStyle(.primary, height: 52, horizontal: 15, radius: 26))
-                            .accessibilityLabel(store.tr("Nuevo alimento")).padding(16)
+                        if !results.isEmpty {
+                            Button { draft = FoodDraft() } label: { NutriIcon("plus", size: 22) }
+                                .buttonStyle(NutriButtonStyle(.primary, height: 52, horizontal: 15, radius: 26))
+                                .accessibilityLabel(store.tr("Nuevo alimento")).padding(16)
+                        }
                     }
             }
         }
@@ -335,7 +336,8 @@ struct FoodsView: View {
                     .buttonStyle(NutriButtonStyle(.secondary, height: 44))
                 let sourceOptions = Set(results.map { $0.text("source") }).filter { !$0.isEmpty }.sorted()
                 NutriSelect(value: source, select: { source = $0 }, options:
-                    [("", store.tr("Todos"))] + sourceOptions.map { ($0, store.tr(foodSources[$0] ?? $0)) })
+                    [("", store.tr("Todos"))] + sourceOptions.map { ($0, store.tr(foodSources[$0] ?? $0)) },
+                    currentLabel: store.tr(foodSources[source] ?? source))
                     .accessibilityLabel(store.tr("Fuente"))
                 Button { warnOnly.toggle() } label: { NutriIcon("triangle-alert", size: 18).frame(width: 44, height: 44) }
                     .buttonStyle(.plain).foregroundStyle(warnOnly ? palette.warn : palette.text3)
@@ -414,7 +416,6 @@ struct FoodsView: View {
 
     private func openFromToday() {
         guard let context = store.newFood else { return }
-        fromToday = context
         draft = FoodDraft(context)
         store.newFood = nil
     }
@@ -424,11 +425,13 @@ struct FoodsView: View {
             let firstPage = Store.catalogQuery.merging(["limit": "1000", "offset": "0"]) { _, page in page }
             if let cached = store.cached("foods", firstPage) { foods = cached.filter { !Domain.water($0) } }
         }
-        exactHits = nil
         loading = true
         defer { loading = false }
         do {
-            foods = try await store.catalog().filter { !Domain.water($0) }
+            let rows = try await store.catalog().filter { !Domain.water($0) }
+            guard !Task.isCancelled else { return }
+            foods = rows
+            if !term.isEmpty { await findFoods() }
             failed = false
         } catch {
             if !Task.isCancelled { failed = true; store.report(error) }
@@ -436,7 +439,6 @@ struct FoodsView: View {
     }
 
     private func findFoods() async {
-        exactHits = nil; semantic = []
         let search = term
         guard !search.isEmpty, !store.offline, !store.demoActive else { return }
         do {
@@ -444,10 +446,13 @@ struct FoodsView: View {
             let exact = try await searchCatalogNames(store: store, table: "foods", term: search)
             guard !Task.isCancelled, term == search else { return }
             exactHits = (search, exact)
-            guard search.count >= 3, exact.count < 8, !store.anonymous else { return }
+            guard search.count >= 3, exact.count < 8, !store.anonymous else {
+                semantic = nil
+                return
+            }
             let hits = try await searchSemanticFoods(store: store, query: search)
             guard !Task.isCancelled, term == search else { return }
-            semantic = hits.filter { !Domain.water($0) }
+            semantic = (search, hits.filter { !Domain.water($0) })
         } catch { /* The loaded local catalog remains usable. */ }
     }
 
@@ -467,17 +472,19 @@ struct FoodsView: View {
         foods.removeAll { $0.text("id") == saved.text("id") }
         foods.append(saved)
         foods.sort { $0.text("name").localizedStandardCompare($1.text("name")) == .orderedAscending }
-        semantic.removeAll { $0.text("id") == saved.text("id") }
-        exactHits = nil
-        self.draft = nil
+        semantic?.rows.removeAll { $0.text("id") == saved.text("id") }
+        if let index = exactHits?.rows.firstIndex(where: { $0.text("id") == saved.text("id") }) {
+            exactHits?.rows[index] = saved
+        }
+        if self.draft?.id == draft.id { self.draft = nil }
         store.toast(store.tr("Guardado."))
         if log {
             var routed = saved
-            routed["day"] = fromToday?["day"]
-            routed["meal_label_id"] = fromToday?["meal_label_id"]
+            routed["day"] = draft.original["day"]
+            routed["meal_label_id"] = draft.original["meal_label_id"]
             store.logFood = routed
         }
-        fromToday = nil
+        if !term.isEmpty { Task { await findFoods() } }
         Task {
             guard !store.demoActive, !store.anonymous, !store.offline,
                   let vector = try? await foodEmbedding(store: store, text: saved.text("name") + " " + saved.text("brand")),
@@ -497,7 +504,7 @@ struct FoodsView: View {
         defer { busy = false }
         let id = row.text("id")
         foods.removeAll { $0.text("id") == id }
-        semantic.removeAll { $0.text("id") == id }
+        semantic?.rows.removeAll { $0.text("id") == id }
         exactHits?.rows.removeAll { $0.text("id") == id }
         let deleted: Record
         do {

@@ -20,7 +20,7 @@ struct TodayView: View {
     @State private var focusQuickAdd = 0
     @State private var proposal: PhaseProposal?
     @State private var editor: Sheet?
-    @State private var loading = true
+    @State private var failedDay = ""
     @State private var confirmingDeleteDay = false
     @State private var busy = false
     @State private var waterAmount = ""
@@ -94,12 +94,15 @@ struct TodayView: View {
                     HStack(alignment: .top, spacing: 24) {
                         journal.frame(width: max(0, geometry.size.width - 376), height: geometry.size.height)
                         ScrollView {
-                            VStack(alignment: .leading, spacing: 16) {
-                                summary
-                                if editingInline, case let .entry(row, label, food, amount) = editor {
-                                    editorForm(row, label: label, food: food, amount: amount, placement: .rail)
-                                        .id(row?.text("id"))
-                                } else { waterPanel }
+                            LazyVStack(alignment: .leading, spacing: 16, pinnedViews: [.sectionHeaders]) {
+                                Section {
+                                    if editingInline, case let .entry(row, label, food, amount) = editor {
+                                        editorForm(row, label: label, food: food, amount: amount, placement: .rail)
+                                            .id(row?.text("id"))
+                                    } else { waterPanel }
+                                } header: {
+                                    summary.background(palette.bg, in: RoundedRectangle(cornerRadius: 16))
+                                }
                             }
                             .padding(.top, 16).padding(.bottom, 48)
                         }
@@ -116,7 +119,12 @@ struct TodayView: View {
         .preference(key: NutriPresentedModalKey.self, value: presentedModal)
         .preference(key: NutriModalVisibleKey.self, value: hasModal)
         .nutriSectionActions(sectionActions)
-        .task(id: day) { await loadDay(); await loadReference() }
+        .task(id: day) {
+            async let entries: Void = loadDay()
+            async let reference: Void = loadReference()
+            _ = await (entries, reference)
+        }
+        .task { await loadLabels() }
         .task { await loadCatalog() }
         .background {
             JournalKeys { command in
@@ -225,18 +233,28 @@ struct TodayView: View {
                     }
                     if let proposal { proposalCard(proposal) }
                     if !desktop { waterPanel }
-                    if loading && rows.isEmpty {
+                    if failedDay == day {
+                        VStack(spacing: 8) {
+                            Text(store.tr("No se pudo cargar el día — revisa tu conexión."))
+                                .font(.nutriSans(14)).foregroundStyle(palette.text2).multilineTextAlignment(.center)
+                            Button(store.tr("Reintentar")) { run { await loadDay() } }
+                                .buttonStyle(NutriButtonStyle(.secondary)).disabled(busy)
+                        }
+                        .padding(16).frame(maxWidth: .infinity).nutriCard()
+                    }
+                    if loadedDay != day && failedDay != day && rows.isEmpty {
                         VStack(spacing: 8) {
                             ForEach(0..<2) { _ in
                                 RoundedRectangle(cornerRadius: 16).fill(palette.surface).frame(height: 56)
                             }
                         }
-                    } else {
-                        if labels.isEmpty && foodRows.isEmpty {
+                        .accessibilityLabel(store.tr("Cargando…"))
+                    } else if loadedDay == day || !rows.isEmpty {
+                        if labels.isEmpty && foodRows.isEmpty && failedDay != day {
                             Text(store.tr("Sin registros este día")).foregroundStyle(palette.text2)
                                 .frame(maxWidth: .infinity).padding(.vertical, 24)
                         }
-                        ForEach(labels, id: \.self) { label in section(label).id(label.text("id")) }
+                        ForEach(labels.map { ($0.text("id"), $0) }, id: \.0) { id, label in section(label).id(id) }
                         if !entries(in: "").isEmpty || entryDropActive { section(nil).id("none") }
                     }
                 }
@@ -508,6 +526,7 @@ struct TodayView: View {
         let name = label?.text("name") ?? store.tr("Sin etiqueta")
         let entries = entries(in: id)
         let totals = Domain.totals(entries)
+        let chips = macroChips(totals)
         let key = id.isEmpty ? "none" : id
         let hidden = collapsed.contains(key)
         return VStack(spacing: 8) {
@@ -523,7 +542,7 @@ struct TodayView: View {
                         .foregroundStyle(entries.isEmpty ? palette.text2 : palette.accent)
                         if !entries.isEmpty {
                             NutriFlow(spacing: 10, lineSpacing: 2) {
-                                ForEach(macroChips(totals), id: \.key) { chip in
+                                ForEach(chips, id: \.key) { chip in
                                     Text(chip.text).font(.nutriMono(13)).foregroundStyle(palette.nutrient(chip.key, fallback: palette.text3))
                                 }
                             }
@@ -533,6 +552,7 @@ struct TodayView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel((hidden ? store.tr("Expandir") : store.tr("Contraer")) + " " + name)
+                .accessibilityValue(chips.map(\.text).joined(separator: ", "))
                 .modifier(SectionDraggable(id: id, day: day, owner: store.owner, enabled: !busy))
                 if !entries.isEmpty {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
@@ -557,7 +577,7 @@ struct TodayView: View {
                 return move(payload, label: id, over: nil)
             }, isTargeted: { sectionHover = $0 ? key : nil })
             if !hidden {
-                ForEach(entries, id: \.self) { row in entryCard(row, label: id) }
+                ForEach(entries.map { ($0.text("id"), $0) }, id: \.0) { _, row in entryCard(row, label: id) }
             }
         }
     }
@@ -590,10 +610,13 @@ struct TodayView: View {
                         if let potassium = Domain.value(row, "potasio_mg"), potassium >= 940 {
                             foodBadge("K", potassium, color: palette.warn, help: "Alto en potasio")
                         }
-                        if row["_pending"]?.bool == true {
-                            NutriIcon("cloud-off", size: 14).foregroundStyle(palette.text3)
-                                .accessibilityLabel(store.tr("Pendiente de sincronizar"))
+                        Group {
+                            if row["_pending"]?.bool == true {
+                                NutriIcon("cloud-off", size: 14).foregroundStyle(palette.text3)
+                                    .accessibilityLabel(store.tr("Pendiente de sincronizar"))
+                            }
                         }
+                        .frame(width: 14, height: 14)
                         Text(row.number("kcal").map { journalNumber($0) + " kcal" } ?? "— kcal")
                             .font(.nutriMono(16)).foregroundStyle(palette.text2)
                             .lineLimit(1)
@@ -602,16 +625,29 @@ struct TodayView: View {
                 .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            if rowHover == id {
-                Button(role: .destructive) { remove(row) } label: {
-                    NutriIcon("trash-2", size: 16).foregroundStyle(palette.danger)
-                }
-                .buttonStyle(.plain).accessibilityLabel(store.tr("Borrar"))
-            }
         }
         .padding(12)
         .background(selected ? palette.surface2 : palette.surface, in: RoundedRectangle(cornerRadius: 16))
         .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(selected ? palette.accent : palette.border).allowsHitTesting(false) }
+        .overlay(alignment: .trailing) {
+            if rowHover == id {
+                HStack(spacing: 4) {
+                    if desktop {
+                        Button { editor = .entry(row, label, nil, nil) } label: {
+                            NutriIcon("pencil", size: 16).frame(width: 28, height: 28).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain).foregroundStyle(palette.text2).accessibilityLabel(store.tr("Editar"))
+                    }
+                    Button(role: .destructive) { remove(row) } label: {
+                        NutriIcon("trash-2", size: 16).frame(width: 28, height: 28).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).foregroundStyle(palette.danger).accessibilityLabel(store.tr("Borrar"))
+                }
+                .padding(4)
+                .background(selected ? palette.surface2 : palette.surface, in: RoundedRectangle(cornerRadius: 8))
+                .padding(.trailing, 12)
+            }
+        }
         .onHover { rowHover = $0 ? id : nil }
         .contextMenu {
             Button(store.tr("Editar")) { editor = .entry(row, label, nil, nil) }
@@ -743,13 +779,27 @@ struct TodayView: View {
     private func loadDay() async {
         let key = day
         let query = Store.entriesQuery(key)
-        if let cache = store.cached("entry_nutrients", query) { serverRows = cache; loadedDay = key }
-        loading = loadedDay != key
-        defer { if day == key { loading = false } }
+        if let cache = store.cached("entry_nutrients", query) {
+            serverRows = cache
+            loadedDay = key
+            failedDay = ""
+        }
         do {
             let result = try await store.read("entry_nutrients", query)
-            if day == key, !Task.isCancelled { serverRows = result; loadedDay = key }
-        } catch { store.report(error) }
+            guard day == key, !Task.isCancelled else { return }
+            serverRows = result
+            loadedDay = key
+            failedDay = ""
+            #if DEBUG
+            if store.snapshotScenario == "today-edit", editor == nil, let row = foodRows.first {
+                editor = .entry(row, row.text("meal_label_id"), nil, nil)
+            }
+            #endif
+        } catch {
+            guard day == key, !Task.isCancelled, !(error is CancellationError), (error as? URLError)?.code != .cancelled else { return }
+            if loadedDay == key { store.toast(store.tr("No se pudo cargar el día — revisa tu conexión.")) }
+            else { failedDay = key }
+        }
     }
 
     private func loadLabels() async {
@@ -770,16 +820,18 @@ struct TodayView: View {
     }
 
     private func loadReference() async {
-        await loadLabels()
         let key = day
         let start = Day.key(Day.add(date, -30))
+        let targetQuery = ["order": "valid_from.desc.nullslast,dow.asc"]
+        if let cached = store.cached("targets", targetQuery) { targets = cached }
         do {
             async let recent = store.read("entry_nutrients", dateFilter(start, key))
-            async let targetRows = store.read("targets", ["order": "valid_from.desc.nullslast,dow.asc"])
-            let (loadedHistory, loadedTargets) = try await (recent, targetRows)
+            let loadedTargets = try await store.read("targets", targetQuery)
+            guard day == key, !Task.isCancelled else { return }
+            targets = loadedTargets
+            let loadedHistory = try await recent
             guard day == key, !Task.isCancelled else { return }
             history = loadedHistory
-            targets = loadedTargets
             let now = Date()
             let today = Day.key(now)
             let active = Domain.activePhase(targets, day: today)
@@ -828,17 +880,18 @@ struct TodayView: View {
         }
         if food == nil {
             guard let owner = store.owner else { throw CancellationError() }
-            let own = try await store.read("foods", ["select": "id,kcal,micros", "owner": "eq." + owner, "kcal": "eq.0", "order": "id.asc"])
+            let own = try await store.read("foods", ["select": "id,kcal,protein_g,carbs_g,fat_g,micros", "owner": "eq." + owner, "kcal": "eq.0", "order": "id.asc"])
             if let existing = own.first(where: Domain.water) { food = existing }
             else {
                 food = try await store.insert("foods", meta.merging(["name": .string("Agua"), "source": .string("manual")]) { _, new in new })
             }
             if let id = food?.text("id") { try await store.patchPrefs(["water_food_id": .string(id)]) }
         }
-        guard let id = food?.text("id"), !id.isEmpty else { throw NutriError("No se encontró el alimento para registrar agua.") }
+        guard let food, !food.text("id").isEmpty else { throw NutriError("No se encontró el alimento para registrar agua.") }
         let payload: Record = ["id": .string(UUID().uuidString.lowercased()), "day": .string(day), "grams": .number(ml),
-                               "food_id": .string(id), "recipe_id": .null, "meal_label_id": .null]
-        let row = payload.merging(Domain.scaled(meta, grams: ml)) { _, new in new }
+                               "food_id": food["id"] ?? .null, "recipe_id": .null, "meal_label_id": .null]
+        let nutrients = meta.merging(food.filter { meta[$0.key] != nil }) { _, known in known }
+        let row = payload.merging(Domain.scaled(nutrients, grams: ml)) { _, new in new }
             .merging(["item": .string("Agua"), "created_at": .string(Date.now.ISO8601Format())]) { _, new in new }
         splashWater = waterRows.reduce(0) { $0 + ($1.number("grams") ?? 0) } + ml
         try store.addEntry(payload, row: row)
@@ -2667,8 +2720,10 @@ func checkJournalFidelity() throws {
          "recipe_id": recipe.map(JSONValue.string) ?? .null, "grams": .number(grams), "meal_label_id": .string(label)]
     }
     let waterMeta: Record = ["kcal": .number(0), "micros": .object(["agua_ml": .number(100)])]
+    let oldWaterMeta: Record = ["kcal": .number(0),
+                                "micros": .object(["agua_ml": .number(100), "sodio_mg": .number(0), "potasio_mg": .number(0)])]
     let water = entry("water", age: 1, food: "water", grams: 1000, label: "")
-        .merging(Domain.scaled(waterMeta, grams: 1000)) { _, new in new }
+        .merging(Domain.scaled(oldWaterMeta, grams: 1000)) { _, new in new }
     let queuedWater = entry("queued-water", age: 0, food: "new-water", grams: 250)
         .merging(Domain.scaled(waterMeta, grams: 250)) { _, new in new }
         .merging(["_pending": .bool(true)]) { _, new in new }

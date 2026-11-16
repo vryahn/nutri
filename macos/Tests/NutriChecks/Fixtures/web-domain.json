@@ -1054,6 +1054,118 @@
         }
       ],
       "expected": true
+    },
+    {
+      "name": "legacy zero-mineral water",
+      "fn": "isWaterSentinel",
+      "args": [
+        {
+          "kcal": 0,
+          "micros": {
+            "agua_ml": 100,
+            "sodio_mg": 0,
+            "potasio_mg": 0,
+            "calcio_mg": null
+          }
+        }
+      ],
+      "expected": true
+    },
+    {
+      "name": "legacy water entry under a different preference",
+      "fn": "isWaterEntry",
+      "args": [
+        {
+          "food_id": "old-water",
+          "recipe_id": null,
+          "grams": 650,
+          "kcal": 0,
+          "micros": {
+            "agua_ml": 650,
+            "sodio_mg": 0,
+            "potasio_mg": 0
+          }
+        },
+        "new-water"
+      ],
+      "expected": true
+    },
+    {
+      "name": "water recipe stays a meal",
+      "fn": "isWaterEntry",
+      "args": [
+        {
+          "kcal": 0,
+          "micros": {
+            "agua_ml": 100,
+            "sodio_mg": 0,
+            "potasio_mg": 0,
+            "calcio_mg": null
+          },
+          "recipe_id": "recipe",
+          "grams": 100
+        },
+        null
+      ],
+      "expected": false
+    },
+    {
+      "name": "mineral drink stays a food",
+      "fn": "isWaterSentinel",
+      "args": [
+        {
+          "kcal": 0,
+          "micros": {
+            "agua_ml": 100,
+            "sodio_mg": 5
+          }
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "zero-calorie food with water is not plain water",
+      "fn": "isWaterSentinel",
+      "args": [
+        {
+          "kcal": 0,
+          "micros": {
+            "agua_ml": 35,
+            "sodio_mg": 0
+          }
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "unknown water quantity is not a sentinel",
+      "fn": "isWaterSentinel",
+      "args": [
+        {
+          "kcal": 0,
+          "micros": {
+            "agua_ml": null
+          }
+        }
+      ],
+      "expected": false
+    },
+    {
+      "name": "nonzero macros prevent water sentinel",
+      "fn": "isWaterSentinel",
+      "args": [
+        {
+          "kcal": 0,
+          "micros": {
+            "agua_ml": 100,
+            "sodio_mg": 0,
+            "potasio_mg": 0,
+            "calcio_mg": null
+          },
+          "protein_g": 1
+        }
+      ],
+      "expected": false
     }
   ]
 }

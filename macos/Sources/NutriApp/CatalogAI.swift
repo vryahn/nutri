@@ -137,11 +137,18 @@ struct CatalogAIDataCard<ResultLines: View>: View {
                         .accessibilityLabel(store.tr(images.isEmpty ? "Foto (etiqueta o platillo)" : "Otra foto"))
                 }
                 Button(action: submit) {
-                    HStack(spacing: 6) {
-                        if loading { ProgressView().controlSize(.small).colorScheme(.dark) }
-                        Text(store.tr(loading ? "Obteniendo…" : "Obtener datos")).lineLimit(1).fixedSize()
+                    ZStack {
+                        Text(store.tr("Obtener datos")).opacity(loading ? 0 : 1)
+                        HStack(spacing: 6) {
+                            Color.clear.frame(width: 16, height: 16).overlay {
+                                if loading { ProgressView().controlSize(.small).colorScheme(.dark) }
+                            }
+                            Text(store.tr("Obteniendo…"))
+                        }.opacity(loading ? 1 : 0)
                     }
+                    .lineLimit(1).fixedSize()
                 }.buttonStyle(NutriButtonStyle(.primary, height: 44, horizontal: 16))
+                    .accessibilityLabel(store.tr(loading ? "Obteniendo…" : "Obtener datos"))
                     .disabled(loading || (cleanText(text).isEmpty && images.isEmpty))
             }
             if !error.isEmpty { Text(error).foregroundStyle(palette.danger) }

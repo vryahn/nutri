@@ -100,9 +100,11 @@ struct TargetsView: View {
     @State private var snapshotWizard = false
     #endif
     @State private var loading = true
+    @State private var loadRequest: UUID?
+    @State private var didLoad = false
     @State private var errorText = ""
 
-
+    private let targetsQuery = ["order": "valid_from.desc.nullslast,dow.asc"]
     private var today: String { Day.key(Date()) }
     private var phaseRows: [Record] { rows.filter { $0.number("dow") != nil } }
     private var byStart: [String: [Record]] { Dictionary(grouping: phaseRows) { $0.text("valid_from") } }
@@ -112,48 +114,46 @@ struct TargetsView: View {
     private var historical: [String] { phases.filter { $0 < (active ?? today) } }
 
     var body: some View {
-        Group {
-            if loading && rows.isEmpty {
-                VStack(spacing: 12) {
-                    ForEach(0..<3, id: \.self) { _ in RoundedRectangle(cornerRadius: 16).fill(palette.surface).frame(height: 96) }
-                    Spacer(minLength: 0)
-                }.padding(16).accessibilityLabel(store.tr("Cargando…"))
-            } else {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 Text(store.tr("Objetivos")).font(.nutriDisplay(20))
-                if !errorText.isEmpty {
-                    HStack {
-                        Text(errorText).foregroundStyle(palette.danger)
-                        Button(store.tr("Reintentar")) { Task { await reload() } }
-                            .buttonStyle(NutriButtonStyle(.quiet))
+                if didLoad {
+                    NutriColumns(columns: windowWidth >= 1024 ? 2 : 1, gap: 24, firstWeight: 7.0 / 5.0) {
+                        phaseColumn
+                        overrideColumn
                     }
-                }
-                if windowWidth >= 1024 {
-                    GeometryReader { proxy in
-                        HStack(alignment: .top, spacing: 24) {
-                            phaseColumn.frame(width: (proxy.size.width - 24) * 7 / 12)
-                            overrideColumn.frame(maxWidth: .infinity, alignment: .leading)
+                } else if loading {
+                    VStack(spacing: 12) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            RoundedRectangle(cornerRadius: 16).fill(palette.surface).frame(height: 96)
                         }
-                        .background {
-                            GeometryReader { content in
-                                Color.clear.onChange(of: content.size.height, initial: true) { _, value in contentHeight = value }
-                            }
-                        }
-                    }.frame(height: contentHeight)
-                } else {
-                    phaseColumn
-                    overrideColumn
+                    }.accessibilityLabel(store.tr("Cargando…"))
                 }
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .overlay(alignment: .bottom) {
+            if !errorText.isEmpty {
+                HStack {
+                    Text(errorText).foregroundStyle(palette.danger)
+                    Spacer(minLength: 8)
+                    Button(store.tr("Reintentar")) { Task { await reload() } }
+                        .buttonStyle(NutriButtonStyle(.quiet))
+                        .disabled(loading)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 4)
+                .frame(maxWidth: 480).nutriGlass(radius: 12)
+                .padding(16)
             }
         }
         .font(.nutriSans(14))
         .foregroundStyle(palette.text)
         .task {
+            if let cached = store.cached("targets", targetsQuery) {
+                rows = cached
+                didLoad = true
+            }
             await reload()
             #if DEBUG
             if let active, let entries = byStart[active] {
@@ -204,7 +204,7 @@ struct TargetsView: View {
             }
         }
         if let input = rulesDraft {
-            return targetModal("targets-rules", close: { rulesDraft = nil }) {
+            return targetModal("targets-rules", scrolls: true, close: { rulesDraft = nil }) {
                 TargetRulesSheet(input: input, close: { rulesDraft = nil }) { rules in
                     guard let original = input.original else { return }
                     _ = try await store.update("targets", phaseFilter(original), ["rules": .object(rules)])
@@ -214,7 +214,7 @@ struct TargetsView: View {
             }
         }
         if let input = draft {
-            return targetModal("targets-editor", close: { draft = nil }) {
+            return targetModal("targets-editor", scrolls: true, close: { draft = nil }) {
                 phaseEditor(input) { draft = nil }
             }
         }
@@ -227,7 +227,7 @@ struct TargetsView: View {
             return targetModal("targets-override", close: { previewOverride = nil }) { overridePreview(row) }
         }
         if historyOpen {
-            return targetModal("targets-history", close: { historyOpen = false; historyDate = nil }) { historyContent }
+            return targetModal("targets-history", scrolls: true, close: { historyOpen = false; historyDate = nil }) { historyContent }
         }
         #if DEBUG
         if snapshotWizard {
@@ -239,13 +239,12 @@ struct TargetsView: View {
         return nil
     }
 
-    private func targetModal<Content: View>(_ id: String, close: @escaping () -> Void, @ViewBuilder content: () -> Content) -> NutriPresentedModal {
+    private func targetModal<Content: View>(_ id: String, scrolls: Bool = false, close: @escaping () -> Void,
+                                            @ViewBuilder content: () -> Content) -> NutriPresentedModal {
         NutriPresentedModal(id, close: close, scrimOpacity: 0.72) {
-            TargetSheetContent(close: close, content: content())
+            TargetSheetContent(close: close, scrolls: scrolls, content: content())
         }
     }
-
-    @State private var contentHeight: CGFloat = 600
 
     private var phaseColumn: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -375,7 +374,7 @@ struct TargetsView: View {
                 if kind == .current || kind == .scheduled { editPill { editPhase(kind, date: date, rows: rows) } }
             }
             VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                NutriFlow(spacing: 8, lineSpacing: 4) {
                     Text(phaseName(rows)).font(.nutriDisplay(19))
                     if !phaseGoal(rows).isEmpty { TargetChip(text: goalLabel(phaseGoal(rows))) }
                 }
@@ -581,13 +580,21 @@ struct TargetsView: View {
     }
 
     private func reload() async {
+        guard !Task.isCancelled else { return }
+        let token = UUID()
+        loadRequest = token
         loading = true
-        defer { loading = false }
+        defer { if token == loadRequest { loading = false } }
         do {
-            rows = try await store.read("targets", ["order": "valid_from.desc.nullslast,dow.asc"])
+            let received = try await store.read("targets", targetsQuery)
+            guard !Task.isCancelled, token == loadRequest else { return }
+            rows = received
+            didLoad = true
             errorText = ""
         } catch {
-            if !Task.isCancelled { errorText = error.localizedDescription; store.report(error) }
+            if !Task.isCancelled && token == loadRequest {
+                errorText = store.tr("No se pudieron cargar los objetivos — revisa tu conexión.")
+            }
         }
     }
 
@@ -864,10 +871,15 @@ private struct TargetDayBlock: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 6) {
                 if dows.isEmpty { TargetChip(text: store.tr("DÍA ÚNICO")) }
-                else { ForEach(weekLabels(dows, language: store.lang), id: \.self) { TargetChip(text: $0) } }
-                Spacer()
+                else {
+                    NutriFlow(spacing: 6, lineSpacing: 4) {
+                        ForEach(weekLabels(dows, language: store.lang), id: \.self) { TargetChip(text: $0) }
+                    }
+                }
+                Spacer(minLength: 0)
                 if let delta { TargetDeltaPill(delta: delta) }
-                Text(values.point["kcal"].flatMap { $0.isEmpty ? nil : $0 } ?? "–").font(.nutriMono(15))
+                Text(values.point["kcal"].flatMap { $0.isEmpty ? nil : $0 } ?? "–")
+                    .font(.nutriMono(15)).fixedSize()
             }
             if total > 0 && grams.allSatisfy({ $0 != nil }) {
                 GeometryReader { proxy in
@@ -911,12 +923,19 @@ private struct TargetGoalPicker: View {
 private struct TargetSheetContent<Content: View>: View {
     @Environment(\.nutriPalette) private var palette
     let close: () -> Void
+    let scrolls: Bool
     let content: Content
 
     var body: some View {
-        ViewThatFits(in: .vertical) {
-            paper.fixedSize(horizontal: false, vertical: true)
-            ScrollView { paper }
+        Group {
+            if scrolls {
+                ScrollView { paper }
+            } else {
+                ViewThatFits(in: .vertical) {
+                    paper.fixedSize(horizontal: false, vertical: true)
+                    ScrollView { paper }
+                }
+            }
         }
         .background(palette.bg, in: RoundedRectangle(cornerRadius: 20))
         .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -1008,11 +1027,22 @@ private struct PhaseEditor: View {
     let onClose: () -> Void
     let onDecision: (PhaseDraft) -> Void
     let onSave: (PhaseDraft, Bool) async throws -> Void
-    @State private var groups: [[Int]] = []
+    @State private var groups: [[Int]]
     @State private var expanded: Int?
     @State private var splitting = false
     @State private var error = ""
     @State private var busy = false
+
+    init(draft: PhaseDraft, activeRows: [Record], phaseRows: [Record], onClose: @escaping () -> Void,
+         onDecision: @escaping (PhaseDraft) -> Void, onSave: @escaping (PhaseDraft, Bool) async throws -> Void) {
+        _draft = State(initialValue: draft)
+        _groups = State(initialValue: weekGroups(draft.weekdays))
+        self.activeRows = activeRows
+        self.phaseRows = phaseRows
+        self.onClose = onClose
+        self.onDecision = onDecision
+        self.onSave = onSave
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1060,7 +1090,6 @@ private struct PhaseEditor: View {
             }
         }
         .padding(16).nutriCard().disabled(busy)
-        .onAppear { groups = weekGroups(draft.weekdays) }
     }
 
     private func groupEditor(_ group: [Int], dow: Int) -> some View {
@@ -1078,7 +1107,7 @@ private struct PhaseEditor: View {
                         Button(store.tr("Separar un día")) { splitting.toggle() }
                             .buttonStyle(NutriButtonStyle(.quiet, horizontal: 0))
                         if splitting {
-                            HStack {
+                            NutriFlow {
                                 ForEach(group, id: \.self) { day in
                                     Button(shortWeekday(day, language: store.lang)) {
                                         groups.removeAll { $0 == group }

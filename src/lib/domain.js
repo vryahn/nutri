@@ -1133,11 +1133,16 @@ export function classifyNutrient(key, value, target, { goal = null, hasFood = tr
 export const SODIUM_HIGH_MG = 460;
 export const POTASSIUM_HIGH_MG = 940;
 
-// Water sentinel food (see Today.jsx): kcal 0 and micros = only {agua_ml}. It is
-// hidden from the Foods CRUD and managed only from the water card in Today.
+// Plain water has one ml per gram and no energy or other nutrients. Older water
+// foods include explicit zero/null minerals; those are still managed in Today.
 export function isWaterSentinel(f) {
-  const keys = Object.keys(f.micros || {});
-  return f.kcal === 0 && keys.length === 1 && keys[0] === 'agua_ml';
+  const micros = f.micros || {};
+  const water = micros.agua_ml;
+  const grams = f.grams ?? 100;
+  return f.kcal === 0 && typeof water === 'number' && Number.isFinite(water)
+    && typeof grams === 'number' && grams > 0 && Math.abs(water - grams) < 0.01
+    && ['protein_g', 'carbs_g', 'fat_g'].every((key) => f[key] == null || f[key] === 0)
+    && Object.entries(micros).every(([key, value]) => key === 'agua_ml' || value == null || value === 0);
 }
 
 export function isWaterEntry(entry, waterFoodId) {

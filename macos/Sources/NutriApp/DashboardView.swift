@@ -483,9 +483,9 @@ struct DashboardView: View {
     @State private var activeRange: UUID?
     @State private var editingRange: UUID?
     @State private var targets: [Record] = []
+    @State private var targetsLoaded = false
     @State private var snapshot: DashboardSnapshot?
     @State private var cachedPeriods: [DashboardPeriod: DashboardSnapshot] = [:]
-    @State private var loading = true
     @State private var failure = ""
     @State private var refreshKey = UUID()
     @State private var topMetric = "kcal"
@@ -528,7 +528,8 @@ struct DashboardView: View {
         period.windows.map { "\($0.lowerBound):\($0.upperBound)" }.joined(separator: "|") +
             (period.phaseMode ? ":phase:" : ":range:") + refreshKey.uuidString
     }
-    private var data: DashboardSnapshot? { snapshot }
+    private var data: DashboardSnapshot? { cachedPeriods[period] ?? snapshot }
+    private var dataMatchesPeriod: Bool { data?.period == period }
     private var bands: Record { store.prefs.object("adherence_bands") }
     private var dashboardRows: [Record] { store.prefs.array("dashboards").compactMap(\.object) }
     private var favorites: [String] { store.prefs.array("fav_micros").compactMap(\.string) }
@@ -544,30 +545,45 @@ struct DashboardView: View {
     private var rangeStorageKey: String { "nutri.dashboard.ranges." + (store.owner ?? "none") }
 
     var body: some View {
-        Group {
-            if loading && data == nil {
-                VStack(spacing: 12) {
-                    ForEach(0..<4, id: \.self) { _ in RoundedRectangle(cornerRadius: 16).fill(palette.surface).frame(height: 96) }
-                    Spacer(minLength: 0)
-                }.padding(16).accessibilityLabel(store.tr("Cargando…"))
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        header
-                        rangeInputs
-                        if let data {
-                            analysisTabs
-                            if tab == "charts" { customCharts(data) }
-                            else { overview(data) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                header
+                rangeInputs
+                analysisTabs
+                if let data, dataMatchesPeriod || !data.period.windows.isEmpty {
+                    Group {
+                        if tab == "charts" { customCharts(data) }
+                        else { overview(data) }
+                    }
+                    .opacity(dataMatchesPeriod ? 1 : 0.6)
+                    .disabled(!dataMatchesPeriod)
+                    .allowsHitTesting(dataMatchesPeriod)
+                    .accessibilityHidden(!dataMatchesPeriod)
+                    .overlay(alignment: .topTrailing) {
+                        if !dataMatchesPeriod {
+                            stalePeriodLabel(data.period)
                         }
-                        if !failure.isEmpty {
-                            HStack {
-                                Text(failure).foregroundStyle(palette.warn)
-                                Button(store.tr("Reintentar")) { refreshKey = UUID() }.buttonStyle(NutriButtonStyle(.quiet))
-                            }
+                    }
+                } else if failure.isEmpty {
+                    VStack(spacing: 12) {
+                        ForEach(0..<4, id: \.self) { _ in
+                            RoundedRectangle(cornerRadius: 16).fill(palette.surface).frame(height: 96)
                         }
-                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                }.opacity(loading ? 0.6 : 1)
+                    }.accessibilityLabel(store.tr("Cargando…"))
+                }
+            }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .overlay(alignment: .bottom) {
+            if !failure.isEmpty {
+                HStack {
+                    Text(failure).foregroundStyle(palette.warn)
+                    Spacer(minLength: 8)
+                    Button(store.tr("Reintentar")) { refreshKey = UUID() }
+                        .buttonStyle(NutriButtonStyle(.quiet))
+                }
+                .padding(.horizontal, 12).padding(.vertical, 4)
+                .frame(maxWidth: 480).nutriGlass(radius: 12)
+                .padding(16)
             }
         }
         .font(.nutriSans(14))
@@ -584,8 +600,18 @@ struct DashboardView: View {
                     preset = selected
                 }
             }
-            do { targets = try await store.read("targets") }
-            catch { if !Task.isCancelled { store.report(error) } }
+            if let cached = store.cached("targets") {
+                targets = cached
+                targetsLoaded = true
+            }
+            do {
+                let received = try await store.read("targets")
+                guard !Task.isCancelled else { return }
+                targets = received
+                targetsLoaded = true
+            } catch {
+                if !Task.isCancelled { store.report(error) }
+            }
         }
         .task(id: request) {
             await reload(period)
@@ -616,6 +642,18 @@ struct DashboardView: View {
         }
     }
 
+    private func stalePeriodLabel(_ period: DashboardPeriod) -> some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(store.tr("Resumen del periodo")).font(.nutriSans(12))
+                Text(period.start + " → " + period.end).font(.nutriMono(11))
+            }
+            if failure.isEmpty {
+                ProgressView().controlSize(.small).accessibilityLabel(store.tr("Actualizando…"))
+            }
+        }.padding(8).nutriGlass(radius: 12)
+    }
+
     private var presentedModal: NutriPresentedModal? {
         if ask {
             return NutriPresentedModal("dashboard-ask", close: { ask = false }) {
@@ -632,7 +670,7 @@ struct DashboardView: View {
                 }
             }
         }
-        if reportPreview, let data {
+        if reportPreview, dataMatchesPeriod, let data {
             return NutriPresentedModal("dashboard-report", close: { reportPreview = false }, scrimOpacity: 1, fullscreen: true) {
                 DashboardReportPreview(report: reportContent(data), filename: "nutri_informe_\(activeCalculation.webKey)_\(rangeSlug).pdf",
                                        close: { reportPreview = false })
@@ -652,7 +690,7 @@ struct DashboardView: View {
                 menuRow(store.tr("Registros día por día") + " (CSV)", note: "Cada alimento del rango con sus macros y micros. No aplica la operación seleccionada.") { export(.entries) }
                 menuRow(store.tr("Resumen del periodo") + " — " + column + " (CSV)", note: "Una fila por métrica con valor según la operación activa, objetivo y % de adherencia.") { export(.summary) }
                 menuRow(store.tr("Informe del periodo") + " — " + column + " (PDF)", note: "Resumen ejecutivo con gráfica y tablas, listo para guardar como PDF.") { export(.report) }
-            }
+            }.disabled(!dataMatchesPeriod).opacity(dataMatchesPeriod ? 1 : 0.5)
         }
     }
 
@@ -719,7 +757,7 @@ struct DashboardView: View {
                     }
                 }
             }
-            if preset == "Fase" && selectedPhases.isEmpty {
+            if targetsLoaded && preset == "Fase" && selectedPhases.isEmpty {
                 Text(store.tr("La fase seleccionada ya no tiene días registrados — mostrando la última semana."))
                     .foregroundStyle(palette.warn)
             }
@@ -771,6 +809,11 @@ struct DashboardView: View {
             }
             if !rollingEnd && start > end {
                 Text(store.tr("La fecha de inicio no puede ser posterior al fin.")).foregroundStyle(palette.warn)
+            }
+            if let editingRange, let saved = ranges.first(where: { $0.id == editingRange }) {
+                Button(store.tr("Cancelar")) { applyRange(saved) }
+                    .buttonStyle(NutriButtonStyle(.quiet))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }.frame(maxWidth: 576, alignment: .leading)
     }
@@ -845,12 +888,12 @@ struct DashboardView: View {
             periodSummary(data, macros: macros)
             leadingCharts(data)
             if data.days.count > 7 {
-                DashboardColumns(columns: windowWidth >= 1024 ? 2 : 1, gap: 16) {
+                NutriColumns(columns: windowWidth >= 768 ? 2 : 1, gap: 16) {
                     nutrientFootprint(data)
                     heatmap(data)
                 }
             } else { nutrientFootprint(data) }
-            DashboardColumns(columns: windowWidth >= 768 ? 2 : 1, gap: 16) {
+            NutriColumns(columns: windowWidth >= 768 ? 2 : 1, gap: 16) {
                 weeklyProtein(data)
                 sodiumTrend(data)
             }
@@ -873,7 +916,7 @@ struct DashboardView: View {
                 }
             }
             if advancedOpen {
-                DashboardColumns(columns: windowWidth >= 768 ? 2 : 1, gap: 8) {
+                NutriColumns(columns: windowWidth >= 768 ? 2 : 1, gap: 8) {
                     ForEach(DashboardCalculation.allCases.filter { $0.minimum > 1 }) { mode in
                         let reason = data.disabledReason(mode, translate: store.tr)
                         Button { calculation = mode } label: {
@@ -895,7 +938,7 @@ struct DashboardView: View {
 
     private func kpis(_ data: DashboardSnapshot, macros: [DashboardSummary], sodium: DashboardSummary?) -> some View {
         let columns = windowWidth >= 1024 ? 6 : windowWidth >= 768 ? 3 : 2
-        return DashboardColumns(columns: columns, gap: 12) {
+        return NutriColumns(columns: columns, gap: 12) {
             ForEach(macros) { row in
                 let color = palette.nutrient(row.id)
                 let name = row.id == "carbs_g" ? "Carbs" : row.variable.label
@@ -944,7 +987,7 @@ struct DashboardView: View {
             if let phrase = plainKcal(data, row: macros.first) {
                 Text(phrase).font(.nutriSans(12)).foregroundStyle(palette.text3)
             }
-            DashboardColumns(columns: windowWidth >= 640 ? 4 : 2, gap: 8) {
+            NutriColumns(columns: windowWidth >= 640 ? 4 : 2, gap: 8) {
                 ForEach(macros) { row in
                     VStack(spacing: 4) {
                         Text(display(row)).font(.nutriMono(windowWidth >= 640 ? 18 : 14)).foregroundStyle(palette.nutrient(row.id))
@@ -961,7 +1004,7 @@ struct DashboardView: View {
     }
 
     private func leadingCharts(_ data: DashboardSnapshot) -> some View {
-        DashboardColumns(columns: windowWidth >= 768 ? 2 : 1, gap: 16, firstWeight: windowWidth >= 1024 ? 2 : 1) {
+        NutriColumns(columns: windowWidth >= 768 ? 2 : 1, gap: 16, firstWeight: windowWidth >= 1024 ? 2 : 1) {
             dashboardCard("Kcal por día", hint: "La línea sólida es lo que comiste cada día. La punteada suaviza esos altibajos con el promedio de los últimos 7 días, para ver la tendencia sin el ruido diario. La banda tenue marca ±10% de tu objetivo.") {
                 DashboardEnergyPlot(days: data.days, height: chartHeight)
             }
@@ -1021,6 +1064,7 @@ struct DashboardView: View {
     }
 
     private func phaseHint(_ data: DashboardSnapshot) -> String? {
+        guard data.period == period else { return nil }
         if data.period.union {
             return "Estás viendo \(selectedPhases.count) fases de \(phaseLabel), cada una con sus propios objetivos. El cálculo usa sus \(data.advanced.count) días completos."
         }
@@ -1056,23 +1100,31 @@ struct DashboardView: View {
     private func waterAndSodium(_ data: DashboardSnapshot) -> some View {
         let water = waterStats(data)
         return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(store.tr("Agua simple registrada")).foregroundStyle(palette.text3)
-                Spacer()
-                Text(water.simple).font(.nutriMono(14)).foregroundStyle(palette.carbs)
-            }
+            waterRow("Agua simple registrada", value: water.simple, color: palette.carbs)
             Text("\(water.days)/\(data.days.count) \(store.tr("días con registro")). \(store.tr("Solo cuenta el alimento de agua simple de Hoy."))")
                 .font(.nutriSans(12)).foregroundStyle(palette.text3)
-            HStack {
-                Text(store.tr("Agua total observada")).foregroundStyle(palette.text3)
-                Spacer()
-                Text(water.total).font(.nutriMono(14)).foregroundStyle(palette.text2)
-            }
+            waterRow("Agua total observada", value: water.total, color: palette.text2)
             if water.plan {
                 Text(store.tr("Plan v6.6: piso operativo diario 2 L de agua simple; objetivo orientativo 3.5 L. No es techo ni cuota."))
                     .font(.nutriSans(12)).foregroundStyle(palette.text3)
             }
         }.padding(16).nutriCard()
+    }
+
+    private func waterRow(_ label: String, value: String, color: Color) -> some View {
+        let title = Text(store.tr(label)).foregroundStyle(palette.text3)
+        let amount = Text(value).font(.nutriMono(14)).foregroundStyle(color)
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 4) {
+                title.fixedSize()
+                Spacer(minLength: 4)
+                amount.fixedSize()
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                title
+                amount
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private func waterStats(_ data: DashboardSnapshot) -> (simple: String, total: String, days: Int, plan: Bool) {
@@ -1309,7 +1361,7 @@ struct DashboardView: View {
     }
 
     private func microColumns(_ label: String, value: String, detail: String?, objective: String, ratio: String, tint: Color, header: Bool) -> some View {
-        DashboardColumns(columns: 4, gap: 8, firstWeight: 1.65) {
+        NutriColumns(columns: 4, gap: 8, firstWeight: 1.65) {
             Text(label).frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(header ? palette.text3 : palette.text)
             Text(value + (detail.map { " (" + $0 + ")" } ?? ""))
                 .font(header ? .nutriSans(14) : .nutriMono(14)).foregroundStyle(tint)
@@ -1338,7 +1390,7 @@ struct DashboardView: View {
                         .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(palette.border, style: StrokeStyle(dash: [4, 4])) }
                 }.buttonStyle(.plain)
             } else {
-                DashboardColumns(columns: windowWidth >= 768 ? 2 : 1, gap: 16) {
+                NutriColumns(columns: windowWidth >= 768 ? 2 : 1, gap: 16) {
                     ForEach(Array(dashboardRows.enumerated()), id: \.element) { index, row in
                         customChart(DashboardChartDraft(row), index: index, data: data)
                     }
@@ -1374,15 +1426,15 @@ struct DashboardView: View {
     }
 
     private func reload(_ requested: DashboardPeriod) async {
+        guard !Task.isCancelled, requested == period else { return }
         let token = request
         if let cached = cachedPeriods[requested] { snapshot = cached }
-        loading = cachedPeriods[requested] == nil
         failure = ""
-        defer { if token == request { loading = false } }
         if snapshot != nil {
             do { try await Task.sleep(for: .milliseconds(250)) }
             catch { return }
         }
+        guard !Task.isCancelled, token == request else { return }
         let dates = requested.dates
         guard !dates.isEmpty else {
             snapshot = DashboardSnapshot(period: requested, entries: [], totals: [], prior: [], weights: [], history: [], targets: targets, phases: [])
@@ -1402,17 +1454,17 @@ struct DashboardView: View {
             let (totals, entries, weights, history, allTargets, prior) = try await (totalRows, entryRows, bodyRows, historyRows, targetRows, previous)
             guard !Task.isCancelled, token == request else { return }
             targets = allTargets
+            targetsLoaded = true
             let refreshed = DashboardSnapshot(period: requested, entries: entries, totals: totals, prior: prior, weights: weights,
                                               history: history, targets: allTargets, phases: DashboardPhase.list(allTargets, end: Day.key(today)))
             snapshot = refreshed
             cachedPeriods[requested] = refreshed
-            if let data, !data.enabled(calculation) { calculation = data.logged.isEmpty ? .sum : .average }
+            if requested == period, !refreshed.enabled(calculation) {
+                calculation = refreshed.logged.isEmpty ? .sum : .average
+            }
         } catch {
             if !Task.isCancelled && token == request {
                 failure = store.tr("No se pudo cargar el Dashboard — revisa tu conexión.")
-                if snapshot == nil {
-                    snapshot = DashboardSnapshot(period: requested, entries: [], totals: [], prior: [], weights: [], history: [], targets: targets, phases: [])
-                }
             }
         }
     }
@@ -1504,7 +1556,7 @@ struct DashboardView: View {
 
     private func export(_ kind: Export) {
         exportNotice = ""
-        guard let data else { return }
+        guard dataMatchesPeriod, let data else { return }
         switch kind {
         case .entries:
             let exportPeriod = period
@@ -1520,6 +1572,7 @@ struct DashboardView: View {
                         return
                     }
                     let all = try await paged("entry_nutrients", query)
+                    guard exportPeriod == period else { return }
                     let rows = all.filter { exportPeriod.contains($0.text("day")) }
                     guard !rows.isEmpty else {
                         exportNotice = store.tr("Sin registros en el rango")
@@ -1567,7 +1620,7 @@ struct DashboardView: View {
 
 }
 
-private struct DashboardColumns: Layout {
+struct NutriColumns: Layout {
     var columns: Int
     var gap: CGFloat
     var firstWeight: CGFloat = 1
@@ -1599,7 +1652,8 @@ private struct DashboardColumns: Layout {
             let height = row.map { i in subviews[i].sizeThatFits(ProposedViewSize(width: width(bounds.width, for: i), height: nil)).height }.max() ?? 0
             for i in row {
                 let w = width(bounds.width, for: i)
-                subviews[i].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(width: w, height: height))
+                subviews[i].place(at: CGPoint(x: x, y: y), anchor: .topLeading,
+                                  proposal: ProposedViewSize(width: w, height: height))
                 x += w + gap
             }
             y += height + gap
@@ -2577,7 +2631,7 @@ private struct DashboardReportSection: View {
                 Text(store.tr("Plan v6.6: piso operativo diario 2 L de agua simple; objetivo orientativo 3.5 L. No es techo ni cuota."))
             }
             if let warning = report.sodiumWarning { Text(warning).foregroundStyle(palette.danger) }
-            DashboardColumns(columns: 4, gap: 8) {
+            NutriColumns(columns: 4, gap: 8) {
                 ForEach(report.macros) { row in
                     let label = store.tr(["protein_g": "Prot", "carbs_g": "Carbs"][row.id] ?? row.variable.label)
                     VStack(spacing: 4) {
@@ -2650,7 +2704,7 @@ private struct DashboardReportSection: View {
     }
 
     private func tableRow(_ values: [String], heading: Bool, danger: Bool = false) -> some View {
-        DashboardColumns(columns: 5, gap: 8, firstWeight: 1.4) {
+        NutriColumns(columns: 5, gap: 8, firstWeight: 1.4) {
             ForEach(values.indices, id: \.self) { index in
                 Text(values[index]).font(heading || index == 0 ? .nutriSans(14) : .nutriMono(14))
                     .foregroundStyle(heading ? palette.text3 : index == 1 && danger ? palette.danger : index < 2 ? palette.text : palette.text2)

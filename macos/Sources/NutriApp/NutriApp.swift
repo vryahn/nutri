@@ -119,6 +119,10 @@ struct RootView: View {
         avatarPath == store.prefs.object("profile").text("avatar_path") ? avatar : nil
     }
 
+    private var avatarUnavailable: Bool {
+        avatarPath != nil && avatarPath == store.prefs.object("profile").text("avatar_path") && avatar == nil
+    }
+
     var body: some View {
         GeometryReader { geometry in
             Group {
@@ -180,6 +184,11 @@ struct RootView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .padding(.top, wide ? 24 : 0)
                         .environment(\.nutriSectionActionsHandler) { actions = $0 }
+                        .overlay(alignment: width >= 1024 ? .bottomTrailing : .bottom) {
+                            notification
+                                .padding(.horizontal, width >= 1024 ? 24 : 16)
+                                .padding(.bottom, width >= 1024 ? 24 : wide ? 96 : 36)
+                        }
                     if !wide { mobileTabs }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -209,7 +218,8 @@ struct RootView: View {
             }
             if let settings {
                 NutriModal(close: closeActiveSettings, maxWidth: settings == .labels ? 384 : 448) {
-                    SettingsView(sheet: settings, avatar: profileAvatar, close: closeSettings, navigate: openSettings)
+                    SettingsView(sheet: settings, prefs: store.prefs, avatar: profileAvatar, close: closeSettings, navigate: openSettings)
+                        .id(settings == .labels ? .config : settings == .password ? .profile : settings)
                 }
             }
         }
@@ -264,6 +274,8 @@ struct RootView: View {
                     }
                 }
                 .accessibilityLabel(store.tr("Menú de usuario"))
+                .accessibilityHint(avatarUnavailable ? store.tr("Foto no disponible") : "")
+                .help(avatarUnavailable ? store.tr("Foto no disponible") : store.tr("Menú de usuario"))
                 .buttonStyle(NutriButtonStyle(.quiet, radius: 8))
             }
             .padding(.top, 8)
@@ -289,6 +301,8 @@ struct RootView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(store.tr("Menú de usuario"))
+            .accessibilityHint(avatarUnavailable ? store.tr("Foto no disponible") : "")
+            .help(avatarUnavailable ? store.tr("Foto no disponible") : store.tr("Menú de usuario"))
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
         .nutriGlass(radius: 0)
@@ -352,28 +366,31 @@ struct RootView: View {
 
     @ViewBuilder
     private var activeModule: some View {
-        ZStack(alignment: .bottom) {
-            switch module {
-            case .today: TodayView()
-            case .foods: FoodsView()
-            case .recipes: RecipesView()
-            case .targets: TargetsView()
-            case .dashboard: DashboardView()
-            case .body: BodyView()
-            }
-            if let undo = store.undoTitle {
-                HStack(spacing: 8) {
-                    Text(undo)
+        switch module {
+        case .today: TodayView()
+        case .foods: FoodsView()
+        case .recipes: RecipesView()
+        case .targets: TargetsView()
+        case .dashboard: DashboardView()
+        case .body: BodyView()
+        }
+    }
+
+    @ViewBuilder
+    private var notification: some View {
+        if let message = store.undoTitle ?? store.notice {
+            HStack(spacing: 12) {
+                Text(message).fixedSize(horizontal: false, vertical: true)
+                if store.undoTitle != nil {
                     Button(store.tr("Deshacer"), action: store.performUndo)
                         .buttonStyle(NutriButtonStyle(.quiet, height: 32))
-                        .foregroundStyle(palette.accentGlass)
+                        .foregroundStyle(palette.accent)
+                        .fixedSize()
                 }
-                .font(.nutriSans(14)).padding(.horizontal, 12).padding(.vertical, 4)
-                .nutriGlass(radius: 12).padding(.bottom, 16)
-            } else if let notice = store.notice {
-                Text(notice).font(.nutriSans(14)).padding(12)
-                    .nutriGlass(radius: 12).padding(.bottom, 16)
             }
+            .font(.nutriSans(14)).padding(.horizontal, 16).padding(.vertical, 12)
+            .frame(maxWidth: 384)
+            .nutriCard(radius: 12, fill: palette.surface3)
         }
     }
 
@@ -508,12 +525,10 @@ struct RootView: View {
             avatarPath = nil
             return
         }
-        do {
-            let data = try await store.storage("GET", "object/authenticated/body-photos/" + path)
-            guard !Task.isCancelled else { return }
-            avatar = NSImage(data: data)
-            avatarPath = path
-        } catch { store.report(error) }
+        let data = try? await store.storage("GET", "object/authenticated/body-photos/" + path)
+        guard !Task.isCancelled else { return }
+        avatar = data.flatMap(NSImage.init(data:))
+        avatarPath = path
     }
 }
 

@@ -53,6 +53,12 @@ struct NutriChecks {
             let computed: JSONValue
             let expected: JSONValue
             switch test.fn {
+            case "isWaterSentinel":
+                computed = .bool(Domain.water(row))
+                expected = test.expected
+            case "isWaterEntry":
+                computed = .bool(Domain.waterEntry(row, waterID: args[1].string ?? ""))
+                expected = test.expected
             case "kcalFromMacros":
                 computed = .number(Domain.kcalFromMacros(row))
                 expected = test.expected

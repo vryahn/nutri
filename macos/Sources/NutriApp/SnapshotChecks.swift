@@ -18,7 +18,7 @@ func runSnapshotChecks() {
             let extra: [(Module, String)] = [
                 (.foods, "food-editor"), (.foods, "food-import"),
                 (.recipes, "recipe-editor"), (.body, "body-import"),
-                (.today, "today-add"), (.today, "today-summary"),
+                (.today, "today-add"), (.today, "today-edit"), (.today, "today-summary"),
                 (.today, "today-goals"), (.today, "today-mini"),
                 (.today, "settings-profile"), (.today, "settings-region"), (.today, "settings-config"),
                 (.targets, "targets-editor"), (.targets, "targets-rules"), (.targets, "targets-wizard"),
@@ -28,7 +28,9 @@ func runSnapshotChecks() {
                 let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)!
                 app.appearance = appearance
                 for width in widths {
-                    let scenarios = Module.allCases.map { ($0, "") } + (width == 1280 && environment["NUTRI_SNAPSHOT_STATES"] == "1" ? extra : [])
+                    let degraded = environment["NUTRI_SNAPSHOT_DEGRADED"] == "1"
+                        ? Module.allCases.flatMap { module in ["loading", "error"].map { (module, "\(module)-\($0)") } } : []
+                    let scenarios = Module.allCases.map { ($0, "") } + (environment["NUTRI_SNAPSHOT_STATES"] == "1" ? extra : []) + degraded
                     for (module, scenario) in scenarios {
                         let store = Store(snapshot: fixture)
                         store.snapshotScenario = scenario

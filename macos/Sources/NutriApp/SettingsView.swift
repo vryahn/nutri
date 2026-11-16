@@ -2,7 +2,7 @@ import AppKit
 import NutriCore
 import SwiftUI
 
-enum AccountSheet { case config, profile, region, password, labels, wizard }
+enum AccountSheet: Hashable { case config, profile, region, password, labels, wizard }
 
 struct SettingsView: View {
     @EnvironmentObject private var store: Store
@@ -11,16 +11,25 @@ struct SettingsView: View {
     let avatar: NSImage?
     let close: () -> Void
     let navigate: (AccountSheet) -> Void
-    @State private var profile: Record = [:]
+    @State private var profile: Record
     @State private var avatarData: Data?
     @State private var cropImage: NSImage?
     @State private var removeAvatar = false
-    @State private var bands: Record = [:]
+    @State private var bands: Record
     @State private var regimen = "default"
-    @State private var sleep = 6.0
+    @State private var sleep: Double
     @State private var busy = false
-    @State private var initialized = false
     @State private var choosingBirthDate = false
+
+    init(sheet: AccountSheet, prefs: Record, avatar: NSImage?, close: @escaping () -> Void, navigate: @escaping (AccountSheet) -> Void) {
+        self.sheet = sheet
+        self.avatar = avatar
+        self.close = close
+        self.navigate = navigate
+        _profile = State(initialValue: prefs.object("profile"))
+        _bands = State(initialValue: Self.initializedBands(prefs.object("adherence_bands")))
+        _sleep = State(initialValue: prefs.number("sueno_umbral_h") ?? 6)
+    }
 
     var body: some View {
         Group {
@@ -34,13 +43,6 @@ struct SettingsView: View {
             }
         }
         .disabled(busy)
-        .task {
-            guard !initialized else { return }
-            initialized = true
-            profile = store.prefs.object("profile")
-            bands = initializedBands(store.prefs.object("adherence_bands"))
-            sleep = store.prefs.number("sueno_umbral_h") ?? 6
-        }
     }
 
     private var configuration: some View {
@@ -83,7 +85,7 @@ struct SettingsView: View {
         } footer: {
             HStack(spacing: 8) {
                 Button {
-                    bands = initializedBands([:])
+                    bands = Self.initializedBands([:])
                 } label: {
                     HStack(spacing: 8) {
                         NutriIcon("rotate-ccw", size: 16)
@@ -153,7 +155,7 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(store.tr("Foto de perfil")).font(.nutriDisplay(15, weight: .semibold))
                             Text(store.tr("Se usa como avatar del menú.")).font(.nutriSans(12)).foregroundStyle(palette.text3)
-                            if displayedAvatar != nil {
+                            if !removeAvatar, avatarData != nil || !profile.text("avatar_path").isEmpty {
                                 Button {
                                     removeAvatar = true
                                     avatarData = nil
@@ -250,7 +252,9 @@ struct SettingsView: View {
     }
 
     private func primary(_ label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Text(store.tr(label)).frame(maxWidth: .infinity) }
+        Button(action: action) {
+            Text(store.tr(busy && sheet != .region ? "Guardando…" : label)).frame(maxWidth: .infinity)
+        }
             .buttonStyle(NutriButtonStyle(.primary, height: 46))
     }
 
@@ -343,7 +347,7 @@ struct SettingsView: View {
         bands[kind] = .object(group)
     }
 
-    private func initializedBands(_ overrides: Record) -> Record {
+    private static func initializedBands(_ overrides: Record) -> Record {
         var result = Domain.defaultBands
         for kind in ["rango", "techo"] {
             result[kind] = .object(result.object(kind).merging(overrides.object(kind)) { _, new in new })
