@@ -1125,9 +1125,7 @@ private struct EntryEditor: View {
                 .foregroundColor(palette.text3))
                 .font(.nutriMono(16)).nutriInput().onSubmit(save)
             if unit != "g", !amount.isEmpty, let grams {
-                Text("≈ " + journalNumber(grams) + " g" +
-                     ((unit == "ml" || unit == "fl oz") && density != nil ? " (" + store.tr("densidad") + " " + journalNumber(density!, digits: 4) + " g/ml)" : ""))
-                    .font(.nutriMono(12)).foregroundStyle(palette.text3)
+                Text(massEstimate(grams)).font(.nutriMono(12)).foregroundStyle(palette.text3)
             }
             if !portions.isEmpty {
                 NutriFlow {
@@ -1146,6 +1144,14 @@ private struct EntryEditor: View {
                 }.padding(.top, 4)
             }
         }
+    }
+
+    private func massEstimate(_ grams: Double) -> String {
+        let estimate = "≈ \(journalNumber(grams)) g"
+        guard unit == "ml" || unit == "fl oz", let density else { return estimate }
+        let label = store.tr("densidad")
+        let value = journalNumber(density, digits: 4)
+        return "\(estimate) (\(label) \(value) g/ml)"
     }
 
     private var buttons: some View {
@@ -2237,9 +2243,10 @@ private struct JournalSummary: View {
                     TextField(store.tr("Consulta macros para tu energía elegida"), text: $energy, prompt: Text(range))
                         .font(.nutriMono(14)).nutriInput()
                     if let n = decimal(energy), let result = Domain.coupledBand(target, energy: n) {
-                        Text("P " + numberText(result.number("protein_g"), digits: 1)
-                             + " g · C " + numberText(result.number("carbs_g"), digits: 1)
-                             + " g · G " + numberText(result.number("fat_g"), digits: 1) + " g")
+                        let protein = numberText(result.number("protein_g"), digits: 1)
+                        let carbs = numberText(result.number("carbs_g"), digits: 1)
+                        let fat = numberText(result.number("fat_g"), digits: 1)
+                        Text(verbatim: "P \(protein) g · C \(carbs) g · G \(fat) g")
                     } else if !energy.isEmpty { Text(store.tr("Elige una energía dentro de la banda.")) }
                     Text(store.tr("Consulta orientativa; no registra ingesta ni cambia tu plan.")).foregroundStyle(palette.text3)
                 }.padding(.top, 8)

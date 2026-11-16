@@ -855,8 +855,10 @@ private struct TargetDayBlock: View {
             guard boundKeys.contains(key) else { return nil }
             let lower = values.min[key].flatMap { $0.isEmpty ? nil : $0 }
             let upper = values.max[key].flatMap { $0.isEmpty ? nil : $0 }
-            let range = lower.flatMap { lo in upper.map { lo + "–" + $0 } } ?? lower.map { "≥" + $0 } ?? upper.map { "≤" + $0 }
-            return range.map { short + " " + $0 }
+            if let lower, let upper { return "\(short) \(lower)–\(upper)" }
+            if let lower { return "\(short) ≥\(lower)" }
+            if let upper { return "\(short) ≤\(upper)" }
+            return nil
         }
         let microCount = boundKeys.subtracting(["kcal"] + keys).count
         return VStack(alignment: .leading, spacing: 8) {

@@ -2667,9 +2667,11 @@ private struct DashboardReportSection: View {
             }
             if let note = report.note { Text(note) }
             if mode == .bayes {
-                Text(store.tr("Kcal") + "/" + store.tr("Carbs") + "/" + store.tr("Grasa") + ": " +
-                     bayesCriterion(data, key: "kcal", translate: store.tr) + " · " + store.tr("Proteína") + "/micros: " +
-                     bayesCriterion(data, key: "protein_g", translate: store.tr))
+                let macros = ["Kcal", "Carbs", "Grasa"].map { store.tr($0) }.joined(separator: "/")
+                let protein = store.tr("Proteína")
+                let macroCriterion = bayesCriterion(data, key: "kcal", translate: store.tr)
+                let proteinCriterion = bayesCriterion(data, key: "protein_g", translate: store.tr)
+                Text(verbatim: "\(macros): \(macroCriterion) · \(protein)/micros: \(proteinCriterion)")
             }
             Text("nutrimetry · nutri.vryahn.com").font(.nutriMono(12)).padding(.top, 4)
         }.font(.nutriSans(12)).foregroundStyle(palette.text3)
