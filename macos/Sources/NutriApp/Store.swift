@@ -9,6 +9,7 @@ final class Store: ObservableObject {
     @Published private(set) var email = ""
     @Published private(set) var anonymous = false
     @Published private(set) var offline = false
+    @Published private(set) var networkAvailable = true
     @Published private(set) var prefs: Record = [:]
     @Published private(set) var pending = 0
     @Published private(set) var entryVersion = 0
@@ -90,6 +91,7 @@ final class Store: ObservableObject {
             let online = path.status == .satisfied
             Task { @MainActor [weak self] in
                 guard let self, !demoActive else { return }
+                if networkAvailable != online { networkAvailable = online }
                 offline = !online
                 if online { flush() }
             }
@@ -269,7 +271,7 @@ final class Store: ObservableObject {
         cache?.read(AccountCache.key(table, query))
     }
 
-    func read(_ table: String, _ query: [String: String] = [:]) async throws -> [Record] {
+    func read(_ table: String, _ query: [String: String] = [:], allowCached: Bool = true) async throws -> [Record] {
         #if DEBUG
         if let demo {
             if snapshotScenario.hasSuffix("-loading") { try await Task.sleep(for: .seconds(5)) }
@@ -281,9 +283,10 @@ final class Store: ObservableObject {
         let current = identity
         let key = AccountCache.key(table, query)
         let cachedVersion = dayCacheVersion[key, default: 0]
-        if offline, network.currentPath.status != .satisfied, let rows = cache?.read(key) { return rows }
+        if allowCached, offline, network.currentPath.status != .satisfied, let rows = cache?.read(key) { return rows }
         do {
             let rows = try await api.rows("GET", table, query: query, owner: owner)
+            try Task.checkCancellation()
             guard identity == current else { throw CancellationError() }
             offline = false
             if dayCacheVersion[key, default: 0] != cachedVersion, let updated = cache?.read(key) { return updated }
@@ -292,7 +295,7 @@ final class Store: ObservableObject {
         } catch {
             let code = (error as? NutriError)?.status ?? 0
             let transport = error is URLError && (error as? URLError)?.code != .cancelled
-            if identity == current, transport || code >= 500, let rows = cache?.read(key) {
+            if allowCached, identity == current, transport || code >= 500, let rows = cache?.read(key) {
                 offline = true
                 return rows
             }
@@ -392,14 +395,14 @@ final class Store: ObservableObject {
         return try await api.storage(method, path, body: body, contentType: contentType, owner: owner)
     }
 
-    func catalog() async throws -> [Record] {
+    func catalog(allowCached: Bool = true) async throws -> [Record] {
         let limit = 1000
         var all: [Record] = []
         while true {
             var query = Self.catalogQuery
             query["limit"] = String(limit)
             query["offset"] = String(all.count)
-            let page = try await read("foods", query)
+            let page = try await read("foods", query, allowCached: allowCached)
             all += page
             if page.count < limit { return all }
         }

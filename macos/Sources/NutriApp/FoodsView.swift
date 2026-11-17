@@ -190,6 +190,7 @@ private func foodWarningPending(_ row: Record) -> Bool {
 
 struct FoodsView: View {
     @EnvironmentObject private var store: Store
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.nutriPalette) private var palette
     @Environment(\.nutriWindowWidth) private var windowWidth
     @FocusState private var searchFocused: Bool
@@ -204,12 +205,16 @@ struct FoodsView: View {
     @State private var busy = false
     @State private var loading = true
     @State private var failed = false
+    @State private var reloadVersion = 0
+    @State private var mutationVersion = 0
+    @State private var catalogVersion = 0
     @State private var draft: FoodDraft?
     @State private var importText = ""
     @State private var importReview = false
     @State private var importError = ""
 
     private var desktop: Bool { windowWidth >= 1024 }
+    private var canRefresh: Bool { scenePhase == .active && store.networkAvailable && !store.demoActive }
     private var term: String { cleanText(query) }
     private var matching: [Record] {
         guard !term.isEmpty else { return foods }
@@ -279,6 +284,16 @@ struct FoodsView: View {
             default: break
             }
             #endif
+        }
+        .task(id: canRefresh) {
+            guard canRefresh else { return }
+            while !Task.isCancelled {
+                do {
+                    while loading || busy { try await Task.sleep(for: .milliseconds(250)) }
+                    await reload(silent: true)
+                    try await Task.sleep(for: .seconds(30))
+                } catch { return }
+            }
         }
         .onChange(of: store.newFood) { _, _ in openFromToday() }
         .task(id: query) { await findFoods() }
@@ -420,22 +435,37 @@ struct FoodsView: View {
         store.newFood = nil
     }
 
-    private func reload() async {
-        if foods.isEmpty {
+    private func reload(silent: Bool = false) async {
+        if silent && (loading || busy) { return }
+        reloadVersion += 1
+        let version = reloadVersion
+        let mutation = mutationVersion
+        let search = term
+        if !silent && foods.isEmpty {
             let firstPage = Store.catalogQuery.merging(["limit": "1000", "offset": "0"]) { _, page in page }
             if let cached = store.cached("foods", firstPage) { foods = cached.filter { !Domain.water($0) } }
         }
-        loading = true
-        defer { loading = false }
+        if !silent { loading = true }
+        defer { if !silent && reloadVersion == version { loading = false } }
         do {
-            let rows = try await store.catalog().filter { !Domain.water($0) }
-            guard !Task.isCancelled else { return }
+            let rows = try await store.catalog(allowCached: !silent).filter { !Domain.water($0) }
+            let exact = search.isEmpty || search != term ? nil : try? await searchCatalogNames(
+                store: store, table: "foods", term: search, allowCached: !silent
+            )
+            guard !Task.isCancelled, reloadVersion == version, mutationVersion == mutation else { return }
+            catalogVersion += 1
             foods = rows
-            if !term.isEmpty { await findFoods() }
+            if term == search { exactHits = exact.map { (search, $0) } }
+            if let previous = semantic { semantic = (previous.term, refreshedSemanticRows(previous.rows)) }
             failed = false
         } catch {
-            if !Task.isCancelled { failed = true; store.report(error) }
+            if !silent && !Task.isCancelled && reloadVersion == version { failed = true; store.report(error) }
         }
+    }
+
+    private func refreshedSemanticRows(_ matches: [Record]) -> [Record] {
+        let byID = Dictionary(foods.map { ($0.text("id"), $0) }, uniquingKeysWith: { first, _ in first })
+        return matches.compactMap { byID[$0.text("id")] }
     }
 
     private func findFoods() async {
@@ -443,16 +473,22 @@ struct FoodsView: View {
         guard !search.isEmpty, !store.offline, !store.demoActive else { return }
         do {
             try await Task.sleep(for: .milliseconds(250))
+            let mutation = mutationVersion
+            let catalog = catalogVersion
             let exact = try await searchCatalogNames(store: store, table: "foods", term: search)
-            guard !Task.isCancelled, term == search else { return }
-            exactHits = (search, exact)
+            guard !Task.isCancelled, term == search, mutationVersion == mutation, !busy else { return }
+            if catalogVersion == catalog { exactHits = (search, exact) }
             guard search.count >= 3, exact.count < 8, !store.anonymous else {
                 semantic = nil
                 return
             }
             let hits = try await searchSemanticFoods(store: store, query: search)
-            guard !Task.isCancelled, term == search else { return }
-            semantic = (search, hits.filter { !Domain.water($0) })
+            guard !Task.isCancelled, term == search, mutationVersion == mutation, !busy else { return }
+            if catalogVersion == catalog {
+                semantic = (search, hits.filter { !Domain.water($0) })
+            } else {
+                semantic = (search, refreshedSemanticRows(hits))
+            }
         } catch { /* The loaded local catalog remains usable. */ }
     }
 
@@ -469,6 +505,7 @@ struct FoodsView: View {
         } else {
             saved = try await store.insert("foods", payload.merging(["owner": .string(owner)]) { _, new in new })
         }
+        mutationVersion += 1
         foods.removeAll { $0.text("id") == saved.text("id") }
         foods.append(saved)
         foods.sort { $0.text("name").localizedStandardCompare($1.text("name")) == .orderedAscending }
@@ -502,6 +539,7 @@ struct FoodsView: View {
         }
         busy = true
         defer { busy = false }
+        mutationVersion += 1
         let id = row.text("id")
         foods.removeAll { $0.text("id") == id }
         semantic?.rows.removeAll { $0.text("id") == id }
@@ -516,6 +554,7 @@ struct FoodsView: View {
             await reload()
             throw error
         }
+        mutationVersion += 1
         if draft?.original.text("id") == id { draft = nil }
         store.undo(store.tr("Alimento borrado")) {
             guard store.owner == owner else { throw CancellationError() }

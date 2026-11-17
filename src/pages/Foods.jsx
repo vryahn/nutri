@@ -84,11 +84,99 @@ export default function Foods() {
   const [filterSource, setFilterSource] = useState('');
   const [warnOnly, setWarnOnly] = useState(false);
   const searchRef = useRef(null);
+  const searchTerm = useRef('');
+  const loadRequest = useRef(null);
+  const searchEmbedding = useRef(null);
+  const deleting = useRef(new Set());
+  const mounted = useRef(false);
+
+  async function toggleFav(key) {
+    const next = favs.includes(key) ? favs.filter((k) => k !== key) : [...favs, key];
+    setFavs(next);
+    // merge over the existing data so as not to overwrite water_glass_ml and other prefs
+    const { data } = await supabase.from('prefs').select('data').maybeSingle();
+    await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), fav_micros: next } });
+  }
+
+  function changeQuery(value) {
+    searchTerm.current = value.trim();
+    loadRequest.current?.abort();
+    setQuery(value);
+  }
+
+  async function load(silent = false) {
+    if (!mounted.current) return;
+    // Only the base list (no search) is cached: it is the view shown when landing
+    // on the tab. The skeleton only appears when there is nothing to paint.
+    const term = searchTerm.current;
+    const isBase = !term;
+    loadRequest.current?.abort();
+    const request = new AbortController();
+    loadRequest.current = request;
+    if (!silent && !(isBase && cacheGet('foods'))) setLoading(true);
+    try {
+      let req = supabase.from('foods').select(FOOD_COLUMNS).order('name');
+      if (!isBase) req = req.ilike('name', `%${term}%`);
+      const { data, error } = await req.abortSignal(request.signal);
+      if (request.signal.aborted) return;
+      if (error) throw error;
+      let hits = data;
+      // Reuse the query's embedding so automatic refreshes can recheck matches without calling AI.
+      if (AI_AVAILABLE && term.length >= 3 && data.length < 8) {
+        try {
+          let vector = searchEmbedding.current?.term === term ? searchEmbedding.current.vector : null;
+          if (!silent && !vector) {
+            vector = await embedText(term);
+            if (request.signal.aborted) return;
+            if (vector) searchEmbedding.current = { term, vector };
+          }
+          if (vector) {
+            const { data: semantic } = await supabase.rpc('match_foods', { q: JSON.stringify(vector), n: 8 })
+              .abortSignal(request.signal);
+            hits = mergeFoodResults(data, semantic, 8);
+          }
+        } catch {
+          // The exact matches remain usable if semantic search fails.
+        }
+      }
+      if (request.signal.aborted) return;
+      const list = hits.filter((f) => !isWaterSentinel(f) && !deleting.current.has(f.id));
+      setFoods(isBase ? cacheSet('foods', list) : list);
+    } catch {
+      if (!silent && !request.signal.aborted) showToast(t('No se pudieron cargar los alimentos — revisa tu conexión.'));
+    } finally {
+      if (loadRequest.current === request) loadRequest.current = null;
+      if (!request.signal.aborted) setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    const t = setTimeout(load, 250);
-    return () => clearTimeout(t);
-  // `load` is rebuilt every render: the debounce must follow the query, not the closure's identity.
+    mounted.current = true;
+    // The listener and timer stay installed while Alimentos is mounted. `load` reads the latest term.
+    function refresh() {
+      if (document.visibilityState === 'visible' && navigator.onLine && !loadRequest.current) load(true);
+    }
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('online', refresh);
+    const interval = setInterval(() => { if (document.hasFocus()) refresh(); }, 30_000);
+    return () => {
+      mounted.current = false;
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', refresh);
+      loadRequest.current?.abort();
+      loadRequest.current = null;
+    };
+  // `load` uses stable refs and state setters, so the refresh cadence follows the mounted view.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const debounce = setTimeout(load, 250);
+    return () => clearTimeout(debounce);
+  // `load` reads the current query from searchTerm.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
@@ -118,52 +206,13 @@ export default function Foods() {
   }, [editing]);
 
   useEffect(() => {
-    loadPrefs();
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session || !mounted.current) return;
+      setUserId(session.user.id);
+      const { data } = await supabase.from('prefs').select('data').maybeSingle();
+      if (mounted.current && data?.data?.fav_micros) setFavs(data.data.fav_micros);
+    });
   }, []);
-
-  async function loadPrefs() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-    setUserId(session.user.id);
-    const { data } = await supabase.from('prefs').select('data').maybeSingle();
-    if (data?.data?.fav_micros) setFavs(data.data.fav_micros);
-  }
-
-  async function toggleFav(key) {
-    const next = favs.includes(key) ? favs.filter((k) => k !== key) : [...favs, key];
-    setFavs(next);
-    // merge over the existing data so as not to overwrite water_glass_ml and other prefs
-    const { data } = await supabase.from('prefs').select('data').maybeSingle();
-    await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), fav_micros: next } });
-  }
-
-  async function load() {
-    // Only the base list (no search) is cached: it is the view shown when landing
-    // on the tab. The skeleton only appears when there is nothing to paint.
-    const isBase = !query.trim();
-    if (!(isBase && cacheGet('foods'))) setLoading(true);
-    let req = supabase.from('foods').select(FOOD_COLUMNS).order('name');
-    if (!isBase) req = req.ilike('name', `%${query.trim()}%`);
-    const { data, error } = await req;
-    if (error) { showToast(t('No se pudieron cargar los alimentos — revisa tu conexión.')); setLoading(false); return; }
-    let hits = data;
-    // Semantic fallback search: only when ilike yields few hits. It must never
-    // break the normal search — embedText already returns null on any failure.
-    if (!isBase && AI_AVAILABLE && query.trim().length >= 3 && data.length < 8) {
-      try {
-        const vec = await embedText(query.trim());
-        if (vec) {
-          const { data: semantic } = await supabase.rpc('match_foods', { q: JSON.stringify(vec), n: 8 });
-          hits = mergeFoodResults(hits, semantic, 8);
-        }
-      } catch {
-        // ignored: keeps the ilike hits
-      }
-    }
-    const list = hits.filter((f) => !isWaterSentinel(f));
-    setFoods(isBase ? cacheSet('foods', list) : list);
-    setLoading(false);
-  }
 
   async function handleSave(food, alsoLog) {
     const payload = {
@@ -208,16 +257,18 @@ export default function Foods() {
   // optimistic + 5 s "Undo" toast that re-inserts the food. Consistent with Today.
   async function handleDelete(id) {
     const food = foods.find((f) => f.id === id);
+    if (deleting.current.has(id)) return;
+    deleting.current.add(id);
     setEditing(null);
     setFoods((fs) => fs.filter((f) => f.id !== id));
     const { data, error } = await supabase.from('foods').delete().eq('id', id).select('id');
+    deleting.current.delete(id);
+    load(!!data?.length);
     if (error) {
-      load();
       showToast(t('Tiene registros asociados, no se puede borrar.'));
       return;
     }
     if (!data || data.length === 0) {
-      load();
       showToast(t('Solo puedes borrar tus propios alimentos.'));
       return;
     }
@@ -304,7 +355,7 @@ export default function Foods() {
             <input
               ref={searchRef}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => changeQuery(e.target.value)}
               placeholder={t('Buscar…')}
               className="w-full min-h-[44px] rounded-xl bg-surface-2 border border-border pl-10 pr-3 text-text focus:outline-none focus:ring-2 focus:ring-accent"
             />

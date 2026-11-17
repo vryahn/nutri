@@ -203,10 +203,10 @@ func translateFDCEnEs(_ text: String) async -> String {
 
 /// Mirrors the web ilike name query; the base list remains the offline fallback.
 @MainActor
-func searchCatalogNames(store: Store, table: String, term: String, limit: Int? = nil) async throws -> [Record] {
+func searchCatalogNames(store: Store, table: String, term: String, limit: Int? = nil, allowCached: Bool = true) async throws -> [Record] {
     var query = table == "foods" ? Store.catalogQuery : ["order": "name.asc"]
     query["name"] = "ilike.%\(term)%"
     if let limit { query["limit"] = String(limit); query["order"] = nil }
-    let rows = try await store.read(table, query)
+    let rows = try await store.read(table, query, allowCached: allowCached)
     return table == "foods" ? rows.filter { !Domain.water($0) } : rows
 }
