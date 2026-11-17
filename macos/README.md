@@ -15,7 +15,7 @@ open /Applications/Nutri.app
 
 La compilación toma `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` del `.env` local. Puedes elegir otro archivo con `NUTRI_ENV_FILE`. La aplicación exige una llave pública `sb_publishable_` y usa el proxy de IA de producción. Las claves de proveedores y las credenciales de cuenta quedan fuera del paquete. `build-app.sh` selecciona el SDK 26 cuando Command Line Tools también tiene ese SDK disponible, ya que el SDK más nuevo puede requerir el plugin de macros de SwiftUI que el entorno no incluye.
 
-La instalación verifica la firma local ad hoc y el identificador `com.vryahn.nutri.native`. El script permite actualizar el paquete con ese identificador en la ruta seleccionada. Una recompilación con firma ad hoc puede hacer que macOS vuelva a pedir acceso al ítem del llavero. Para quitar el cliente, mueve `Nutri.app` a la papelera. Elimina los datos locales mediante `Cerrar sesión`; las operaciones de bitácora pendientes quedan en la cola de su cuenta para reintentar al volver a entrar.
+La instalación verifica la firma local ad hoc y el identificador `com.vryahn.nutri.native`. El script permite actualizar el paquete con ese identificador en la ruta seleccionada. Una recompilación con firma ad hoc puede hacer que macOS vuelva a pedir acceso al ítem del llavero. Para evitar esos avisos repetidos, crea en Acceso a Llaveros (Asistente de Certificados) un certificado autofirmado estable de tipo «Firma de código» y pásalo al compilar con `NUTRI_SIGN_IDENTITY="<nombre>" macos/scripts/build-app.sh release`; sin esa variable la firma sigue siendo ad hoc. La firma usa el runtime reforzado (`--options runtime`): la app solo usa frameworks del sistema y no necesita entitlements. Para quitar el cliente, mueve `Nutri.app` a la papelera. Elimina los datos locales mediante `Cerrar sesión`; las operaciones de bitácora pendientes quedan en la cola de su cuenta para reintentar al volver a entrar.
 
 ## Uso y verificación
 
@@ -35,3 +35,7 @@ La versión 1.1 reproduce la paleta Petróleo, las tres familias tipográficas, 
 Para comparar el dominio original con sus fixtures ejecuta `node macos/scripts/check-web-oracles.mjs`. Para obtener capturas de estados abiertos, añade `NUTRI_SNAPSHOT_STATES=1` al comando `--snapshot-checks`. `NUTRI_SNAPSHOT_DIR` elige la carpeta de salida; `NUTRI_SNAPSHOT_FIXTURE` permite cargar un JSON de demo creado por `macos/scripts/capture-demo-fixture.py`. Las capturas prueban composición y estados, no simulan interacción real.
 
 [Plan de entrega](PLAN.md) · [Matriz de paridad y evidencia](PARITY.md)
+
+## Caché nativa
+
+La caché nativa guarda cualquier consulta por cuenta en `~/Library/Application Support/NutriNative/<uid>/cache`, con un LRU de 150–180 archivos, permisos 0600 y borrado al cerrar sesión; difiere a propósito de la lista blanca de `localStorage` de la web, que existe por la cuota de ~5 MB de `localStorage` y aquí no aplica.

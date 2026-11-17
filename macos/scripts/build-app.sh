@@ -39,7 +39,7 @@ done
 iconutil -c icns "$iconset" -o "$app/Contents/Resources/Nutri.icns"
 contract="$(node "$repo_dir/scripts/native-contract.mjs")"
 python3 "$script_dir/write_info.py" "$env_file" "$app/Contents/Info.plist" "$mode" "$contract"
-codesign --force --sign - "$app"
+codesign --force --options runtime --sign "${NUTRI_SIGN_IDENTITY:--}" "$app"
 codesign --verify --deep --strict "$app"
 if [[ -d "$output_dir/Nutri.app" ]]; then
     mv "$output_dir/Nutri.app" "$stage/previous.app"

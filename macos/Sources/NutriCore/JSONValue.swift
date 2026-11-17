@@ -65,6 +65,8 @@ public struct NutriError: LocalizedError, Sendable {
             if ["42501", "PGRST301", "PGRST302"].contains(code) { return false }
             return code.range(of: "^(?:[0-9A-Z]{5}|PGRST[0-9]{3})$", options: .regularExpression) != nil
         }
+        // 4xx sin código (p. ej. 400/413) es rechazo definitivo; 401/403 los resuelve la sesión.
+        if let status, (400..<500).contains(status), status != 401, status != 403 { return true }
         return false
     }
 }

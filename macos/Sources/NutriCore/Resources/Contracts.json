@@ -712,6 +712,28 @@
       "warn": 0.1
     }
   },
+  "constants": {
+    "SODIUM_HIGH_MG": 460,
+    "POTASSIUM_HIGH_MG": 940,
+    "DEFICIT_RATE_CAP": {
+      "pctWk": 0.5,
+      "weeks": 2,
+      "deltaCarbsG": 25
+    },
+    "ADHERENCE_TOL": 0.07,
+    "MIN_DAYS_MEDIAN": 3,
+    "MIN_DAYS_STDDEV": 2,
+    "MIN_DAYS_TREND": 3,
+    "MIN_DAYS_BAYES": 3,
+    "STRUCTURAL_ZERO_FRACTION": 0.5,
+    "BAYES_KCAL_TOL": 0.1,
+    "KCAL_HARD_FLOOR": 500,
+    "COMPLETE_RATIO": 0.6,
+    "HIST_MIN_DAYS": 7,
+    "MIN_MEALS_SIGNAL": 3,
+    "SODIUM_FLOOR_MG": 1500,
+    "SODIUM_CEILING_MG": 2300
+  },
   "strings": {
     "Sin dato": "No data",
     "Sin registro": "No log",

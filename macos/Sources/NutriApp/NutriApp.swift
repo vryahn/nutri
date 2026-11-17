@@ -38,7 +38,7 @@ struct NutriApp: App {
                 .environment(\.locale, Locale(identifier: store.lang == "en" ? "en_US" : "es_MX"))
                 .frame(minWidth: 375, minHeight: 570)
                 .task { await store.bootstrap() }
-                .onChange(of: scenePhase) { _, phase in if phase == .active { store.flush() } }
+                .onChange(of: scenePhase) { _, phase in if phase == .active { store.flush(resetBackoff: true) } }
         }
         .defaultSize(width: 1280, height: 820)
         .commands {
@@ -360,7 +360,7 @@ struct RootView: View {
                 let count = store.pending > 0 ? " · \(store.pending) \(store.tr("pendientes"))" : ""
                 let retry = store.tr("Reintentar")
                 let help = "\(state)\(count) · \(retry)"
-                Button(action: store.flush) {
+                Button { store.flush(resetBackoff: true) } label: {
                     NutriIcon(store.offline ? "cloud-off" : "loader-circle", size: 16)
                         .foregroundStyle(palette.text2)
                         .frame(width: 28, height: 28)

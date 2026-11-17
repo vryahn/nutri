@@ -117,11 +117,47 @@ struct NutriChecks {
             case "coupledBandMacros":
                 computed = args[1].number.flatMap { Domain.coupledBand(row, energy: $0) }.map(JSONValue.object) ?? .null
                 expected = test.expected
+            case "evalRules":
+                computed = rulesDecision(phaseProposal(args[0].object ?? [:]))
+                expected = rulesDecision(webDecision: test.expected)
             default: throw CheckError.failure("Unrecognized web oracle: " + test.fn)
             }
             try require(equivalent(computed, expected), "Web oracle mismatch: " + test.name)
         }
         return oracle.cases.count
+    }
+
+    // Native phaseProposal receives the vigente phase explicitly; derive it like web evalRules does.
+    private static func phaseProposal(_ input: Record) -> PhaseProposal? {
+        let targets = input.array("targets").compactMap(\.object)
+        let today = input.text("todayISO")
+        guard let date = Day.date(today),
+              let vigente = targets.filter({ $0.number("dow") != nil && $0.text("valid_from") <= today }).map({ $0.text("valid_from") }).max()
+        else { return nil }
+        let phase = targets.filter { $0.number("dow") != nil && $0.text("valid_from") == vigente }
+        return NutriCore.phaseProposal(targets: targets, phase: phase, body: input.array("bodyMetrics").compactMap(\.object),
+                                       totals: input.array("dailyTotals").compactMap(\.object), today: date)
+    }
+
+    // Decision fields only (never the free-text reason): fired?, rule id, per-dow kcal/carbs/goal/valid_from.
+    private static func decision(rule: String, rows: [Record]) -> JSONValue {
+        .object(["rule": .string(rule), "rows": .array(rows.sorted { ($0.number("dow") ?? 0) < ($1.number("dow") ?? 0) }.map {
+            .object(["dow": $0["dow"] ?? .null, "kcal": $0["kcal"] ?? .null, "carbs_g": $0["carbs_g"] ?? .null,
+                     "goal": $0["goal"] ?? .null, "valid_from": $0["valid_from"] ?? .null])
+        })])
+    }
+
+    private static func rulesDecision(_ proposal: PhaseProposal?) -> JSONValue {
+        guard let proposal else { return .null }
+        // applied_rule is "<id> · <reason>"; a review-only proposal (no rows) is always the deficit guardrail.
+        let id = proposal.rows.first?.text("applied_rule").components(separatedBy: " · ").first ?? "proteccion-ritmo"
+        return decision(rule: id, rows: proposal.rows)
+    }
+
+    private static func rulesDecision(webDecision: JSONValue) -> JSONValue {
+        guard let result = webDecision.object else { return .null }
+        let id = result.array("rows").first?.object?.text("applied_rule").components(separatedBy: " · ").first ?? result.text("rule")
+        return decision(rule: id, rows: result.array("rows").compactMap(\.object))
     }
 
     private static func equivalent(_ left: JSONValue, _ right: JSONValue) -> Bool {
@@ -266,6 +302,13 @@ struct NutriChecks {
         try require(cacheA.read(key) == [updated] && cacheB.read(key) == nil, "UID-specific read cache")
         try require(NutriError("permanent", status: 400, code: "23503").permanentWriteFailure
                     && !NutriError("temporary", status: 403, code: "42501").permanentWriteFailure, "Known error categorization")
+        try require(NutriError("bad", status: 413, code: nil).permanentWriteFailure
+                    && NutriError("bad", status: 400, code: nil).permanentWriteFailure
+                    && NutriError("dup", status: 409, code: "23505").permanentWriteFailure
+                    && !NutriError("rls", status: 403, code: "42501").permanentWriteFailure, "4xx sin código y códigos conocidos")
+        for status in [401, 403, 408, 429, 503] {
+            try require(!NutriError("transient", status: status, code: nil).permanentWriteFailure, "HTTP \(status) sin código es transitorio")
+        }
     }
 
     private static func checkTransport(useKeychain: Bool) async throws {

@@ -1,3 +1,4 @@
+import AppKit
 import NutriCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -190,7 +191,6 @@ private func foodWarningPending(_ row: Record) -> Bool {
 
 struct FoodsView: View {
     @EnvironmentObject private var store: Store
-    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.nutriPalette) private var palette
     @Environment(\.nutriWindowWidth) private var windowWidth
     @FocusState private var searchFocused: Bool
@@ -214,7 +214,10 @@ struct FoodsView: View {
     @State private var importError = ""
 
     private var desktop: Bool { windowWidth >= 1024 }
-    private var canRefresh: Bool { scenePhase == .active && store.networkAvailable && !store.demoActive }
+    private func refreshSilently() {
+        guard !loading, !busy, !store.demoActive else { return }
+        Task { await reload(silent: true) }
+    }
     private var term: String { cleanText(query) }
     private var matching: [Record] {
         guard !term.isEmpty else { return foods }
@@ -285,16 +288,9 @@ struct FoodsView: View {
             }
             #endif
         }
-        .task(id: canRefresh) {
-            guard canRefresh else { return }
-            while !Task.isCancelled {
-                do {
-                    while loading || busy { try await Task.sleep(for: .milliseconds(250)) }
-                    await reload(silent: true)
-                    try await Task.sleep(for: .seconds(30))
-                } catch { return }
-            }
-        }
+        // Como la web (Foods.jsx: focus/online): recarga silenciosa al activar la app y al volver la conexión.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refreshSilently() }
+        .onChange(of: store.networkAvailable) { old, online in if !old && online { refreshSilently() } }
         .onChange(of: store.newFood) { _, _ in openFromToday() }
         .task(id: query) { await findFoods() }
         .onExitCommand { if importReview { if !busy { importReview = false } } else { draft = nil } }

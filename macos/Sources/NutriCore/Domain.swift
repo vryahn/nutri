@@ -39,6 +39,7 @@ public enum Domain {
         let micros: [Nutrient]
         let microMax: [String: Double]
         let bands: Record
+        let constants: Record
         let strings: [String: String]
         let prompts: [String: String]
     }
@@ -64,8 +65,33 @@ public enum Domain {
     public static let categories = ["Lípidos", "Carbohidratos", "Edulcorantes", "Vitaminas", "Minerales", "Antioxidantes", "Aminoácidos", "Otros"]
     public static let gramsPerOunce = 28.3495
     public static let mlPerFluidOunce = 29.5735
-    public static let sodiumFloor = 1500.0
-    public static let sodiumCeiling = 2300.0
+    // Constantes de dominio exportadas desde src/lib/domain.js (scripts/sync-domain.mjs).
+    private static func constant(_ key: String) -> Double {
+        guard let value = contracts.constants.number(key) else { preconditionFailure("Missing contract constant \(key).") }
+        return value
+    }
+    public static let sodiumFloor = constant("SODIUM_FLOOR_MG")
+    public static let sodiumCeiling = constant("SODIUM_CEILING_MG")
+    public static let sodiumHigh = constant("SODIUM_HIGH_MG")
+    public static let potassiumHigh = constant("POTASSIUM_HIGH_MG")
+    public static let adherenceTolerance = constant("ADHERENCE_TOL")
+    public static let deficitRatePctPerWeek = deficitCap("pctWk")
+    public static let deficitRateWeeks = Int(deficitCap("weeks"))
+    public static let deficitRateDeltaCarbs = deficitCap("deltaCarbsG")
+    private static func deficitCap(_ key: String) -> Double {
+        guard let value = contracts.constants["DEFICIT_RATE_CAP"]?.object?.number(key) else { preconditionFailure("Missing DEFICIT_RATE_CAP.") }
+        return value
+    }
+    public static let minDaysMedian = Int(constant("MIN_DAYS_MEDIAN"))
+    public static let minDaysStdDev = Int(constant("MIN_DAYS_STDDEV"))
+    public static let minDaysTrend = Int(constant("MIN_DAYS_TREND"))
+    public static let minDaysBayes = Int(constant("MIN_DAYS_BAYES"))
+    public static let structuralZeroFraction = constant("STRUCTURAL_ZERO_FRACTION")
+    public static let bayesKcalTolerance = constant("BAYES_KCAL_TOL")
+    public static let kcalHardFloor = constant("KCAL_HARD_FLOOR")
+    public static let completeRatio = constant("COMPLETE_RATIO")
+    public static let histMinDays = Int(constant("HIST_MIN_DAYS"))
+    public static let minMealsSignal = Int(constant("MIN_MEALS_SIGNAL"))
 
     public enum Coverage: String, Sendable { case complete, partial, unknown }
     public enum Adherence: String, Sendable { case ok, warn, danger }

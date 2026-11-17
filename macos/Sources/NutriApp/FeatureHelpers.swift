@@ -35,17 +35,8 @@ func numberText(_ value: Double?, digits: Int = 2) -> String {
     return value.formatted(.number.precision(.fractionLength(0...digits)))
 }
 
-func draftNumber(_ value: Double?) -> String {
-    guard let value else { return "" }
-    return value.formatted(.number.grouping(.never).precision(.fractionLength(0...9)).locale(Locale(identifier: "en_US_POSIX")))
-}
-
 func optionalText(_ string: String) -> JSONValue {
     cleanText(string).isEmpty ? .null : .string(cleanText(string))
-}
-
-func addingDays(_ count: Int, to date: Date) -> Date {
-    Calendar.current.date(byAdding: .day, value: count, to: date) ?? date
 }
 
 func dateFilter(_ start: String, _ end: String) -> [String: String] {
@@ -69,11 +60,6 @@ func saveFeatureFile(_ data: Data, name: String, type: UTType) throws {
 
 func nutritionValue(_ row: Record, _ key: String) -> Double? {
     row.number(key) ?? row.object("micros").number(key)
-}
-
-func isoDate(_ key: String) -> Date? {
-    guard key.count == 10, let date = Day.date(key), Day.key(date) == key else { return nil }
-    return date
 }
 
 func aiSchema(_ type: String, nullable: Bool = false) -> JSONValue {

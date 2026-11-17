@@ -56,6 +56,7 @@ final class Store: ObservableObject {
     private let network = NWPathMonitor()
     private var drainTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
+    private var drainFailures = 0
     private var undoAction: (() async throws -> Void)?
     private var undoTask: Task<Void, Never>?
     private var noticeTask: Task<Void, Never>?
@@ -94,7 +95,7 @@ final class Store: ObservableObject {
                 guard let self, !demoActive else { return }
                 if networkAvailable != online { networkAvailable = online }
                 offline = !online
-                if online { flush() }
+                if online { flush(resetBackoff: true) }
             }
         }
         network.start(queue: DispatchQueue(label: "com.vryahn.nutri.network"))
@@ -465,7 +466,9 @@ final class Store: ObservableObject {
         entryVersion += 1
     }
 
-    func flush() {
+    /// `resetBackoff`: conexión recuperada o app activa; los reintentos propios conservan el retroceso exponencial.
+    func flush(resetBackoff: Bool = false) {
+        if resetBackoff { drainFailures = 0 }
         guard drainTask == nil, let uid = owner, pending > 0, !signingOut else { return }
         retryTask?.cancel()
         retryTask = nil
@@ -522,6 +525,7 @@ final class Store: ObservableObject {
                 guard identity == current, !Task.isCancelled else { return }
                 try acknowledge(operation)
                 try outbox?.finish(operation)
+                drainFailures = 0
                 changedEntries()
             } catch {
                 guard identity == current, !Task.isCancelled else { return }
@@ -533,10 +537,13 @@ final class Store: ObservableObject {
                     continue
                 }
                 if error is URLError { offline = true }
-                else { report(error) }
+                // Fallo transitorio: sin alerta (el ⛅ ya lo muestra, como la web); la sesión expirada sí vuelve al login.
+                else if (error as? NutriError)?.code == Supabase.sessionExpiredCode { report(error) }
                 guard identity == current else { return }
+                drainFailures += 1
+                let delay = min(300.0, 12.0 * pow(2.0, Double(drainFailures - 1)))
                 retryTask = Task {
-                    try? await Task.sleep(for: .seconds(12))
+                    try? await Task.sleep(for: .seconds(delay))
                     if !Task.isCancelled { flush() }
                 }
                 return

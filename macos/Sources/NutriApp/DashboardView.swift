@@ -105,8 +105,10 @@ enum DashboardCalculation: String, CaseIterable, Identifiable {
     var minimum: Int {
         switch self {
         case .average, .sum: 1
-        case .standardDeviation: 2
-        case .median, .trend, .bayes: 3
+        case .standardDeviation: Domain.minDaysStdDev
+        case .median: Domain.minDaysMedian
+        case .trend: Domain.minDaysTrend
+        case .bayes: Domain.minDaysBayes
         }
     }
 }
@@ -203,7 +205,7 @@ private struct DashboardSnapshot {
         let totalsByDay = Dictionary(totals.map { ($0.text("day"), $0) }, uniquingKeysWith: { first, _ in first })
         let entriesByDay = Dictionary(grouping: self.entries) { $0.text("day") }
         let historyKcals = history.compactMap { $0.number("kcal") }.filter { $0 > 0 }
-        let historyMedian = historyKcals.count >= 7 ? dashboardQuantile(historyKcals, 0.5) : nil
+        let historyMedian = historyKcals.count >= Domain.histMinDays ? dashboardQuantile(historyKcals, 0.5) : nil
         let mealsByDay = entriesByDay.mapValues { rows in Set(rows.map { $0.text("meal") }).count }
         let mealMedian = dashboardQuantile(totals.filter { period.contains($0.text("day")) && ($0.number("kcal") ?? 0) > 0 }
             .map { Double(mealsByDay[$0.text("day")] ?? 0) }, 0.5) ?? 0
@@ -214,12 +216,12 @@ private struct DashboardSnapshot {
             let kcal = row.number("kcal") ?? 0
             let completeness: DayCompleteness
             if kcal <= 0 { completeness = .missing }
-            else if kcal < 500 { completeness = .partial }
+            else if kcal < Domain.kcalHardFloor { completeness = .partial }
             else if let historyMedian {
-                let mealWarning = mealMedian >= 3 && (mealsByDay[key] ?? 0) <= 1
-                completeness = !mealWarning && kcal >= 0.6 * historyMedian ? .complete : .partial
+                let mealWarning = mealMedian >= Double(Domain.minMealsSignal) && (mealsByDay[key] ?? 0) <= 1
+                completeness = !mealWarning && kcal >= Domain.completeRatio * historyMedian ? .complete : .partial
             } else if let kcalTarget = target?.number("kcal") {
-                completeness = kcal >= 0.6 * kcalTarget ? .complete : .partial
+                completeness = kcal >= Domain.completeRatio * kcalTarget ? .complete : .partial
             } else { completeness = .unknown }
             return DashboardDay(date: date, offset: offset, total: row, target: target, completeness: completeness)
         }
@@ -237,7 +239,7 @@ private struct DashboardSnapshot {
         switch mode {
         case .average, .sum: return !logged.isEmpty
         case .bayes:
-            return complete.count >= 3 && days.contains { $0.target != nil }
+            return complete.count >= Domain.minDaysBayes && days.contains { $0.target != nil }
         default: return advanced.count >= mode.minimum
         }
     }
@@ -407,7 +409,7 @@ private func dashboardSummary(_ variable: DashboardVariable, mode: DashboardCalc
                     return Domain.classify(key, value: actual, target: day.target, bands: bands) == .ok
                 }
                 guard let target = day.target.flatMap({ nutritionValue($0, key) }) else { return nil }
-                if ["kcal", "carbs_g", "fat_g"].contains(key) { return abs(actual - target) / target <= 0.1 }
+                if ["kcal", "carbs_g", "fat_g"].contains(key) { return abs(actual - target) / target <= Domain.bayesKcalTolerance }
                 return dailyCeilings.contains(key) ? actual <= target : actual >= target
             }
             if !passes.isEmpty {

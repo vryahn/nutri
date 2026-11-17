@@ -11,6 +11,7 @@ struct TodayView: View {
     @Environment(\.nutriHasAccountOverlay) private var accountOverlay
     @AppStorage("nutri.today.collapsed") private var collapsedSections = "[]"
     @State private var date = Date()
+    @State private var todayKey = Day.key(Date())
     @State private var serverRows: [Record] = []
     @State private var loadedDay = ""
     @State private var labels: [Record] = []
@@ -175,6 +176,15 @@ struct TodayView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .nutriLabelsChanged)) { _ in Task { await loadLabels() } }
+        // Como la web (focus/online): recarga el día al activar la app y al volver la conexión; el cambio de día mueve "hoy".
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            rollToday()
+            Task { await loadDay() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in rollToday() }
+        .onChange(of: store.networkAvailable) { old, online in
+            if !old && online { Task { await loadDay() } }
+        }
         .onAppear { openFromFood() }
         .onChange(of: store.logFood) { _, _ in openFromFood() }
     }
@@ -604,10 +614,10 @@ struct TodayView: View {
                     }
                     Spacer(minLength: 0)
                     HStack(spacing: 6) {
-                        if let sodium = Domain.value(row, "sodio_mg"), sodium >= 460 {
+                        if let sodium = Domain.value(row, "sodio_mg"), sodium >= Domain.sodiumHigh {
                             foodBadge("Na", sodium, color: palette.danger, help: "Alto en sodio")
                         }
-                        if let potassium = Domain.value(row, "potasio_mg"), potassium >= 940 {
+                        if let potassium = Domain.value(row, "potasio_mg"), potassium >= Domain.potassiumHigh {
                             foodBadge("K", potassium, color: palette.warn, help: "Alto en potasio")
                         }
                         Group {
@@ -654,7 +664,7 @@ struct TodayView: View {
             Button(store.tr("Borrar"), role: .destructive) { remove(row) }
         }
         .accessibilityAction(named: store.tr("Borrar")) { remove(row) }
-        .onDrag {
+        .modifier(EntryDraggable(enabled: row["_pending"]?.bool != true) {
             entryDropActive = true
             entryDropReset?.cancel()
             entryDropReset = Task {
@@ -662,7 +672,7 @@ struct TodayView: View {
                 catch { }
             }
             return NSItemProvider(object: dragKey("entry", id) as NSString)
-        }
+        })
         .dropDestination(for: String.self) { items, _ in
             guard let payload = items.first else { return false }
             return move(payload, label: label, over: id)
@@ -698,6 +708,13 @@ struct TodayView: View {
             quickKey += 1
             scrollDestination = "quick-add"
         } else { editor = .entry(nil, label, nil, nil) }
+    }
+
+    private func rollToday() {
+        let now = Day.key(Date())
+        guard now != todayKey else { return }
+        if day == todayKey { date = Date() }
+        todayKey = now
     }
 
     private func toggleCollapsed(_ key: String) {
@@ -740,25 +757,42 @@ struct TodayView: View {
             let to = ordered.firstIndex { $0.text("id") == over } ?? 0
             destination.insert(moving, at: index + (from < to ? 1 : 0))
         } else { destination.append(moving) }
-        do {
-            try writeOrder(destination, label: label, movingID: id)
-            if source != label { try writeOrder(entries(in: source).filter { $0.text("id") != id }, label: source, movingID: "") }
-        } catch { store.report(error) }
+        guard moving["_pending"]?.bool != true else { return false }
+        var patches = orderPatches(destination, label: label, movingID: id)
+        if source != label { patches += orderPatches(entries(in: source).filter { $0.text("id") != id }, label: source, movingID: "") }
+        // Optimista: la lista pinta serverRows, así que se reescribe ahí; si algo falla se recarga el día.
+        serverRows = serverRows.map { row in
+            guard let patch = patches.first(where: { $0.id == row.text("id") }) else { return row }
+            return row.merging(patch.local) { _, new in new }
+        }
+        Task {
+            do {
+                for patch in patches { _ = try await store.update("entries", ["id": "eq." + patch.id], patch.payload) }
+            } catch {
+                store.report(error)
+                await loadDay()
+            }
+        }
         return true
     }
 
-    private func writeOrder(_ rows: [Record], label: String, movingID: String) throws {
+    // Escritura directa (online-only, como Today.jsx): sin tocar la cola; las filas pendientes se omiten.
+    private func orderPatches(_ rows: [Record], label: String, movingID: String) -> [(id: String, payload: Record, local: Record)] {
+        var result: [(id: String, payload: Record, local: Record)] = []
         for (order, row) in rows.enumerated() {
             let id = row.text("id")
-            var patch: Record = ["sort_order": .number(Double(order))]
+            if row["_pending"]?.bool == true { continue }
+            var payload: Record = ["sort_order": .number(Double(order))]
+            var local = payload
             if id == movingID {
-                patch["meal_label_id"] = label.isEmpty ? .null : .string(label)
-                patch["meal"] = labels.first(where: { $0.text("id") == label })?["name"] ?? .null
+                payload["meal_label_id"] = label.isEmpty ? .null : .string(label)
+                local = payload
+                local["meal"] = labels.first(where: { $0.text("id") == label })?["name"] ?? .null
             }
             if row.number("sort_order") == Double(order), id != movingID { continue }
-            let payload = patch.filter { $0.key != "meal" }
-            try store.editEntry(id, patch: payload, row: row.merging(patch) { _, new in new })
+            result.append((id, payload, local))
         }
+        return result
     }
 
     private static func rowOrder(_ a: Record, _ b: Record) -> Bool {
@@ -1809,6 +1843,16 @@ private func journalNumber(_ value: Double, digits: Int = 1) -> String {
 
 private func journalDragKey(_ type: String, id: String, day: String, owner: String?) -> String {
     "nutri/\(owner ?? "")/\(day)/\(type)/\(id)"
+}
+
+// Filas pendientes de sincronizar (⛅) no se arrastran: reordenar es solo online, como en la web.
+private struct EntryDraggable: ViewModifier {
+    let enabled: Bool
+    let start: () -> NSItemProvider
+
+    func body(content: Content) -> some View {
+        if enabled { content.onDrag(start) } else { content }
+    }
 }
 
 private struct SectionDraggable: ViewModifier {
