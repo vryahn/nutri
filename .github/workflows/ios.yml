@@ -35,10 +35,12 @@ jobs:
         run: test "$(/usr/bin/python3 ios/scripts/write_info.py --contract)" = "$(node scripts/native-contract.mjs)"
       - name: Exercise the app on a 375-point iPhone
         run: |
+          device=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; print(next(d["udid"] for d in json.load(sys.stdin)["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-18-5"] if d["name"] == "iPhone SE (3rd generation)"))')
+          xcrun simctl boot "$device"
           xcodebuild -project ios/Nutri.xcodeproj -scheme Nutri \
-            -destination 'platform=iOS Simulator,name=iPhone SE (3rd generation),OS=18.5' \
+            -destination "id=$device" \
             -parallel-testing-enabled NO -resultBundlePath "$RUNNER_TEMP/Nutri.xcresult" \
-            CODE_SIGNING_ALLOWED=NO NUTRI_IOS_UI_TESTING=YES test
+            NUTRI_IOS_UI_TESTING=YES test
       - name: Export screenshots from the synthetic session
         if: always()
         run: |

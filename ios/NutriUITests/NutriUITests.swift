@@ -12,10 +12,10 @@ final class NutriUITests: XCTestCase {
         let password = app.secureTextFields["login.password"]
         let submit = app.buttons["login.submit"]
         XCTAssertTrue(email.waitForExistence(timeout: 10))
-        XCTAssertTrue(password.isHittable)
+        capture("01 Login")
+        XCTAssertTrue(password.isHittable, app.debugDescription)
         XCTAssertTrue(submit.isHittable)
         XCTAssertTrue(app.buttons["login.demo"].isHittable)
-        capture("01 Login")
 
         submit.tap()
         XCTAssertTrue(app.staticTexts["Email o contraseña incorrectos."].waitForExistence(timeout: 5))

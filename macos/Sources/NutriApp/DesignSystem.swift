@@ -170,16 +170,12 @@ struct NutriIcon: View {
         let bounds = page.getBoxRect(.mediaBox)
         guard bounds.width > 0, bounds.height > 0 else { return nil }
         let pixels: CGFloat = url.lastPathComponent.hasPrefix("nutri-") ? 240 : 96
-        let scale = pixels / max(bounds.width, bounds.height)
-        let size = CGSize(width: bounds.width * scale, height: bounds.height * scale)
         let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        return UIGraphicsImageRenderer(size: size, format: format).image { renderer in
+        format.scale = pixels / max(bounds.width, bounds.height)
+        return UIGraphicsImageRenderer(size: bounds.size, format: format).image { renderer in
             let context = renderer.cgContext
-            context.translateBy(x: 0, y: size.height)
+            context.translateBy(x: -bounds.minX, y: bounds.maxY)
             context.scaleBy(x: 1, y: -1)
-            context.concatenate(page.getDrawingTransform(.mediaBox, rect: CGRect(origin: .zero, size: size),
-                                                         rotate: 0, preserveAspectRatio: true))
             context.drawPDFPage(page)
         }
         #endif
