@@ -1014,9 +1014,9 @@ export default function Today() {
   function handleUndo() {
     if (!undoData) return;
     clearTimeout(undoData.timer);
-    const { day, grams, meal_label_id, food_id, recipe_id } = undoData.entry;
+    const { day, grams, meal_label_id, food_id, recipe_id, sort_order } = undoData.entry;
     setUndoData(null);
-    const payload = { id: crypto.randomUUID(), day, grams, meal_label_id, food_id, recipe_id };
+    const payload = { id: crypto.randomUUID(), day, grams, meal_label_id, food_id, recipe_id, sort_order };
     queueInsert(payload, { ...undoData.entry, id: payload.id });
   }
 

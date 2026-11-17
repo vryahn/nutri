@@ -154,10 +154,13 @@ final class Store: ObservableObject {
             return
         }
         #endif
+        let wasAnonymous = anonymous
         if let api { try await api.signOut(owner: owner) }
         let previousCache = cache
         reset()
         do { try previousCache?.clear() } catch { report(error) }
+        // Demo users are deleted server-side (pg_cron): their whole local folder (cache + outbox) is dead weight.
+        if wasAnonymous { try? FileManager.default.removeItem(at: root.appendingPathComponent(owner, isDirectory: true)) }
     }
 
     func changePassword(_ password: String) async throws {
@@ -248,7 +251,8 @@ final class Store: ObservableObject {
         return canonical
     }
 
-    func report(_ error: Error) {
+    /// `message` (a web i18n key) replaces the raw error text; session expiry is handled first, unchanged.
+    func report(_ error: Error, as message: String? = nil) {
         guard !(error is CancellationError), (error as? URLError)?.code != .cancelled else { return }
         if (error as? NutriError)?.code == Supabase.sessionExpiredCode, owner != nil, !demoActive {
             // reset() keeps the on-disk cache and outbox: pending entries sync after signing in again.
@@ -257,7 +261,19 @@ final class Store: ObservableObject {
             errorMessage = message
             return
         }
-        errorMessage = error.localizedDescription
+        // A deliberate local NutriError (no status/code) already carries its own message.
+        let local = (error as? NutriError).map { $0.status == nil && $0.code == nil } ?? false
+        errorMessage = tr(local ? error.localizedDescription : (message ?? error.localizedDescription))
+    }
+
+    /// Text for a sheet-level failure, like the web: a fixed message (`key`) for backend/network failures,
+    /// while deliberate local messages and session expiry pass through. `networkOnly` maps only URLError
+    /// (web shows `e.message || fallback`, so server messages stay).
+    func failure(_ error: Error, _ key: String, networkOnly: Bool = false) -> String {
+        let local = (error is FeatureError) || ((error as? NutriError).map { $0.status == nil && $0.code == nil } ?? false)
+        if local || (error as? NutriError)?.code == Supabase.sessionExpiredCode { return tr(error.localizedDescription) }
+        if networkOnly && !(error is URLError) { return error.localizedDescription }
+        return tr(key)
     }
 
     func toast(_ title: String) {
@@ -286,7 +302,7 @@ final class Store: ObservableObject {
         undoTask?.cancel()
         undoTitle = nil
         undoAction = nil
-        Task { do { try await action?() } catch { report(error) } }
+        Task { do { try await action?() } catch { report(error, as: "No se pudo deshacer.") } }
     }
 
     func cached(_ table: String, _ query: [String: String] = [:]) -> [Record]? {
@@ -533,7 +549,7 @@ final class Store: ObservableObject {
                     do { try outbox?.finish(operation, discardDependents: operation.kind == .insert) }
                     catch { report(error); return }
                     changedEntries()
-                    report(error)
+                    report(error, as: "No se pudo guardar un registro — se descartó.")
                     continue
                 }
                 if error is URLError { offline = true }

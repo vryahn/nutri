@@ -422,7 +422,6 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   const [form, setForm] = useState(recipe);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
-  const [userId, setUserId] = useState(null);
 
   const [aiText, setAiText] = useState('');
   const [aiFiles, setAiFiles] = useState([]);
@@ -435,12 +434,6 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   const [saveError, setSaveError] = useState('');
   const [pasteText, setPasteText] = useState('');
   const [pasteMsg, setPasteMsg] = useState('');
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setUserId(session.user.id);
-    });
-  }, []);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -599,10 +592,11 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
 
   async function learnAlias(nameEs, foodId) {
     const norm = nameEs.trim().toLowerCase();
-    if (!norm || !userId) return;
+    if (!norm) return;
+    // ingredient_aliases is one key (merge is shallow): read its current value, write only that key
     const { data } = await supabase.from('prefs').select('data').maybeSingle();
     const aliases = { ...(data?.data?.ingredient_aliases || {}), [norm]: foodId };
-    await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), ingredient_aliases: aliases } });
+    await supabase.rpc('merge_prefs', { patch: { ingredient_aliases: aliases } });
   }
 
   // Inline editing of a staged card (name/kcal/macros); the preview reacts on the fly.

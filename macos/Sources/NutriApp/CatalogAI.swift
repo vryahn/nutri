@@ -78,6 +78,7 @@ struct CatalogAIDataCard<ResultLines: View>: View {
     let submit: () -> Void
     @ViewBuilder let result: () -> ResultLines
     @State private var dragging = false
+    @State private var thumbnails: [URL: NSImage] = [:]  // encoded once per URL, not on every render
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -95,7 +96,7 @@ struct CatalogAIDataCard<ResultLines: View>: View {
                     Button { images.remove(at: index) } label: {
                         Color.clear.frame(height: 44).overlay {
                             GeometryReader { space in
-                                if let image = try? jpegData(images[index], maxSide: 256), let thumbnail = NSImage(data: image) {
+                                if let thumbnail = thumbnails[images[index]] {
                                     Image(nsImage: thumbnail).resizable().scaledToFill()
                                         .frame(width: space.size.width, height: space.size.height).clipped()
                                 }
@@ -137,6 +138,14 @@ struct CatalogAIDataCard<ResultLines: View>: View {
             if !hint.isEmpty { Text(hint).font(.nutriSans(12)).foregroundStyle(palette.text3) }
         }.padding(12).nutriCard(radius: 12, fill: palette.surface2)
             .overlay { if dragging || loading { RoundedRectangle(cornerRadius: 12).strokeBorder(palette.accentDeep, lineWidth: dragging ? 2 : 1).allowsHitTesting(false) } }
+            .task(id: images) {
+                var next: [URL: NSImage] = [:]
+                for url in images {
+                    if let cached = thumbnails[url] { next[url] = cached }
+                    else if let data = try? jpegData(url, maxSide: 256), let image = NSImage(data: data) { next[url] = image }
+                }
+                thumbnails = next
+            }
             .dropDestination(for: URL.self) { urls, _ in
                 guard !loading else { return false }; add(urls); return !urls.isEmpty
             } isTargeted: { dragging = $0 && !loading }

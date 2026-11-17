@@ -200,7 +200,7 @@ struct TodayView: View {
                         .font(.nutriSans(14)).foregroundStyle(palette.text2)
                     Button {
                         close()
-                        run(clearDay)
+                        run(as: "Error al borrar.", clearDay)
                     } label: {
                         Text(store.tr("Borrar día")).font(.nutriSans(16, weight: .medium))
                             .foregroundStyle(palette.bg).frame(maxWidth: .infinity, minHeight: 44)
@@ -318,7 +318,7 @@ struct TodayView: View {
         var actions: [NutriSectionAction] = []
         if day == Day.key(.now) {
             actions.append(.init("yesterday", label: store.tr("Ayer"), icon: "history", enabled: !busy) {
-                run { try await copy(from: Day.key(Day.add(date, -1))) }
+                run(as: "Error al copiar.") { try await copy(from: Day.key(Day.add(date, -1))) }
             })
         }
         actions.append(.init("copy-" + day, label: store.tr("Copiar"), icon: "copy") {
@@ -331,7 +331,7 @@ struct TodayView: View {
             actions.append(.init("paste-" + day + copiedDay,
                                  label: store.tr("Pegar %n").replacingOccurrences(of: "%n", with: formattedDate(copiedDate)),
                                  icon: "clipboard-paste", enabled: !busy) {
-                run { try await copy(from: copiedDay) }
+                run(as: "Error al copiar.") { try await copy(from: copiedDay) }
             })
         }
         actions.append(.init("templates", label: store.tr("Plantillas"), icon: "bookmark") { editor = .templates })
@@ -460,7 +460,7 @@ struct TodayView: View {
                             do { try store.removeEntry(row.text("id"), row: row) }
                             catch { store.report(error) }
                         }
-                        else { run { try await addWater(glass) } }
+                        else { run(as: "Error al registrar agua.") { try await addWater(glass) } }
                     } label: {
                         WaterGlass(fraction: full ? 1 : part, full: full, next: Double(index) == filled,
                                    animating: splashWater == water && Double(index) == splashIndex)
@@ -517,7 +517,7 @@ struct TodayView: View {
 
     private func addCustomWater() {
         guard let value = decimal(waterAmount), value >= 1 else { return }
-        run {
+        run(as: "Error al registrar agua.") {
             try await addWater(value * (store.units == "us" ? Domain.mlPerFluidOunce : 1))
             waterAmount = ""
         }
@@ -839,7 +839,7 @@ struct TodayView: View {
     private func loadLabels() async {
         let query = ["archived_at": "is.null", "order": "sort_order.asc,name.asc"]
         if let cached = store.cached("meal_labels", query) { labels = cached }
-        do { labels = try await store.read("meal_labels", query) } catch { store.report(error) }
+        do { labels = try await store.read("meal_labels", query) } catch { store.report(error, as: "No se pudieron cargar las etiquetas — revisa tu conexión.") }
     }
 
     private func loadCatalog() async {
@@ -895,12 +895,12 @@ struct TodayView: View {
         store.logFood = nil
     }
 
-    private func run(_ action: @escaping () async throws -> Void) {
+    private func run(as message: String? = nil, _ action: @escaping () async throws -> Void) {
         guard !busy else { return }
         busy = true
         Task {
             defer { busy = false }
-            do { try await action() } catch { store.report(error) }
+            do { try await action() } catch { store.report(error, as: message) }
         }
     }
 
@@ -1598,7 +1598,7 @@ private struct MealTemplatesView: View {
                                 .font(.nutriSans(12)).foregroundStyle(palette.text3)
                         }
                         Spacer(minLength: 4)
-                        Button(store.tr("Añadir")) { run { try await apply(row) } }.buttonStyle(NutriButtonStyle(.primary, height: 40, radius: 8))
+                        Button(store.tr("Añadir")) { run(as: "Error al añadir.") { try await apply(row) } }.buttonStyle(NutriButtonStyle(.primary, height: 40, radius: 8))
                         Button(role: .destructive) { run { try await remove(row) } } label: { NutriIcon("trash-2", size: 18) }
                             .buttonStyle(NutriButtonStyle(.quiet, height: 40, horizontal: 8)).accessibilityLabel(store.tr("Borrar"))
                     }.padding(8).nutriCard(radius: 12, fill: .clear)
@@ -1619,12 +1619,12 @@ private struct MealTemplatesView: View {
         } footer: { EmptyView() }
     }
 
-    private func run(_ action: @escaping () async throws -> Void) {
+    private func run(as message: String? = nil, _ action: @escaping () async throws -> Void) {
         guard !busy else { return }
         busy = true
         Task {
             defer { busy = false }
-            do { try await action() } catch { store.report(error) }
+            do { try await action() } catch { store.report(error, as: message) }
         }
     }
 
@@ -1661,7 +1661,7 @@ private struct MealTemplatesView: View {
         let recipeIDs = Set(recipes.map { $0.text("id") })
         let items = template.array("items").compactMap(\.object)
         let valid = items.filter { foodIDs.contains($0.text("food_id")) || recipeIDs.contains($0.text("recipe_id")) }
-        guard !valid.isEmpty else { throw NutriError("Los alimentos o recetas de la plantilla ya no existen.") }
+        guard !valid.isEmpty else { throw NutriError("Las comidas de esta plantilla ya no existen.") }
         _ = try await store.insert("entries", valid.map { item in entryPayload(item).merging(["day": .string(day)]) { _, new in new } })
         let message = valid.count < items.count ? store.tr("%n añadidos · %m omitidos").replacingOccurrences(of: "%m", with: String(items.count - valid.count))
             : store.tr("%n registros copiados.")
@@ -1835,6 +1835,7 @@ private struct SummaryBottomKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
+// floor(x * f + 0.5) mirrors JS Math.round (half up), unlike Domain.round (SQL half away from zero).
 private func journalNumber(_ value: Double, digits: Int = 1) -> String {
     let factor = pow(10, Double(digits))
     let rounded = floor(value * factor + 0.5) / factor

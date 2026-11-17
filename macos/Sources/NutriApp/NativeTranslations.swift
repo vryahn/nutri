@@ -325,4 +325,6 @@ let nativeTranslations: [String: String] = [
     "mín/máx": "min/max",
     "Nutri para Mac está desactualizada respecto a la web. Recompílala e instálala con macos/scripts/build-app.sh e install-app.sh.": "Nutri for Mac is out of date with the web app. Rebuild and install it with macos/scripts/build-app.sh and install-app.sh.",
     "Tu sesión expiró. Vuelve a iniciar sesión.": "Your session expired. Sign in again.",
+    "No se pudo guardar la receta.": "Could not save the recipe.",
+    "No se pudo guardar la gráfica — reintenta.": "Could not save the chart — try again.",
 ]

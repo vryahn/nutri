@@ -75,7 +75,6 @@ export default function Foods() {
   // arrived from there); captured before the history state is cleared below.
   const fromToday = useRef(location.state?.from || null);
   const [toast, showToast] = useToast();
-  const [userId, setUserId] = useState(null);
   const [favs, setFavs] = useState([]); // prefs.data.fav_micros: micros promoted out of "Más micros"
   const [undoData, setUndoData] = useState(null); // { food, timer } after a deletion, for "Undo"
   const isLg = useIsLgUp();
@@ -93,9 +92,9 @@ export default function Foods() {
   async function toggleFav(key) {
     const next = favs.includes(key) ? favs.filter((k) => k !== key) : [...favs, key];
     setFavs(next);
-    // merge over the existing data so as not to overwrite water_glass_ml and other prefs
-    const { data } = await supabase.from('prefs').select('data').maybeSingle();
-    await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), fav_micros: next } });
+    // atomic merge: only fav_micros is written, water_glass_ml and other prefs are kept
+    const { error } = await supabase.rpc('merge_prefs', { patch: { fav_micros: next } });
+    if (error) showToast(t('Error al guardar.'));
   }
 
   function changeQuery(value) {
@@ -208,7 +207,6 @@ export default function Foods() {
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session || !mounted.current) return;
-      setUserId(session.user.id);
       const { data } = await supabase.from('prefs').select('data').maybeSingle();
       if (mounted.current && data?.data?.fav_micros) setFavs(data.data.fav_micros);
     });

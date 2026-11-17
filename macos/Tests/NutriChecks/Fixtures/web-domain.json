@@ -10013,6 +10013,1648 @@
         }
       ],
       "expected": null
+    },
+    {
+      "name": "evalRules: kcal_min above kcal_max clamps like web (max applied last)",
+      "fn": "evalRules",
+      "args": [
+        {
+          "targets": [
+            {
+              "owner": "u",
+              "dow": 0,
+              "valid_from": "2026-09-01",
+              "label": "F",
+              "description": null,
+              "goal": "mantenimiento",
+              "kcal": 2000,
+              "protein_g": 150,
+              "carbs_g": 220,
+              "fat_g": 60,
+              "micros": {},
+              "bounds": {},
+              "rules": {
+                "kcal_min": 2300,
+                "kcal_max": 2100,
+                "items": [
+                  {
+                    "id": "alto",
+                    "auto": false,
+                    "kind": "ritmo_alto",
+                    "value": 0.3,
+                    "weeks": 2,
+                    "delta_carbs_g": -25,
+                    "scope": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ]
+                  }
+                ]
+              },
+              "applied_rule": null
+            },
+            {
+              "owner": "u",
+              "dow": 1,
+              "valid_from": "2026-09-01",
+              "label": "F",
+              "description": null,
+              "goal": "mantenimiento",
+              "kcal": 2000,
+              "protein_g": 150,
+              "carbs_g": 220,
+              "fat_g": 60,
+              "micros": {},
+              "bounds": {},
+              "rules": {
+                "kcal_min": 2300,
+                "kcal_max": 2100,
+                "items": [
+                  {
+                    "id": "alto",
+                    "auto": false,
+                    "kind": "ritmo_alto",
+                    "value": 0.3,
+                    "weeks": 2,
+                    "delta_carbs_g": -25,
+                    "scope": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ]
+                  }
+                ]
+              },
+              "applied_rule": null
+            },
+            {
+              "owner": "u",
+              "dow": 2,
+              "valid_from": "2026-09-01",
+              "label": "F",
+              "description": null,
+              "goal": "mantenimiento",
+              "kcal": 2000,
+              "protein_g": 150,
+              "carbs_g": 220,
+              "fat_g": 60,
+              "micros": {},
+              "bounds": {},
+              "rules": {
+                "kcal_min": 2300,
+                "kcal_max": 2100,
+                "items": [
+                  {
+                    "id": "alto",
+                    "auto": false,
+                    "kind": "ritmo_alto",
+                    "value": 0.3,
+                    "weeks": 2,
+                    "delta_carbs_g": -25,
+                    "scope": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ]
+                  }
+                ]
+              },
+              "applied_rule": null
+            },
+            {
+              "owner": "u",
+              "dow": 3,
+              "valid_from": "2026-09-01",
+              "label": "F",
+              "description": null,
+              "goal": "mantenimiento",
+              "kcal": 2000,
+              "protein_g": 150,
+              "carbs_g": 220,
+              "fat_g": 60,
+              "micros": {},
+              "bounds": {},
+              "rules": {
+                "kcal_min": 2300,
+                "kcal_max": 2100,
+                "items": [
+                  {
+                    "id": "alto",
+                    "auto": false,
+                    "kind": "ritmo_alto",
+                    "value": 0.3,
+                    "weeks": 2,
+                    "delta_carbs_g": -25,
+                    "scope": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ]
+                  }
+                ]
+              },
+              "applied_rule": null
+            },
+            {
+              "owner": "u",
+              "dow": 4,
+              "valid_from": "2026-09-01",
+              "label": "F",
+              "description": null,
+              "goal": "mantenimiento",
+              "kcal": 2000,
+              "protein_g": 150,
+              "carbs_g": 220,
+              "fat_g": 60,
+              "micros": {},
+              "bounds": {},
+              "rules": {
+                "kcal_min": 2300,
+                "kcal_max": 2100,
+                "items": [
+                  {
+                    "id": "alto",
+                    "auto": false,
+                    "kind": "ritmo_alto",
+                    "value": 0.3,
+                    "weeks": 2,
+                    "delta_carbs_g": -25,
+                    "scope": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ]
+                  }
+                ]
+              },
+              "applied_rule": null
+            },
+            {
+              "owner": "u",
+              "dow": 5,
+              "valid_from": "2026-09-01",
+              "label": "F",
+              "description": null,
+              "goal": "mantenimiento",
+              "kcal": 2000,
+              "protein_g": 150,
+              "carbs_g": 220,
+              "fat_g": 60,
+              "micros": {},
+              "bounds": {},
+              "rules": {
+                "kcal_min": 2300,
+                "kcal_max": 2100,
+                "items": [
+                  {
+                    "id": "alto",
+                    "auto": false,
+                    "kind": "ritmo_alto",
+                    "value": 0.3,
+                    "weeks": 2,
+                    "delta_carbs_g": -25,
+                    "scope": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ]
+                  }
+                ]
+              },
+              "applied_rule": null
+            },
+            {
+              "owner": "u",
+              "dow": 6,
+              "valid_from": "2026-09-01",
+              "label": "F",
+              "description": null,
+              "goal": "mantenimiento",
+              "kcal": 2000,
+              "protein_g": 150,
+              "carbs_g": 220,
+              "fat_g": 60,
+              "micros": {},
+              "bounds": {},
+              "rules": {
+                "kcal_min": 2300,
+                "kcal_max": 2100,
+                "items": [
+                  {
+                    "id": "alto",
+                    "auto": false,
+                    "kind": "ritmo_alto",
+                    "value": 0.3,
+                    "weeks": 2,
+                    "delta_carbs_g": -25,
+                    "scope": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ]
+                  }
+                ]
+              },
+              "applied_rule": null
+            }
+          ],
+          "bodyMetrics": [
+            {
+              "day": "2026-11-16",
+              "metrics": {
+                "peso_kg": 81
+              }
+            },
+            {
+              "day": "2026-11-15",
+              "metrics": {
+                "peso_kg": 80.93
+              }
+            },
+            {
+              "day": "2026-11-14",
+              "metrics": {
+                "peso_kg": 80.86
+              }
+            },
+            {
+              "day": "2026-11-13",
+              "metrics": {
+                "peso_kg": 80.79
+              }
+            },
+            {
+              "day": "2026-11-12",
+              "metrics": {
+                "peso_kg": 80.71
+              }
+            },
+            {
+              "day": "2026-11-11",
+              "metrics": {
+                "peso_kg": 80.64
+              }
+            },
+            {
+              "day": "2026-11-10",
+              "metrics": {
+                "peso_kg": 80.57
+              }
+            },
+            {
+              "day": "2026-11-09",
+              "metrics": {
+                "peso_kg": 80.5
+              }
+            },
+            {
+              "day": "2026-11-08",
+              "metrics": {
+                "peso_kg": 80.43
+              }
+            },
+            {
+              "day": "2026-11-07",
+              "metrics": {
+                "peso_kg": 80.36
+              }
+            },
+            {
+              "day": "2026-11-06",
+              "metrics": {
+                "peso_kg": 80.29
+              }
+            },
+            {
+              "day": "2026-11-05",
+              "metrics": {
+                "peso_kg": 80.21
+              }
+            },
+            {
+              "day": "2026-11-04",
+              "metrics": {
+                "peso_kg": 80.14
+              }
+            },
+            {
+              "day": "2026-11-03",
+              "metrics": {
+                "peso_kg": 80.07
+              }
+            },
+            {
+              "day": "2026-11-02",
+              "metrics": {
+                "peso_kg": 80
+              }
+            },
+            {
+              "day": "2026-11-01",
+              "metrics": {
+                "peso_kg": 79.93
+              }
+            },
+            {
+              "day": "2026-10-31",
+              "metrics": {
+                "peso_kg": 79.86
+              }
+            },
+            {
+              "day": "2026-10-30",
+              "metrics": {
+                "peso_kg": 79.79
+              }
+            },
+            {
+              "day": "2026-10-29",
+              "metrics": {
+                "peso_kg": 79.71
+              }
+            },
+            {
+              "day": "2026-10-28",
+              "metrics": {
+                "peso_kg": 79.64
+              }
+            },
+            {
+              "day": "2026-10-27",
+              "metrics": {
+                "peso_kg": 79.57
+              }
+            },
+            {
+              "day": "2026-10-26",
+              "metrics": {
+                "peso_kg": 79.5
+              }
+            },
+            {
+              "day": "2026-10-25",
+              "metrics": {
+                "peso_kg": 79.43
+              }
+            },
+            {
+              "day": "2026-10-24",
+              "metrics": {
+                "peso_kg": 79.36
+              }
+            },
+            {
+              "day": "2026-10-23",
+              "metrics": {
+                "peso_kg": 79.29
+              }
+            },
+            {
+              "day": "2026-10-22",
+              "metrics": {
+                "peso_kg": 79.21
+              }
+            },
+            {
+              "day": "2026-10-21",
+              "metrics": {
+                "peso_kg": 79.14
+              }
+            },
+            {
+              "day": "2026-10-20",
+              "metrics": {
+                "peso_kg": 79.07
+              }
+            },
+            {
+              "day": "2026-10-19",
+              "metrics": {
+                "peso_kg": 79
+              }
+            },
+            {
+              "day": "2026-10-18",
+              "metrics": {
+                "peso_kg": 78.93
+              }
+            }
+          ],
+          "dailyTotals": [
+            {
+              "day": "2026-11-16",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-15",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-14",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-13",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-12",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-11",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-10",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-09",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-08",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-07",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-06",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-05",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-04",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-03",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-02",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-01",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-31",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-30",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-29",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-28",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-27",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-26",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-25",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-24",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-23",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-22",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-21",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-20",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-19",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-18",
+              "kcal": 2000
+            }
+          ],
+          "todayISO": "2026-11-16"
+        }
+      ],
+      "expected": {
+        "rule": "ritmo_alto",
+        "auto": false,
+        "why": {
+          "text": "+0.5 kg/sem × 2 sem · −25 g carbs",
+          "ritmoKgSem": 0.5,
+          "pctWk": null,
+          "ma7": 80.78571428571429,
+          "adherencePct": 0
+        },
+        "rows": [
+          {
+            "owner": "u",
+            "dow": 0,
+            "valid_from": "2026-11-17",
+            "label": "F",
+            "description": null,
+            "goal": "mantenimiento",
+            "kcal": 2000,
+            "protein_g": 150,
+            "carbs_g": 220,
+            "fat_g": 60,
+            "micros": {},
+            "bounds": {},
+            "rules": {
+              "kcal_min": 2300,
+              "kcal_max": 2100,
+              "items": [
+                {
+                  "id": "alto",
+                  "auto": false,
+                  "kind": "ritmo_alto",
+                  "value": 0.3,
+                  "weeks": 2,
+                  "delta_carbs_g": -25,
+                  "scope": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              ]
+            },
+            "applied_rule": "alto · +0.5 kg/sem × 2 sem · −25 g carbs"
+          },
+          {
+            "owner": "u",
+            "dow": 1,
+            "valid_from": "2026-11-17",
+            "label": "F",
+            "description": null,
+            "goal": "mantenimiento",
+            "kcal": 2100,
+            "protein_g": 150,
+            "carbs_g": 245,
+            "fat_g": 60,
+            "micros": {},
+            "bounds": {},
+            "rules": {
+              "kcal_min": 2300,
+              "kcal_max": 2100,
+              "items": [
+                {
+                  "id": "alto",
+                  "auto": false,
+                  "kind": "ritmo_alto",
+                  "value": 0.3,
+                  "weeks": 2,
+                  "delta_carbs_g": -25,
+                  "scope": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              ]
+            },
+            "applied_rule": "alto · +0.5 kg/sem × 2 sem · −25 g carbs"
+          },
+          {
+            "owner": "u",
+            "dow": 2,
+            "valid_from": "2026-11-17",
+            "label": "F",
+            "description": null,
+            "goal": "mantenimiento",
+            "kcal": 2100,
+            "protein_g": 150,
+            "carbs_g": 245,
+            "fat_g": 60,
+            "micros": {},
+            "bounds": {},
+            "rules": {
+              "kcal_min": 2300,
+              "kcal_max": 2100,
+              "items": [
+                {
+                  "id": "alto",
+                  "auto": false,
+                  "kind": "ritmo_alto",
+                  "value": 0.3,
+                  "weeks": 2,
+                  "delta_carbs_g": -25,
+                  "scope": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              ]
+            },
+            "applied_rule": "alto · +0.5 kg/sem × 2 sem · −25 g carbs"
+          },
+          {
+            "owner": "u",
+            "dow": 3,
+            "valid_from": "2026-11-17",
+            "label": "F",
+            "description": null,
+            "goal": "mantenimiento",
+            "kcal": 2100,
+            "protein_g": 150,
+            "carbs_g": 245,
+            "fat_g": 60,
+            "micros": {},
+            "bounds": {},
+            "rules": {
+              "kcal_min": 2300,
+              "kcal_max": 2100,
+              "items": [
+                {
+                  "id": "alto",
+                  "auto": false,
+                  "kind": "ritmo_alto",
+                  "value": 0.3,
+                  "weeks": 2,
+                  "delta_carbs_g": -25,
+                  "scope": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              ]
+            },
+            "applied_rule": "alto · +0.5 kg/sem × 2 sem · −25 g carbs"
+          },
+          {
+            "owner": "u",
+            "dow": 4,
+            "valid_from": "2026-11-17",
+            "label": "F",
+            "description": null,
+            "goal": "mantenimiento",
+            "kcal": 2100,
+            "protein_g": 150,
+            "carbs_g": 245,
+            "fat_g": 60,
+            "micros": {},
+            "bounds": {},
+            "rules": {
+              "kcal_min": 2300,
+              "kcal_max": 2100,
+              "items": [
+                {
+                  "id": "alto",
+                  "auto": false,
+                  "kind": "ritmo_alto",
+                  "value": 0.3,
+                  "weeks": 2,
+                  "delta_carbs_g": -25,
+                  "scope": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              ]
+            },
+            "applied_rule": "alto · +0.5 kg/sem × 2 sem · −25 g carbs"
+          },
+          {
+            "owner": "u",
+            "dow": 5,
+            "valid_from": "2026-11-17",
+            "label": "F",
+            "description": null,
+            "goal": "mantenimiento",
+            "kcal": 2100,
+            "protein_g": 150,
+            "carbs_g": 245,
+            "fat_g": 60,
+            "micros": {},
+            "bounds": {},
+            "rules": {
+              "kcal_min": 2300,
+              "kcal_max": 2100,
+              "items": [
+                {
+                  "id": "alto",
+                  "auto": false,
+                  "kind": "ritmo_alto",
+                  "value": 0.3,
+                  "weeks": 2,
+                  "delta_carbs_g": -25,
+                  "scope": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              ]
+            },
+            "applied_rule": "alto · +0.5 kg/sem × 2 sem · −25 g carbs"
+          },
+          {
+            "owner": "u",
+            "dow": 6,
+            "valid_from": "2026-11-17",
+            "label": "F",
+            "description": null,
+            "goal": "mantenimiento",
+            "kcal": 2000,
+            "protein_g": 150,
+            "carbs_g": 220,
+            "fat_g": 60,
+            "micros": {},
+            "bounds": {},
+            "rules": {
+              "kcal_min": 2300,
+              "kcal_max": 2100,
+              "items": [
+                {
+                  "id": "alto",
+                  "auto": false,
+                  "kind": "ritmo_alto",
+                  "value": 0.3,
+                  "weeks": 2,
+                  "delta_carbs_g": -25,
+                  "scope": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              ]
+            },
+            "applied_rule": "alto · +0.5 kg/sem × 2 sem · −25 g carbs"
+          }
+        ]
+      }
+    },
+    {
+      "name": "evalRules: two weigh-ins on the same day keep the last one",
+      "fn": "evalRules",
+      "args": [
+        {
+          "targets": [
+            {
+              "owner": "u",
+              "dow": 0,
+              "valid_from": "2026-09-01",
+              "label": "F",
+              "description": null,
+              "goal": "mantenimiento",
+              "kcal": 2000,
+              "protein_g": 150,
+              "carbs_g": 220,
+              "fat_g": 60,
+              "micros": {},
+              "bounds": {},
+              "rules": {
+                "items": [
+                  {
+                    "id": "alto",
+                    "auto": false,
+                    "kind": "ritmo_alto",
+                    "value": 0.3,
+                    "weeks": 2,
+                    "delta_carbs_g": -25,
+                    "scope": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ]
+                  }
+                ]
+              },
+              "applied_rule": null
+            },
+            {
+              "owner": "u",
+              "dow": 1,
+              "valid_from": "2026-09-01",
+              "label": "F",
+              "description": null,
+              "goal": "mantenimiento",
+              "kcal": 2000,
+              "protein_g": 150,
+              "carbs_g": 220,
+              "fat_g": 60,
+              "micros": {},
+              "bounds": {},
+              "rules": {
+                "items": [
+                  {
+                    "id": "alto",
+                    "auto": false,
+                    "kind": "ritmo_alto",
+                    "value": 0.3,
+                    "weeks": 2,
+                    "delta_carbs_g": -25,
+                    "scope": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ]
+                  }
+                ]
+              },
+              "applied_rule": null
+            },
+            {
+              "owner": "u",
+              "dow": 2,
+              "valid_from": "2026-09-01",
+              "label": "F",
+              "description": null,
+              "goal": "mantenimiento",
+              "kcal": 2000,
+              "protein_g": 150,
+              "carbs_g": 220,
+              "fat_g": 60,
+              "micros": {},
+              "bounds": {},
+              "rules": {
+                "items": [
+                  {
+                    "id": "alto",
+                    "auto": false,
+                    "kind": "ritmo_alto",
+                    "value": 0.3,
+                    "weeks": 2,
+                    "delta_carbs_g": -25,
+                    "scope": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ]
+                  }
+                ]
+              },
+              "applied_rule": null
+            },
+            {
+              "owner": "u",
+              "dow": 3,
+              "valid_from": "2026-09-01",
+              "label": "F",
+              "description": null,
+              "goal": "mantenimiento",
+              "kcal": 2000,
+              "protein_g": 150,
+              "carbs_g": 220,
+              "fat_g": 60,
+              "micros": {},
+              "bounds": {},
+              "rules": {
+                "items": [
+                  {
+                    "id": "alto",
+                    "auto": false,
+                    "kind": "ritmo_alto",
+                    "value": 0.3,
+                    "weeks": 2,
+                    "delta_carbs_g": -25,
+                    "scope": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ]
+                  }
+                ]
+              },
+              "applied_rule": null
+            },
+            {
+              "owner": "u",
+              "dow": 4,
+              "valid_from": "2026-09-01",
+              "label": "F",
+              "description": null,
+              "goal": "mantenimiento",
+              "kcal": 2000,
+              "protein_g": 150,
+              "carbs_g": 220,
+              "fat_g": 60,
+              "micros": {},
+              "bounds": {},
+              "rules": {
+                "items": [
+                  {
+                    "id": "alto",
+                    "auto": false,
+                    "kind": "ritmo_alto",
+                    "value": 0.3,
+                    "weeks": 2,
+                    "delta_carbs_g": -25,
+                    "scope": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ]
+                  }
+                ]
+              },
+              "applied_rule": null
+            },
+            {
+              "owner": "u",
+              "dow": 5,
+              "valid_from": "2026-09-01",
+              "label": "F",
+              "description": null,
+              "goal": "mantenimiento",
+              "kcal": 2000,
+              "protein_g": 150,
+              "carbs_g": 220,
+              "fat_g": 60,
+              "micros": {},
+              "bounds": {},
+              "rules": {
+                "items": [
+                  {
+                    "id": "alto",
+                    "auto": false,
+                    "kind": "ritmo_alto",
+                    "value": 0.3,
+                    "weeks": 2,
+                    "delta_carbs_g": -25,
+                    "scope": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ]
+                  }
+                ]
+              },
+              "applied_rule": null
+            },
+            {
+              "owner": "u",
+              "dow": 6,
+              "valid_from": "2026-09-01",
+              "label": "F",
+              "description": null,
+              "goal": "mantenimiento",
+              "kcal": 2000,
+              "protein_g": 150,
+              "carbs_g": 220,
+              "fat_g": 60,
+              "micros": {},
+              "bounds": {},
+              "rules": {
+                "items": [
+                  {
+                    "id": "alto",
+                    "auto": false,
+                    "kind": "ritmo_alto",
+                    "value": 0.3,
+                    "weeks": 2,
+                    "delta_carbs_g": -25,
+                    "scope": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ]
+                  }
+                ]
+              },
+              "applied_rule": null
+            }
+          ],
+          "bodyMetrics": [
+            {
+              "day": "2026-11-16",
+              "metrics": {
+                "peso_kg": 70
+              }
+            },
+            {
+              "day": "2026-11-16",
+              "metrics": {
+                "peso_kg": 81
+              }
+            },
+            {
+              "day": "2026-11-15",
+              "metrics": {
+                "peso_kg": 80.93
+              }
+            },
+            {
+              "day": "2026-11-14",
+              "metrics": {
+                "peso_kg": 80.86
+              }
+            },
+            {
+              "day": "2026-11-13",
+              "metrics": {
+                "peso_kg": 80.79
+              }
+            },
+            {
+              "day": "2026-11-12",
+              "metrics": {
+                "peso_kg": 80.71
+              }
+            },
+            {
+              "day": "2026-11-11",
+              "metrics": {
+                "peso_kg": 80.64
+              }
+            },
+            {
+              "day": "2026-11-10",
+              "metrics": {
+                "peso_kg": 80.57
+              }
+            },
+            {
+              "day": "2026-11-09",
+              "metrics": {
+                "peso_kg": 80.5
+              }
+            },
+            {
+              "day": "2026-11-08",
+              "metrics": {
+                "peso_kg": 80.43
+              }
+            },
+            {
+              "day": "2026-11-07",
+              "metrics": {
+                "peso_kg": 80.36
+              }
+            },
+            {
+              "day": "2026-11-06",
+              "metrics": {
+                "peso_kg": 80.29
+              }
+            },
+            {
+              "day": "2026-11-05",
+              "metrics": {
+                "peso_kg": 80.21
+              }
+            },
+            {
+              "day": "2026-11-04",
+              "metrics": {
+                "peso_kg": 80.14
+              }
+            },
+            {
+              "day": "2026-11-03",
+              "metrics": {
+                "peso_kg": 80.07
+              }
+            },
+            {
+              "day": "2026-11-02",
+              "metrics": {
+                "peso_kg": 80
+              }
+            },
+            {
+              "day": "2026-11-01",
+              "metrics": {
+                "peso_kg": 79.93
+              }
+            },
+            {
+              "day": "2026-10-31",
+              "metrics": {
+                "peso_kg": 79.86
+              }
+            },
+            {
+              "day": "2026-10-30",
+              "metrics": {
+                "peso_kg": 79.79
+              }
+            },
+            {
+              "day": "2026-10-29",
+              "metrics": {
+                "peso_kg": 79.71
+              }
+            },
+            {
+              "day": "2026-10-28",
+              "metrics": {
+                "peso_kg": 79.64
+              }
+            },
+            {
+              "day": "2026-10-27",
+              "metrics": {
+                "peso_kg": 79.57
+              }
+            },
+            {
+              "day": "2026-10-26",
+              "metrics": {
+                "peso_kg": 79.5
+              }
+            },
+            {
+              "day": "2026-10-25",
+              "metrics": {
+                "peso_kg": 79.43
+              }
+            },
+            {
+              "day": "2026-10-24",
+              "metrics": {
+                "peso_kg": 79.36
+              }
+            },
+            {
+              "day": "2026-10-23",
+              "metrics": {
+                "peso_kg": 79.29
+              }
+            },
+            {
+              "day": "2026-10-22",
+              "metrics": {
+                "peso_kg": 79.21
+              }
+            },
+            {
+              "day": "2026-10-21",
+              "metrics": {
+                "peso_kg": 79.14
+              }
+            },
+            {
+              "day": "2026-10-20",
+              "metrics": {
+                "peso_kg": 79.07
+              }
+            },
+            {
+              "day": "2026-10-19",
+              "metrics": {
+                "peso_kg": 79
+              }
+            },
+            {
+              "day": "2026-10-18",
+              "metrics": {
+                "peso_kg": 78.93
+              }
+            }
+          ],
+          "dailyTotals": [
+            {
+              "day": "2026-11-16",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-15",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-14",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-13",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-12",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-11",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-10",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-09",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-08",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-07",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-06",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-05",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-04",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-03",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-02",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-11-01",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-31",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-30",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-29",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-28",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-27",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-26",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-25",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-24",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-23",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-22",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-21",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-20",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-19",
+              "kcal": 2000
+            },
+            {
+              "day": "2026-10-18",
+              "kcal": 2000
+            }
+          ],
+          "todayISO": "2026-11-16"
+        }
+      ],
+      "expected": {
+        "rule": "ritmo_alto",
+        "auto": false,
+        "why": {
+          "text": "+0.5 kg/sem × 2 sem · −25 g carbs",
+          "ritmoKgSem": 0.5,
+          "pctWk": null,
+          "ma7": 80.78571428571429,
+          "adherencePct": 0
+        },
+        "rows": [
+          {
+            "owner": "u",
+            "dow": 0,
+            "valid_from": "2026-11-17",
+            "label": "F",
+            "description": null,
+            "goal": "mantenimiento",
+            "kcal": 2000,
+            "protein_g": 150,
+            "carbs_g": 220,
+            "fat_g": 60,
+            "micros": {},
+            "bounds": {},
+            "rules": {
+              "items": [
+                {
+                  "id": "alto",
+                  "auto": false,
+                  "kind": "ritmo_alto",
+                  "value": 0.3,
+                  "weeks": 2,
+                  "delta_carbs_g": -25,
+                  "scope": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              ]
+            },
+            "applied_rule": "alto · +0.5 kg/sem × 2 sem · −25 g carbs"
+          },
+          {
+            "owner": "u",
+            "dow": 1,
+            "valid_from": "2026-11-17",
+            "label": "F",
+            "description": null,
+            "goal": "mantenimiento",
+            "kcal": 1900,
+            "protein_g": 150,
+            "carbs_g": 195,
+            "fat_g": 60,
+            "micros": {},
+            "bounds": {},
+            "rules": {
+              "items": [
+                {
+                  "id": "alto",
+                  "auto": false,
+                  "kind": "ritmo_alto",
+                  "value": 0.3,
+                  "weeks": 2,
+                  "delta_carbs_g": -25,
+                  "scope": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              ]
+            },
+            "applied_rule": "alto · +0.5 kg/sem × 2 sem · −25 g carbs"
+          },
+          {
+            "owner": "u",
+            "dow": 2,
+            "valid_from": "2026-11-17",
+            "label": "F",
+            "description": null,
+            "goal": "mantenimiento",
+            "kcal": 1900,
+            "protein_g": 150,
+            "carbs_g": 195,
+            "fat_g": 60,
+            "micros": {},
+            "bounds": {},
+            "rules": {
+              "items": [
+                {
+                  "id": "alto",
+                  "auto": false,
+                  "kind": "ritmo_alto",
+                  "value": 0.3,
+                  "weeks": 2,
+                  "delta_carbs_g": -25,
+                  "scope": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              ]
+            },
+            "applied_rule": "alto · +0.5 kg/sem × 2 sem · −25 g carbs"
+          },
+          {
+            "owner": "u",
+            "dow": 3,
+            "valid_from": "2026-11-17",
+            "label": "F",
+            "description": null,
+            "goal": "mantenimiento",
+            "kcal": 1900,
+            "protein_g": 150,
+            "carbs_g": 195,
+            "fat_g": 60,
+            "micros": {},
+            "bounds": {},
+            "rules": {
+              "items": [
+                {
+                  "id": "alto",
+                  "auto": false,
+                  "kind": "ritmo_alto",
+                  "value": 0.3,
+                  "weeks": 2,
+                  "delta_carbs_g": -25,
+                  "scope": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              ]
+            },
+            "applied_rule": "alto · +0.5 kg/sem × 2 sem · −25 g carbs"
+          },
+          {
+            "owner": "u",
+            "dow": 4,
+            "valid_from": "2026-11-17",
+            "label": "F",
+            "description": null,
+            "goal": "mantenimiento",
+            "kcal": 1900,
+            "protein_g": 150,
+            "carbs_g": 195,
+            "fat_g": 60,
+            "micros": {},
+            "bounds": {},
+            "rules": {
+              "items": [
+                {
+                  "id": "alto",
+                  "auto": false,
+                  "kind": "ritmo_alto",
+                  "value": 0.3,
+                  "weeks": 2,
+                  "delta_carbs_g": -25,
+                  "scope": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              ]
+            },
+            "applied_rule": "alto · +0.5 kg/sem × 2 sem · −25 g carbs"
+          },
+          {
+            "owner": "u",
+            "dow": 5,
+            "valid_from": "2026-11-17",
+            "label": "F",
+            "description": null,
+            "goal": "mantenimiento",
+            "kcal": 1900,
+            "protein_g": 150,
+            "carbs_g": 195,
+            "fat_g": 60,
+            "micros": {},
+            "bounds": {},
+            "rules": {
+              "items": [
+                {
+                  "id": "alto",
+                  "auto": false,
+                  "kind": "ritmo_alto",
+                  "value": 0.3,
+                  "weeks": 2,
+                  "delta_carbs_g": -25,
+                  "scope": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              ]
+            },
+            "applied_rule": "alto · +0.5 kg/sem × 2 sem · −25 g carbs"
+          },
+          {
+            "owner": "u",
+            "dow": 6,
+            "valid_from": "2026-11-17",
+            "label": "F",
+            "description": null,
+            "goal": "mantenimiento",
+            "kcal": 2000,
+            "protein_g": 150,
+            "carbs_g": 220,
+            "fat_g": 60,
+            "micros": {},
+            "bounds": {},
+            "rules": {
+              "items": [
+                {
+                  "id": "alto",
+                  "auto": false,
+                  "kind": "ritmo_alto",
+                  "value": 0.3,
+                  "weeks": 2,
+                  "delta_carbs_g": -25,
+                  "scope": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ]
+                }
+              ]
+            },
+            "applied_rule": "alto · +0.5 kg/sem × 2 sem · −25 g carbs"
+          }
+        ]
+      }
     }
   ]
 }

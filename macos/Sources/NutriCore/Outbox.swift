@@ -48,10 +48,8 @@ public struct EntryOutbox {
 
     public mutating func update(_ id: String, patch: Record, row: Record) throws {
         var next = operations
-        if let last = next.lastIndex(where: { $0.entryID == id }), next[last].kind == .insert, !next[last].attempted {
-            next[last].payload.merge(patch) { _, new in new }
-            next[last].row = row
-        } else if let last = next.indices.last, next[last].entryID == id, next[last].kind == .update, !next[last].attempted {
+        // Like web: merge into the LAST op for this entry (any queue position) while it is unattempted.
+        if let last = next.lastIndex(where: { $0.entryID == id }), next[last].kind != .delete, !next[last].attempted {
             next[last].payload.merge(patch) { _, new in new }
             next[last].row = row
         } else {

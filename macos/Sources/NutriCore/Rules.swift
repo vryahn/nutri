@@ -78,7 +78,7 @@ public func phaseProposal(targets: [Record], phase: [Record], body: [Record], to
     let config = normalizedRules(first.object("rules"))
     guard config.text("paused_until") < todayKey else { return nil }
     let transition = config.object("transition").text("kind") == "coupled_band"
-    let weights = Dictionary(body.compactMap { row in row.object("metrics").number("peso_kg").map { (row.text("day"), $0) } }, uniquingKeysWith: { first, _ in first })
+    let weights = Dictionary(body.compactMap { row in row.object("metrics").number("peso_kg").map { (row.text("day"), $0) } }, uniquingKeysWith: { _, last in last })
     let energy = Dictionary(totals.compactMap { row in row.number("kcal").map { (row.text("day"), $0) } }, uniquingKeysWith: { first, _ in first })
 
     func dateKey(_ daysAgo: Int) -> String { Day.key(addingDays(-daysAgo, to: today)) }

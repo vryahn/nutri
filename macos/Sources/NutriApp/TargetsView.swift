@@ -598,6 +598,12 @@ struct TargetsView: View {
         }
     }
 
+    /// Web `friendly()`: duplicate key (23505) -> the specific message, otherwise the server's own message.
+    private func friendly<T>(_ dup: String, _ work: () async throws -> T) async throws -> T {
+        do { return try await work() }
+        catch let error as NutriError where error.code == "23505" { throw FeatureError(store.tr(dup)) }
+    }
+
     private func save(_ input: PhaseDraft, newVersion: Bool) async throws {
         guard let owner = store.owner else { throw FeatureError("Sesión requerida.") }
         let key = Day.key(input.date)
@@ -607,29 +613,29 @@ struct TargetsView: View {
             record["label"] = optionalText(input.label)
             if input.recordID.isEmpty {
                 record["owner"] = .string(owner)
-                _ = try await store.insert("targets", record)
+                _ = try await friendly("Ya existe una fecha específica para ese día.") { try await store.insert("targets", record) }
             } else {
-                _ = try await store.update("targets", ["id": "eq.\(input.recordID)"], record)
+                _ = try await friendly("Ya existe una fecha específica para ese día.") { try await store.update("targets", ["id": "eq.\(input.recordID)"], record) }
             }
         } else if input.kind == .history, let original = input.original {
             _ = try await store.update("targets", phaseFilter(original), ["goal": optionalText(input.goal)])
         } else {
             if input.kind == .new || input.kind == .scheduled || newVersion {
                 guard key == input.original && !newVersion || byStart[key] == nil else {
-                    throw FeatureError("Ya existe una fase que aplica desde esa fecha.")
+                    throw FeatureError(store.tr(newVersion ? "Ya existe una fase que aplica desde hoy." : "Ya existe una fase que aplica desde esa fecha."))
                 }
             }
             let validFrom = input.kind == .current && !newVersion ? (input.original ?? key) : key
             let payload = try phasePayload(input, owner: owner, validFrom: validFrom)
             if input.kind == .current && !newVersion {
-                _ = try await store.upsert("targets", payload, onConflict: "owner,dow,valid_from")
+                _ = try await friendly("No se pudo corregir la fase.") { try await store.upsert("targets", payload, onConflict: "owner,dow,valid_from") }
             } else if let original = input.original, !newVersion {
-                _ = try await store.rpc("replace_phase_atomic", [
+                _ = try await friendly("No se pudo guardar la fase.") { try await store.rpc("replace_phase_atomic", [
                     "p_old_valid_from": .string(original), "p_new_valid_from": .string(validFrom),
                     "p_rows": .array(payload.map(JSONValue.object))
-                ])
+                ]) }
             } else {
-                _ = try await store.insert("targets", payload)
+                _ = try await friendly(newVersion ? "Ya existe una fase que aplica desde hoy." : "Ya existe una fase que aplica desde esa fecha.") { try await store.insert("targets", payload) }
             }
         }
         await reload()
@@ -982,7 +988,7 @@ private struct TargetDecisionSheet: View {
                     var outgoing = input
                     if version { outgoing.date = Date(); outgoing.rules = [:] }
                     try await onSave(outgoing, version)
-                } catch { self.error = error.localizedDescription }
+                } catch { self.error = store.tr(error.localizedDescription) }
             }
         } label: {
             VStack(alignment: .leading, spacing: 4) {
@@ -1135,7 +1141,7 @@ private struct PhaseEditor: View {
             do {
                 try await onSave(draft, false)
                 onClose()
-            } catch { self.error = error.localizedDescription }
+            } catch { self.error = store.tr(error.localizedDescription) }
         }
     }
 }
@@ -1276,7 +1282,7 @@ private struct TargetRulesSheet: View {
                             busy = true
                             defer { busy = false }
                             do { try await onSave(normalizedRules(rules)) }
-                            catch { self.error = error.localizedDescription }
+                            catch { self.error = store.failure(error, "No se pudieron guardar las reglas.") }
                         }
                     } label: {
                         Text(store.tr(busy ? "Guardando…" : "Guardar")).frame(maxWidth: .infinity)
@@ -1849,7 +1855,7 @@ private struct TargetWizard: View {
                 }
                 try await onSave(phase, exceptions, confirmed)
                 saved = true
-            } catch { self.error = error.localizedDescription }
+            } catch { self.error = store.failure(error, "No se pudo guardar la fase.") }
         }
     }
 }

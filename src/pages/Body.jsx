@@ -81,9 +81,8 @@ export default function Body() {
   async function toggleFav(key) {
     const next = favs.includes(key) ? favs.filter((k) => k !== key) : [...favs, key];
     setFavs(next);
-    if (!userId) return;
-    const { data } = await supabase.from('prefs').select('data').maybeSingle();
-    await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), fav_body: next } });
+    const { error } = await supabase.rpc('merge_prefs', { patch: { fav_body: next } });
+    if (error) showToast(t('Error al guardar.'));
   }
 
   // Publishes "Importar" in the layout's "Más opciones" menu (same pattern as Today).

@@ -771,7 +771,7 @@ struct DashboardView: View {
                 let label = store.tr("%n fases de %s · %d días.").replacingOccurrences(of: "%n", with: String(selectedPhases.count))
                     .replacingOccurrences(of: "%s", with: phaseLabel).replacingOccurrences(of: "%d", with: String(period.dates.count))
                 Text(label + " " + store.tr("Sin comparación vs periodo previo")).font(.nutriSans(12)).foregroundStyle(palette.text3)
-                    .help(store.tr("No hay periodo anterior con qué comparar: los días antes del %n eran de otra fase, con otros objetivos.")
+                    .nutriHint(store.tr("No hay periodo anterior con qué comparar: los días antes del %n eran de otra fase, con otros objetivos.")
                         .replacingOccurrences(of: "%n", with: period.start))
             }
             if preset == "Personalizado" {
@@ -810,7 +810,7 @@ struct DashboardView: View {
                     .buttonStyle(NutriButtonStyle(.primary)).disabled(!rollingEnd && start > end)
             }
             if !rollingEnd && start > end {
-                Text(store.tr("La fecha de inicio no puede ser posterior al fin.")).foregroundStyle(palette.warn)
+                Text(store.tr("La fecha de inicio va después del fin.")).foregroundStyle(palette.warn)
             }
             if let editingRange, let saved = ranges.first(where: { $0.id == editingRange }) {
                 Button(store.tr("Cancelar")) { applyRange(saved) }
@@ -911,7 +911,7 @@ struct DashboardView: View {
                 ForEach([DashboardCalculation.sum, .average]) { mode in
                     let reason = data.disabledReason(mode, translate: store.tr)
                     dashboardPill(store.tr(mode.label), selected: activeCalculation == mode) { calculation = mode }
-                        .disabled(reason != nil).opacity(reason == nil ? 1 : 0.5).help(reason ?? "")
+                        .disabled(reason != nil).opacity(reason == nil ? 1 : 0.5).nutriHint(reason)
                 }
                 dashboardPill(store.tr("Avanzadas") + (advancedOpen ? " ▴" : " ▾"), selected: activeCalculation.minimum > 1) {
                     advancedOpen.toggle()
@@ -993,7 +993,7 @@ struct DashboardView: View {
                 ForEach(macros) { row in
                     VStack(spacing: 4) {
                         Text(display(row)).font(.nutriMono(windowWidth >= 640 ? 18 : 14)).foregroundStyle(palette.nutrient(row.id))
-                            .help(displayHint(row, data: data) ?? "")
+                            .nutriHint(displayHint(row, data: data))
                         if !displayDetail(row).isEmpty {
                             Text(displayDetail(row)).font(.nutriMono(12)).foregroundStyle(palette.text3)
                         }
@@ -1027,7 +1027,7 @@ struct DashboardView: View {
     }
 
     private func infoHint(_ text: String) -> some View {
-        Text("ⓘ").help(text).accessibilityLabel(text)
+        NutriHintButton(text: text) { Text("ⓘ") }
     }
 
     private func display(_ row: DashboardSummary) -> String {
@@ -1058,7 +1058,9 @@ struct DashboardView: View {
 
     private func displayHint(_ row: DashboardSummary, data: DashboardSnapshot) -> String? {
         if row.coverage == .partial {
-            return store.tr("Faltan valores de este nutriente en algunos alimentos; la suma observada no prueba cumplimiento.")
+            return store.tr(activeCalculation == .bayes
+                ? "Cobertura parcial: faltan valores de este nutriente en algunos alimentos."
+                : "Faltan valores de este nutriente en algunos alimentos; la suma observada no prueba cumplimiento.")
         }
         if let hint = row.hint { return store.tr(hint) }
         guard activeCalculation == .bayes, row.bayesCount != nil else { return nil }
@@ -1319,7 +1321,7 @@ struct DashboardView: View {
             VStack(alignment: .leading, spacing: 0) {
                 microColumns(store.tr("Nutriente"), value: store.tr(activeCalculation.column), detail: nil,
                              objective: store.tr("Objetivo"), ratio: "%", tint: palette.text3, header: true)
-                    .help(activeCalculation.minimum > 1 && activeCalculation != .bayes ? phaseHint(data) ?? "" : "")
+                    .nutriHint(activeCalculation.minimum > 1 && activeCalculation != .bayes ? phaseHint(data) : nil)
                 ForEach(visible) { summaryRow(dashboardSummary($0, mode: activeCalculation, data: data, bands: bands), data: data) }
                 if !hidden.isEmpty {
                     DisclosureGroup(store.tr("Más micros (%n)").replacingOccurrences(of: "%n", with: String(hidden.count)), isExpanded: $showOtherMicros) {
@@ -1357,7 +1359,7 @@ struct DashboardView: View {
             Rectangle().fill(palette.border).frame(height: 1)
             microColumns(store.tr(row.variable.label), value: display(row) + (coverage == nil ? "" : " ⚠"), detail: detail.isEmpty ? nil : detail,
                          objective: objective, ratio: pct, tint: tint, header: false)
-                .help([displayHint(row, data: data), coverage, missing ? store.tr("Aún no tienes objetivo para este nutriente. Ponlo en la pestaña Metas.") : nil]
+                .nutriHint([displayHint(row, data: data), coverage, missing ? store.tr("Aún no tienes objetivo para este nutriente. Ponlo en la pestaña Metas.") : nil]
                     .compactMap { $0 }.joined(separator: "\n"))
         }
     }
@@ -1535,7 +1537,7 @@ struct DashboardView: View {
             var rows = dashboardRows
             guard rows.indices.contains(index) else { return }
             rows.remove(at: index)
-            do { try await saveCharts(rows) } catch { store.report(error) }
+            do { try await saveCharts(rows) } catch { store.report(error, as: "No se pudo guardar la gráfica — reintenta.") }
         }
     }
 
@@ -1544,7 +1546,7 @@ struct DashboardView: View {
             var rows = dashboardRows
             guard rows.indices.contains(index), rows.indices.contains(to) else { return }
             rows.swapAt(index, to)
-            do { try await saveCharts(rows) } catch { store.report(error) }
+            do { try await saveCharts(rows) } catch { store.report(error, as: "No se pudo guardar la gráfica — reintenta.") }
         }
     }
 
@@ -1760,7 +1762,7 @@ private struct DashboardKPI: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.nutriSans(12)).foregroundStyle(palette.text3)
             Text(value).font(.nutriMono(18)).foregroundStyle(color)
-                .help(hint ?? "")
+                .nutriHint(hint)
             if !detail.isEmpty { Text(detail).font(.nutriMono(11)).foregroundStyle(palette.text3) }
             if let delta {
                 let value = draftNumber(webRound(delta, digits: 0))
@@ -1972,7 +1974,7 @@ private struct DashboardChartEditor: View {
                     do {
                         try await onSave(draft.record(title: defaultTitle))
                         close()
-                    } catch { self.error = error.localizedDescription }
+                    } catch { self.error = store.failure(error, "No se pudo guardar la gráfica — reintenta.") }
                 }
             } label: {
                 Text(store.tr("Guardar gráfica")).frame(maxWidth: .infinity)
@@ -1992,7 +1994,7 @@ private struct DashboardChartEditor: View {
     private func hint(_ text: String, replacing: String = "", with value: String = "") -> some View {
         let localized = store.tr(text)
         let content = replacing.isEmpty ? localized : localized.replacingOccurrences(of: replacing, with: value)
-        return Text("ⓘ").font(.nutriSans(12)).foregroundStyle(palette.text3).help(content).accessibilityLabel(content)
+        return NutriHintButton(text: content) { Text("ⓘ").font(.nutriSans(12)).foregroundStyle(palette.text3) }
     }
 
     private func segments(_ values: [(String, String)], selected: String, disabled: Set<String> = [], action: @escaping (String) -> Void) -> some View {
@@ -2004,7 +2006,7 @@ private struct DashboardChartEditor: View {
                         .foregroundStyle(selected == key ? palette.bg : palette.text2)
                         .background(selected == key ? palette.accent : .clear, in: RoundedRectangle(cornerRadius: 8))
                 }.buttonStyle(.plain).disabled(disabled.contains(key)).opacity(disabled.contains(key) ? 0.45 : 1)
-                    .help(disabled.contains(key) ? store.tr("Sumar medidas no tiene sentido; usa Promedio o Mediana") : "")
+                    .nutriHint(disabled.contains(key) ? store.tr("Sumar medidas no tiene sentido; usa Promedio o Mediana") : nil)
                     .accessibilityAddTraits(selected == key ? .isSelected : [])
             }
         }.padding(4).nutriCard(radius: 12, fill: palette.surface2)
@@ -2022,7 +2024,7 @@ private struct DashboardChartEditor: View {
                 .foregroundStyle(selected ? palette.text : reason == nil ? palette.text2 : palette.text3)
                 .background(selected ? palette.surface3 : palette.surface2, in: RoundedRectangle(cornerRadius: 8))
                 .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? palette.accent : palette.border) }
-        }.buttonStyle(.plain).disabled(reason != nil).opacity(reason == nil ? 1 : 0.45).help(reason ?? "")
+        }.buttonStyle(.plain).disabled(reason != nil).opacity(reason == nil ? 1 : 0.45).nutriHint(reason)
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
@@ -2266,6 +2268,7 @@ private func dashboardCSV(_ rows: [[String]]) -> String {
     }.joined(separator: "\n")
 }
 
+// Mirrors JS Math.round (half up), unlike Domain.round (SQL half away from zero).
 private func webRound(_ value: Double, digits: Int) -> Double {
     let scale = pow(10.0, Double(digits))
     return floor(value * scale + 0.5) / scale
@@ -3191,7 +3194,7 @@ private struct DashboardHeatmap: View {
                             RoundedRectangle(cornerRadius: min(4, square / 3))
                                 .fill(fill).opacity(partial ? 0.5 : 1)
                                 .frame(width: square, height: square)
-                                .help(hint).accessibilityLabel(hint)
+                                .nutriHint(hint).accessibilityLabel(hint)
                         } else {
                             Color.clear.frame(width: square, height: square).accessibilityHidden(true)
                         }

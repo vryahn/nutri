@@ -100,6 +100,8 @@ public enum Domain {
         language == "en" ? contracts.strings[spanish] ?? spanish : spanish
     }
 
+    /// Decimal half-away-from-zero, matching SQL `round()` for previews of values the DB views compute.
+    /// Display spots that mirror web `Math.round` (half up) use `floor(x * f + 0.5) / f` instead: webRound (Dashboard), journalNumber (Today).
     public static func round(_ value: Double, _ digits: Int) -> Double {
         quantize(decimal(value), digits)
     }

@@ -160,7 +160,7 @@ struct BodyImportRow: Identifiable {
             let unique = !valid || days.insert(date).inserted
             if !unique { warnings.append("Fecha repetida") }
             let value = valid && unique ? Self(day: date, metrics: metrics, note: note, warnings: warnings) : nil
-            return (value, CatalogCSVRow(label: (date.isEmpty ? "—" : date) + " · \(count)", suffix: "medidas", warnings: warnings, valid: value != nil))
+            return (value, CatalogCSVRow(label: date.isEmpty ? "—" : date, suffix: "%n medidas", count: count, warnings: warnings, valid: value != nil))
         }
     }
 
@@ -331,7 +331,7 @@ struct BodyView: View {
                 Text(store.tr("Medidas del día")).foregroundStyle(palette.text3)
                 Spacer()
                 if !message.isEmpty {
-                    Text(message).font(.nutriSans(12)).foregroundStyle(palette.danger).lineLimit(1).help(message)
+                    Text(message).font(.nutriSans(12)).foregroundStyle(palette.danger).lineLimit(1).nutriHint(message)
                 } else if savedFlash {
                     Text(store.tr("Guardado.")).font(.nutriSans(12)).foregroundStyle(palette.accent)
                 }
@@ -376,8 +376,9 @@ struct BodyView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 4) {
                             Text(store.tr(metric.label))
-                            NutriIcon("circle-help", size: 12)
-                                .help("\(store.tr(metric.label)) = \(store.tr(formulas[metric.key] ?? ""))")
+                            NutriHintButton(text: "\(store.tr(metric.label)) = \(store.tr(formulas[metric.key] ?? ""))") {
+                                NutriIcon("circle-help", size: 12)
+                            }
                         }.font(.nutriSans(12)).foregroundStyle(palette.text3)
                         HStack {
                             Text(derived.number(metric.key).map { numberText($0) } ?? "–").font(.nutriSans(16)).monospacedDigit().foregroundStyle(palette.text2)
@@ -402,7 +403,7 @@ struct BodyView: View {
             HStack(spacing: 4) {
                 Text(store.tr(metric.label))
                 if let max = metric.max, let value = decimal(values[metric.key] ?? ""), value > max {
-                    NutriIcon("triangle-alert", size: 12).foregroundStyle(palette.danger).help(store.tr("Valor fuera de rango — revísalo"))
+                    NutriIcon("triangle-alert", size: 12).foregroundStyle(palette.danger).nutriHint(store.tr("Valor fuera de rango — revísalo"))
                 }
                 Spacer(minLength: 0)
                 if star {
@@ -875,7 +876,7 @@ struct BodyView: View {
             await loadDay()
             await refreshHistory()
             store.toast(store.tr("%n días importados.").replacingOccurrences(of: "%n", with: String(payload.count)))
-        } catch { importError = error.localizedDescription }
+        } catch { importError = store.failure(error, "Error al importar.", networkOnly: true) }
     }
 }
 

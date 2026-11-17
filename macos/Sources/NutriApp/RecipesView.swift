@@ -757,7 +757,7 @@ private struct RecipeEditor: View {
             do {
                 if loadingCatalog { await loadCatalog() }
                 try await estimateRecipe()
-            } catch { aiError = error.localizedDescription }
+            } catch { aiError = store.failure(error, "No se pudo obtener datos. Revisa la conexión o intenta con otra descripción/foto.", networkOnly: true) }
         }
     }
 
@@ -918,17 +918,20 @@ private struct RecipeEditor: View {
         return body
     }
 
-    private func persistIngredient(_ id: UUID) async throws {
+    private func persistIngredient(_ id: UUID, failure: String = "No se pudo guardar el alimento. Intenta de nuevo.") async throws {
         guard let index = draft.ingredients.firstIndex(where: { $0.id == id }), draft.ingredients[index].staged else { return }
         let row = draft.ingredients[index].food
         let payload = try stagedPayload(row)
         let saved: Record
-        do { saved = try await store.insert("foods", payload) }
-        catch let error as NutriError where error.code == "23505" {
-            let existing = try await store.read("foods", ["id": "eq.\(row.text("id"))"])
-            guard let food = existing.first, food.text("owner") == store.owner else { throw error }
-            saved = food
-        }
+        do {
+            do { saved = try await store.insert("foods", payload) }
+            catch let error as NutriError where error.code == "23505" {
+                let existing = try await store.read("foods", ["id": "eq.\(row.text("id"))"])
+                guard let food = existing.first, food.text("owner") == store.owner else { throw error }
+                saved = food
+            }
+        } catch is CancellationError { throw CancellationError() }
+        catch { throw FeatureError(store.failure(error, failure)) }
         draft.ingredients[index].food = saved
         draft.ingredients[index].staged = false
         foods.append(saved)
@@ -952,7 +955,7 @@ private struct RecipeEditor: View {
             }
             if row.staged { _ = try stagedPayload(row.food) }
         }
-        for id in draft.ingredients.filter(\.staged).map(\.id) { try await persistIngredient(id) }
+        for id in draft.ingredients.filter(\.staged).map(\.id) { try await persistIngredient(id, failure: "No se pudo crear un alimento nuevo. Intenta de nuevo.") }
         let gramsByID = draft.ingredients.reduce(into: [String: Double]()) { items, row in
             if let grams = row.grams { items[row.food.text("id"), default: 0] += grams }
         }
@@ -961,7 +964,10 @@ private struct RecipeEditor: View {
         }
         let row: Record = ["id": .string(draft.recordID), "name": .string(name), "cooked_weight_g": cooked.map(JSONValue.number) ?? .null,
                            "portions": .array(portions), "source": .string(draft.source)]
-        let response = try await store.rpc("save_recipe_atomic", recipePayload(row, items: items))
+        let response: JSONValue
+        do { response = try await store.rpc("save_recipe_atomic", recipePayload(row, items: items)) }
+        catch is CancellationError { throw CancellationError() }
+        catch { throw FeatureError(store.failure(error, "No se pudo guardar la receta.", networkOnly: true)) }
         guard response.string?.isEmpty == false else { throw FeatureError("El servidor no identificó la receta guardada.") }
         await onSaved()
     }

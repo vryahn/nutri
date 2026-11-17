@@ -582,7 +582,7 @@ struct FoodsView: View {
             importReview = false
             store.toast(store.tr("%n alimentos importados.").replacingOccurrences(of: "%n", with: String(saved.count)))
             await reload()
-        } catch { importError = error.localizedDescription }
+        } catch { importError = store.failure(error, "Error al importar.", networkOnly: true) }
     }
 
     private func exportTemplate() {
@@ -934,7 +934,7 @@ private struct FoodEditor: View {
         Task {
             defer { busy = false }
             do { try await onSave(draft, reviewed, log) }
-            catch { self.error = error.localizedDescription }
+            catch { self.error = store.failure(error, "Error al guardar.") }
         }
     }
 
@@ -950,7 +950,7 @@ private struct FoodEditor: View {
         Task {
             defer { lookupBusy = false }
             do { try await lookupNutrition() }
-            catch { self.lookupError = error.localizedDescription }
+            catch { self.lookupError = store.failure(error, "No se pudo obtener datos. Revisa la conexión o intenta con otra descripción/foto.", networkOnly: true) }
         }
     }
 
@@ -1079,6 +1079,7 @@ private func fillFood(_ preferred: Record, with fallback: Record, requiredOnly: 
 struct CatalogCSVRow {
     let label: String
     var suffix = ""
+    var count: Int? = nil  // substituted for %n in the translated suffix, like web "%n medidas"
     let warnings: [String]
     let valid: Bool
 }
@@ -1100,7 +1101,7 @@ struct CatalogCSVPreview: View {
                     ForEach(rows.indices, id: \.self) { index in
                         let row = rows[index]
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(row.label + (row.suffix.isEmpty ? "" : " " + store.tr(row.suffix))).lineLimit(1)
+                            Text(row.label + (row.suffix.isEmpty ? "" : (row.count == nil ? " " : " · ") + store.tr(row.suffix).replacingOccurrences(of: "%n", with: row.count.map(String.init) ?? ""))).lineLimit(1)
                             Spacer(minLength: 0)
                             if !row.warnings.isEmpty {
                                 NutriIcon("triangle-alert", size: 13).foregroundStyle(palette.warn)

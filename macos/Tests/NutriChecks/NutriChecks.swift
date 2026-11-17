@@ -295,6 +295,23 @@ struct NutriChecks {
         try restarted.insert(unsent, row: unsent)
         try restarted.delete(second, row: unsent)
         try require(!restarted.operations.contains { $0.entryID == second }, "Never-sent insert can be canceled")
+        // Coalescing: update A, insert B, update A again -> 2 ops, A's patch merged; once attempted, a further update appends.
+        let root2 = root.appendingPathComponent("coalesce")
+        var q2 = try EntryOutbox(directory: root2, owner: owner)
+        let idA = UUID().uuidString, idB = UUID().uuidString
+        let rowA: Record = ["id": .string(idA), "grams": .number(10)]
+        let rowB: Record = ["id": .string(idB), "grams": .number(20)]
+        try q2.update(idA, patch: ["grams": .number(11)], row: rowA)
+        try q2.insert(rowB, row: rowB)
+        try q2.update(idA, patch: ["grams": .number(12), "meal_label_id": .string("L")], row: rowA)
+        try require(q2.operations.count == 2 && q2.operations[0].entryID == idA
+                    && q2.operations[0].payload.number("grams") == 12 && q2.operations[0].payload["meal_label_id"] == .string("L"),
+                    "Non-adjacent updates for the same entry coalesce")
+        guard let sentA = try q2.begin() else { throw CheckError.failure("Queue lost update.") }
+        try q2.update(idA, patch: ["grams": .number(13)], row: rowA)
+        try require(q2.operations.count == 3 && q2.operations[0].payload.number("grams") == 12 && q2.operations[2].payload.number("grams") == 13,
+                    "Update after attempted op appends")
+        _ = sentA
         let cacheA = try AccountCache(root: root, owner: owner)
         let cacheB = try AccountCache(root: root, owner: other)
         let key = AccountCache.key("entry_nutrients", ["day": "eq." + day])

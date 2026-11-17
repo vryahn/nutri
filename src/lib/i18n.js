@@ -1045,13 +1045,11 @@ export function getLang() {
   return lang;
 }
 
-// Patch-merge over prefs.data: it is a jsonb shared with other prefs
-// (water_glass_ml, today_view, …), so a direct upsert with only
-// { lang } would erase them.
+// Atomic patch-merge over prefs.data (merge_prefs RPC): it is a jsonb shared with
+// other prefs (water_glass_ml, today_view, …), so only the patch's keys are written.
 export async function persistPrefsKey(key, value) {
   if (!userId) return;
-  const { data } = await supabase.from('prefs').select('data').maybeSingle();
-  await supabase.from('prefs').upsert({ owner: userId, data: { ...(data?.data || {}), [key]: value } });
+  await supabase.rpc('merge_prefs', { patch: { [key]: value } });
 }
 
 export function setLang(next, { persist = true } = {}) {

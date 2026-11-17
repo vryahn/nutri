@@ -233,3 +233,28 @@ struct NutriModalVisibleKey: PreferenceKey {
     static let defaultValue = false
     static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
+
+extension View {
+    /// Hover tooltip plus VoiceOver hint, so a Hint cause is reachable without a mouse (web Hint: hover + tap).
+    func nutriHint(_ text: String?) -> some View {
+        help(text ?? "").accessibilityHint(text ?? "")
+    }
+}
+
+/// Icon that exists only to show a hint: click/tap (or VoiceOver press) toggles a popover, hover shows the tooltip.
+struct NutriHintButton<Label: View>: View {
+    let text: String
+    @ViewBuilder let label: () -> Label
+    @State private var shown = false
+
+    var body: some View {
+        Button { shown.toggle() } label: { label() }
+            .buttonStyle(.plain)
+            .help(text)
+            .accessibilityLabel(text)
+            .popover(isPresented: $shown) {
+                Text(text).font(.nutriSans(13)).fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 260, alignment: .leading).padding(12)
+            }
+    }
+}
