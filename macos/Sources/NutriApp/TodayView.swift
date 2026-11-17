@@ -604,7 +604,7 @@ struct TodayView: View {
         let selected = editingInline && editor?.id.contains(id) == true
         return HStack(spacing: 12) {
             Button { editor = .entry(row, label, nil, nil) } label: {
-                HStack(spacing: 12) {
+                entryLayout {
                     VStack(alignment: .leading, spacing: 2) {
                         (Text(row.text("item")).font(.nutriSans(16, weight: .medium))
                          + Text(row.text("brand").isEmpty ? "" : "  " + row.text("brand"))
@@ -619,7 +619,9 @@ struct TodayView: View {
                         }
                         .font(.nutriMono(14)).foregroundStyle(palette.text2)
                     }
+                    #if os(macOS)
                     Spacer(minLength: 0)
+                    #endif
                     HStack(spacing: 6) {
                         if let sodium = Domain.value(row, "sodio_mg"), sodium >= Domain.sodiumHigh {
                             foodBadge("Na", sodium, color: palette.danger, help: "Alto en sodio")
@@ -642,10 +644,19 @@ struct TodayView: View {
                 .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            #if os(iOS)
+            Menu {
+                Button(store.tr("Editar")) { editor = .entry(row, label, nil, nil) }
+                Button(store.tr("Borrar"), role: .destructive) { remove(row) }
+            } label: {
+                NutriIcon("ellipsis", size: 18).frame(width: 44, height: 44).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityLabel(store.tr("Opciones de registro"))
+            #endif
         }
         .padding(12)
         .background(selected ? palette.surface2 : palette.surface, in: RoundedRectangle(cornerRadius: 16))
         .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(selected ? palette.accent : palette.border).allowsHitTesting(false) }
+        #if os(macOS)
         .overlay(alignment: .trailing) {
             if rowHover == id {
                 HStack(spacing: 4) {
@@ -670,6 +681,7 @@ struct TodayView: View {
             Button(store.tr("Editar")) { editor = .entry(row, label, nil, nil) }
             Button(store.tr("Borrar"), role: .destructive) { remove(row) }
         }
+        #endif
         .accessibilityAction(named: store.tr("Borrar")) { remove(row) }
         .modifier(EntryDraggable(enabled: row["_pending"]?.bool != true) {
             entryDropActive = true
@@ -684,6 +696,14 @@ struct TodayView: View {
             guard let payload = items.first else { return false }
             return move(payload, label: label, over: id)
         }
+    }
+
+    private var entryLayout: AnyLayout {
+        #if os(iOS)
+        AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+        #else
+        AnyLayout(HStackLayout(spacing: 12))
+        #endif
     }
 
     private func foodBadge(_ symbol: String, _ value: Double, color: Color, help: String) -> some View {

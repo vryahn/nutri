@@ -2456,6 +2456,7 @@ private struct DashboardReportPreview: View {
     @State private var fileExport = FeatureFileExport()
     #if os(iOS)
     @State private var document: PDFDocument?
+    @State private var pdfData: Data?
     #endif
 
     var body: some View {
@@ -2512,6 +2513,7 @@ private struct DashboardReportPreview: View {
             let bytes = try report.pdf(store: store)
             guard let pdf = PDFDocument(data: bytes) else { throw FeatureError("No se pudo generar el PDF.") }
             document = pdf
+            pdfData = bytes
         } catch { self.error = store.tr(error.localizedDescription) }
     }
     #endif
@@ -2519,8 +2521,7 @@ private struct DashboardReportPreview: View {
     private func save() {
         do {
             #if os(iOS)
-            guard let data = document?.dataRepresentation() else { return }
-            let bytes = data
+            guard let bytes = pdfData else { return }
             #else
             let bytes = try report.pdf(store: store)
             #endif
@@ -2537,8 +2538,8 @@ private struct DashboardPDFView: UIViewRepresentable {
         let view = PDFView()
         view.displayMode = .singlePageContinuous
         view.backgroundColor = .black
-        view.autoScales = true
         view.document = document
+        view.autoScales = true
         return view
     }
 

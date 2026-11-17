@@ -383,7 +383,12 @@ struct RootView: View {
     }
 
     private var outdatedStrip: some View {
-        Text(store.tr("Nutri para Mac está desactualizada respecto a la web. Recompílala e instálala con macos/scripts/build-app.sh e install-app.sh."))
+        #if os(iOS)
+        let message = "Hay una actualización de Nutri para iPhone. Instala la versión más reciente desde Xcode."
+        #else
+        let message = "Nutri para Mac está desactualizada respecto a la web. Recompílala e instálala con macos/scripts/build-app.sh e install-app.sh."
+        #endif
+        return Text(store.tr(message))
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .foregroundStyle(palette.warn).font(.nutriSans(12))

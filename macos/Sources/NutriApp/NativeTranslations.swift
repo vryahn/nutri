@@ -1,5 +1,6 @@
 // Native labels complement the web translations bundled in NutriCore.
 let nativeTranslations: [String: String] = [
+    "Opciones de registro": "Entry Options",
     "Tomar foto": "Take Photo",
     "Fototeca": "Photo Library",
     "Archivos": "Files",
@@ -328,6 +329,8 @@ let nativeTranslations: [String: String] = [
     "máx": "max",
     "mín": "min",
     "mín/máx": "min/max",
+    "Hay una actualización de Nutri para iPhone. Instala la versión más reciente desde Xcode.": "A Nutri for iPhone update is available. Install the latest version from Xcode.",
+    "No se pudo abrir la cámara. Revisa el permiso de Nutri en Ajustes o elige una foto de la fototeca.": "Couldn’t open the camera. Check Nutri’s camera access in Settings or choose a photo from your library.",
     "Nutri para Mac está desactualizada respecto a la web. Recompílala e instálala con macos/scripts/build-app.sh e install-app.sh.": "Nutri for Mac is out of date with the web app. Rebuild and install it with macos/scripts/build-app.sh and install-app.sh.",
     "Tu sesión expiró. Vuelve a iniciar sesión.": "Your session expired. Sign in again.",
     "No se pudo guardar la receta.": "Could not save the recipe.",

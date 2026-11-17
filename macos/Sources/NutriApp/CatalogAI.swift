@@ -57,11 +57,13 @@ func catalogAIDemo(recipe: Bool, language: String) throws -> Record {
 @MainActor
 func estimateCatalogAI(store: Store, recipe: Bool = false, text: String, images: [FeatureImage], catalogNames: [String] = []) async throws -> Record {
     if store.demoActive || store.anonymous { return try catalogAIDemo(recipe: recipe, language: store.lang) }
+    guard let owner = store.owner else { throw FeatureError("Sesión requerida.") }
     let entered = cleanText(text)
     var parts = [["text": JSONValue.string(entered.isEmpty ? "Analiza las imágenes." : entered)]]
     for image in images.prefix(2) {
         try Task.checkCancellation()
         parts.append(try await aiImagePart(image, maxSide: recipe ? 1024 : 2048))
+        guard store.owner == owner else { throw CancellationError() }
     }
     return try await generateNutritionJSON(store: store,
         prompt: recipe ? recipePrompt(language: store.lang, catalogNames: catalogNames) : foodPrompt(language: store.lang),
@@ -81,6 +83,7 @@ struct CatalogAIDataCard<ResultLines: View>: View {
     @ViewBuilder let result: () -> ResultLines
     @State private var dragging = false
     @State private var thumbnails: [FeatureImage: NutriPlatformImage] = [:]
+    @State private var thumbnailFailed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -133,6 +136,7 @@ struct CatalogAIDataCard<ResultLines: View>: View {
                     .disabled(loading || (cleanText(text).isEmpty && images.isEmpty))
             }
             if !error.isEmpty { Text(error).foregroundStyle(palette.danger) }
+            else if thumbnailFailed { Text(store.tr("No se pudo abrir la imagen.")).foregroundStyle(palette.danger) }
             if store.demoActive || store.anonymous {
                 Text(store.tr("En la demo la IA muestra un ejemplo fijo; en la app real analiza tu texto o foto.")).font(.nutriSans(12)).foregroundStyle(palette.text3)
             }
@@ -148,6 +152,7 @@ struct CatalogAIDataCard<ResultLines: View>: View {
                     if Task.isCancelled { return }
                 }
                 thumbnails = next
+                thumbnailFailed = next.count != Set(images).count
             }
             .dropDestination(for: URL.self) { urls, _ in
                 let files = FeatureImage.files(urls)

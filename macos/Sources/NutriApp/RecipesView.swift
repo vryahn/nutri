@@ -438,7 +438,7 @@ private struct RecipeEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
-                Button(action: onClose) { NutriIcon("chevron-left", size: 22).frame(width: 28, height: 38) }
+                Button(action: onClose) { NutriIcon("chevron-left", size: 22).frame(width: nutriTouchSize(28), height: nutriTouchSize(38)).contentShape(Rectangle()) }
                     .buttonStyle(.plain).accessibilityLabel(store.tr("Volver"))
                 Text(store.tr(draft.recordID.isEmpty ? "Nueva receta" : "Editar receta")).font(.nutriDisplay(20))
             }

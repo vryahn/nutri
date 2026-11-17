@@ -25,7 +25,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 35
     env:
-      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,7 +36,7 @@ jobs:
       - name: Exercise the app on a 375-point iPhone
         run: |
           xcodebuild -project ios/Nutri.xcodeproj -scheme Nutri \
-            -destination 'platform=iOS Simulator,name=iPhone SE (3rd generation),OS=18.5' \
+            -destination 'platform=iOS Simulator,name=iPhone SE (3rd generation),OS=26.2' \
             -parallel-testing-enabled NO -resultBundlePath "$RUNNER_TEMP/Nutri.xcresult" \
             CODE_SIGNING_ALLOWED=NO NUTRI_IOS_UI_TESTING=YES test
       - name: Export screenshots from the synthetic session

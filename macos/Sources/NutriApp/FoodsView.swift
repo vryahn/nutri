@@ -1294,6 +1294,9 @@ struct CatalogSwipeCard<Content: View>: View {
                 delete?()
             })
             .contextMenu { if let delete { Button(store.tr("Borrar"), role: .destructive, action: delete) } }
+            .accessibilityActions {
+                if let delete { Button(store.tr("Borrar"), action: delete) }
+            }
     }
 }
 

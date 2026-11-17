@@ -335,9 +335,11 @@ public enum Domain {
     public static func macrosImplausible(_ food: Record) -> Bool {
         let m = food.object("micros")
         let macros = Array(macroKeys.dropFirst()).map { food.number($0) ?? 0 }
-        return macros.reduce(0, +) + (m.number("alcohol_g") ?? 0) + (m.number("agua_ml") ?? 0) > 105
-            || macros.contains { $0 > 100 }
-            || microMax.contains { key, maximum in (m.number(key) ?? 0) > maximum }
+        let alcohol = m.number("alcohol_g") ?? 0
+        let water = m.number("agua_ml") ?? 0
+        let total = macros.reduce(0, +) + alcohol + water
+        if total > 105 || macros.contains(where: { $0 > 100 }) { return true }
+        return microMax.contains { key, maximum in (m.number(key) ?? 0) > maximum }
     }
 
     public static func foodWarnings(_ food: Record) -> [String] {
