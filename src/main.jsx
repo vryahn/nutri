@@ -16,6 +16,16 @@ if (import.meta.env.PROD && import.meta.env.VITE_SENTRY_DSN) {
     // Injected by the Outlook in-app browser: its native bridge rejects a bare string
     // when the page navigates away mid-call. Not our code, nothing to fix.
     ignoreErrors: [/Object Not Found Matching Id:/],
+    // Headless bots inject scripts that eval() strings; our CSP (no 'unsafe-eval')
+    // blocks them — working as intended. Drop only when the eval caller is injected
+    // (<anonymous>); an eval from our bundle has an /assets/ caller and still reports.
+    beforeSend(event) {
+      const ex = event.exception?.values?.[0];
+      const frames = ex?.stacktrace?.frames ?? [];
+      const caller = frames[frames.length - 2];
+      if (ex?.type === 'EvalError' && caller?.filename === '<anonymous>') return null;
+      return event;
+    },
   });
 }
 
