@@ -1,6 +1,11 @@
+#if os(macOS)
 import AppKit
+#else
+import PhotosUI
+#endif
 import NutriCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum AccountSheet: Hashable { case config, profile, region, password, labels, wizard }
 
@@ -8,20 +13,27 @@ struct SettingsView: View {
     @EnvironmentObject private var store: Store
     @Environment(\.nutriPalette) private var palette
     let sheet: AccountSheet
-    let avatar: NSImage?
+    let avatar: NutriPlatformImage?
     let close: () -> Void
     let navigate: (AccountSheet) -> Void
     @State private var profile: Record
     @State private var avatarData: Data?
-    @State private var cropImage: NSImage?
+    @State private var cropImage: NutriPlatformImage?
     @State private var removeAvatar = false
     @State private var bands: Record
     @State private var regimen = "default"
     @State private var sleep: Double
     @State private var busy = false
     @State private var choosingBirthDate = false
+    #if os(iOS)
+    @State private var choosingAvatarSource = false
+    @State private var choosingAvatarFile = false
+    @State private var choosingAvatarPhoto = false
+    @State private var takingAvatarPhoto = false
+    @State private var avatarPhoto: PhotosPickerItem?
+    #endif
 
-    init(sheet: AccountSheet, prefs: Record, avatar: NSImage?, close: @escaping () -> Void, navigate: @escaping (AccountSheet) -> Void) {
+    init(sheet: AccountSheet, prefs: Record, avatar: NutriPlatformImage?, close: @escaping () -> Void, navigate: @escaping (AccountSheet) -> Void) {
         self.sheet = sheet
         self.avatar = avatar
         self.close = close
@@ -43,6 +55,40 @@ struct SettingsView: View {
             }
         }
         .disabled(busy)
+        #if os(iOS)
+        .confirmationDialog(store.tr("Foto de perfil"), isPresented: $choosingAvatarSource) {
+            if nutriCameraAvailable {
+                Button(store.lang == "en" ? "Take Photo" : "Tomar foto") { takingAvatarPhoto = true }
+            }
+            Button(store.lang == "en" ? "Photo Library" : "Fototeca") { choosingAvatarPhoto = true }
+            Button(store.lang == "en" ? "Files" : "Archivos") { choosingAvatarFile = true }
+        }
+        .nutriCamera(isPresented: $takingAvatarPhoto) { result in
+            do { try showAvatarCrop(result.get()) }
+            catch { store.report(error) }
+        }
+        .photosPicker(isPresented: $choosingAvatarPhoto, selection: $avatarPhoto, matching: .images)
+        .task(id: avatarPhoto) {
+            guard let photo = avatarPhoto else { return }
+            defer { if avatarPhoto == photo { avatarPhoto = nil } }
+            do {
+                guard let data = try await photo.loadTransferable(type: Data.self) else {
+                    throw NutriError("No se pudo abrir la imagen.")
+                }
+                guard !Task.isCancelled else { return }
+                try showAvatarCrop(jpegData(data, maxSide: 2048))
+            } catch {
+                if !Task.isCancelled { store.report(error) }
+            }
+        }
+        .nutriFilePicker(isPresented: $choosingAvatarFile, types: [.image]) { result in
+            do {
+                if let file = try result.get().first {
+                    try showAvatarCrop(jpegData(file, maxSide: 2048))
+                }
+            } catch { store.report(error) }
+        }
+        #endif
     }
 
     private var configuration: some View {
@@ -152,6 +198,10 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(store.tr("Foto de perfil"))
+                        .accessibilityIdentifier("profile.avatar")
+                        #if os(iOS)
+                        .disabled(avatarPhoto != nil)
+                        #endif
                         VStack(alignment: .leading, spacing: 2) {
                             Text(store.tr("Foto de perfil")).font(.nutriDisplay(15, weight: .semibold))
                             Text(store.tr("Se usa como avatar del menú.")).font(.nutriSans(12)).foregroundStyle(palette.text3)
@@ -163,7 +213,10 @@ struct SettingsView: View {
                                     HStack(spacing: 4) {
                                         NutriIcon("trash-2", size: 13)
                                         Text(store.tr("Quitar foto")).font(.nutriSans(12))
-                                    }.foregroundStyle(palette.danger)
+                                    }
+                                    .frame(minHeight: nutriTouchSize(0))
+                                    .contentShape(Rectangle())
+                                    .foregroundStyle(palette.danger)
                                 }.buttonStyle(.plain).padding(.top, 4)
                             }
                         }
@@ -178,7 +231,7 @@ struct SettingsView: View {
                             .overlay(alignment: .bottomTrailing) {
                                 Button { choosingBirthDate.toggle() } label: {
                                     NutriIcon("calendar-days", size: 16).foregroundStyle(palette.text2)
-                                        .frame(width: 32, height: 42)
+                                        .frame(width: nutriTouchSize(32), height: nutriTouchSize(42))
                                         .background(palette.surface2, in: RoundedRectangle(cornerRadius: 12))
                                 }
                                 .buttonStyle(.plain).accessibilityLabel(store.tr("Elegir fecha"))
@@ -207,9 +260,9 @@ struct SettingsView: View {
         }
     }
 
-    private var displayedAvatar: NSImage? {
+    private var displayedAvatar: NutriPlatformImage? {
         guard !removeAvatar else { return nil }
-        return avatarData.flatMap(NSImage.init(data:)) ?? avatar
+        return avatarData.flatMap(NutriPlatformImage.init(data:)) ?? avatar
     }
 
     private func language(_ key: String, flag: String, label: String) -> some View {
@@ -241,7 +294,7 @@ struct SettingsView: View {
                 set: { profile[key] = .string($0) }
             ), prompt: Text(placeholder))
                 .font(key == "dob" || key == "height_cm" ? .nutriMono(14) : .nutriSans(14))
-                .nutriInput(height: 42)
+                .nutriInput(height: nutriTouchSize(42))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -371,12 +424,20 @@ struct SettingsView: View {
     }
 
     private func chooseAvatar() {
+        #if os(macOS)
         guard let url = openFiles([.image]).first else { return }
-        do {
-            let data = try secureFileData(url)
-            guard let image = NSImage(data: data) else { throw NutriError("No se pudo abrir la imagen.") }
-            cropImage = image
-        } catch { store.report(error) }
+        do { try showAvatarCrop(secureFileData(url)) }
+        catch { store.report(error) }
+        #else
+        choosingAvatarSource = true
+        #endif
+    }
+
+    private func showAvatarCrop(_ data: Data) throws {
+        guard let image = NutriPlatformImage(data: data), image.size.width > 0, image.size.height > 0 else {
+            throw NutriError("No se pudo abrir la imagen.")
+        }
+        cropImage = image
     }
 
     private func saveProfile() async throws {
@@ -414,7 +475,7 @@ struct SettingsView: View {
 private struct ProfileCropper: View {
     @EnvironmentObject private var store: Store
     @Environment(\.nutriPalette) private var palette
-    let image: NSImage
+    let image: NutriPlatformImage
     let close: () -> Void
     let done: (Data) -> Void
     @State private var zoom = 1.0
@@ -427,7 +488,7 @@ private struct ProfileCropper: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Image(nsImage: image).resizable()
+            Image(nutriImage: image).resizable()
                 .frame(width: size.width, height: size.height)
                 .offset(clamp(CGSize(width: offset.width + drag.width, height: offset.height + drag.height)))
                 .frame(width: side, height: side).clipped()
@@ -467,8 +528,16 @@ private struct ProfileCropper: View {
     }
 
     private func bake() {
+        #if os(macOS)
         var source = CGRect(origin: .zero, size: image.size)
-        guard let cgImage = image.cgImage(forProposedRect: &source, context: nil, hints: nil) else { return }
+        let bitmap = image.cgImage(forProposedRect: &source, context: nil, hints: nil)
+        #else
+        let bitmap = image.cgImage
+        #endif
+        guard let cgImage = bitmap else {
+            store.report(NutriError("No se pudo convertir la imagen."))
+            return
+        }
         let px = CGFloat(cgImage.width) / size.width
         let py = CGFloat(cgImage.height) / size.height
         let rect = CGRect(x: ((size.width - side) / 2 - offset.width) * px,
@@ -483,10 +552,11 @@ private struct ProfileCropper: View {
         }
         context.interpolationQuality = .high
         context.draw(crop, in: CGRect(x: 0, y: 0, width: 512, height: 512))
-        if let result = context.makeImage(),
-           let data = NSBitmapImageRep(cgImage: result).representation(using: .jpeg, properties: [.compressionFactor: 0.85]) {
-            done(data)
+        guard let result = context.makeImage(), let data = jpegData(result, quality: 0.85) else {
+            store.report(NutriError("No se pudo convertir la imagen."))
+            return
         }
+        done(data)
     }
 }
 
@@ -552,13 +622,13 @@ private struct PasswordEditor: View {
                 }
                 .textContentType(.newPassword).textFieldStyle(.plain).padding(.leading, 12)
                 Button { showing.wrappedValue.toggle() } label: {
-                    NutriIcon(showing.wrappedValue ? "eye-off" : "eye", size: 17).frame(width: 36)
+                    NutriIcon(showing.wrappedValue ? "eye-off" : "eye", size: 17).frame(width: nutriTouchSize(36))
                 }
                 .buttonStyle(NutriButtonStyle(.quiet, height: 36, horizontal: 0))
                 .accessibilityLabel(store.tr(showing.wrappedValue ? "Ocultar contraseña" : "Mostrar contraseña"))
                 .padding(.trailing, 4)
             }
-            .font(.nutriSans(14)).frame(height: 42).nutriCard(radius: 12, fill: .black.opacity(0.25))
+            .font(.nutriSans(14)).frame(height: nutriTouchSize(42)).nutriCard(radius: 12, fill: .black.opacity(0.25))
         }
     }
 

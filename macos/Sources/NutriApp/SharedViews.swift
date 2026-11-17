@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import ImageIO
 import NutriCore
 import SwiftUI
@@ -16,6 +20,17 @@ func jpegData(_ url: URL, maxSide: Int = 1280, quality: Double = 0.85) throws ->
     let granted = url.startAccessingSecurityScopedResource()
     defer { if granted { url.stopAccessingSecurityScopedResource() } }
     guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { throw NutriError("No se pudo abrir la imagen.") }
+    return try jpegData(source, maxSide: maxSide, quality: quality)
+}
+
+#if os(iOS)
+func jpegData(_ data: Data, maxSide: Int, quality: Double = 0.85) throws -> Data {
+    guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { throw NutriError("No se pudo abrir la imagen.") }
+    return try jpegData(source, maxSide: maxSide, quality: quality)
+}
+#endif
+
+private func jpegData(_ source: CGImageSource, maxSide: Int, quality: Double) throws -> Data {
     let options = [
         kCGImageSourceCreateThumbnailFromImageAlways: true,
         kCGImageSourceCreateThumbnailWithTransform: true,
@@ -23,18 +38,36 @@ func jpegData(_ url: URL, maxSide: Int = 1280, quality: Double = 0.85) throws ->
         kCGImageSourceShouldCacheImmediately: true
     ] as CFDictionary
     guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options),
-          let result = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: quality]) else {
+          let result = jpegData(image, quality: quality) else {
         throw NutriError("No se pudo convertir la imagen.")
     }
     return result
 }
 
+func jpegData(_ image: CGImage, quality: Double) -> Data? {
+    #if os(macOS)
+    NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: quality])
+    #else
+    UIImage(cgImage: image).jpegData(compressionQuality: quality)
+    #endif
+}
+
+#if os(macOS)
 @MainActor
 func openFiles(_ types: [UTType], multiple: Bool = false) -> [URL] {
     let panel = NSOpenPanel()
     panel.allowedContentTypes = types
     panel.allowsMultipleSelection = multiple
     return panel.runModal() == .OK ? panel.urls : []
+}
+#endif
+
+extension View {
+    func nutriFilePicker(isPresented: Binding<Bool>, types: [UTType], multiple: Bool = false,
+                         onPick: @escaping (Result<[URL], Error>) -> Void) -> some View {
+        fileImporter(isPresented: isPresented, allowedContentTypes: types,
+                     allowsMultipleSelection: multiple, onCompletion: onPick)
+    }
 }
 
 struct Panel<Content: View>: View {
@@ -85,7 +118,8 @@ struct EditorTitle: View {
         HStack {
             Text(title).font(.nutriDisplay(19))
             Spacer()
-            Button(action: close) { NutriIcon("x", size: 16).frame(width: 36, height: 36) }
+            Button(action: close) { NutriIcon("x", size: 16).frame(width: nutriTouchSize(36), height: nutriTouchSize(36))
+                .contentShape(Rectangle()) }
                 .buttonStyle(.borderless).keyboardShortcut(.cancelAction).accessibilityLabel("Cerrar")
         }
     }
@@ -114,17 +148,19 @@ struct NutriSheet<Content: View, Footer: View>: View {
                 Text(title).font(.nutriDisplay(19))
                 Spacer()
                 Button(action: close) {
-                    NutriIcon("x", size: 16).frame(width: 36)
+                    NutriIcon("x", size: 16).frame(width: nutriTouchSize(36))
                 }
                 .buttonStyle(NutriButtonStyle(.quiet, height: 36, horizontal: 0))
                 .keyboardShortcut(.cancelAction)
                 .accessibilityLabel(store.tr("Cerrar"))
+                .accessibilityIdentifier("sheet.close")
             }
             .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
             Rectangle().fill(palette.border).frame(height: 1)
             ViewThatFits(in: .vertical) {
                 content.padding(.horizontal, 20).padding(.vertical, 16).fixedSize(horizontal: false, vertical: true)
                 ScrollView { content.padding(.horizontal, 20).padding(.vertical, 16) }
+                    .scrollDismissesKeyboard(.interactively)
             }
             if showsFooter {
                 Rectangle().fill(palette.border).frame(height: 1)
@@ -248,7 +284,13 @@ struct NutriHintButton<Label: View>: View {
     @State private var shown = false
 
     var body: some View {
-        Button { shown.toggle() } label: { label() }
+        Button { shown.toggle() } label: {
+            #if os(iOS)
+            label().frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+            #else
+            label()
+            #endif
+        }
             .buttonStyle(.plain)
             .help(text)
             .accessibilityLabel(text)

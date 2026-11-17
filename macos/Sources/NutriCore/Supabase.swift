@@ -75,7 +75,7 @@ public struct SessionKeychain: Sendable {
     }
 
     private func error(_ status: OSStatus) -> NutriError {
-        NutriError("Acceso al llavero de macOS: \(SecCopyErrorMessageString(status, nil) as String? ?? String(status))")
+        NutriError("Acceso al llavero: \(SecCopyErrorMessageString(status, nil) as String? ?? String(status))")
     }
 }
 

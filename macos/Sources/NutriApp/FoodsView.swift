@@ -1,4 +1,3 @@
-import AppKit
 import NutriCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -247,6 +246,8 @@ struct FoodsView: View {
         }
     }
 
+    @State private var fileExport = FeatureFileExport()
+
     var body: some View {
         Group {
             if desktop {
@@ -289,16 +290,17 @@ struct FoodsView: View {
             #endif
         }
         // Como la web (Foods.jsx: focus/online): recarga silenciosa al activar la app y al volver la conexión.
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refreshSilently() }
+        .onReceive(NotificationCenter.default.publisher(for: nutriDidBecomeActiveNotification)) { _ in refreshSilently() }
         .onChange(of: store.networkAvailable) { old, online in if !old && online { refreshSilently() } }
         .onChange(of: store.newFood) { _, _ in openFromToday() }
         .task(id: query) { await findFoods() }
-        .onExitCommand { if importReview { if !busy { importReview = false } } else { draft = nil } }
+        .nutriOnExitCommand { if importReview { if !busy { importReview = false } } else { draft = nil } }
         .onKeyPress("/") {
             guard !searchFocused, draft == nil else { return .ignored }
             searchFocused = true; return .handled
         }
         .overlay { if importReview { NutriModal(close: { if !busy { importReview = false } }, maxWidth: 512) { importSheet } } }
+        .nutriFeatureExport($fileExport) { store.report($0) }
     }
 
     private var listing: some View {
@@ -586,7 +588,7 @@ struct FoodsView: View {
     }
 
     private func exportTemplate() {
-        do { try saveFeatureFile(Data((FoodImportRow.headers.joined(separator: ",") + "\n").utf8), name: "nutri_alimentos_plantilla.csv", type: .commaSeparatedText) }
+        do { try fileExport.save(Data((FoodImportRow.headers.joined(separator: ",") + "\n").utf8), name: "nutri_alimentos_plantilla.csv", type: .commaSeparatedText) }
         catch { store.report(error) }
     }
 
@@ -647,7 +649,7 @@ private struct FoodEditor: View {
     @State private var error = ""
     @State private var lookupBusy = false
     @State private var lookup = ""
-    @State private var images: [URL] = []
+    @State private var images: [FeatureImage] = []
     @State private var sourceInfo = ""
     @State private var lookupError = ""
     @State private var missing: [String] = []
@@ -1133,6 +1135,7 @@ struct CatalogCSVSheet<Preview: View>: View {
     let commit: () -> Void
     @ViewBuilder let preview: () -> Preview
     @State private var dragging = false
+    @State private var importingFile = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1140,7 +1143,7 @@ struct CatalogCSVSheet<Preview: View>: View {
             Text(description).foregroundStyle(palette.text2)
             HStack {
                 Button {
-                    if let url = openFiles([.commaSeparatedText, .plainText]).first { read(url) }
+                    importingFile = true
                 } label: { HStack { NutriIcon("upload", size: 15); Text(store.tr("Subir archivo")) } }
                 Button(action: template) { HStack { NutriIcon("file-down", size: 15); Text(store.tr("Descargar plantilla")) } }
             }.buttonStyle(NutriButtonStyle(.secondary, height: 36))
@@ -1164,6 +1167,10 @@ struct CatalogCSVSheet<Preview: View>: View {
             }
         }.font(.nutriSans(14)).foregroundStyle(palette.text)
             .padding(16).frame(maxWidth: 512).nutriGlass()
+            .nutriFilePicker(isPresented: $importingFile, types: [.commaSeparatedText, .plainText]) { result in
+                do { if let url = try result.get().first { read(url) } }
+                catch { self.error = error.localizedDescription }
+            }
             .dropDestination(for: URL.self) { urls, _ in guard let url = urls.first else { return false }; read(url); return true }
                 isTargeted: { dragging = $0 }
             .disabled(busy)

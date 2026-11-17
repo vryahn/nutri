@@ -1,5 +1,7 @@
-import AppKit
 import Charts
+#if os(iOS)
+import PDFKit
+#endif
 import NutriCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -494,6 +496,7 @@ struct DashboardView: View {
     @AppStorage("nutri.dashboard.tab") private var tab = "standard"
     @State private var advancedOpen = false
     @State private var exportNotice = ""
+    @State private var fileExport = FeatureFileExport()
     @State private var reportPreview = false
     @State private var showOtherMicros = false
     @State private var chartDraft: DashboardChartDraft?
@@ -637,7 +640,8 @@ struct DashboardView: View {
         .onChange(of: request) { _, _ in exportNotice = "" }
         .preference(key: NutriPresentedModalKey.self, value: presentedModal)
         .preference(key: NutriModalVisibleKey.self, value: presentedModal != nil)
-        .onExitCommand {
+        .nutriFeatureExport($fileExport) { store.report($0) }
+        .nutriOnExitCommand {
             if ask { ask = false }
             else if chartDraft != nil { chartDraft = nil }
             else if reportPreview { reportPreview = false }
@@ -797,7 +801,12 @@ struct DashboardView: View {
                 } else { dashboardDateField("Fin", date: Binding(get: { end }, set: { end = $0 })) }
             }
             HStack(alignment: .top) {
-                Toggle(store.tr("Hasta hoy"), isOn: $rollingEnd).toggleStyle(.checkbox)
+                Toggle(store.tr("Hasta hoy"), isOn: $rollingEnd)
+                    #if os(macOS)
+                    .toggleStyle(.checkbox)
+                    #else
+                    .toggleStyle(.switch)
+                    #endif
                     .tint(palette.accentDeep)
                 Text(store.tr("El rango crece solo: mañana incluirá un día más.")).font(.nutriSans(12)).foregroundStyle(palette.text3)
             }.frame(minHeight: 44)
@@ -1583,7 +1592,7 @@ struct DashboardView: View {
                         return
                     }
                     let bytes = try rawDashboardCSV(rows, unlabelled: store.tr("Sin etiqueta"))
-                    try saveFeatureFile(bytes, name: "nutri_entries_\(slug).csv", type: .commaSeparatedText)
+                    try fileExport.save(bytes, name: "nutri_entries_\(slug).csv", type: .commaSeparatedText)
                 } catch { store.report(error) }
             }
         case .summary:
@@ -1592,7 +1601,7 @@ struct DashboardView: View {
                 let calc = activeCalculation
                 let summaries = DashboardVariable.nutrition.map { dashboardSummary($0, mode: calc, data: data, bands: bands) }
                 let content = summaryDashboardCSV(summaries, mode: calc, translate: store.tr)
-                try saveFeatureFile(content, name: "nutri_resumen_\(calc.webKey)_\(rangeSlug).csv", type: .commaSeparatedText)
+                try fileExport.save(content, name: "nutri_resumen_\(calc.webKey)_\(rangeSlug).csv", type: .commaSeparatedText)
             } catch { store.report(error) }
         case .report:
             guard !data.logged.isEmpty else { exportNotice = store.tr("Sin registros en el rango"); return }
@@ -1697,6 +1706,7 @@ private struct DashboardMenu<Content: View>: View {
                     .environment(\.dashboardMenuClose, { open = false })
                     .padding(4)
             }.frame(width: width).frame(maxHeight: 420).fixedSize(horizontal: false, vertical: true)
+                .presentationCompactAdaptation(.popover)
                 .background(palette.surface3)
         }
     }
@@ -2443,6 +2453,10 @@ private struct DashboardReportPreview: View {
     let filename: String
     let close: () -> Void
     @State private var error = ""
+    @State private var fileExport = FeatureFileExport()
+    #if os(iOS)
+    @State private var document: PDFDocument?
+    #endif
 
     var body: some View {
         VStack(spacing: 0) {
@@ -2452,7 +2466,24 @@ private struct DashboardReportPreview: View {
                 Button(store.tr("Cerrar"), action: close).buttonStyle(NutriButtonStyle(.secondary, radius: 22))
                     .keyboardShortcut(.cancelAction)
                 Button(store.tr("Guardar PDF")) { save() }.buttonStyle(NutriButtonStyle(.primary, radius: 22))
+                    #if os(iOS)
+                    .disabled(document == nil)
+                    #endif
             }.padding(12)
+            #if os(iOS)
+            if let document {
+                DashboardPDFView(document: document)
+            } else {
+                VStack {
+                    if error.isEmpty {
+                        ProgressView().accessibilityLabel(store.tr("Cargando…"))
+                    } else {
+                        Button(store.tr("Reintentar"), action: preparePDF)
+                            .buttonStyle(NutriButtonStyle(.secondary))
+                    }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            #else
             GeometryReader { geometry in
                 ScrollView([.horizontal, .vertical]) {
                     report.paper(printing: false).environmentObject(store)
@@ -2462,20 +2493,60 @@ private struct DashboardReportPreview: View {
                         .frame(width: max(752, geometry.size.width), alignment: .top)
                 }.onTapGesture(perform: close)
             }
+            #endif
         }
         .font(.nutriSans(14))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.onTapGesture(perform: close))
         .accessibilityAddTraits(.isModal)
+        .nutriFeatureExport($fileExport) { error = $0.localizedDescription }
+        #if os(iOS)
+        .task { if document == nil { preparePDF() } }
+        #endif
     }
+
+    #if os(iOS)
+    private func preparePDF() {
+        error = ""
+        do {
+            let bytes = try report.pdf(store: store)
+            guard let pdf = PDFDocument(data: bytes) else { throw FeatureError("No se pudo generar el PDF.") }
+            document = pdf
+        } catch { self.error = store.tr(error.localizedDescription) }
+    }
+    #endif
 
     private func save() {
         do {
+            #if os(iOS)
+            guard let data = document?.dataRepresentation() else { return }
+            let bytes = data
+            #else
             let bytes = try report.pdf(store: store)
-            try saveFeatureFile(bytes, name: filename, type: .pdf)
+            #endif
+            try fileExport.save(bytes, name: filename, type: .pdf)
         } catch { self.error = error.localizedDescription }
     }
 }
+
+#if os(iOS)
+private struct DashboardPDFView: UIViewRepresentable {
+    let document: PDFDocument
+
+    func makeUIView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.displayMode = .singlePageContinuous
+        view.backgroundColor = .black
+        view.autoScales = true
+        view.document = document
+        return view
+    }
+
+    func updateUIView(_ view: PDFView, context: Context) {
+        if view.document !== document { view.document = document }
+    }
+}
+#endif
 
 private struct DashboardReport {
     let data: DashboardSnapshot
@@ -2608,7 +2679,7 @@ private struct DashboardReportSection: View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
                 if let icon = NutriIcon.assets["nutri-logo"] {
-                    Image(nsImage: icon).renderingMode(.original).resizable().scaledToFit()
+                    Image(nutriImage: icon).renderingMode(.original).resizable().scaledToFit()
                         .frame(width: 40, height: 40).accessibilityHidden(true)
                 }
                 VStack(alignment: .leading, spacing: 2) {
@@ -3111,13 +3182,14 @@ private extension View {
             GeometryReader { geometry in
                 let plot = proxy.plotFrame.map { geometry[$0] } ?? .zero
                 Rectangle().fill(Color.clear).contentShape(Rectangle())
-                    .onContinuousHover { phase in
+                    .nutriChartPoint { point in
                         guard !disabled else { return }
-                        switch phase {
-                        case .active(let point):
-                            key.wrappedValue = plot.contains(point) ? proxy.value(atX: point.x - plot.minX, as: String.self) : nil
-                        case .ended: key.wrappedValue = nil
-                        }
+                        let value = point.flatMap { plot.contains($0) ? proxy.value(atX: $0.x - plot.minX, as: String.self) : nil }
+                        #if os(iOS)
+                        key.wrappedValue = key.wrappedValue == value ? nil : value
+                        #else
+                        key.wrappedValue = value
+                        #endif
                     }
                     .overlay(alignment: .topLeading) {
                         if let current = key.wrappedValue, let x = proxy.position(forX: current) {

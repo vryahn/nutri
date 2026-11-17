@@ -5,7 +5,7 @@ import NutriCore
 struct NutriApplication {
     @MainActor
     static func main() {
-        #if DEBUG
+        #if DEBUG && os(macOS)
         if ProcessInfo.processInfo.arguments.contains("--module-checks") {
             do {
                 try runModuleChecks()
@@ -26,19 +26,23 @@ struct NutriApplication {
 }
 
 struct NutriApp: App {
-    @StateObject private var store = Store()
+    @StateObject private var store: Store
     @Environment(\.scenePhase) private var scenePhase
 
+    init() {
+        #if DEBUG && os(iOS)
+        if ProcessInfo.processInfo.arguments.contains("--ios-ui-demo") {
+            _store = StateObject(wrappedValue: Store(snapshot: DemoData()))
+            return
+        }
+        #endif
+        _store = StateObject(wrappedValue: Store())
+    }
+
     var body: some Scene {
+        #if os(macOS)
         Window("Nutri", id: "main") {
-            RootView()
-                .environmentObject(store)
-                .tint(nutriAccent)
-                .preferredColorScheme(colorScheme)
-                .environment(\.locale, Locale(identifier: store.lang == "en" ? "en_US" : "es_MX"))
-                .frame(minWidth: 375, minHeight: 570)
-                .task { await store.bootstrap() }
-                .onChange(of: scenePhase) { _, phase in if phase == .active { store.flush(resetBackoff: true) } }
+            root.frame(minWidth: 375, minHeight: 570)
         }
         .defaultSize(width: 1280, height: 820)
         .commands {
@@ -56,6 +60,21 @@ struct NutriApp: App {
                 }
             }
         }
+        #else
+        WindowGroup {
+            root
+        }
+        #endif
+    }
+
+    private var root: some View {
+        RootView()
+            .environmentObject(store)
+            .tint(nutriAccent)
+            .preferredColorScheme(colorScheme)
+            .environment(\.locale, Locale(identifier: store.lang == "en" ? "en_US" : "es_MX"))
+            .task { await store.bootstrap() }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { store.flush(resetBackoff: true) } }
     }
 
     private var colorScheme: ColorScheme? {
@@ -76,6 +95,17 @@ extension Notification.Name {
 enum Module: String, CaseIterable, Identifiable {
     case today = "Hoy", foods = "Alimentos", recipes = "Recetas", targets = "Objetivos", dashboard = "Dashboard", body = "Medidas"
     var id: Self { self }
+
+    var accessibilityID: String {
+        switch self {
+        case .today: "module.today"
+        case .foods: "module.foods"
+        case .recipes: "module.recipes"
+        case .targets: "module.targets"
+        case .dashboard: "module.dashboard"
+        case .body: "module.body"
+        }
+    }
 
     var icon: String {
         switch self {
@@ -99,7 +129,7 @@ struct RootView: View {
     @State private var menu: Popup?
     @State private var moduleModalVisible = false
     @State private var actions: [NutriSectionAction] = []
-    @State private var avatar: NSImage?
+    @State private var avatar: NutriPlatformImage?
     @State private var avatarPath: String?
 
     init(initialModule: Module = .today) {
@@ -115,7 +145,7 @@ struct RootView: View {
         return name.isEmpty ? store.tr("Tu perfil") : name
     }
 
-    private var profileAvatar: NSImage? {
+    private var profileAvatar: NutriPlatformImage? {
         avatarPath == store.prefs.object("profile").text("avatar_path") ? avatar : nil
     }
 
@@ -138,7 +168,7 @@ struct RootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .foregroundStyle(palette.text)
         .font(.nutriSans(16))
-        .background(palette.bg)
+        .background { palette.bg.ignoresSafeArea() }
         .alert(store.tr("Error de Nutri"), isPresented: Binding(
             get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } }
         )) {
@@ -251,6 +281,7 @@ struct RootView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier(item.accessibilityID)
                     .accessibilityAddTraits(module == item ? .isSelected : [])
                 }
             }
@@ -266,6 +297,7 @@ struct RootView: View {
                         }
                     }
                     .buttonStyle(NutriButtonStyle(.quiet, radius: 8))
+                    .accessibilityIdentifier("module.more")
                 }
                 Button { toggleMenu(.account) } label: {
                     HStack(spacing: 12) {
@@ -275,6 +307,7 @@ struct RootView: View {
                     }
                 }
                 .accessibilityLabel(store.tr("Menú de usuario"))
+                .accessibilityIdentifier("account.menu")
                 .accessibilityHint(avatarUnavailable ? store.tr("Foto no disponible") : "")
                 .help(avatarUnavailable ? store.tr("Foto no disponible") : store.tr("Menú de usuario"))
                 .buttonStyle(NutriButtonStyle(.quiet, radius: 8))
@@ -293,15 +326,19 @@ struct RootView: View {
             Spacer()
             syncStatus
             if !actions.isEmpty {
-                Button { toggleMenu(.more) } label: { NutriIcon("ellipsis").frame(width: 36) }
+                Button { toggleMenu(.more) } label: { NutriIcon("ellipsis").frame(width: nutriTouchSize(36)) }
                     .buttonStyle(NutriButtonStyle(.quiet, height: 36, horizontal: 0))
                     .accessibilityLabel(store.tr("Más opciones"))
+                    .accessibilityIdentifier("module.more")
             }
             Button { toggleMenu(.account) } label: {
                 NutriAvatar(image: profileAvatar, size: 32).padding(4)
+                    .frame(minWidth: nutriTouchSize(40), minHeight: nutriTouchSize(40))
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(store.tr("Menú de usuario"))
+            .accessibilityIdentifier("account.menu")
             .accessibilityHint(avatarUnavailable ? store.tr("Foto no disponible") : "")
             .help(avatarUnavailable ? store.tr("Foto no disponible") : store.tr("Menú de usuario"))
         }
@@ -326,6 +363,7 @@ struct RootView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(item.accessibilityID)
                 .accessibilityAddTraits(module == item ? .isSelected : [])
             }
         }
@@ -363,7 +401,7 @@ struct RootView: View {
                 Button { store.flush(resetBackoff: true) } label: {
                     NutriIcon(store.offline ? "cloud-off" : "loader-circle", size: 16)
                         .foregroundStyle(palette.text2)
-                        .frame(width: 28, height: 28)
+                        .frame(width: nutriTouchSize(28), height: nutriTouchSize(28))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -371,7 +409,7 @@ struct RootView: View {
                 .help(help)
             }
         }
-        .frame(width: 28, height: 28)
+        .frame(width: nutriTouchSize(28), height: nutriTouchSize(28))
     }
 
     @ViewBuilder
@@ -450,11 +488,15 @@ struct RootView: View {
                 .padding(.horizontal, 4).padding(.bottom, 6)
                 menuRule
                 menuButton("Perfil", icon: "user") { openSettings(.profile) }
+                    .accessibilityIdentifier("account.profile")
                 menuButton("Idioma y unidades", icon: "globe") { openSettings(.region) }
+                    .accessibilityIdentifier("account.region")
                 menuButton("Configuración", icon: "sliders-horizontal") { openSettings(.config) }
+                    .accessibilityIdentifier("account.config")
                 menuButton("Asistente de metas", icon: "wand-sparkles") {
                     openSettings(.wizard)
                 }
+                .accessibilityIdentifier("account.wizard")
                 menuRule
                 menuButton("Cerrar sesión", icon: "log-out", danger: true, action: signOut)
             }
@@ -537,19 +579,19 @@ struct RootView: View {
         }
         let data = try? await store.storage("GET", "object/authenticated/body-photos/" + path)
         guard !Task.isCancelled else { return }
-        avatar = data.flatMap(NSImage.init(data:))
+        avatar = data.flatMap(NutriPlatformImage.init(data:))
         avatarPath = path
     }
 }
 
 struct NutriAvatar: View {
-    var image: NSImage?
+    var image: NutriPlatformImage?
     let size: CGFloat
     var login = false
 
     var body: some View {
         if let image = image ?? NutriIcon.assets[login ? "nutri-login-logo" : "nutri-logo"] {
-            Image(nsImage: image).resizable().scaledToFill()
+            Image(nutriImage: image).resizable().scaledToFill()
                 .frame(width: size, height: size)
                 .clipShape(login ? AnyShape(RoundedRectangle(cornerRadius: size * 96 / 512)) : AnyShape(Circle()))
                 .accessibilityHidden(true)
@@ -567,6 +609,21 @@ private struct LoginView: View {
     @State private var demoSubmitting = false
 
     var body: some View {
+        #if os(iOS)
+        GeometryReader { geometry in
+            ScrollView {
+                form
+                    .padding(.vertical, 24)
+                    .frame(minHeight: geometry.size.height)
+            }
+            .scrollDismissesKeyboard(.interactively)
+        }
+        #else
+        form.frame(maxHeight: .infinity)
+        #endif
+    }
+
+    private var form: some View {
         VStack(spacing: 32) {
             VStack(spacing: 12) {
                 NutriAvatar(image: nil, size: 72, login: true)
@@ -575,12 +632,20 @@ private struct LoginView: View {
             }
             VStack(alignment: .leading, spacing: 16) {
                 field("Email") {
-                    TextField("Email", text: $email, prompt: Text("")).textContentType(.username)
+                    TextField("Email", text: $email, prompt: Text(""))
+                        .textContentType(.username)
+                        #if os(iOS)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        #endif
                         .nutriInput()
+                        .accessibilityIdentifier("login.email")
                 }
                 field(store.tr("Contraseña")) {
                     SecureField(store.tr("Contraseña"), text: $password, prompt: Text("")).textContentType(.password)
                         .nutriInput()
+                        .accessibilityIdentifier("login.password")
                 }
                 if !error.isEmpty {
                     Text(error).font(.nutriSans(14)).foregroundStyle(palette.danger)
@@ -591,12 +656,14 @@ private struct LoginView: View {
                 }
                 .buttonStyle(NutriButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction)
+                .accessibilityIdentifier("login.submit")
                 .disabled(submitting || demoSubmitting)
                 Button(action: enterDemo) {
                     Text(store.tr(demoSubmitting ? "Preparando demo…" : "Explorar la demo")).font(.nutriSans(16, weight: .medium))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(NutriButtonStyle(.secondary))
+                .accessibilityIdentifier("login.demo")
                 .disabled(submitting || demoSubmitting)
             }
             .frame(maxWidth: 320)
@@ -606,11 +673,15 @@ private struct LoginView: View {
                     .font(.nutriSans(14)).foregroundStyle(palette.text3).padding(.top, 20)
             }
             #if DEBUG
-            Button(store.tr("Probar con datos locales")) { store.activateDemo() }.buttonStyle(.plain).font(.nutriSans(12))
+            Button { store.activateDemo() } label: {
+                Text(store.tr("Probar con datos locales")).font(.nutriSans(12))
+                    .frame(minHeight: nutriTouchSize(0)).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
             #endif
         }
         .padding(.horizontal, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
     }
 
     private func field<T: View>(_ label: String, @ViewBuilder content: () -> T) -> some View {

@@ -1,0 +1,584 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1B507FCDE501B56EE57AF137 /* BodyView.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 99B6297D6224CBACA304692A /* BodyView.swift */;
+		};
+		E34117A3E24EAE1785326258 /* Camera.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 8745C6EE6346218B02A2B17D /* Camera.swift */;
+		};
+		A16DCEA0CC2A3A3024318F3C /* CatalogAI.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = DA4CFF71057E1432594B55FA /* CatalogAI.swift */;
+		};
+		AA479407565B367305E0CE5C /* DashboardView.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = AF14A90136D3CFE820EA5186 /* DashboardView.swift */;
+		};
+		1C8FFE7FC05885F6085AF6A2 /* DemoData.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 8E77732A9D6BFCC915E96FEA /* DemoData.swift */;
+		};
+		9D92DA8DAD2B05310E94D524 /* DesignSystem.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 13D2E5C653A62F84EB9D5B54 /* DesignSystem.swift */;
+		};
+		C4BCB579B333DF57020EBD2B /* FeatureHelpers.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 140B08D5EEC54F8633C44AC8 /* FeatureHelpers.swift */;
+		};
+		8EA667BEB73E8B2CBC8B60AD /* FoodsView.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = C02F7BD1A328A1E31979ABB0 /* FoodsView.swift */;
+		};
+		2BE0F9AFC4AB5ED6A9CCECE4 /* NativeTranslations.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = C7551C23288B63E33430E535 /* NativeTranslations.swift */;
+		};
+		AC58F7C7A50DD5006EFA0E96 /* NutriApp.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 452E3D64AF1E49E28CCAA38D /* NutriApp.swift */;
+		};
+		7F4DC45CBB2FD111F4FCD09E /* Platform.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 1500884A3A911E02ECF1EB0C /* Platform.swift */;
+		};
+		1B4A3EBE97E850C372FB7976 /* RecipesView.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = A21F3E5FC53AD2974121FAEC /* RecipesView.swift */;
+		};
+		E472F4ED28BB0F27FBFF3C90 /* SettingsView.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = EF3FFBBC577005F58C1EC3EE /* SettingsView.swift */;
+		};
+		88455E64152ABFE711E18EFC /* SharedViews.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 6D116A6C0FA72C79EE8B8DC5 /* SharedViews.swift */;
+		};
+		118F899A0D715DDB4EBDB583 /* Sources.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 458F487A779B8F2A34202360 /* Sources.swift */;
+		};
+		D302A0B079502F4FC7841EC4 /* Store.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = AED08A1BF986E78BD4883801 /* Store.swift */;
+		};
+		54B1E8A9FF3C9370075E3099 /* TargetsView.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = E2DBB7E6B943352A7E7A1503 /* TargetsView.swift */;
+		};
+		C92B53F87F1F3303C9285AE5 /* TodayView.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = D5E8447161F1F1341E8CF22A /* TodayView.swift */;
+		};
+		9E32EBAC94A1DA4629AB203B /* NutriCore in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = 65C04B33181DC2FED7FC41B6 /* NutriCore */;
+		};
+		F30E2408C11C3A4A8402C84C /* Fonts in Resources */ = {
+			isa = PBXBuildFile;
+			fileRef = 3680FCAD01F4BFC678163DFB /* Fonts */;
+		};
+		F13BA3E26CB36FE53993EF38 /* Icons in Resources */ = {
+			isa = PBXBuildFile;
+			fileRef = EAE96E02BBC471446C26C07D /* Icons */;
+		};
+		78AF5E2570DB7AC0A60F72C3 /* Assets.xcassets in Resources */ = {
+			isa = PBXBuildFile;
+			fileRef = 795A02A63DC9C1E86758E98F /* Assets.xcassets */;
+		};
+		07437C365FD3F8F0675E65AD /* PrivacyInfo.xcprivacy in Resources */ = {
+			isa = PBXBuildFile;
+			fileRef = 6D123AE8AB04EEE632CC6C18 /* PrivacyInfo.xcprivacy */;
+		};
+		7F897D70774867326DCFA2FA /* InfoPlist.strings in Resources */ = {
+			isa = PBXBuildFile;
+			fileRef = 89832BF4CA493217BDB4BD8B /* InfoPlist.strings */;
+		};
+		5CB1C990A4B9C43F41289D8B /* NutriUITests.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = BF3E6E868F5BD3133AA4C05D /* NutriUITests.swift */;
+		};
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B4B148E6720AEB1AF0BC1925 /* Nutri target proxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B8D2338B916FD855775F09A2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 105730D828F2C212211B7718 /* Nutri */;
+			remoteInfo = Nutri;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		99B6297D6224CBACA304692A /* BodyView.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "BodyView.swift";
+			sourceTree = "<group>";
+		};
+		8745C6EE6346218B02A2B17D /* Camera.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "Camera.swift";
+			sourceTree = "<group>";
+		};
+		DA4CFF71057E1432594B55FA /* CatalogAI.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "CatalogAI.swift";
+			sourceTree = "<group>";
+		};
+		AF14A90136D3CFE820EA5186 /* DashboardView.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "DashboardView.swift";
+			sourceTree = "<group>";
+		};
+		8E77732A9D6BFCC915E96FEA /* DemoData.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "DemoData.swift";
+			sourceTree = "<group>";
+		};
+		13D2E5C653A62F84EB9D5B54 /* DesignSystem.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "DesignSystem.swift";
+			sourceTree = "<group>";
+		};
+		140B08D5EEC54F8633C44AC8 /* FeatureHelpers.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "FeatureHelpers.swift";
+			sourceTree = "<group>";
+		};
+		C02F7BD1A328A1E31979ABB0 /* FoodsView.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "FoodsView.swift";
+			sourceTree = "<group>";
+		};
+		C7551C23288B63E33430E535 /* NativeTranslations.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "NativeTranslations.swift";
+			sourceTree = "<group>";
+		};
+		452E3D64AF1E49E28CCAA38D /* NutriApp.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "NutriApp.swift";
+			sourceTree = "<group>";
+		};
+		1500884A3A911E02ECF1EB0C /* Platform.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "Platform.swift";
+			sourceTree = "<group>";
+		};
+		A21F3E5FC53AD2974121FAEC /* RecipesView.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "RecipesView.swift";
+			sourceTree = "<group>";
+		};
+		EF3FFBBC577005F58C1EC3EE /* SettingsView.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "SettingsView.swift";
+			sourceTree = "<group>";
+		};
+		6D116A6C0FA72C79EE8B8DC5 /* SharedViews.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "SharedViews.swift";
+			sourceTree = "<group>";
+		};
+		458F487A779B8F2A34202360 /* Sources.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "Sources.swift";
+			sourceTree = "<group>";
+		};
+		AED08A1BF986E78BD4883801 /* Store.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "Store.swift";
+			sourceTree = "<group>";
+		};
+		E2DBB7E6B943352A7E7A1503 /* TargetsView.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "TargetsView.swift";
+			sourceTree = "<group>";
+		};
+		D5E8447161F1F1341E8CF22A /* TodayView.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "TodayView.swift";
+			sourceTree = "<group>";
+		};
+		3680FCAD01F4BFC678163DFB /* Fonts */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = folder;
+			path = "Resources/Fonts";
+			sourceTree = "<group>";
+		};
+		EAE96E02BBC471446C26C07D /* Icons */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = folder;
+			path = "Resources/Icons";
+			sourceTree = "<group>";
+		};
+		795A02A63DC9C1E86758E98F /* Assets.xcassets */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = folder.assetcatalog;
+			path = "Assets.xcassets";
+			sourceTree = "<group>";
+		};
+		6D123AE8AB04EEE632CC6C18 /* PrivacyInfo.xcprivacy */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.xml;
+			path = "PrivacyInfo.xcprivacy";
+			sourceTree = "<group>";
+		};
+		C0BC1E08F9743B2D50D5F160 /* es */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.plist.strings;
+			name = es;
+			path = "es.lproj/InfoPlist.strings";
+			sourceTree = "<group>";
+		};
+		BF3E6E868F5BD3133AA4C05D /* NutriUITests.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = "NutriUITests.swift";
+			sourceTree = "<group>";
+		};
+		6D77A7D51CC0E81F3CDA02A8 /* write_info.py */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.script.python;
+			path = "write_info.py";
+			sourceTree = "<group>";
+		};
+		D1F427C581579ED1CDAABB53 /* Nutri.app */ = {
+			isa = PBXFileReference;
+			explicitFileType = wrapper.application;
+			includeInIndex = 0;
+			path = Nutri.app;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		AE1FEF91A33306C967FD2775 /* NutriUITests.xctest */ = {
+			isa = PBXFileReference;
+			explicitFileType = wrapper.cfbundle;
+			includeInIndex = 0;
+			path = NutriUITests.xctest;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AE669357249D5364E31BA9F9 /* Nutri Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (9E32EBAC94A1DA4629AB203B /* NutriCore in Frameworks */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AFE1266249CBD105BDEBA25A /* NutriUITests Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		CAF85B0888D78F1F83771A07 /* Sources */ = {
+			isa = PBXGroup;
+			children = (99B6297D6224CBACA304692A /* BodyView.swift */, 8745C6EE6346218B02A2B17D /* Camera.swift */, DA4CFF71057E1432594B55FA /* CatalogAI.swift */, AF14A90136D3CFE820EA5186 /* DashboardView.swift */, 8E77732A9D6BFCC915E96FEA /* DemoData.swift */, 13D2E5C653A62F84EB9D5B54 /* DesignSystem.swift */, 140B08D5EEC54F8633C44AC8 /* FeatureHelpers.swift */, C02F7BD1A328A1E31979ABB0 /* FoodsView.swift */, C7551C23288B63E33430E535 /* NativeTranslations.swift */, 452E3D64AF1E49E28CCAA38D /* NutriApp.swift */, 1500884A3A911E02ECF1EB0C /* Platform.swift */, A21F3E5FC53AD2974121FAEC /* RecipesView.swift */, EF3FFBBC577005F58C1EC3EE /* SettingsView.swift */, 6D116A6C0FA72C79EE8B8DC5 /* SharedViews.swift */, 458F487A779B8F2A34202360 /* Sources.swift */, AED08A1BF986E78BD4883801 /* Store.swift */, E2DBB7E6B943352A7E7A1503 /* TargetsView.swift */, D5E8447161F1F1341E8CF22A /* TodayView.swift */, 3680FCAD01F4BFC678163DFB /* Fonts */, EAE96E02BBC471446C26C07D /* Icons */,);
+			name = "Sources";
+			path = "../macos/Sources/NutriApp";
+			sourceTree = "<group>";
+		};
+		791C91B03E2E5042A74623CE /* UITests */ = {
+			isa = PBXGroup;
+			children = (BF3E6E868F5BD3133AA4C05D /* NutriUITests.swift */,);
+			name = "UITests";
+			path = "NutriUITests";
+			sourceTree = "<group>";
+		};
+		8D0E6B4AB60543CFB39C28FC /* Scripts */ = {
+			isa = PBXGroup;
+			children = (6D77A7D51CC0E81F3CDA02A8 /* write_info.py */,);
+			name = "Scripts";
+			path = "scripts";
+			sourceTree = "<group>";
+		};
+		4EDC8BFAFC6BD936B849F38C /* Products */ = {
+			isa = PBXGroup;
+			children = (D1F427C581579ED1CDAABB53 /* Nutri.app */, AE1FEF91A33306C967FD2775 /* NutriUITests.xctest */,);
+			name = "Products";
+			sourceTree = "<group>";
+		};
+		E13D92B600843664BAACDCE8 /* Nutri Project */ = {
+			isa = PBXGroup;
+			children = (CAF85B0888D78F1F83771A07 /* Sources */, 795A02A63DC9C1E86758E98F /* Assets.xcassets */, 6D123AE8AB04EEE632CC6C18 /* PrivacyInfo.xcprivacy */, 89832BF4CA493217BDB4BD8B /* InfoPlist.strings */, 791C91B03E2E5042A74623CE /* UITests */, 8D0E6B4AB60543CFB39C28FC /* Scripts */, 4EDC8BFAFC6BD936B849F38C /* Products */,);
+			name = "Nutri Project";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		105730D828F2C212211B7718 /* Nutri */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D4D65D34DAA4C0035E625D7E /* Nutri target configurations */;
+			buildPhases = (F7C40A811C1D21F25F66A2EF /* Generate bundle configuration */, D05801243923FA4DF84C393D /* Nutri Sources */, AE669357249D5364E31BA9F9 /* Nutri Frameworks */, B402D1E978357A90B1A413E3 /* Nutri Resources */,);
+			buildRules = ();
+			dependencies = ();
+			name = Nutri;
+			packageProductDependencies = (65C04B33181DC2FED7FC41B6 /* NutriCore */,);
+			productName = Nutri;
+			productReference = D1F427C581579ED1CDAABB53 /* Nutri.app */;
+			productType = "com.apple.product-type.application";
+		};
+		5B2227EF05994908ECA7EBCE /* NutriUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 66C61DF8CA149463B6BEB7A9 /* NutriUITests target configurations */;
+			buildPhases = (FE2CCFFE99946261E9C22D6D /* NutriUITests Sources */, AFE1266249CBD105BDEBA25A /* NutriUITests Frameworks */, 68471103752C40B256DD9EE5 /* NutriUITests Resources */,);
+			buildRules = ();
+			dependencies = (C758DD95007FFBB4D6AAED49 /* Nutri UITest dependency */,);
+			name = NutriUITests;
+			productName = NutriUITests;
+			productReference = AE1FEF91A33306C967FD2775 /* NutriUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B8D2338B916FD855775F09A2 /* Project object */ = {
+			isa = PBXProject;
+			attributes = { BuildIndependentTargetsInParallel = 1; TargetAttributes = { 105730D828F2C212211B7718 /* Nutri */ = { CreatedOnToolsVersion = 16.0; }; 5B2227EF05994908ECA7EBCE /* NutriUITests */ = { CreatedOnToolsVersion = 16.0; TestTargetID = 105730D828F2C212211B7718 /* Nutri */; }; }; };
+			buildConfigurationList = 9CFF64D8AE28E83EB00193AA /* Project configurations */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, es, Base);
+			mainGroup = E13D92B600843664BAACDCE8 /* Nutri Project */;
+			packageReferences = (2FC9D8EBEB201F25D331680C /* Nutri package */,);
+			productRefGroup = 4EDC8BFAFC6BD936B849F38C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (105730D828F2C212211B7718 /* Nutri */, 5B2227EF05994908ECA7EBCE /* NutriUITests */,);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B402D1E978357A90B1A413E3 /* Nutri Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (F30E2408C11C3A4A8402C84C /* Fonts in Resources */, F13BA3E26CB36FE53993EF38 /* Icons in Resources */, 78AF5E2570DB7AC0A60F72C3 /* Assets.xcassets in Resources */, 07437C365FD3F8F0675E65AD /* PrivacyInfo.xcprivacy in Resources */, 7F897D70774867326DCFA2FA /* InfoPlist.strings in Resources */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		68471103752C40B256DD9EE5 /* NutriUITests Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		F7C40A811C1D21F25F66A2EF /* Generate bundle configuration */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = ("$(SRCROOT)/scripts/write_info.py", "$(SRCROOT)/../macos/scripts/write_info.py");
+			name = "Generate bundle configuration";
+			outputPaths = ("$(DERIVED_FILE_DIR)/NutriInfo.plist");
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec /usr/bin/python3 \"$SCRIPT_INPUT_FILE_0\" \"$SCRIPT_OUTPUT_FILE_0\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D05801243923FA4DF84C393D /* Nutri Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (1B507FCDE501B56EE57AF137 /* BodyView.swift in Sources */, E34117A3E24EAE1785326258 /* Camera.swift in Sources */, A16DCEA0CC2A3A3024318F3C /* CatalogAI.swift in Sources */, AA479407565B367305E0CE5C /* DashboardView.swift in Sources */, 1C8FFE7FC05885F6085AF6A2 /* DemoData.swift in Sources */, 9D92DA8DAD2B05310E94D524 /* DesignSystem.swift in Sources */, C4BCB579B333DF57020EBD2B /* FeatureHelpers.swift in Sources */, 8EA667BEB73E8B2CBC8B60AD /* FoodsView.swift in Sources */, 2BE0F9AFC4AB5ED6A9CCECE4 /* NativeTranslations.swift in Sources */, AC58F7C7A50DD5006EFA0E96 /* NutriApp.swift in Sources */, 7F4DC45CBB2FD111F4FCD09E /* Platform.swift in Sources */, 1B4A3EBE97E850C372FB7976 /* RecipesView.swift in Sources */, E472F4ED28BB0F27FBFF3C90 /* SettingsView.swift in Sources */, 88455E64152ABFE711E18EFC /* SharedViews.swift in Sources */, 118F899A0D715DDB4EBDB583 /* Sources.swift in Sources */, D302A0B079502F4FC7841EC4 /* Store.swift in Sources */, 54B1E8A9FF3C9370075E3099 /* TargetsView.swift in Sources */, C92B53F87F1F3303C9285AE5 /* TodayView.swift in Sources */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FE2CCFFE99946261E9C22D6D /* NutriUITests Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (5CB1C990A4B9C43F41289D8B /* NutriUITests.swift in Sources */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		C758DD95007FFBB4D6AAED49 /* Nutri UITest dependency */ = {
+			isa = PBXTargetDependency;
+			target = 105730D828F2C212211B7718 /* Nutri */;
+			targetProxy = B4B148E6720AEB1AF0BC1925 /* Nutri target proxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		89832BF4CA493217BDB4BD8B /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (C0BC1E08F9743B2D50D5F160 /* es */,);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		E20609128BE34B268B1C1700 /* Project Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		06D9FAC4492C016BD6137653 /* Project Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		961D7B8D983C373D46710D18 /* Nutri target Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "$(DERIVED_FILE_DIR)/NutriInfo.plist";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vryahn.nutri.iphone;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+			};
+			name = Debug;
+		};
+		AAEEE4E13E1311664DFB854D /* Nutri target Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "$(DERIVED_FILE_DIR)/NutriInfo.plist";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vryahn.nutri.iphone;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+			};
+			name = Release;
+		};
+		21DB6564DD38AF38D7660E2C /* NutriUITests target Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vryahn.nutri.iphone.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TEST_TARGET_NAME = Nutri;
+			};
+			name = Debug;
+		};
+		B2CDC8F6D48C1588FBF9DD03 /* NutriUITests target Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vryahn.nutri.iphone.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TEST_TARGET_NAME = Nutri;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		9CFF64D8AE28E83EB00193AA /* Project configurations */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (E20609128BE34B268B1C1700 /* Project Debug */, 06D9FAC4492C016BD6137653 /* Project Release */,);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D4D65D34DAA4C0035E625D7E /* Nutri target configurations */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (961D7B8D983C373D46710D18 /* Nutri target Debug */, AAEEE4E13E1311664DFB854D /* Nutri target Release */,);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		66C61DF8CA149463B6BEB7A9 /* NutriUITests target configurations */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (21DB6564DD38AF38D7660E2C /* NutriUITests target Debug */, B2CDC8F6D48C1588FBF9DD03 /* NutriUITests target Release */,);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		2FC9D8EBEB201F25D331680C /* Nutri package */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../macos";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		65C04B33181DC2FED7FC41B6 /* NutriCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2FC9D8EBEB201F25D331680C /* Nutri package */;
+			productName = NutriCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = B8D2338B916FD855775F09A2 /* Project object */;
+}

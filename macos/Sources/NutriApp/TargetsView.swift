@@ -169,7 +169,7 @@ struct TargetsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .nutriTargetsChanged)) { _ in Task { await reload() } }
         .preference(key: NutriPresentedModalKey.self, value: presentedModal)
         .preference(key: NutriModalVisibleKey.self, value: presentedModal != nil)
-        .onExitCommand {
+        .nutriOnExitCommand {
             if decision != nil { decision = nil }
             else if rulesDraft != nil { rulesDraft = nil }
             else if deletePhase != nil { deletePhase = nil }
@@ -945,7 +945,7 @@ private struct TargetSheetContent<Content: View>: View {
         }
         .background(palette.bg, in: RoundedRectangle(cornerRadius: 20))
         .clipShape(RoundedRectangle(cornerRadius: 20))
-        .onExitCommand(perform: close)
+        .nutriOnExitCommand(perform: close)
     }
 
     private var paper: some View {

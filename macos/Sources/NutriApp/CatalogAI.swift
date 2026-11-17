@@ -1,4 +1,3 @@
-import AppKit
 import NutriCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -56,11 +55,14 @@ func catalogAIDemo(recipe: Bool, language: String) throws -> Record {
 }
 
 @MainActor
-func estimateCatalogAI(store: Store, recipe: Bool = false, text: String, images: [URL], catalogNames: [String] = []) async throws -> Record {
+func estimateCatalogAI(store: Store, recipe: Bool = false, text: String, images: [FeatureImage], catalogNames: [String] = []) async throws -> Record {
     if store.demoActive || store.anonymous { return try catalogAIDemo(recipe: recipe, language: store.lang) }
     let entered = cleanText(text)
-    let parts = [["text": JSONValue.string(entered.isEmpty ? "Analiza las imágenes." : entered)]] +
-        (try images.prefix(2).map { try aiImagePart($0, maxSide: recipe ? 1024 : 2048) })
+    var parts = [["text": JSONValue.string(entered.isEmpty ? "Analiza las imágenes." : entered)]]
+    for image in images.prefix(2) {
+        try Task.checkCancellation()
+        parts.append(try await aiImagePart(image, maxSide: recipe ? 1024 : 2048))
+    }
     return try await generateNutritionJSON(store: store,
         prompt: recipe ? recipePrompt(language: store.lang, catalogNames: catalogNames) : foodPrompt(language: store.lang),
         parts: parts, schema: recipe ? recipeAISchema() : foodAISchema())
@@ -70,7 +72,7 @@ struct CatalogAIDataCard<ResultLines: View>: View {
     @EnvironmentObject private var store: Store
     @Environment(\.nutriPalette) private var palette
     @Binding var text: String
-    @Binding var images: [URL]
+    @Binding var images: [FeatureImage]
     let loading: Bool
     let error: String
     let placeholder: String
@@ -78,7 +80,7 @@ struct CatalogAIDataCard<ResultLines: View>: View {
     let submit: () -> Void
     @ViewBuilder let result: () -> ResultLines
     @State private var dragging = false
-    @State private var thumbnails: [URL: NSImage] = [:]  // encoded once per URL, not on every render
+    @State private var thumbnails: [FeatureImage: NutriPlatformImage] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -97,7 +99,7 @@ struct CatalogAIDataCard<ResultLines: View>: View {
                         Color.clear.frame(height: 44).overlay {
                             GeometryReader { space in
                                 if let thumbnail = thumbnails[images[index]] {
-                                    Image(nsImage: thumbnail).resizable().scaledToFill()
+                                    Image(nutriImage: thumbnail).resizable().scaledToFill()
                                         .frame(width: space.size.width, height: space.size.height).clipped()
                                 }
                             }
@@ -107,7 +109,7 @@ struct CatalogAIDataCard<ResultLines: View>: View {
                     }.buttonStyle(.plain).accessibilityLabel(store.tr("Quitar foto")).disabled(loading)
                 }
                 if images.count < 2 {
-                    Button { add(openFiles([.image], multiple: true)) } label: {
+                    FeaturePhotoPicker(maximum: 2 - images.count, onPick: add) {
                         HStack(spacing: 8) {
                             NutriIcon("image-plus", size: 18)
                             if images.isEmpty { Text(store.tr("Foto (etiqueta o platillo)")).lineLimit(1) }
@@ -139,23 +141,24 @@ struct CatalogAIDataCard<ResultLines: View>: View {
         }.padding(12).nutriCard(radius: 12, fill: palette.surface2)
             .overlay { if dragging || loading { RoundedRectangle(cornerRadius: 12).strokeBorder(palette.accentDeep, lineWidth: dragging ? 2 : 1).allowsHitTesting(false) } }
             .task(id: images) {
-                var next: [URL: NSImage] = [:]
-                for url in images {
-                    if let cached = thumbnails[url] { next[url] = cached }
-                    else if let data = try? jpegData(url, maxSide: 256), let image = NSImage(data: data) { next[url] = image }
+                var next: [FeatureImage: NutriPlatformImage] = [:]
+                for photo in images {
+                    if let cached = thumbnails[photo] { next[photo] = cached }
+                    else if let data = try? await photo.jpeg(maxSide: 256), let image = NutriPlatformImage(data: data) { next[photo] = image }
+                    if Task.isCancelled { return }
                 }
                 thumbnails = next
             }
             .dropDestination(for: URL.self) { urls, _ in
-                guard !loading else { return false }; add(urls); return !urls.isEmpty
+                let files = FeatureImage.files(urls)
+                guard !loading, !files.isEmpty else { return false }
+                add(.success(files))
+                return true
             } isTargeted: { dragging = $0 && !loading }
     }
 
-    private func add(_ urls: [URL]) {
-        let imageURLs = urls.filter { url in
-            guard let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType else { return false }
-            return type.conforms(to: .image)
-        }
-        images = Array((images + imageURLs).prefix(2))
+    private func add(_ result: Result<[FeatureImage], Error>) {
+        do { images = Array((images + (try result.get())).prefix(2)) }
+        catch { store.report(error) }
     }
 }

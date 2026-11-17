@@ -1,10 +1,15 @@
 // Native labels complement the web translations bundled in NutriCore.
 let nativeTranslations: [String: String] = [
+    "Tomar foto": "Take Photo",
+    "Fototeca": "Photo Library",
+    "Archivos": "Files",
+    "No se pudo abrir la imagen.": "The image could not be opened.",
     "Meta de agua": "Water target",
     "Máximo de agua": "Water maximum",
     "parcial": "partial",
     "Ajustes…": "Settings…",
     "Ajustes": "Settings",
+    "Falta la configuración de Nutri en esta versión.": "Nutri is missing its configuration in this version.",
     "Error de Nutri": "Nutri Error",
     "Sin conexión": "Offline",
     "Sincronizando": "Syncing",

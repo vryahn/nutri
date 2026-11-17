@@ -1,0 +1,63 @@
+name: Nutri iPhone
+
+on:
+  push:
+    branches: [main]
+    tags: ['ios-check-*']
+    paths:
+      - 'ios/**'
+      - 'macos/**'
+      - 'scripts/native-contract.mjs'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+      - 'macos/**'
+      - 'scripts/native-contract.mjs'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  iphone:
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Compare native and web contract fingerprints
+        run: test "$(/usr/bin/python3 ios/scripts/write_info.py --contract)" = "$(node scripts/native-contract.mjs)"
+      - name: Exercise the app on a 375-point iPhone
+        run: |
+          xcodebuild -project ios/Nutri.xcodeproj -scheme Nutri \
+            -destination 'platform=iOS Simulator,name=iPhone SE (3rd generation),OS=18.5' \
+            -parallel-testing-enabled NO -resultBundlePath "$RUNNER_TEMP/Nutri.xcresult" \
+            CODE_SIGNING_ALLOWED=NO NUTRI_IOS_UI_TESTING=YES test
+      - name: Export screenshots from the synthetic session
+        if: always()
+        run: |
+          if [[ -d "$RUNNER_TEMP/Nutri.xcresult" ]]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/Nutri.xcresult" --output-path "$RUNNER_TEMP/attachments"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iphone-synthetic-screenshots
+          path: |
+            ${{ runner.temp }}/attachments/*.png
+            ${{ runner.temp }}/attachments/*.jpeg
+            ${{ runner.temp }}/attachments/*.jpg
+            ${{ runner.temp }}/attachments/manifest.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Build Release for a physical iPhone with synthetic configuration
+        run: |
+          printf '%s\n' 'VITE_SUPABASE_URL=https://nutri-ui-test.invalid' 'VITE_SUPABASE_ANON_KEY=sb_publishable_ios_ui_test' > "$RUNNER_TEMP/iphone.env"
+          xcodebuild -quiet -project ios/Nutri.xcodeproj -scheme Nutri -configuration Release \
+            -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO NUTRI_ENV_FILE="$RUNNER_TEMP/iphone.env" build

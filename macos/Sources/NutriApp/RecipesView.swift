@@ -147,7 +147,7 @@ struct RecipesView: View {
                 #endif
             }
             .task(id: query) { await findRecipes() }
-            .onExitCommand { showEditor(nil) }
+            .nutriOnExitCommand { showEditor(nil) }
             .onKeyPress("/") {
                 guard !searchFocused, form == nil else { return .ignored }
                 searchFocused = true; return .handled
@@ -412,7 +412,7 @@ private struct RecipeEditor: View {
     @State private var showPaste = false
     @State private var pasteNotice = ""
     @State private var aiText = ""
-    @State private var aiPhotos: [URL] = []
+    @State private var aiPhotos: [FeatureImage] = []
     @State private var aiError = ""
     @State private var aiWeightWarning = false
     @State private var aiLoading = false

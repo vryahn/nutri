@@ -1,4 +1,7 @@
+import Foundation
+#if os(macOS)
 import AppKit
+#endif
 import NutriCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -127,6 +130,7 @@ struct TodayView: View {
         }
         .task { await loadLabels() }
         .task { await loadCatalog() }
+        #if os(macOS)
         .background {
             JournalKeys { command in
                 guard !accountOverlay else { return false }
@@ -148,6 +152,7 @@ struct TodayView: View {
                 return true
             }
         }
+        #endif
         #if DEBUG
         .task {
             switch store.snapshotScenario {
@@ -177,7 +182,7 @@ struct TodayView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .nutriLabelsChanged)) { _ in Task { await loadLabels() } }
         // Como la web (focus/online): recarga el día al activar la app y al volver la conexión; el cambio de día mueve "hoy".
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: nutriDidBecomeActiveNotification)) { _ in
             rollToday()
             Task { await loadDay() }
         }
@@ -287,18 +292,19 @@ struct TodayView: View {
             Button { showCalendar.toggle() } label: {
                 Text(day == Day.key(.now) ? store.tr("Hoy") : formattedDate(date, weekday: true))
                     .font(.nutriDisplay(18)).foregroundStyle(palette.text)
-                    .frame(maxWidth: .infinity, minHeight: 36)
+                    .frame(maxWidth: .infinity, minHeight: nutriTouchSize(36))
             }.buttonStyle(.plain)
                 .accessibilityLabel(store.tr("Elegir fecha"))
                 .popover(isPresented: $showCalendar, arrowEdge: .bottom) {
                     DatePicker(store.tr("Elegir fecha"), selection: $date, displayedComponents: .date)
                         .datePickerStyle(.graphical).labelsHidden().padding(8)
+                        .presentationCompactAdaptation(.popover)
                         .onChange(of: date) { _, _ in showCalendar = false }
                 }
             Spacer()
             iconButton("chevron-right", "Día siguiente", size: 22) { date = Day.add(date, 1) }
         }
-        .frame(height: 38)
+        .frame(height: nutriTouchSize(38))
         .background {
             if desktop {
                 Button { beginAdd("") } label: { EmptyView() }
@@ -449,6 +455,7 @@ struct TodayView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 iconButton("settings", "Ajustes de agua", size: 18, width: 34) { editor = .water }
+                    .accessibilityIdentifier("today.waterSettings")
                     .padding(.trailing, -8)
             }
             NutriFlow(spacing: 8) {
@@ -696,8 +703,8 @@ struct TodayView: View {
     }
 
     private func iconButton(_ icon: String, _ label: String, size: CGFloat = 16, width: CGFloat = 36, action: @escaping () -> Void) -> some View {
-        Button(action: action) { NutriIcon(icon, size: size).frame(width: width, height: 34) }
-            .buttonStyle(NutriButtonStyle(.quiet, height: 34, horizontal: 0))
+        Button(action: action) { NutriIcon(icon, size: size).frame(width: nutriTouchSize(width), height: nutriTouchSize(34)) }
+            .buttonStyle(NutriButtonStyle(.quiet, height: nutriTouchSize(34), horizontal: 0))
             .accessibilityLabel(store.tr(label))
     }
 
@@ -2446,9 +2453,16 @@ private struct WaterSettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(label).font(.nutriSans(14)).foregroundStyle(palette.text2)
                     TextField(label, text: $amount, prompt: Text("")).font(.nutriMono(16)).nutriInput()
+                        .accessibilityIdentifier("today.waterSize")
                 }
                 Button(action: save) { Text(store.tr("Guardar")).frame(maxWidth: .infinity) }
                     .buttonStyle(NutriButtonStyle(.primary)).disabled(saving || decimal(amount).map { $0 < 1 } != false)
+                    .accessibilityIdentifier("today.waterSave")
+                #if os(iOS)
+                Button(action: close) { Text(store.tr("Cancelar")).frame(maxWidth: .infinity) }
+                    .buttonStyle(NutriButtonStyle(.secondary))
+                    .accessibilityIdentifier("sheet.close")
+                #endif
             }.onSubmit(save)
         }
             .task {
@@ -2480,6 +2494,7 @@ private struct EntryImportView: View {
     @State private var catalog: [Record] = []
     @State private var loading = true
     @State private var targeted = false
+    @State private var importingFile = false
     @State private var saving = false
     @State private var error = ""
 
@@ -2526,7 +2541,7 @@ private struct EntryImportView: View {
                 Text(store.tr("Pega o sube un CSV: una fila por registro. Columnas: day (AAAA-MM-DD), meal, food, grams. El alimento se empareja por nombre con tu catálogo."))
                     .font(.nutriSans(14)).foregroundStyle(palette.text2)
                 Button {
-                    if let file = openFiles([.commaSeparatedText, .plainText]).first { read(file) }
+                    importingFile = true
                 } label: {
                     HStack(spacing: 6) { NutriIcon("upload", size: 15); Text(store.tr("Subir archivo")) }
                 }.buttonStyle(NutriButtonStyle(.secondary, height: 36))
@@ -2577,6 +2592,10 @@ private struct EntryImportView: View {
                     .buttonStyle(NutriButtonStyle(.secondary)).disabled(saving)
             }
         } footer: { EmptyView() }
+        .nutriFilePicker(isPresented: $importingFile, types: [.commaSeparatedText, .plainText]) { result in
+            do { if let file = try result.get().first { read(file) } }
+            catch { self.error = error.localizedDescription }
+        }
         .dropDestination(for: URL.self, action: { files, _ in
             guard let file = files.first, file.isFileURL else { return false }
             read(file)
@@ -2643,6 +2662,7 @@ private struct JournalCatalog {
     var loaded = false
 }
 
+#if os(macOS)
 private struct JournalKeys: NSViewRepresentable {
     enum Command { case previous, next, search, escape }
 
@@ -2683,6 +2703,8 @@ private struct JournalKeys: NSViewRepresentable {
     func updateNSView(_ view: Listener, context: Context) { view.handle = handle }
     static func dismantleNSView(_ view: Listener, coordinator: ()) { view.stop() }
 }
+
+#endif
 
 private enum JournalQuantityDimension {
     case mass, volume

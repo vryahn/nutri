@@ -1,4 +1,3 @@
-import AppKit
 import Charts
 import NutriCore
 import SwiftUI
@@ -193,7 +192,7 @@ struct BodyView: View {
     @State private var more = false
     @State private var busy = false
     @State private var ready = false
-    @State private var importingPhotos = false
+    @State private var fileExport = FeatureFileExport()
     @State private var previewImport = false
     @State private var replace = false
     @State private var confirmDelete = false
@@ -253,9 +252,6 @@ struct BodyView: View {
         .onChange(of: focus) { previous, next in if previous != nil, previous != next { autosave() } }
         .onDisappear { autosave() }
         .nutriSectionActions([.init("importar", label: store.tr("Importar"), icon: "upload", action: openImport)])
-        .fileImporter(isPresented: $importingPhotos, allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
-            Task { await uploadPhotos(result) }
-        }
         .overlay { if previewImport { NutriModal(close: { if !busy { previewImport = false } }, maxWidth: 512) { importSheet } } }
         .overlay {
             if let selectedPhoto {
@@ -284,7 +280,8 @@ struct BodyView: View {
                 }
             }
         }
-        .onExitCommand {
+        .nutriFeatureExport($fileExport) { store.report($0) }
+        .nutriOnExitCommand {
             if previewImport, !busy { previewImport = false }
             if confirmDelete { confirmDelete = false; photoToDelete = nil }
             if selectedPhoto != nil { selectedPhoto = nil }
@@ -304,6 +301,7 @@ struct BodyView: View {
             .popover(isPresented: $dateOpen) {
                 DatePicker(store.tr("Elegir fecha"), selection: Binding(get: { day }, set: { dateOpen = false; navigate($0) }), displayedComponents: .date)
                     .labelsHidden().datePickerStyle(.graphical).padding(12)
+                    .presentationCompactAdaptation(.popover)
             }
             Spacer()
             Button { navigate(addingDays(1, to: navigationDay)) } label: { NutriIcon("chevron-right", size: 22) }
@@ -476,16 +474,14 @@ struct BodyView: View {
             if store.anonymous || store.demoActive {
                 Text(store.tr("En la demo no se pueden subir fotos de progreso.")).font(.nutriSans(12)).foregroundStyle(palette.text3)
             } else {
-                Button { importingPhotos = true } label: {
+                FeaturePhotoPicker(onPick: { result in Task { await uploadPhotos(result) } }) {
                     HStack(spacing: 8) { NutriIcon("camera", size: 18); Text(store.tr("Añadir fotos")) }.frame(minHeight: 44)
                 }.buttonStyle(.plain).foregroundStyle(palette.accent)
             }
         }.padding(16).nutriCard()
             .overlay { if photoDrag { RoundedRectangle(cornerRadius: 16).strokeBorder(palette.accentDeep, lineWidth: 2).allowsHitTesting(false) } }
             .dropDestination(for: URL.self) { urls, _ in
-                let supported = urls.filter { url in
-                    (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType?.conforms(to: .image)) == true
-                }
+                let supported = FeatureImage.files(urls)
                 guard !store.anonymous, !store.demoActive, !supported.isEmpty else { return false }
                 Task { await uploadPhotos(.success(supported)) }; return true
             } isTargeted: { photoDrag = $0 && !store.anonymous && !store.demoActive }
@@ -534,15 +530,17 @@ struct BodyView: View {
                     .chartYAxis { AxisMarks(position: .leading) { value in AxisGridLine().foregroundStyle(palette.border); AxisValueLabel { if let number = value.as(Double.self) { Text(numberText(number, digits: 1)).font(.nutriSans(10)).foregroundStyle(palette.text3) } } } }
                     .chartOverlay { proxy in
                         GeometryReader { geometry in
-                            Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in
-                                switch phase {
-                                case let .active(location):
-                                    if let frame = proxy.plotFrame {
-                                        let origin = geometry[frame].origin
-                                        trendHover = proxy.value(atX: location.x - origin.x, as: String.self)
-                                    }
-                                case .ended: trendHover = nil
+                            Rectangle().fill(.clear).contentShape(Rectangle()).nutriChartPoint { point in
+                                guard let point, let frame = proxy.plotFrame, geometry[frame].contains(point) else {
+                                    trendHover = nil
+                                    return
                                 }
+                                let value: String? = proxy.value(atX: point.x - geometry[frame].minX)
+                                #if os(iOS)
+                                trendHover = trendHover == value ? nil : value
+                                #else
+                                trendHover = value
+                                #endif
                             }
                         }
                     }
@@ -760,7 +758,7 @@ struct BodyView: View {
         }
     }
 
-    private func uploadPhotos(_ result: Result<[URL], Error>) async {
+    private func uploadPhotos(_ result: Result<[FeatureImage], Error>) async {
         await flushEdits()
         guard ready, !loadingDay, !busy, !pending, !store.anonymous, !store.demoActive, let owner = store.owner else { return }
         let key = dayKey
@@ -768,12 +766,14 @@ struct BodyView: View {
         defer { busy = false; uploading = false }
         do {
             var failure: Error?
-            for url in try result.get() {
+            for image in try result.get() {
                 try Task.checkCancellation()
                 guard store.owner == owner else { return }
                 do {
                     let path = "\(owner)/\(UUID().uuidString.lowercased()).jpg"
-                    let bytes = try jpegData(url, quality: 0.8)
+                    let bytes = try await image.jpeg(quality: 0.8)
+                    try Task.checkCancellation()
+                    guard store.owner == owner else { return }
                     // Keep the unique path through an ambiguous upload result; do not repeat the write blindly.
                     let registered = try await setPhotoReference(path, present: true, day: key, owner: owner)
                     do {
@@ -849,7 +849,7 @@ struct BodyView: View {
     private func exportTemplate() {
         do {
             let headers = ["day"] + BodyMetric.fields.map { store.lang == "en" ? BodyMetric.englishHeaders[$0.key] ?? $0.key : $0.key } + ["note"]
-            try saveFeatureFile(Data((headers.joined(separator: ",") + "\n").utf8), name: "nutri_medidas_plantilla.csv", type: .commaSeparatedText)
+            try fileExport.save(Data((headers.joined(separator: ",") + "\n").utf8), name: "nutri_medidas_plantilla.csv", type: .commaSeparatedText)
         } catch { store.report(error) }
     }
 
@@ -884,13 +884,13 @@ private struct PrivateBodyPhoto: View {
     @EnvironmentObject private var store: Store
     let path: String
     var crop = false
-    @State private var image: NSImage?
+    @State private var image: NutriPlatformImage?
     @State private var error = false
 
     var body: some View {
         Group {
             if let image {
-                Image(nsImage: image).resizable().aspectRatio(contentMode: crop ? .fill : .fit).accessibilityLabel(store.tr("Foto de progreso"))
+                Image(nutriImage: image).resizable().aspectRatio(contentMode: crop ? .fill : .fit).accessibilityLabel(store.tr("Foto de progreso"))
             } else if error {
                 Label(store.tr("Foto no disponible"), systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
             } else {
@@ -903,7 +903,7 @@ private struct PrivateBodyPhoto: View {
             do {
                 let data = try await store.storage("GET", "object/authenticated/body-photos/\(path)")
                 guard !Task.isCancelled else { return }
-                image = NSImage(data: data)
+                image = NutriPlatformImage(data: data)
                 error = image == nil
             } catch {
                 if !Task.isCancelled { self.error = true }

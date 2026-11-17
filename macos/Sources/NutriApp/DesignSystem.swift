@@ -1,9 +1,17 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import CoreText
 import SwiftUI
 
 private var designResources: Bundle {
+    #if os(macOS)
     Bundle.main.resourceURL.flatMap { Bundle(url: $0.appendingPathComponent("Nutri_Nutri.bundle")) } ?? .module
+    #else
+    .main
+    #endif
 }
 
 /// The two Petróleo palettes in src/index.css, in sRGB.
@@ -51,6 +59,7 @@ struct NutriPalette {
     }
 
     private static func color(_ dark: Int, _ light: Int) -> Color {
+        #if os(macOS)
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             let hex = isDark ? dark : light
@@ -58,6 +67,14 @@ struct NutriPalette {
                            green: CGFloat(hex >> 8 & 255) / 255,
                            blue: CGFloat(hex & 255) / 255, alpha: 1)
         })
+        #else
+        Color(uiColor: UIColor { traits in
+            let hex = traits.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red: CGFloat(hex >> 16 & 255) / 255,
+                           green: CGFloat(hex >> 8 & 255) / 255,
+                           blue: CGFloat(hex & 255) / 255, alpha: 1)
+        })
+        #endif
     }
 }
 
@@ -136,19 +153,42 @@ struct NutriIcon: View {
         self.size = size
     }
 
-    static let assets: [String: NSImage] = {
+    static let assets: [String: NutriPlatformImage] = {
         guard let base = designResources.resourceURL?.appendingPathComponent("Icons"),
               let files = try? FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: nil) else { return [:] }
         return Dictionary(uniqueKeysWithValues: files.compactMap { url in
-            guard url.pathExtension == "pdf", let image = NSImage(contentsOf: url) else { return nil }
+            guard url.pathExtension == "pdf", let image = loadPDF(url) else { return nil }
             return (url.deletingPathExtension().lastPathComponent, image)
         })
     }()
 
+    private static func loadPDF(_ url: URL) -> NutriPlatformImage? {
+        #if os(macOS)
+        NSImage(contentsOf: url)
+        #else
+        guard let page = CGPDFDocument(url as CFURL)?.page(at: 1) else { return nil }
+        let bounds = page.getBoxRect(.mediaBox)
+        guard bounds.width > 0, bounds.height > 0 else { return nil }
+        let pixels: CGFloat = url.lastPathComponent.hasPrefix("nutri-") ? 240 : 96
+        let scale = pixels / max(bounds.width, bounds.height)
+        let size = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { renderer in
+            let context = renderer.cgContext
+            context.translateBy(x: 0, y: size.height)
+            context.scaleBy(x: 1, y: -1)
+            context.concatenate(page.getDrawingTransform(.mediaBox, rect: CGRect(origin: .zero, size: size),
+                                                         rotate: 0, preserveAspectRatio: true))
+            context.drawPDFPage(page)
+        }
+        #endif
+    }
+
     var body: some View {
         Group {
             if let image = Self.assets[name] {
-                Image(nsImage: image).renderingMode(.template).resizable().scaledToFit()
+                Image(nutriImage: image).renderingMode(.template).resizable().scaledToFit()
             } else {
                 Image(systemName: name).resizable().scaledToFit()
             }
@@ -189,7 +229,7 @@ struct NutriButtonStyle: ButtonStyle {
                 .font(.nutriSans(14, weight: style.kind == .primary ? .medium : .regular))
                 .foregroundStyle(foreground)
                 .padding(.horizontal, style.horizontal)
-                .frame(minHeight: style.height)
+                .frame(minHeight: nutriTouchSize(style.height))
                 .background(background, in: RoundedRectangle(cornerRadius: style.radius, style: .circular))
                 .overlay {
                     if style.kind == .secondary {
@@ -261,7 +301,7 @@ private struct NutriInput: ViewModifier {
             .focused(binding)
             .foregroundStyle(palette.text)
             .padding(.horizontal, 12)
-            .frame(minHeight: height)
+            .frame(minHeight: nutriTouchSize(height))
             .background(palette.surface2, in: RoundedRectangle(cornerRadius: 12, style: .circular))
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .circular)
@@ -391,7 +431,7 @@ struct NutriSelect: View {
                 Text(selection).lineLimit(1)
                 Spacer(minLength: 0)
                 NutriIcon("chevron-down", size: 14)
-            }.padding(.horizontal, 12).frame(height: height)
+            }.padding(.horizontal, 12).frame(height: nutriTouchSize(height))
                 .font(.nutriSans(height == 44 ? 16 : 14)).foregroundStyle(palette.text)
                 .contentShape(Rectangle()).nutriCard(radius: height == 44 ? 12 : 8, fill: palette.surface2)
         }.buttonStyle(.plain)
@@ -400,7 +440,8 @@ struct NutriSelect: View {
     }
 
     private var choices: some View {
-        ScrollView {
+        let rowHeight = Int(nutriTouchSize(36)) + 2
+        return ScrollView {
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(groups.indices, id: \.self) { index in
                     let group = groups[index]
@@ -417,14 +458,14 @@ struct NutriSelect: View {
                             HStack(spacing: 8) {
                                 Text(choice.title).frame(maxWidth: .infinity, alignment: .leading)
                                 if choice.key == value { NutriIcon("check", size: 14).foregroundStyle(palette.accent) }
-                            }.padding(.horizontal, 8).frame(minHeight: 36).contentShape(Rectangle())
+                            }.padding(.horizontal, 8).frame(minHeight: nutriTouchSize(36)).contentShape(Rectangle())
                                 .background(choice.key == value ? palette.surface3 : Color.clear, in: RoundedRectangle(cornerRadius: 6))
                         }.buttonStyle(.plain).accessibilityAddTraits(choice.key == value ? .isSelected : [])
                     }
                 }
             }.padding(6)
         }.font(.nutriSans(14)).foregroundStyle(palette.text).background(palette.surface2)
-            .frame(width: max(width, 168), height: min(360, CGFloat(groups.reduce(12) { $0 + $1.options.count * 38 + ($1.label == nil ? 0 : 23) })))
-            .onExitCommand { opened = false }
+            .frame(width: max(width, 168), height: min(360, CGFloat(groups.reduce(12) { $0 + $1.options.count * rowHeight + ($1.label == nil ? 0 : 23) })))
+            .nutriOnExitCommand { opened = false }
     }
 }

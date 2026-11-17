@@ -75,11 +75,15 @@ final class Store: ObservableObject {
         }
         #endif
         let info = Bundle.main.infoDictionary ?? [:]
-        guard let url = (info["NutriSupabaseURL"] as? String).flatMap(URL.init(string:)),
-              let key = info["NutriSupabasePublishableKey"] as? String,
-              let ai = (info["NutriAIURL"] as? String).flatMap(URL.init(string:)) else {
+        guard let url = (info["NutriSupabaseURL"] as? String).flatMap(URL.init(string:)), url.host != nil,
+              let key = info["NutriSupabasePublishableKey"] as? String, !cleanText(key).isEmpty,
+              let ai = (info["NutriAIURL"] as? String).flatMap(URL.init(string:)), ai.host != nil else {
             api = nil
+            #if os(iOS)
+            errorMessage = tr("Falta la configuración de Nutri en esta versión.")
+            #else
             errorMessage = "Falta la configuración de Nutri. Compila el paquete con macos/scripts/build-app.sh."
+            #endif
             return
         }
         let identifier = Bundle.main.bundleIdentifier ?? "com.vryahn.nutri.native"

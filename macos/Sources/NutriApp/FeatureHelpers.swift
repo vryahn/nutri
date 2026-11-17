@@ -1,5 +1,11 @@
-import AppKit
 import Foundation
+#if os(macOS)
+import AppKit
+#else
+import CoreTransferable
+import PhotosUI
+#endif
+import SwiftUI
 import NutriCore
 import UniformTypeIdentifiers
 
@@ -49,13 +55,165 @@ func secureFileData(_ url: URL) throws -> Data {
     return try Data(contentsOf: url)
 }
 
-@MainActor
-func saveFeatureFile(_ data: Data, name: String, type: UTType) throws {
-    let panel = NSSavePanel()
-    panel.nameFieldStringValue = name
-    panel.allowedContentTypes = [type]
-    guard panel.runModal() == .OK, let url = panel.url else { return }
-    try data.write(to: url, options: .atomic)
+struct FeatureFileExport {
+    #if os(iOS)
+    fileprivate var file: Document?
+    #endif
+
+    @MainActor
+    mutating func save(_ data: Data, name: String, type: UTType) throws {
+        #if os(macOS)
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = name
+        panel.allowedContentTypes = [type]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        try data.write(to: url, options: .atomic)
+        #else
+        file = Document(data: data, name: name, type: type)
+        #endif
+    }
+
+    #if os(iOS)
+    fileprivate struct Document: FileDocument {
+        static var readableContentTypes: [UTType] { [.commaSeparatedText, .pdf] }
+
+        let data: Data
+        let name: String
+        let type: UTType
+
+        init(data: Data, name: String, type: UTType) {
+            self.data = data
+            self.name = name
+            self.type = type
+        }
+
+        init(configuration: ReadConfiguration) throws {
+            guard let data = configuration.file.regularFileContents else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            self.init(data: data, name: configuration.file.preferredFilename ?? "", type: configuration.contentType)
+        }
+
+        func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+            FileWrapper(regularFileWithContents: data)
+        }
+    }
+    #endif
+}
+
+extension View {
+    @ViewBuilder
+    func nutriFeatureExport(_ state: Binding<FeatureFileExport>, onFailure: @escaping (Error) -> Void) -> some View {
+        #if os(iOS)
+        let file = state.wrappedValue.file
+        fileExporter(isPresented: Binding(
+            get: { state.wrappedValue.file != nil },
+            set: { if !$0 { state.wrappedValue.file = nil } }
+        ), document: file, contentType: file?.type ?? .data, defaultFilename: file?.name) { result in
+            if case let .failure(error) = result { onFailure(error) }
+        }
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder
+    func nutriChartPoint(_ update: @escaping (CGPoint?) -> Void) -> some View {
+        #if os(macOS)
+        onContinuousHover { phase in
+            switch phase {
+            case let .active(point): update(point)
+            case .ended: update(nil)
+            }
+        }
+        #else
+        onTapGesture(count: 1, coordinateSpace: .local) { point in update(point) }
+        #endif
+    }
+}
+
+enum FeatureImage: Hashable {
+    case file(URL)
+    #if os(iOS)
+    case library(PhotosPickerItem)
+    case camera(Data)
+    #endif
+
+    static func files(_ urls: [URL]) -> [Self] {
+        urls.compactMap { url in
+            guard url.isFileURL else { return nil }
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+            let type = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType) ?? UTType(filenameExtension: url.pathExtension)
+            return type?.conforms(to: .image) == true ? .file(url) : nil
+        }
+    }
+
+    func jpeg(maxSide: Int = 1280, quality: Double = 0.85) async throws -> Data {
+        switch self {
+        case .file(let url): return try jpegData(url, maxSide: maxSide, quality: quality)
+        #if os(iOS)
+        case .camera(let data): return try jpegData(data, maxSide: maxSide, quality: quality)
+        case .library(let item):
+            guard let image = try await item.loadTransferable(type: LibraryImage.self) else {
+                throw FeatureError("No se pudo abrir la imagen.")
+            }
+            return try jpegData(image.data, maxSide: maxSide, quality: quality)
+        #endif
+        }
+    }
+
+    #if os(iOS)
+    private struct LibraryImage: Transferable {
+        let data: Data
+
+        static var transferRepresentation: some TransferRepresentation {
+            DataRepresentation(importedContentType: .image) { Self(data: $0) }
+        }
+    }
+    #endif
+}
+
+struct FeaturePhotoPicker<Label: View>: View {
+    @EnvironmentObject private var store: Store
+    var maximum: Int? = nil
+    let onPick: (Result<[FeatureImage], Error>) -> Void
+    @ViewBuilder let label: () -> Label
+    @State private var filesOpen = false
+    #if os(iOS)
+    @State private var libraryOpen = false
+    @State private var cameraOpen = false
+    @State private var libraryItems: [PhotosPickerItem] = []
+    #endif
+
+    var body: some View {
+        control.nutriFilePicker(isPresented: $filesOpen, types: [.image], multiple: maximum != 1) { result in
+            onPick(result.map { $0.prefix(maximum ?? $0.count).map(FeatureImage.file) })
+        }
+    }
+
+    @ViewBuilder private var control: some View {
+        #if os(iOS)
+        Menu {
+            if nutriCameraAvailable {
+                Button { cameraOpen = true } label: { SwiftUI.Label(store.tr("Tomar foto"), systemImage: "camera") }
+            }
+            Button { libraryOpen = true } label: { SwiftUI.Label(store.tr("Fototeca"), systemImage: "photo.on.rectangle") }
+            Button { filesOpen = true } label: { SwiftUI.Label(store.tr("Archivos"), systemImage: "folder") }
+        } label: { label() }
+        .nutriCamera(isPresented: $cameraOpen) { result in
+            onPick(result.map { [.camera($0)] })
+        }
+        .photosPicker(isPresented: $libraryOpen, selection: $libraryItems, maxSelectionCount: maximum, matching: .images)
+        .onChange(of: libraryItems) { _, items in
+            guard !items.isEmpty else { return }
+            onPick(.success(items.map(FeatureImage.library)))
+            libraryItems = []
+        }
+        #else
+        Button { filesOpen = true } label: { label() }
+        #endif
+    }
 }
 
 func nutritionValue(_ row: Record, _ key: String) -> Double? {
@@ -156,7 +314,7 @@ func generateNutritionJSON(store: Store, prompt: String, parts: [Record], schema
     throw lastError
 }
 
-func aiImagePart(_ url: URL, maxSide: Int = 1024) throws -> Record {
-    let jpeg = try jpegData(url, maxSide: maxSide, quality: 0.8)
+func aiImagePart(_ image: FeatureImage, maxSide: Int = 1024) async throws -> Record {
+    let jpeg = try await image.jpeg(maxSide: maxSide, quality: 0.8)
     return ["inline_data": .object(["mime_type": .string("image/jpeg"), "data": .string(jpeg.base64EncodedString())])]
 }
