@@ -40,6 +40,7 @@ public enum Domain {
         let microMax: [String: Double]
         let bands: Record
         let strings: [String: String]
+        let prompts: [String: String]
     }
 
     private static let contracts: Contracts = {
@@ -57,6 +58,7 @@ public enum Domain {
     public static let micros = contracts.micros
     public static let microMax = contracts.microMax
     public static let defaultBands = contracts.bands
+    public static let prompts = contracts.prompts
     public static let macroKeys = ["kcal", "protein_g", "carbs_g", "fat_g"]
     public static let macroLabels = ["kcal": "Energía", "protein_g": "Proteína", "carbs_g": "Carbohidratos", "fat_g": "Grasa"]
     public static let categories = ["Lípidos", "Carbohidratos", "Edulcorantes", "Vitaminas", "Minerales", "Antioxidantes", "Aminoácidos", "Otros"]

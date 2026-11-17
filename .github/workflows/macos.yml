@@ -7,12 +7,28 @@ on:
       - 'macos/**'
       - 'src/lib/domain.js'
       - 'src/lib/i18n.js'
+      - 'api/**'
+      - 'supabase/**'
+      - 'src/lib/ai.js'
+      - 'src/lib/sources.js'
+      - 'src/lib/outbox.js'
+      - 'src/lib/frequent.js'
+      - 'src/lib/importer.js'
+      - 'scripts/native-contract.mjs'
       - '.github/workflows/macos.yml'
   pull_request:
     paths:
       - 'macos/**'
       - 'src/lib/domain.js'
       - 'src/lib/i18n.js'
+      - 'api/**'
+      - 'supabase/**'
+      - 'src/lib/ai.js'
+      - 'src/lib/sources.js'
+      - 'src/lib/outbox.js'
+      - 'src/lib/frequent.js'
+      - 'src/lib/importer.js'
+      - 'scripts/native-contract.mjs'
       - '.github/workflows/macos.yml'
   workflow_dispatch:
 

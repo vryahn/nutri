@@ -1,11 +1,20 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { nativeContract } from './scripts/native-contract.mjs';
 
 export default defineConfig({
   server: { port: Number(process.env.PORT) || 5173 },
   plugins: [
     react(),
+    // Lets the installed macOS app detect it was built against older contracts.
+    {
+      name: 'native-contract',
+      apply: 'build',
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'native-contract.json', source: JSON.stringify({ contract: nativeContract() }) + '\n' });
+      },
+    },
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: false,

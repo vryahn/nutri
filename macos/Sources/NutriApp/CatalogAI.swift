@@ -3,39 +3,17 @@ import NutriCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-private let catalogNutrientUnits = Domain.micros.map { "\($0.key) (\($0.unit))" }.joined(separator: ", ")
+private func nameLanguage(_ language: String) -> String { language == "en" ? "in English" : "en español" }
 
-// Native request contract mirrors production src/lib/ai.js (the eval-only path is separate).
+// Prompts come from src/lib/ai.js via macos/scripts/sync-domain.mjs (Contracts.json).
 func foodPrompt(language: String) -> String {
-    """
-    Eres un asistente de nutrición para México. Devuelve SIEMPRE los valores por 100 unidades de porción comestible (100 g, o 100 ml si el alimento es líquido y la etiqueta declara por ml).
-    Puedes recibir hasta dos imágenes del MISMO producto (p. ej. frente del empaque con nombre/marca/código de barras y tabla nutrimental): combínalas como una sola fuente. Si ambas muestran etiqueta nutrimental, transcribe solo la más legible — nunca promedies valores entre imágenes.
-    Sigue esta jerarquía, en orden:
-    1. Si alguna imagen contiene una etiqueta nutrimental (NOM-051 o similar) legible: TRANSCRIBE los valores declarados, NO estimes. Si la etiqueta declara por gramos, normaliza a 100 g con el tamaño de porción declarado (p. ej. porción de 30 g → multiplica cada valor por 100/30) y basis = "100g". Si la etiqueta declara por mililitros (p. ej. "por 100 ml" o "por porción de 240 ml"), normaliza a 100 ml de la MISMA forma pero sin convertir a gramos — nunca inventes una densidad — y basis = "100ml". mode = "etiqueta".
-    2. Si hay un código de barras con dígitos impresos legibles, devuélvelos en "ean" (solo dígitos, 8-14 caracteres). Si no se leen completos y sin ambigüedad, ean = null — nunca adivines dígitos.
-    3. Si no hay etiqueta legible: estima con base tipo USDA FoodData Central, priorizando productos y preparaciones comunes en México, siempre por 100 g (basis = "100g"). mode = "estimacion".
-    Unidades: kcal en kcal; protein_g, carbs_g y fat_g en gramos; micros: \(catalogNutrientUnits).
-    OBLIGATORIOS: kcal, protein_g, carbs_g, fat_g, sodio_mg, potasio_mg y magnesio_mg deben traer SIEMPRE la mejor estimación disponible, aunque sea aproximada. Devuelve null SOLO si es imposible dar una cifra mínimamente fundada — nunca rellenes con 0 inventado ni omitas por pereza.
-    El resto de los micros (incluida grasa saturada/trans, azúcares y fibra): SOLO con dato fiable de etiqueta o base tipo USDA; si no, null. Un 0 real (p. ej. grasa trans en una manzana) sí es válido cuando el valor real es cero.
-    COMPLETITUD (crítico): NO omitas ningún valor que la etiqueta o tu fuente declare. Si la etiqueta lista polialcoholes/edulcorantes (eritritol, xilitol, sorbitol, maltitol, sucralosa, aspartamo, acesulfamo K, glucósidos de esteviol, etc.), azúcares individuales (glucosa, fructosa, sacarosa…), tipos de grasa (mono/poliinsaturada, omega-3/6, ALA/EPA/DHA), aminoácidos, cafeína u otros micros de la lista, TRANSCRÍBELOS todos a su clave. Los edulcorantes de alta intensidad (en mg) solo si la etiqueta declara la cantidad — nunca los estimes; si solo mencionan su presencia sin cifra, déjalos en null.
-    Si el alimento es genérico y SIN marca (nunca para productos empaquetados, que devolverían variantes de EE. UU.), da "usda_query": su nombre en inglés apto para buscar en USDA FoodData Central; si no aplica, null.
-    Si es líquido o bebida, da "density_g_ml" usando estos valores canónicos cuando el tipo coincida: \(foodDensityPresets.map { "\($0.0.lowercased()) \(draftNumber($0.1))" }.joined(separator: ", ")); para otro líquido, tu mejor estimación; si no es líquido, null.
-    "confidence": "alta"|"media"|"baja" según qué tan fundada está tu respuesta. "name" corto, \(language == "en" ? "in English" : "en español"). "brand" solo si es identificable.
-    """
+    (Domain.prompts["food"] ?? "").replacingOccurrences(of: "{{name_lang}}", with: nameLanguage(language))
 }
 
 func recipePrompt(language: String, catalogNames: [String]) -> String {
-    """
-    Eres un asistente de nutrición para México. El usuario describe un platillo, bebida o receta (texto y/o hasta dos fotos; si hay dos, son del MISMO platillo — combínalas). Descompón en ingredientes con su cantidad en GRAMOS tal como van en la preparación.
-    Prefiere pocos ingredientes compuestos ("leche entera", no "leche + grasa"). Máximo 15.
-    Se te da la lista EXACTA de alimentos del catálogo del usuario. Para cada ingrediente, si uno de esos nombres corresponde claramente al ingrediente, devuelve ese nombre LITERAL en "db_match"; si no hay correspondencia clara, "db_match" = null. Nunca inventes nombres que no estén en la lista.
-    Catálogo del usuario: \(catalogNames.isEmpty ? "(vacío)" : catalogNames.joined(separator: ", "))
-    Para ingredientes genéricos sin match, da "usda_query" (nombre en inglés apto para buscar en USDA FoodData Central); si no aplica, null.
-    Para CADA ingrediente da además sus valores nutricionales por 100 g de porción comestible, como respaldo revisable (base tipo USDA priorizando México). OBLIGATORIOS siempre con tu mejor estimación disponible: kcal, protein_g, carbs_g, fat_g, sodio_mg, potasio_mg, magnesio_mg (null SOLO si es imposible fundarlo, nunca 0 inventado). Resto de micros: solo con dato fiable, si no null. Unidades: kcal en kcal; protein_g/carbs_g/fat_g en gramos; micros: \(catalogNutrientUnits).
-    Si el usuario indica tamaño total (p. ej. "350ml"), conviértelo a gramos con densidad razonable y devuélvelo en "total_weight_g"; si no lo indica, tu mejor estimación del peso total preparado; null si imposible.
-    "kcal_total_estimate": tu estimación gruesa de kcal TOTALES del platillo completo (solo para verificación cruzada, jamás se persiste); null si no puedes fundarla.
-    "name": nombre corto de la receta, \(language == "en" ? "in English" : "en español"). "confidence": "alta"|"media"|"baja".
-    """
+    (Domain.prompts["recipe"] ?? "")
+        .replacingOccurrences(of: "{{catalog}}", with: catalogNames.isEmpty ? "(vacío)" : catalogNames.joined(separator: ", "))
+        .replacingOccurrences(of: "{{name_lang}}", with: nameLanguage(language))
 }
 
 private let catalogMicroSchema = Dictionary(uniqueKeysWithValues: Domain.micros.map { ($0.key, aiSchema("NUMBER", nullable: true)) })

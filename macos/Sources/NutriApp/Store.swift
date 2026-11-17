@@ -16,6 +16,7 @@ final class Store: ObservableObject {
     @Published private(set) var copiedDay: String?
     @Published private(set) var signingOut = false
     @Published var errorMessage: String?
+    @Published private(set) var outdated = false
     @Published var notice: String?
     @Published var undoTitle: String?
     @Published var logFood: Record?
@@ -219,11 +220,24 @@ final class Store: ObservableObject {
         } catch { report(error) }
         flush()
         guard !demoActive, !offline, owner == uid else { return }
+        await checkContract()
         // Prime the same catalog queries used by the entry editor for later offline use.
         async let foods: [Record]? = try? catalog()
         async let recipes: [Record]? = try? read("recipes", ["order": "name.asc"])
         async let nutrients: [Record]? = try? read("recipe_per_100g")
         _ = await (foods, recipes, nutrients)
+    }
+
+    // Compares the contract baked into this build with the one the deployed web serves.
+    private func checkContract() async {
+        guard let info = Bundle.main.infoDictionary, let expected = info["NutriContract"] as? String,
+              let raw = info["NutriContractURL"] as? String, let url = URL(string: raw) else { return }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
+        request.httpMethod = "GET"
+        guard let (data, response) = try? await URLSession(configuration: .ephemeral).data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let deployed = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["contract"] as? String else { return }
+        outdated = deployed != expected
     }
 
     func tr(_ s: String) -> String {
@@ -235,6 +249,13 @@ final class Store: ObservableObject {
 
     func report(_ error: Error) {
         guard !(error is CancellationError), (error as? URLError)?.code != .cancelled else { return }
+        if (error as? NutriError)?.code == Supabase.sessionExpiredCode, owner != nil, !demoActive {
+            // reset() keeps the on-disk cache and outbox: pending entries sync after signing in again.
+            let message = tr("Tu sesión expiró. Vuelve a iniciar sesión.")
+            reset()
+            errorMessage = message
+            return
+        }
         errorMessage = error.localizedDescription
     }
 
@@ -513,6 +534,7 @@ final class Store: ObservableObject {
                 }
                 if error is URLError { offline = true }
                 else { report(error) }
+                guard identity == current else { return }
                 retryTask = Task {
                     try? await Task.sleep(for: .seconds(12))
                     if !Task.isCancelled { flush() }

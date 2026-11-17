@@ -20,7 +20,9 @@ def read_values(path, keys):
 
 
 def main():
-    env_file, info_file, mode = sys.argv[1:]
+    env_file, info_file, mode, contract = sys.argv[1:]
+    if not re.fullmatch(r"[0-9a-f]{16}", contract):
+        sys.exit("Contrato nativo inválido.")
     url_key, key_name = "VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY"
     values = read_values(env_file, {url_key, key_name})
     key = values.get(key_name, "")
@@ -37,8 +39,8 @@ def main():
         "CFBundleIdentifier": "com.vryahn.nutri.native" + (".debug" if mode == "debug" else ""),
         "CFBundleInfoDictionaryVersion": "6.0",
         "CFBundlePackageType": "APPL",
-        "CFBundleShortVersionString": "1.1.4",
-        "CFBundleVersion": "6",
+        "CFBundleShortVersionString": "1.1.5",
+        "CFBundleVersion": "7",
         "CFBundleIconFile": "Nutri.icns",
         "LSApplicationCategoryType": "public.app-category.healthcare-fitness",
         "LSMinimumSystemVersion": "14.0",
@@ -46,6 +48,8 @@ def main():
         "NutriSupabaseURL": url.geturl(),
         "NutriSupabasePublishableKey": key,
         "NutriAIURL": "https://nutri.vryahn.com/api/ai",
+        "NutriContract": contract,
+        "NutriContractURL": "https://nutri.vryahn.com/native-contract.json",
     }
     with open(info_file, "wb") as handle:
         plistlib.dump(meta, handle)

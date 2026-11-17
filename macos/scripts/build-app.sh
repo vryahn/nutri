@@ -37,7 +37,8 @@ for size in 16 32 128 256 512; do
     sips -z "$twice" "$twice" "$repo_dir/public/icon-512.png" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$iconset" -o "$app/Contents/Resources/Nutri.icns"
-python3 "$script_dir/write_info.py" "$env_file" "$app/Contents/Info.plist" "$mode"
+contract="$(node "$repo_dir/scripts/native-contract.mjs")"
+python3 "$script_dir/write_info.py" "$env_file" "$app/Contents/Info.plist" "$mode" "$contract"
 codesign --force --sign - "$app"
 codesign --verify --deep --strict "$app"
 if [[ -d "$output_dir/Nutri.app" ]]; then

@@ -22,6 +22,8 @@ struct NutriChecks {
                 try checkSQLBoundaries()
                 try checkCSV()
                 try checkOutbox()
+                try checkPrompts()
+                try await checkSessionExpiry()
                 try await checkTransport(useKeychain: CommandLine.arguments.contains("--keychain"))
                 print("NutriChecks: \(checked) web comparisons, SQL edges, CSV, FIFO persistence/isolation, auth and REST passed.")
             }
@@ -170,6 +172,66 @@ struct NutriChecks {
 
     }
 
+    private static func checkPrompts() throws {
+        let food = Domain.prompts["food"] ?? "", recipe = Domain.prompts["recipe"] ?? ""
+        try require(!food.isEmpty && !recipe.isEmpty, "AI prompts present in contracts")
+        try require(food.contains("{{name_lang}}"), "Food prompt keeps name-language placeholder")
+        try require(recipe.contains("{{catalog}}") && recipe.contains("{{name_lang}}"), "Recipe prompt keeps catalog/name-language placeholders")
+        try require(!food.contains("${") && !recipe.contains("${"), "AI prompts have no unresolved JS interpolation")
+    }
+
+    private static func checkSessionExpiry() async throws {
+        let log = SendableCounter()
+        let refreshStatus = SendableCounter()
+        refreshStatus.value = 400
+        MockHTTP.handler = { request in
+            let path = request.url?.path ?? ""
+            if path.hasSuffix("/token") {
+                log.increment()
+                if refreshStatus.value == 400 {
+                    return (400, #"{"error_code":"refresh_token_not_found","msg":"Invalid Refresh Token: Refresh Token Not Found"}"#)
+                }
+                return (refreshStatus.value, #"{"message":"unavailable"}"#)
+            }
+            return (200, "[]")
+        }
+        defer { MockHTTP.handler = nil }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockHTTP.self]
+        let uid = "00000000-0000-4000-8000-000000000042"
+        let auth = try JSONDecoder().decode(AuthSession.self, from: Data(
+            #"{"access_token":"old","refresh_token":"old-refresh","expires_in":0,"user":{"id":"\#(uid)"}}"#.utf8))
+        func client() -> Supabase {
+            Supabase(configuration: NutriConfiguration(database: URL(string: "https://nutri.test")!,
+                publishableKey: "public-test-key", ai: URL(string: "https://nutri.test/api/ai")!),
+                session: StoredSession(auth, receivedAt: Date(timeIntervalSince1970: 0)), http: URLSession(configuration: configuration))
+        }
+        let expired = client()
+        for attempt in 1...2 {
+            do {
+                _ = try await expired.rows("GET", "entries", owner: uid)
+                throw CheckError.failure("Revoked refresh token accepted.")
+            } catch let error as NutriError {
+                try require(error.code == Supabase.sessionExpiredCode, "Rejected refresh token reports session_expired (attempt \(attempt))")
+            }
+        }
+        try require(log.value == 1, "Expired session is not refreshed again after the rejection")
+        refreshStatus.value = 503
+        let transient = client()
+        do {
+            _ = try await transient.rows("GET", "entries", owner: uid)
+            throw CheckError.failure("Unavailable refresh accepted.")
+        } catch let error as NutriError {
+            try require(error.code != Supabase.sessionExpiredCode && error.status == 503, "503 on refresh does not expire the session")
+        }
+        do {
+            _ = try await transient.rows("GET", "entries", owner: uid)
+            throw CheckError.failure("Unavailable refresh accepted.")
+        } catch let error as NutriError {
+            try require(error.code != Supabase.sessionExpiredCode, "Session survives transient refresh failures")
+        }
+    }
+
     private static func checkOutbox() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -304,6 +366,16 @@ struct NutriChecks {
             throw error
         }
     }
+}
+
+private final class SendableCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var number = 0
+    var value: Int {
+        get { lock.withLock { number } }
+        set { lock.withLock { number = newValue } }
+    }
+    func increment() { lock.withLock { number += 1 } }
 }
 
 private final class MockHTTP: URLProtocol, @unchecked Sendable {

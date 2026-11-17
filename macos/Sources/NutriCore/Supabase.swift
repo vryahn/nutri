@@ -87,6 +87,8 @@ public actor Supabase {
     private var refreshTask: Task<AuthSession, Error>?
     private var generation = 0
     private var needsPersistence = false
+    private var expiredOwner: String?
+    public static let sessionExpiredCode = "session_expired"
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -111,6 +113,7 @@ public actor Supabase {
         try keychain?.store(stored)
         generation += 1
         session = stored
+        expiredOwner = nil
         return auth
     }
 
@@ -125,6 +128,7 @@ public actor Supabase {
         try keychain?.store(stored)
         generation += 1
         session = stored
+        expiredOwner = nil
         return auth
     }
 
@@ -157,7 +161,7 @@ public actor Supabase {
 
     @discardableResult
     public func renew(owner: String) async throws -> StoredSession {
-        guard let prior = session, prior.auth.user.id == owner else { throw CancellationError() }
+        guard let prior = session, prior.auth.user.id == owner else { throw cancelledOrExpired(owner) }
         let current = generation
         let task: Task<AuthSession, Error>
         if let refreshTask {
@@ -184,7 +188,21 @@ public actor Supabase {
             try persistIfNeeded(stored)
             return stored
         } catch {
-            if current == generation && session?.auth.refresh_token == prior.auth.refresh_token { refreshTask = nil }
+            if current == generation && session?.auth.refresh_token == prior.auth.refresh_token {
+                refreshTask = nil
+                // The token endpoint rejected the refresh token: the session cannot recover, so drop it.
+                // Network errors and 5xx/429 fall through and keep the session untouched.
+                if let rejected = error as? NutriError, let status = rejected.status, [400, 401, 403].contains(status) {
+                    try? keychain?.clear()
+                    generation += 1
+                    session = nil
+                    needsPersistence = false
+                    expiredOwner = owner
+                    throw sessionExpired()
+                }
+            } else if expiredOwner == owner, let rejected = error as? NutriError, [400, 401, 403].contains(rejected.status ?? 0) {
+                throw sessionExpired()  // concurrent caller sharing the same rejected refresh
+            }
             throw error
         }
     }
@@ -236,9 +254,9 @@ public actor Supabase {
 
     private func authorized(owner: String, _ build: (String) throws -> URLRequest) async throws -> Data {
         let current = generation
-        guard let active = session, active.auth.user.id == owner else { throw CancellationError() }
+        guard let active = session, active.auth.user.id == owner else { throw cancelledOrExpired(owner) }
         let ready = active.expiration.timeIntervalSinceNow > 30 ? active : try await renew(owner: owner)
-        guard current == generation else { throw CancellationError() }
+        guard current == generation else { throw cancelledOrExpired(owner) }
         try persistIfNeeded(ready)
 
         let data: Data
@@ -257,6 +275,14 @@ public actor Supabase {
         }
         guard current == generation else { throw CancellationError() }
         return data
+    }
+
+    private func sessionExpired() -> NutriError {
+        NutriError("Tu sesión expiró. Vuelve a iniciar sesión.", status: 401, code: Supabase.sessionExpiredCode)
+    }
+
+    private func cancelledOrExpired(_ owner: String) -> Error {
+        expiredOwner == owner ? sessionExpired() : CancellationError()
     }
 
     private func persistIfNeeded(_ value: StoredSession) throws {

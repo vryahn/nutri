@@ -178,6 +178,7 @@ struct RootView: View {
                 if wide { sidebar }
                 VStack(spacing: 0) {
                     if store.anonymous || store.demoActive { demoStrip }
+                    if store.outdated { outdatedStrip }
                     if !wide { mobileHeader }
                     activeModule
                         .frame(maxWidth: module == .dashboard && wide ? 1600 : width >= 1024 ? 1152 : 768)
@@ -341,6 +342,15 @@ struct RootView: View {
         .foregroundStyle(palette.text2).font(.nutriSans(12))
         .padding(.horizontal, 16).background(palette.surface2)
         .overlay(alignment: .bottom) { Rectangle().fill(palette.border).frame(height: 1) }
+    }
+
+    private var outdatedStrip: some View {
+        Text(store.tr("Nutri para Mac está desactualizada respecto a la web. Recompílala e instálala con macos/scripts/build-app.sh e install-app.sh."))
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .foregroundStyle(palette.warn).font(.nutriSans(12))
+            .padding(.horizontal, 16).background(palette.surface2)
+            .overlay(alignment: .bottom) { Rectangle().fill(palette.border).frame(height: 1) }
     }
 
     private var syncStatus: some View {
