@@ -131,6 +131,453 @@ final class NutriUITests: XCTestCase {
     }
 
     @MainActor
+    func testCatalogSwipesRespectOwnershipAndKeepEditTap() {
+        let app = launch(demo: true)
+        let foods = app.buttons["module.foods"]
+        XCTAssertTrue(foods.waitForExistence(timeout: 10))
+        foods.tap()
+        let oats = app.buttons["foods.card.00000000-0000-4000-8000-000000000011"]
+        reveal(oats, in: app)
+        oats.swipeLeft()
+        XCTAssertTrue(oats.isHittable, app.debugDescription)
+        XCTAssertFalse(app.buttons["Deshacer"].exists)
+        XCTAssertFalse(app.staticTexts["Editar alimento"].exists)
+
+        let yogurt = app.buttons["foods.card.00000000-0000-4000-8000-000000000012"]
+        reveal(yogurt, in: app)
+        let start = yogurt.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5))
+        start.press(forDuration: 0.08, thenDragTo: start.withOffset(CGVector(dx: -48, dy: 1)),
+                    withVelocity: .slow, thenHoldForDuration: 0)
+        XCTAssertFalse(app.buttons["Deshacer"].exists)
+        XCTAssertFalse(app.staticTexts["Editar alimento"].exists)
+        XCTAssertTrue(yogurt.isHittable)
+        yogurt.tap()
+        XCTAssertTrue(app.staticTexts["Editar alimento"].waitForExistence(timeout: 5), app.debugDescription)
+    }
+
+    @MainActor
+    func testLocalDemoSummaryCanBeReopenedFromMiniAndClosed() {
+        let app = launch(demo: true)
+        let customize = app.buttons["Personalizar resumen"]
+        XCTAssertTrue(customize.waitForExistence(timeout: 10))
+        let mini = app.buttons["today.fixedSummary"]
+        let journal = app.scrollViews.firstMatch
+        for _ in 0..<3 where !mini.isHittable { journal.swipeUp() }
+        XCTAssertTrue(mini.isHittable, app.debugDescription)
+        mini.tap()
+        XCTAssertTrue(mini.waitForNonExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(customize.isHittable, app.debugDescription)
+        customize.tap()
+        let close = app.buttons["sheet.close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5), app.debugDescription)
+        close.tap()
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(customize.isHittable)
+    }
+
+    @MainActor
+    func testLocalDemoCopiesFoodWithoutCopyingWater() {
+        let app = launch(demo: true)
+        let more = app.buttons["module.more"]
+        XCTAssertTrue(more.waitForExistence(timeout: 10))
+        more.tap()
+        app.buttons["Copiar"].tap()
+        XCTAssertTrue(app.staticTexts["Día copiado."].waitForExistence(timeout: 5))
+
+        app.buttons["Día siguiente"].tap()
+        XCTAssertNotEqual(app.buttons["today.date"].value as? String, "Hoy")
+        more.tap()
+        let paste = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Pegar ")).firstMatch
+        XCTAssertTrue(paste.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(app.buttons["Ayer"].exists)
+        paste.tap()
+        XCTAssertTrue(app.staticTexts["2 registros copiados."].waitForExistence(timeout: 5), app.debugDescription)
+
+        let breakfast = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "today.intake.", "Avena con yogur"
+        )).firstMatch
+        reveal(breakfast, in: app)
+        let water = app.buttons["today.waterSettings"]
+        let journal = app.scrollViews.firstMatch
+        for _ in 0..<3 where !water.isHittable { journal.swipeDown() }
+        XCTAssertTrue(water.isHittable, app.debugDescription)
+        XCTAssertFalse(app.buttons["Quitar último registro de agua"].exists)
+    }
+
+    @MainActor
+    func testLocalDemoAccountRegionUpdatesJournalAndDismissesOutside() {
+        let app = launch(demo: true)
+        let account = app.buttons["account.menu"]
+        XCTAssertTrue(account.waitForExistence(timeout: 10))
+        account.tap()
+        let region = app.buttons["account.region"]
+        XCTAssertTrue(region.waitForExistence(timeout: 5))
+        region.tap()
+        let imperial = app.buttons["Imperial · oz · fl oz"]
+        XCTAssertTrue(imperial.waitForExistence(timeout: 5))
+        imperial.tap()
+        XCTAssertTrue(imperial.isSelected, app.debugDescription)
+        let english = app.buttons["region.language.en"]
+        XCTAssertTrue(english.exists, app.debugDescription)
+        english.tap()
+        XCTAssertTrue(app.staticTexts["Language and units"].waitForExistence(timeout: 5), app.debugDescription)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.17)).tap()
+        XCTAssertTrue(app.buttons["sheet.close"].waitForNonExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual(app.buttons["module.today"].label, "Today")
+        let customWater = app.textFields["Amount (fl oz)"]
+        let journal = app.scrollViews.firstMatch
+        for _ in 0..<3 where !customWater.isHittable { journal.swipeUp() }
+        XCTAssertTrue(customWater.isHittable, app.debugDescription)
+    }
+
+    @MainActor
+    func testFoodCSVImportsOnlyValidRowsAndSupportsSwipeUndo() {
+        let app = launch(demo: true)
+        app.buttons["module.foods"].tap()
+        let search = app.textFields["foods.search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        app.buttons["Importar"].tap()
+        let editor = app.textViews["catalog.csv.text"].firstMatch
+        let commit = app.buttons["catalog.csv.commit"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertFalse(commit.isEnabled)
+        editor.tap()
+        editor.typeText("name,kcal,protein_g,carbs_g,fat_g\nMuestra CSV,100,5,20,0\nMuestra invalida,100,,20,0")
+        XCTAssertEqual(commit.label, "Importar 1", app.debugDescription)
+        XCTAssertTrue(commit.isHittable, app.debugDescription)
+        commit.tap()
+
+        XCTAssertTrue(commit.waitForNonExistence(timeout: 5))
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Muestra CSV")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(app.staticTexts["Muestra invalida"].exists)
+        catalogReveal(card, in: app)
+        card.swipeLeft()
+        let undo = app.buttons["Deshacer"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 3), app.debugDescription)
+        XCTAssertFalse(card.exists)
+        undo.tap()
+        XCTAssertTrue(card.waitForExistence(timeout: 5), app.debugDescription)
+    }
+
+    @MainActor
+    func testFoodDataCardValidatesEANAndPrefillsDemoNutrition() {
+        let app = launch(demo: true)
+        app.buttons["module.foods"].tap()
+        let create = app.buttons["Nuevo alimento"]
+        XCTAssertTrue(create.waitForExistence(timeout: 10))
+        create.tap()
+        let ai = app.textViews["catalog.ai.text"]
+        let submit = app.buttons["catalog.ai.submit"]
+        XCTAssertTrue(ai.waitForExistence(timeout: 5))
+        XCTAssertFalse(submit.isEnabled)
+        ai.tap()
+        ai.typeText("12345678")
+        submit.tap()
+        XCTAssertTrue(app.staticTexts["Código de barras inválido: dígito verificador no coincide, revísalo"].waitForExistence(timeout: 5))
+        ai.tap()
+        ai.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + "Yogur")
+        submit.tap()
+        let name = app.textFields["Nombre"]
+        catalogReveal(name, in: app)
+        XCTAssertEqual(name.value as? String, "Yogur griego natural")
+    }
+
+    @MainActor
+    func testRecipeCatalogSearchPasteSaveAndReopen() {
+        let app = launch(demo: true)
+        app.buttons["module.recipes"].tap()
+        let create = app.buttons["Nueva receta"]
+        XCTAssertTrue(create.waitForExistence(timeout: 10))
+        create.tap()
+        let name = app.textFields["Nombre"]
+        catalogReveal(name, in: app)
+        name.tap()
+        name.typeText("Receta de prueba")
+
+        let search = app.textFields["recipes.ingredient.search"]
+        catalogReveal(search, in: app)
+        search.tap()
+        search.typeText("Avena")
+        let oat = app.buttons["Avena integral"].firstMatch
+        XCTAssertTrue(oat.waitForExistence(timeout: 5))
+        catalogReveal(oat, in: app)
+        oat.tap()
+        let amount = app.textFields["Cantidad"].firstMatch
+        catalogReveal(amount, in: app)
+        amount.tap()
+        amount.typeText("100")
+
+        let paste = app.buttons["Pegar lista de ingredientes"]
+        catalogReveal(paste, in: app)
+        paste.tap()
+        let editor = app.textViews["recipes.ingredient.paste"].firstMatch
+        catalogReveal(editor, in: app)
+        editor.tap()
+        editor.typeText("100 g Yogur natural\n30 g Ingrediente inexistente")
+        let add = app.buttons["Añadir del texto"]
+        catalogReveal(add, in: app)
+        add.tap()
+        XCTAssertTrue(app.staticTexts["1 añadidos · 1 sin coincidencia (agrégalos arriba)"].waitForExistence(timeout: 5))
+        let preview = app.staticTexts["Preview por 100 g"]
+        catalogReveal(preview, in: app)
+        XCTAssertTrue(preview.isHittable)
+        let save = app.buttons["Guardar"]
+        catalogReveal(save, in: app)
+        save.tap()
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Receta de prueba")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 10), app.debugDescription)
+        catalogReveal(card, in: app)
+        card.tap()
+        XCTAssertTrue(app.staticTexts["Editar receta"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.textFields["Nombre"].value as? String, "Receta de prueba")
+        // Ingredient order is assigned by the persisted IDs, so compare both restored amounts.
+        XCTAssertEqual(app.textFields.matching(identifier: "Cantidad").allElementsBoundByIndex.compactMap { $0.value as? String }, ["100", "100"])
+    }
+
+    @MainActor
+    func testBodyAutosavesWhenChangingDateAndPromotesFavorite() {
+        let app = launch(demo: true)
+        app.buttons["module.body"].tap()
+        let weight = app.textFields["body.metric.peso_kg"]
+        XCTAssertTrue(weight.waitForExistence(timeout: 10))
+        XCTAssertEqual(weight.value as? String, "72")
+        weight.tap()
+        weight.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2) + "73")
+        app.buttons["Día anterior"].tap()
+        let noWeight = NSPredicate(format: "value != %@", "73")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: noWeight, object: weight)], timeout: 5), .completed)
+        app.buttons["Día siguiente"].tap()
+        let savedWeight = NSPredicate(format: "value == %@", "73")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: savedWeight, object: weight)], timeout: 5), .completed)
+
+        let more = app.buttons["Más medidas ▾"]
+        catalogReveal(more, in: app)
+        more.tap()
+        let favorite = app.buttons["Marcar como favorito · Grasa corporal"]
+        catalogReveal(favorite, in: app)
+        favorite.tap()
+        let promoted = app.buttons["Quitar de favoritos · Grasa corporal"]
+        XCTAssertTrue(promoted.waitForExistence(timeout: 5))
+        let less = app.buttons["Menos medidas ▴"]
+        catalogReveal(less, in: app)
+        less.tap()
+        XCTAssertTrue(app.textFields["body.metric.grasa_pct"].exists)
+        XCTAssertTrue(promoted.exists)
+    }
+
+    @MainActor
+    func testBodyCSVComplementThenReplaceExistingDay() {
+        let app = launch(demo: true)
+        app.buttons["module.body"].tap()
+        let weight = app.textFields["body.metric.peso_kg"]
+        XCTAssertTrue(weight.waitForExistence(timeout: 10))
+        let today = DateFormatter()
+        today.locale = Locale(identifier: "en_US_POSIX")
+        today.dateFormat = "yyyy-MM-dd"
+        let key = today.string(from: Date())
+        let commit = app.buttons["catalog.csv.commit"]
+        let journalTitle = app.staticTexts["Medidas del día"]
+        for (value, replace) in [("74", false), ("75", true)] {
+            let more = app.buttons["module.more"]
+            XCTAssertTrue(more.waitForExistence(timeout: 5))
+            more.tap()
+            app.buttons["Importar"].tap()
+            let editor = app.textViews["catalog.csv.text"].firstMatch
+            XCTAssertTrue(editor.waitForExistence(timeout: 5))
+            editor.tap()
+            editor.typeText("day,peso_kg\n" + key + "," + value)
+            let collision = app.staticTexts["1 días del CSV ya tienen medidas registradas."]
+            XCTAssertTrue(collision.waitForExistence(timeout: 5), app.debugDescription)
+            let option = app.buttons[replace ? "Reemplazar" : "Complementar"]
+            let scroll = app.scrollViews.containing(.textView, identifier: "catalog.csv.text").firstMatch
+            for _ in 0..<4 where !option.isHittable { scroll.swipeUp() }
+            XCTAssertTrue(option.isHittable, app.debugDescription)
+            if replace { option.tap() }
+            XCTAssertTrue(option.isSelected)
+            XCTAssertTrue(commit.isHittable)
+            commit.tap()
+            XCTAssertTrue(commit.waitForNonExistence(timeout: 5))
+            XCTAssertTrue(journalTitle.waitForExistence(timeout: 5))
+            XCTAssertEqual(weight.value as? String, value)
+            let note = app.textFields["Contexto del día (opcional)"]
+            if replace {
+                XCTAssertNotEqual(note.value as? String, "Registro de demostración")
+            } else {
+                XCTAssertEqual(note.value as? String, "Registro de demostración")
+            }
+        }
+    }
+
+    @MainActor
+    private func catalogReveal(_ element: XCUIElement, in app: XCUIApplication) {
+        let scroll = app.scrollViews.firstMatch
+        for _ in 0..<8 where !element.isHittable {
+            if element.exists, element.frame.minY < scroll.frame.minY { scroll.swipeDown() }
+            else { scroll.swipeUp() }
+        }
+        XCTAssertTrue(element.isHittable, app.debugDescription)
+    }
+
+    @MainActor
+    func testDemoScheduledPhaseSwipeRequiresConfirmation() {
+        let app = launch(demo: true)
+        app.buttons["module.targets"].tap()
+        app.buttons["+ Programar"].tap()
+        let name = app.textFields["Nombre de fase"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5), app.debugDescription)
+        name.tap()
+        name.typeText("Fase de prueba")
+        let copy = app.buttons["Copiar semana vigente"]
+        reveal(copy, in: app)
+        copy.tap()
+        let save = app.buttons["Guardar"]
+        reveal(save, in: app)
+        save.tap()
+
+        let phase = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "targets.phase.")).firstMatch
+        XCTAssertTrue(phase.waitForExistence(timeout: 5), app.debugDescription)
+        reveal(phase, in: app)
+        let center = phase.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.press(forDuration: 0.06, thenDragTo: center.withOffset(CGVector(dx: -28, dy: 0)))
+        XCTAssertFalse(app.buttons["Editar"].isHittable && app.staticTexts["FASE PROGRAMADA"].exists)
+        XCTAssertFalse(app.buttons["Borrar fase"].exists)
+        phase.tap()
+        XCTAssertTrue(app.staticTexts["FASE PROGRAMADA"].waitForExistence(timeout: 5), app.debugDescription)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
+        XCTAssertTrue(app.staticTexts["FASE PROGRAMADA"].waitForNonExistence(timeout: 5))
+
+        phase.swipeLeft()
+        let confirm = app.buttons["Borrar fase"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(app.buttons["Deshacer"].exists)
+        app.buttons["Cancelar"].tap()
+        XCTAssertTrue(phase.isHittable, app.debugDescription)
+        phase.swipeLeft()
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
+        XCTAssertTrue(phase.waitForNonExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["Sin fases programadas"].exists)
+    }
+
+    @MainActor
+    func testDemoSpecificTargetCanOpenEditSwipeAndUndo() {
+        let app = launch(demo: true)
+        app.buttons["module.targets"].tap()
+        let add = app.buttons["+ Añadir"]
+        reveal(add, in: app)
+        add.tap()
+        let reason = app.textFields["Motivo"]
+        XCTAssertTrue(reason.waitForExistence(timeout: 5), app.debugDescription)
+        reason.tap()
+        reason.typeText("Fecha de prueba")
+        let save = app.buttons["Guardar"]
+        reveal(save, in: app)
+        save.tap()
+
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "targets.override.")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5), app.debugDescription)
+        reveal(row, in: app)
+        row.tap()
+        XCTAssertTrue(app.staticTexts["Fecha de prueba"].waitForExistence(timeout: 5), app.debugDescription)
+        app.buttons["Editar"].tap()
+        XCTAssertTrue(reason.waitForExistence(timeout: 5), app.debugDescription)
+        app.buttons["Cancelar"].tap()
+        XCTAssertTrue(app.staticTexts["Fecha de prueba"].waitForExistence(timeout: 5), app.debugDescription)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
+
+        row.swipeLeft()
+        let undo = app.buttons["Deshacer"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 3), app.debugDescription)
+        XCTAssertFalse(row.exists)
+        XCTAssertFalse(app.buttons["Borrar fase"].exists)
+        undo.tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(row.label.contains("Fecha de prueba"), row.label)
+    }
+
+    @MainActor
+    func testDemoDashboardLongRangeLeavesPresetsAndUndoAccessible() {
+        let app = launch(demo: true)
+        app.buttons["module.dashboard"].tap()
+        let custom = app.buttons["Custom"]
+        XCTAssertTrue(custom.waitForExistence(timeout: 5), app.debugDescription)
+        custom.tap()
+        let manual = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Personalizado…")).firstMatch
+        XCTAssertTrue(manual.waitForExistence(timeout: 5), app.debugDescription)
+        manual.tap()
+        let name = "Rango personalizado de prueba " + String(UUID().uuidString.prefix(8))
+        let field = app.textFields["Nombre (opcional)"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
+        field.tap()
+        field.typeText(name)
+        app.buttons["Guardar rango"].tap()
+        let saved = app.buttons[name]
+        XCTAssertTrue(saved.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.buttons["Hoy"].isHittable, app.debugDescription)
+        XCTAssertLessThanOrEqual(saved.frame.width, 170, app.debugDescription)
+
+        saved.tap()
+        let delete = app.buttons["Eliminar rango"].firstMatch
+        XCTAssertTrue(delete.waitForExistence(timeout: 5), app.debugDescription)
+        delete.tap()
+        let undo = app.buttons["Deshacer"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 3), app.debugDescription)
+        undo.tap()
+        XCTAssertTrue(saved.waitForExistence(timeout: 3), app.debugDescription)
+        saved.tap()
+        delete.tap()
+        XCTAssertTrue(custom.waitForExistence(timeout: 3), app.debugDescription)
+    }
+
+    @MainActor
+    func testDemoDashboardChartReopensWithItsSelectedVariable() {
+        let app = launch(demo: true)
+        app.buttons["module.dashboard"].tap()
+        app.buttons["Mis gráficas"].tap()
+        let newChart = app.buttons["+ Nueva"]
+        XCTAssertTrue(newChart.waitForExistence(timeout: 5), app.debugDescription)
+        newChart.tap()
+        let save = app.buttons["Guardar gráfica"]
+        XCTAssertTrue(save.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(save.isEnabled)
+        let protein = app.buttons["Proteína"]
+        reveal(protein, in: app)
+        protein.tap()
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+
+        let options = app.buttons["Opciones de la gráfica"]
+        XCTAssertTrue(options.waitForExistence(timeout: 5), app.debugDescription)
+        reveal(options, in: app)
+        options.tap()
+        app.buttons["Editar"].tap()
+        XCTAssertTrue(app.staticTexts["Editar gráfica"].waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(app.buttons["Proteína ✕"].isSelected, app.debugDescription)
+    }
+
+    @MainActor
+    func testDemoDashboardRadarTapShowsNutrientPercentage() {
+        let app = launch(demo: true)
+        app.buttons["module.dashboard"].tap()
+        app.buttons["Análisis estándar"].tap()
+        let today = app.buttons["Hoy"]
+        XCTAssertTrue(today.waitForExistence(timeout: 5), app.debugDescription)
+        today.tap()
+        let radar = app.descendants(matching: .any).matching(identifier: "dashboard.radar").firstMatch
+        XCTAssertTrue(radar.waitForExistence(timeout: 5), app.debugDescription)
+        for _ in 0..<10 where !radar.isHittable { app.scrollViews.firstMatch.swipeUp() }
+        XCTAssertTrue(radar.isHittable, app.debugDescription)
+        let point = radar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.48))
+        point.tap()
+        let value = app.staticTexts["dashboard.radar.value"]
+        XCTAssertTrue(value.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual(value.label, "Fibra · 50%")
+        point.tap()
+        XCTAssertTrue(value.waitForNonExistence(timeout: 3), app.debugDescription)
+    }
+
+    @MainActor
     private func launchDemoWithBreakfastIntake() -> (XCUIApplication, XCUIElement) {
         let app = launch(demo: true)
         XCTAssertTrue(app.staticTexts["Demo con datos de ejemplo — los cambios se borran solos."].waitForExistence(timeout: 10))

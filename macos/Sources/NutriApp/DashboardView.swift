@@ -553,6 +553,9 @@ struct DashboardView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
+                if !exportNotice.isEmpty {
+                    Text(exportNotice).foregroundStyle(palette.warn)
+                }
                 rangeInputs
                 analysisTabs
                 if let data, dataMatchesPeriod || !data.period.windows.isEmpty {
@@ -718,7 +721,7 @@ struct DashboardView: View {
                 }.scrollIndicators(.hidden)
                 DashboardMenu(label: preset == "Personalizado" ?
                     ranges.first(where: { $0.id == activeRange }).flatMap { $0.name.isEmpty ? nil : $0.name } ?? store.tr("Custom") :
-                    store.tr("Custom"), selected: preset == "Personalizado") {
+                    store.tr("Custom"), selected: preset == "Personalizado", labelWidth: 130) {
                     menuRow("Personalizado…", note: "Elige un rango de fechas") {
                         preset = "Personalizado"
                         activeRange = nil
@@ -739,10 +742,7 @@ struct DashboardView: View {
                                 applyRange(range)
                                 editingRange = range.id
                             }
-                            Button {
-                                removeRange(range.id)
-                            } label: { NutriIcon("trash-2", size: 16) }.buttonStyle(NutriButtonStyle(.quiet, horizontal: 14))
-                                .accessibilityLabel(store.tr("Eliminar rango"))
+                            DashboardRangeDelete { removeRange(range.id) }
                         }
                     }
                 }
@@ -893,7 +893,6 @@ struct DashboardView: View {
         let sodium = sodiumVariable.map { dashboardSummary($0, mode: mode, data: data, bands: bands) }
         return VStack(alignment: .leading, spacing: 16) {
             calculationOptions(data)
-            if !exportNotice.isEmpty { Text(exportNotice).foregroundStyle(palette.warn) }
             waterAndSodium(data)
             kpis(data, macros: macros, sodium: sodium)
             periodSummary(data, macros: macros)
@@ -1250,7 +1249,7 @@ struct DashboardView: View {
                     dataWithTargets.isEmpty ? "Registra objetivos de micros en Metas" : "Sin micros con cobertura completa en este periodo."
                 emptyChart(status)
             } else {
-                DashboardRadar(points: points).frame(height: chartHeight)
+                DashboardRadar(points: points).frame(height: chartHeight).id(data.period)
             }
         }
     }
@@ -1684,6 +1683,7 @@ private struct DashboardMenu<Content: View>: View {
     var selected = false
     var ellipsis = false
     var width: CGFloat = 256
+    var labelWidth: CGFloat? = nil
     @ViewBuilder let content: () -> Content
     @State private var open = false
 
@@ -1693,7 +1693,7 @@ private struct DashboardMenu<Content: View>: View {
                 Text("⋯").foregroundStyle(palette.text3).frame(width: 44, height: 44).contentShape(Rectangle())
             } else {
                 HStack(spacing: 4) {
-                    Text(label).lineLimit(1)
+                    Text(label).lineLimit(1).frame(maxWidth: labelWidth).fixedSize(horizontal: labelWidth != nil, vertical: false)
                     Text(open ? "▴" : "▾").font(.nutriSans(12))
                 }.padding(.horizontal, 12).frame(minHeight: 44)
                     .foregroundStyle(selected ? palette.bg : palette.text2)
@@ -1726,6 +1726,23 @@ private struct DashboardRangeEdit: View {
     var body: some View {
         Button { close?(); edit() } label: { NutriIcon("pencil", size: 16) }
             .buttonStyle(NutriButtonStyle(.quiet, horizontal: 14)).accessibilityLabel(store.tr("Editar rango"))
+    }
+}
+
+private struct DashboardRangeDelete: View {
+    @EnvironmentObject private var store: Store
+    @Environment(\.dashboardMenuClose) private var close
+    let delete: () -> Void
+
+    var body: some View {
+        Button {
+            #if os(iOS)
+            close?()
+            #endif
+            delete()
+        } label: { NutriIcon("trash-2", size: 16) }
+            .buttonStyle(NutriButtonStyle(.quiet, horizontal: 14))
+            .accessibilityLabel(store.tr("Eliminar rango"))
     }
 }
 
@@ -1817,41 +1834,87 @@ private struct DashboardSparkline: View {
 
 private struct DashboardRadar: View {
     @Environment(\.nutriPalette) private var palette
+    @State private var selectedAxis: Int?
     let points: [(label: String, value: Double)]
 
     var body: some View {
-        Canvas { context, size in
+        GeometryReader { geometry in
+            let size = geometry.size
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
             let radius = max(0, min(size.width / 2 - 88, size.height / 2) * 0.75)
-            func location(_ i: Int, _ ratio: Double) -> CGPoint {
-                let angle = 2 * .pi * Double(i) / Double(points.count) - .pi / 2
-                return CGPoint(x: center.x + cos(angle) * radius * ratio, y: center.y + sin(angle) * radius * ratio)
-            }
-            func polygon(_ ratios: [Double]) -> Path {
-                Path { path in
-                    for (i, ratio) in ratios.enumerated() {
-                        let point = location(i, ratio)
-                        if i == 0 { path.move(to: point) } else { path.addLine(to: point) }
+            Canvas { context, _ in
+                func location(_ i: Int, _ ratio: Double) -> CGPoint {
+                    let angle = angle(for: i)
+                    return CGPoint(x: center.x + cos(angle) * radius * ratio, y: center.y + sin(angle) * radius * ratio)
+                }
+                func polygon(_ ratios: [Double]) -> Path {
+                    Path { path in
+                        for (i, ratio) in ratios.enumerated() {
+                            let point = location(i, ratio)
+                            if i == 0 { path.move(to: point) } else { path.addLine(to: point) }
+                        }
+                        path.closeSubpath()
                     }
-                    path.closeSubpath()
+                }
+                for level in 1...5 {
+                    context.stroke(polygon(Array(repeating: Double(level) / 5, count: points.count)), with: .color(palette.border))
+                }
+                let ratios = points.map { min(1, max(0, $0.value / 150)) }
+                let observations = polygon(ratios)
+                context.fill(observations, with: .color(palette.accent.opacity(0.35)))
+                context.stroke(observations, with: .color(palette.accent), lineWidth: 1.5)
+                for i in points.indices {
+                    let endpoint = location(i, 1)
+                    let selected = selectedAxis == i
+                    let axis = Path { path in path.move(to: center); path.addLine(to: endpoint) }
+                    context.stroke(axis, with: .color(selected ? palette.accent : palette.border))
+                    let text = Text(points[i].label).font(.nutriSans(10)).foregroundStyle(selected ? palette.text : palette.text3)
+                    let anchor = abs(endpoint.x - center.x) < 1 ? UnitPoint.center : endpoint.x > center.x ? .leading : .trailing
+                    context.draw(text, at: location(i, 1.18), anchor: anchor)
+                    if selected {
+                        let value = location(i, ratios[i])
+                        context.fill(Path(ellipseIn: CGRect(x: value.x - 3, y: value.y - 3, width: 6, height: 6)), with: .color(palette.accent))
+                    }
                 }
             }
-            for level in 1...5 {
-                context.stroke(polygon(Array(repeating: Double(level) / 5, count: points.count)), with: .color(palette.border))
+            .contentShape(Rectangle())
+            .nutriChartPoint { point in
+                let selected = point.flatMap { axis(near: $0, center: center, radius: radius) }
+                #if os(iOS)
+                selectedAxis = selected == selectedAxis ? nil : selected
+                #else
+                selectedAxis = selected
+                #endif
             }
-            for i in points.indices {
-                let endpoint = location(i, 1)
-                let axis = Path { path in path.move(to: center); path.addLine(to: endpoint) }
-                context.stroke(axis, with: .color(palette.border))
-                let text = Text(points[i].label).font(.nutriSans(10)).foregroundStyle(palette.text3)
-                let anchor = abs(endpoint.x - center.x) < 1 ? UnitPoint.center : endpoint.x > center.x ? .leading : .trailing
-                let labelPoint = location(i, 1.18)
-                context.draw(text, at: labelPoint, anchor: anchor)
+            .accessibilityLabel(points.indices.map { display($0) }.joined(separator: " · "))
+            .accessibilityIdentifier("dashboard.radar")
+            .overlay(alignment: .bottom) {
+                if let selectedAxis, points.indices.contains(selectedAxis) {
+                    Text(display(selectedAxis)).font(.nutriSans(12))
+                        .padding(8).nutriCard(radius: 8, fill: palette.surface3)
+                        .accessibilityIdentifier("dashboard.radar.value")
+                        .allowsHitTesting(false)
+                }
             }
-            let observations = polygon(points.map { min(1, max(0, $0.value / 150)) })
-            context.fill(observations, with: .color(palette.accent.opacity(0.35)))
-            context.stroke(observations, with: .color(palette.accent), lineWidth: 1.5)
-        }.accessibilityLabel(points.map { $0.label + " " + draftNumber(webRound($0.value, digits: 0)) + "%" }.joined(separator: " · "))
+        }
+    }
+
+    private func angle(for index: Int) -> Double {
+        2 * .pi * Double(index) / Double(points.count) - .pi / 2
+    }
+
+    private func axis(near point: CGPoint, center: CGPoint, radius: CGFloat) -> Int? {
+        let dx = point.x - center.x
+        let dy = point.y - center.y
+        guard radius > 0, hypot(dx, dy) <= radius * 1.6, !points.isEmpty else { return nil }
+        let turn = (atan2(dy, dx) + .pi / 2) / (2 * .pi)
+        let index = Int((turn * Double(points.count)).rounded())
+        return (index + points.count) % points.count
+    }
+
+    private func display(_ index: Int) -> String {
+        let point = points[index]
+        return point.label + " · " + draftNumber(webRound(point.value, digits: 0)) + "%"
     }
 }
 
@@ -3217,7 +3280,7 @@ private func chartTooltip(_ label: String, values: [(String, Double?)], palette:
 }
 
 private func dashboardLegend(_ labels: [(String, Color, Bool)], translate: @escaping (String) -> String, theme: NutriPalette) -> some View {
-    HStack(spacing: 10) {
+    NutriFlow(spacing: 10, lineSpacing: 6) {
         ForEach(labels.indices, id: \.self) { index in
             let entry = labels[index]
             HStack(spacing: 4) {

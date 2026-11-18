@@ -25,6 +25,14 @@ extension Image {
 }
 
 extension View {
+    func nutriDecimalKeyboard(signed: Bool = false) -> some View {
+        #if os(iOS)
+        keyboardType(signed ? .numbersAndPunctuation : .decimalPad)
+        #else
+        self
+        #endif
+    }
+
     func nutriOnExitCommand(perform action: @escaping () -> Void) -> some View {
         #if os(macOS)
         onExitCommand(perform: action)

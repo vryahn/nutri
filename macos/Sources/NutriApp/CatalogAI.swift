@@ -81,6 +81,7 @@ struct CatalogAIDataCard<ResultLines: View>: View {
     let hint: String
     let submit: () -> Void
     @ViewBuilder let result: () -> ResultLines
+    @FocusState private var textFocused: Bool
     @State private var dragging = false
     @State private var thumbnails: [FeatureImage: NutriPlatformImage] = [:]
     @State private var thumbnailFailed = false
@@ -93,8 +94,12 @@ struct CatalogAIDataCard<ResultLines: View>: View {
             }
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $text).scrollContentBackground(.hidden).padding(.horizontal, 8).padding(.vertical, 5)
-                    .frame(height: 62).accessibilityLabel(placeholder).disabled(loading)
-                if text.isEmpty { Text(placeholder).foregroundStyle(palette.text3).padding(.horizontal, 12).padding(.top, 8).allowsHitTesting(false) }
+                    .frame(height: 62).focused($textFocused).accessibilityLabel(placeholder)
+                    .accessibilityIdentifier("catalog.ai.text").disabled(loading)
+                if text.isEmpty {
+                    Text(placeholder).foregroundStyle(palette.text3).padding(.horizontal, 12).padding(.top, 8)
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                }
             }.nutriCard(radius: 12, fill: palette.surface3)
             HStack(spacing: 8) {
                 ForEach(images.indices, id: \.self) { index in
@@ -109,7 +114,8 @@ struct CatalogAIDataCard<ResultLines: View>: View {
                         }.overlay { palette.bg.opacity(0.35) }
                         .overlay { NutriIcon("x", size: 16).foregroundStyle(.white) }
                         .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }.buttonStyle(.plain).accessibilityLabel(store.tr("Quitar foto")).disabled(loading)
+                    }.buttonStyle(.plain).accessibilityLabel(store.tr("Quitar foto"))
+                        .accessibilityIdentifier("catalog.ai.removePhoto.\(index)").disabled(loading)
                 }
                 if images.count < 2 {
                     FeaturePhotoPicker(maximum: 2 - images.count, onPick: add) {
@@ -119,8 +125,12 @@ struct CatalogAIDataCard<ResultLines: View>: View {
                         }.frame(maxWidth: .infinity)
                     }.buttonStyle(NutriButtonStyle(.secondary, height: 44)).disabled(loading)
                         .accessibilityLabel(store.tr(images.isEmpty ? "Foto (etiqueta o platillo)" : "Otra foto"))
+                        .accessibilityIdentifier("catalog.ai.photo")
                 }
-                Button(action: submit) {
+                Button {
+                    textFocused = false
+                    submit()
+                } label: {
                     ZStack {
                         Text(store.tr("Obtener datos")).opacity(loading ? 0 : 1)
                         HStack(spacing: 6) {
@@ -133,6 +143,7 @@ struct CatalogAIDataCard<ResultLines: View>: View {
                     .lineLimit(1).fixedSize()
                 }.buttonStyle(NutriButtonStyle(.primary, height: 44, horizontal: 16))
                     .accessibilityLabel(store.tr(loading ? "Obteniendo…" : "Obtener datos"))
+                    .accessibilityIdentifier("catalog.ai.submit")
                     .disabled(loading || (cleanText(text).isEmpty && images.isEmpty))
             }
             if !error.isEmpty { Text(error).foregroundStyle(palette.danger) }
@@ -163,6 +174,7 @@ struct CatalogAIDataCard<ResultLines: View>: View {
     }
 
     private func add(_ result: Result<[FeatureImage], Error>) {
+        textFocused = false
         do { images = Array((images + (try result.get())).prefix(2)) }
         catch { store.report(error) }
     }

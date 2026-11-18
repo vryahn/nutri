@@ -237,6 +237,7 @@ struct BodyView: View {
                 .frame(maxWidth: 768)
                 .frame(maxWidth: .infinity)
         }
+        .scrollDismissesKeyboard(.interactively)
         .font(.nutriSans(14)).foregroundStyle(palette.text)
         .task(id: requestedKey) { await loadDay() }
         .task {
@@ -252,40 +253,51 @@ struct BodyView: View {
         .onChange(of: focus) { previous, next in if previous != nil, previous != next { autosave() } }
         .onDisappear { autosave() }
         .nutriSectionActions([.init("importar", label: store.tr("Importar"), icon: "upload", action: openImport)])
-        .overlay { if previewImport { NutriModal(close: { if !busy { previewImport = false } }, maxWidth: 512) { importSheet } } }
-        .overlay {
-            if let selectedPhoto {
-                NutriModal(close: { self.selectedPhoto = nil }, maxWidth: 640) {
-                    VStack {
-                        PrivateBodyPhoto(path: selectedPhoto).frame(maxWidth: .infinity, maxHeight: 420)
-                        Button(store.tr("Cerrar")) { self.selectedPhoto = nil }.buttonStyle(NutriButtonStyle(.secondary, height: 44)).keyboardShortcut(.cancelAction)
-                    }.padding(16).nutriGlass()
-                }
-            }
-        }
-        .overlay {
-            if confirmDelete {
-                NutriModal(close: { confirmDelete = false; photoToDelete = nil }, maxWidth: 384) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(store.tr("¿Eliminar la foto?")).font(.nutriDisplay(19))
-                        Text(store.tr("Se borra del almacenamiento y no se puede deshacer.")).foregroundStyle(palette.text2)
-                        HStack {
-                            Button(store.tr("Cancelar")) { confirmDelete = false; photoToDelete = nil }
-                                .buttonStyle(NutriButtonStyle(.secondary, height: 44)).keyboardShortcut(.cancelAction)
-                            Spacer()
-                            Button(store.tr("Eliminar foto")) { confirmDelete = false; Task { await deletePhoto() } }
-                                .buttonStyle(NutriButtonStyle(.danger, height: 44))
-                        }
-                    }.padding(16).nutriGlass()
-                }
-            }
-        }
+        .preference(key: NutriPresentedModalKey.self, value: presentedModal)
+        .preference(key: NutriModalVisibleKey.self, value: previewImport || selectedPhoto != nil || confirmDelete)
         .nutriFeatureExport($fileExport) { store.report($0) }
         .nutriOnExitCommand {
             if previewImport, !busy { previewImport = false }
             if confirmDelete { confirmDelete = false; photoToDelete = nil }
             if selectedPhoto != nil { selectedPhoto = nil }
         }
+    }
+
+    private var presentedModal: NutriPresentedModal? {
+        if previewImport {
+            return NutriPresentedModal("body-import", close: closeImport, maxWidth: 512) { importSheet }
+        }
+        if let selectedPhoto {
+            let close = { self.selectedPhoto = nil }
+            return NutriPresentedModal("body-photo", close: close, maxWidth: 640) {
+                VStack {
+                    PrivateBodyPhoto(path: selectedPhoto).frame(maxWidth: .infinity, maxHeight: 420)
+                    Button(store.tr("Cerrar"), action: close).buttonStyle(NutriButtonStyle(.secondary, height: 44))
+                        .keyboardShortcut(.cancelAction)
+                }.padding(16).nutriGlass(modal: true)
+            }
+        }
+        if confirmDelete, let path = photoToDelete {
+            let close = { confirmDelete = false; photoToDelete = nil }
+            return NutriPresentedModal("body-delete-photo", close: close, maxWidth: 384) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(store.tr("¿Eliminar la foto?")).font(.nutriDisplay(19))
+                    Text(store.tr("Se borra del almacenamiento y no se puede deshacer.")).foregroundStyle(palette.text2)
+                    HStack {
+                        Button(store.tr("Cancelar"), action: close)
+                            .buttonStyle(NutriButtonStyle(.secondary, height: 44)).keyboardShortcut(.cancelAction)
+                        Spacer()
+                        Button(store.tr("Eliminar foto")) { close(); Task { await deletePhoto(path) } }
+                            .buttonStyle(NutriButtonStyle(.danger, height: 44))
+                    }
+                }.padding(16).nutriGlass(modal: true)
+            }
+        }
+        return nil
+    }
+
+    private func closeImport() {
+        if !busy { previewImport = false }
     }
 
     private var dateNavigation: some View {
@@ -333,7 +345,7 @@ struct BodyView: View {
                 } else if savedFlash {
                     Text(store.tr("Guardado.")).font(.nutriSans(12)).foregroundStyle(palette.accent)
                 }
-            }
+            }.contentShape(Rectangle()).onTapGesture { focus = nil }
             LazyVGrid(columns: grid, spacing: 12) {
                 ForEach(BodyMetric.fields.prefix(2)) { metricField($0) }
                 ForEach(extra.filter { favorites.contains($0.key) }) { metricField($0, star: true) }
@@ -406,8 +418,12 @@ struct BodyView: View {
                 Spacer(minLength: 0)
                 if star {
                     let favorite = favorites.contains(metric.key)
-                    Button { Task { await toggleFavorite(metric.key) } } label: {
+                    Button {
+                        focus = nil
+                        Task { await toggleFavorite(metric.key) }
+                    } label: {
                         Image(systemName: favorite ? "star.fill" : "star").foregroundStyle(favorite ? palette.accent : palette.text3)
+                            .frame(minWidth: nutriTouchSize(16), minHeight: nutriTouchSize(16)).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel(store.tr(favorite ? "Quitar de favoritos" : "Marcar como favorito") + " · " + store.tr(metric.label))
                 }
             }.font(.nutriSans(12)).foregroundStyle(palette.text3)
@@ -431,9 +447,11 @@ struct BodyView: View {
                 HStack(spacing: 4) {
                     TextField("–", text: Binding(get: { values[metric.key] ?? "" }, set: { values[metric.key] = $0 }))
                         .textFieldStyle(.plain).font(.nutriSans(16)).monospacedDigit().foregroundStyle(palette.text)
+                        .nutriDecimalKeyboard()
                         .focused($focus, equals: metric.key)
                         .onSubmit { focus = nil; autosave() }
                         .accessibilityLabel(store.tr(metric.label))
+                        .accessibilityIdentifier("body.metric." + metric.key)
                     Text(metric.unit).font(.nutriSans(12)).foregroundStyle(palette.text3)
                 }.padding(.horizontal, 12).frame(height: 44)
                     .background(palette.surface2, in: RoundedRectangle(cornerRadius: 12))
@@ -493,7 +511,7 @@ struct BodyView: View {
             HStack {
                 Text(store.tr("Tendencia")).foregroundStyle(palette.text3)
                 Spacer()
-                NutriSelect(value: trendKey, select: { trendKey = $0 }, groups: categories.map { category in
+                NutriSelect(value: trendKey, select: { trendHover = nil; trendKey = $0 }, groups: categories.map { category in
                     NutriSelectGroup(label: store.tr(category), options: BodyMetric.fields
                         .filter { $0.category == category && $0.key != "sueno_corto" }.map { ($0.key, store.tr($0.label)) })
                 }, height: 36, currentLabel: store.tr(trend.label))
@@ -561,7 +579,7 @@ struct BodyView: View {
                 .replacingOccurrences(of: "%s", with: store.lang == "en" ? "weight, body_fat, waist" : "peso_kg, grasa_pct, cintura_cm"),
             example: (store.lang == "en" ? "day,weight,body_fat,waist" : "day,peso_kg,grasa_pct,cintura_cm") + "\n2026-07-07,80.5,22,86",
             text: $importText, error: $importError, parseError: parseError, count: valid.count, busy: busy,
-            close: { previewImport = false }, template: exportTemplate,
+            close: closeImport, template: exportTemplate,
             commit: { Task { await commitImport(valid) } }
         ) {
             if collisions > 0 {
@@ -569,7 +587,9 @@ struct BodyView: View {
                     Label(store.tr("%n días del CSV ya tienen medidas registradas.").replacingOccurrences(of: "%n", with: String(collisions)), systemImage: "exclamationmark.triangle")
                     HStack {
                         Button(store.tr("Complementar")) { replace = false }.buttonStyle(NutriButtonStyle(replace ? .secondary : .primary, height: 36))
+                            .accessibilityAddTraits(replace ? [] : .isSelected)
                         Button(store.tr("Reemplazar")) { replace = true }.buttonStyle(NutriButtonStyle(replace ? .primary : .secondary, height: 36))
+                            .accessibilityAddTraits(replace ? .isSelected : [])
                     }
                     Text(store.tr(replace ? "Reemplazar: el CSV sustituye por completo las medidas de esos días." : "Complementar: conserva tus medidas y solo agrega o actualiza las del CSV."))
                         .font(.nutriSans(11)).foregroundStyle(palette.text3)
@@ -793,13 +813,13 @@ struct BodyView: View {
         } catch { store.report(error) }
     }
 
-    private func deletePhoto() async {
+    private func deletePhoto(_ path: String) async {
         await flushEdits()
-        guard ready, !loadingDay, !busy, !pending, let path = photoToDelete, let owner = store.owner,
+        guard ready, !loadingDay, !busy, !pending, let owner = store.owner,
               path.hasPrefix("\(owner)/"), !path.contains("..") else { return }
         let key = dayKey
         busy = true
-        defer { busy = false; photoToDelete = nil }
+        defer { busy = false }
         do {
             let body = try JSONEncoder().encode(["prefixes": [path]])
             let data = try await store.storage("DELETE", "object/body-photos", body: body, contentType: "application/json")
@@ -828,12 +848,15 @@ struct BodyView: View {
                     let next = present ? (previous.contains(value) ? previous : previous + [value]) : previous.filter { $0 != value }
                     guard next != previous else { return latest }
                     if next.isEmpty, latest.object("metrics").isEmpty, cleanText(latest.text("note")).isEmpty {
-                        _ = try await store.delete("body_metrics", recordFilter(latest, matching: ["metrics", "note", "photo_paths"]))
-                        return nil
+                        let deleted = try await store.delete("body_metrics", recordFilter(latest, matching: ["metrics", "note", "photo_paths"]))
+                        if !deleted.isEmpty { return nil }
+                    } else {
+                        let updated = try await store.update("body_metrics", recordFilter(latest, matching: ["photo_paths"]), [
+                            "photo_paths": .array(next)
+                        ]).first
+                        if let updated { return updated }
                     }
-                    return try await store.update("body_metrics", recordFilter(latest, matching: ["photo_paths"]), [
-                        "photo_paths": .array(next)
-                    ]).first
+                    continue
                 }
                 guard present else { return nil }
                 return try await store.insert("body_metrics", [

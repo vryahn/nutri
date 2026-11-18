@@ -244,6 +244,7 @@ struct SettingsView: View {
                                         choosingBirthDate = false
                                     }), displayedComponents: .date)
                                     .datePickerStyle(.graphical).labelsHidden().padding(8)
+                                    .presentationCompactAdaptation(.popover)
                                 }
                             }
                         profileField("Altura (cm)", key: "height_cm", placeholder: "178")
@@ -283,6 +284,7 @@ struct SettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("region.language.\(key)")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
@@ -293,6 +295,9 @@ struct SettingsView: View {
                 get: { profile[key]?.string ?? formText(profile.number(key)) },
                 set: { profile[key] = .string($0) }
             ), prompt: Text(placeholder))
+                #if os(iOS)
+                .keyboardType(key == "height_cm" ? .decimalPad : .default)
+                #endif
                 .font(key == "dob" || key == "height_cm" ? .nutriMono(14) : .nutriSans(14))
                 .nutriInput(height: nutriTouchSize(42))
         }

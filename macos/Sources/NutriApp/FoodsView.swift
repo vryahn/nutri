@@ -192,6 +192,7 @@ struct FoodsView: View {
     @EnvironmentObject private var store: Store
     @Environment(\.nutriPalette) private var palette
     @Environment(\.nutriWindowWidth) private var windowWidth
+    @Environment(\.scenePhase) private var scenePhase
     @FocusState private var searchFocused: Bool
     @State private var foods: [Record] = []
     @State private var semantic: (term: String, rows: [Record])?
@@ -203,6 +204,7 @@ struct FoodsView: View {
     @State private var descending = false
     @State private var busy = false
     @State private var loading = true
+    @State private var refreshing = false
     @State private var failed = false
     @State private var reloadVersion = 0
     @State private var mutationVersion = 0
@@ -214,7 +216,7 @@ struct FoodsView: View {
 
     private var desktop: Bool { windowWidth >= 1024 }
     private func refreshSilently() {
-        guard !loading, !busy, !store.demoActive else { return }
+        guard scenePhase == .active, store.networkAvailable, !store.demoActive else { return }
         Task { await reload(silent: true) }
     }
     private var term: String { cleanText(query) }
@@ -262,9 +264,10 @@ struct FoodsView: View {
                     }.padding(16)
                 }
             } else if let draft {
-                ScrollView { editor(draft).padding(16) }
+                ScrollView { editor(draft).padding(16) }.scrollDismissesKeyboard(.interactively)
             } else {
                 ScrollView { listing.padding(16).padding(.bottom, 56) }
+                    .scrollDismissesKeyboard(.interactively)
                     .overlay(alignment: .bottomTrailing) {
                         if !results.isEmpty {
                             Button { draft = FoodDraft() } label: { NutriIcon("plus", size: 22) }
@@ -273,6 +276,16 @@ struct FoodsView: View {
                         }
                     }
             }
+        }
+        .task(id: scenePhase) {
+            guard scenePhase == .active, !store.demoActive else { return }
+            do {
+                while !Task.isCancelled {
+                    if store.networkAvailable { await reload(silent: true) }
+                    try await Task.sleep(for: .seconds(30))
+                }
+            } catch is CancellationError { }
+            catch { store.report(error) }
         }
         .font(.nutriSans(14)).foregroundStyle(palette.text)
         .task {
@@ -289,8 +302,6 @@ struct FoodsView: View {
             }
             #endif
         }
-        // Como la web (Foods.jsx: focus/online): recarga silenciosa al activar la app y al volver la conexión.
-        .onReceive(NotificationCenter.default.publisher(for: nutriDidBecomeActiveNotification)) { _ in refreshSilently() }
         .onChange(of: store.networkAvailable) { old, online in if !old && online { refreshSilently() } }
         .onChange(of: store.newFood) { _, _ in openFromToday() }
         .task(id: query) { await findFoods() }
@@ -299,8 +310,18 @@ struct FoodsView: View {
             guard !searchFocused, draft == nil else { return .ignored }
             searchFocused = true; return .handled
         }
-        .overlay { if importReview { NutriModal(close: { if !busy { importReview = false } }, maxWidth: 512) { importSheet } } }
+        .preference(key: NutriPresentedModalKey.self, value: presentedImport)
+        .preference(key: NutriModalVisibleKey.self, value: importReview)
         .nutriFeatureExport($fileExport) { store.report($0) }
+    }
+
+    private var presentedImport: NutriPresentedModal? {
+        guard importReview else { return nil }
+        return NutriPresentedModal("food-import", close: closeImport, maxWidth: 512) { importSheet }
+    }
+
+    private func closeImport() {
+        if !busy { importReview = false }
     }
 
     private var listing: some View {
@@ -341,10 +362,11 @@ struct FoodsView: View {
             HStack(spacing: 10) {
                 NutriIcon("search", size: 18).foregroundStyle(palette.text3)
                 TextField(store.tr("Buscar…"), text: $query).font(.nutriSans(16)).textFieldStyle(.plain).focused($searchFocused)
+                    .accessibilityIdentifier("foods.search")
             }.padding(.horizontal, 12).frame(height: 44).nutriCard(radius: 12, fill: palette.surface2)
             HStack(spacing: 8) {
                 Button {
-                    importText = ""; importError = ""; importReview = true
+                    searchFocused = false; importText = ""; importError = ""; importReview = true
                 } label: { HStack(spacing: 6) { NutriIcon("upload", size: 16); Text(store.tr("Importar")) } }
                     .buttonStyle(NutriButtonStyle(.secondary, height: 44))
                 let sourceOptions = Set(results.map { $0.text("source") }).filter { !$0.isEmpty }.sorted()
@@ -408,7 +430,7 @@ struct FoodsView: View {
                 }
                 if !row.text("brand").isEmpty { Text(row.text("brand")).foregroundStyle(palette.text3) }
             }
-        }
+        }.accessibilityIdentifier("foods.card." + row.text("id"))
     }
 
     private var emptyEditor: some View {
@@ -434,7 +456,8 @@ struct FoodsView: View {
     }
 
     private func reload(silent: Bool = false) async {
-        if silent && (loading || busy) { return }
+        if silent && (loading || busy || refreshing) { return }
+        if silent { refreshing = true }
         reloadVersion += 1
         let version = reloadVersion
         let mutation = mutationVersion
@@ -444,7 +467,10 @@ struct FoodsView: View {
             if let cached = store.cached("foods", firstPage) { foods = cached.filter { !Domain.water($0) } }
         }
         if !silent { loading = true }
-        defer { if !silent && reloadVersion == version { loading = false } }
+        defer {
+            if silent { refreshing = false }
+            else if reloadVersion == version { loading = false }
+        }
         do {
             let rows = try await store.catalog(allowCached: !silent).filter { !Domain.water($0) }
             let exact = search.isEmpty || search != term ? nil : try? await searchCatalogNames(
@@ -569,7 +595,7 @@ struct FoodsView: View {
         return CatalogCSVSheet(title: store.tr("Importar alimentos"),
             description: store.tr("Pega o sube un CSV: una fila por alimento, valores por 100 g. Columnas: name, kcal, protein_g, carbs_g, fat_g y una por cada micro (p. ej. sodio_mg)."),
             example: "name,kcal,protein_g,carbs_g,fat_g,sodio_mg\nAvena,389,17,66,7,2", text: $importText, error: $importError,
-            parseError: parseError, count: valid.count, busy: busy, close: { importReview = false }, template: exportTemplate,
+            parseError: parseError, count: valid.count, busy: busy, close: closeImport, template: exportTemplate,
             commit: { Task { await commitImport(valid) } }) { CatalogCSVPreview(rows: rows.map(\.preview)) }
     }
 
@@ -732,6 +758,7 @@ private struct FoodEditor: View {
             HStack(spacing: 8) {
                 Text(store.tr("Valores por")).foregroundStyle(palette.text3)
                 TextField("100", text: edit(\.basis)).font(.nutriMono(14)).multilineTextAlignment(.center)
+                    .nutriDecimalKeyboard()
                     .nutriInput().frame(width: 80).accessibilityLabel(store.tr("Base de los valores capturados"))
                 CatalogUnitToggle(units: ["g", "ml"], current: draft.unit, height: 32) { edit(\.unit).wrappedValue = $0 }
             }
@@ -810,7 +837,9 @@ private struct FoodEditor: View {
     }
 
     private func valueField(_ label: String, field: Binding<String>, placeholder: String = "") -> some View {
-        fieldLabel(label) { TextField(placeholder, text: field).font(.nutriMono(14)).nutriInput().accessibilityLabel(label) }
+        fieldLabel(label) {
+            TextField(placeholder, text: field).font(.nutriMono(14)).nutriDecimalKeyboard().nutriInput().accessibilityLabel(label)
+        }
     }
 
     private func microField(_ micro: Nutrient, star: Bool) -> some View {
@@ -829,12 +858,15 @@ private struct FoodEditor: View {
                             } catch { store.report(error) }
                         }
                     } label: {
-                        if favorite { Image(systemName: "star.fill").foregroundStyle(palette.accent) }
-                        else { NutriIcon("star", size: 16).foregroundStyle(palette.text3) }
+                        Group {
+                            if favorite { Image(systemName: "star.fill").foregroundStyle(palette.accent) }
+                            else { NutriIcon("star", size: 16).foregroundStyle(palette.text3) }
+                        }.frame(minWidth: nutriTouchSize(16), minHeight: nutriTouchSize(24)).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel(store.tr(favorite ? "Quitar de favoritos" : "Marcar como favorito") + " · " + store.tr(micro.label))
                 }
             }.frame(minHeight: 24)
-            TextField("", text: draftField(\.micros, micro.key)).font(.nutriMono(14)).nutriInput().accessibilityLabel(label)
+            TextField("", text: draftField(\.micros, micro.key)).font(.nutriMono(14))
+                .nutriDecimalKeyboard().nutriInput().accessibilityLabel(label)
         }
     }
 
@@ -846,7 +878,7 @@ private struct FoodEditor: View {
                 } + [("other", store.tr("Otro…"))])
                 .accessibilityLabel(store.tr("Líquido"))
             if draft.densitySelection == "other" {
-                TextField(store.tr("densidad en g/ml"), text: edit(\.density)).font(.nutriMono(14)).nutriInput()
+                TextField(store.tr("densidad en g/ml"), text: edit(\.density)).font(.nutriMono(14)).nutriDecimalKeyboard().nutriInput()
                     .accessibilityLabel(store.tr("Densidad en g/ml"))
             }
             Text(store.tr("Si es líquido, al registrar podrás capturar en ml y se convierte a gramos.")).font(.nutriSans(12)).foregroundStyle(palette.text3)
@@ -1138,35 +1170,39 @@ struct CatalogCSVSheet<Preview: View>: View {
     @State private var importingFile = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title).font(.nutriDisplay(19))
-            Text(description).foregroundStyle(palette.text2)
-            HStack {
-                Button {
-                    importingFile = true
-                } label: { HStack { NutriIcon("upload", size: 15); Text(store.tr("Subir archivo")) } }
-                Button(action: template) { HStack { NutriIcon("file-down", size: 15); Text(store.tr("Descargar plantilla")) } }
-            }.buttonStyle(NutriButtonStyle(.secondary, height: 36))
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: $text).scrollContentBackground(.hidden).font(.nutriMono(14))
-                    .padding(8).frame(height: 120)
-                if text.isEmpty {
-                    Text(dragging ? store.tr("Suelta el CSV aquí") : example).font(.nutriMono(14))
-                        .foregroundStyle(palette.text3).padding(13).allowsHitTesting(false)
+        NutriSheet(title, close: close) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(description).foregroundStyle(palette.text2)
+                NutriFlow(spacing: 8) {
+                    Button {
+                        importingFile = true
+                    } label: { HStack { NutriIcon("upload", size: 15); Text(store.tr("Subir archivo")) } }
+                    Button(action: template) { HStack { NutriIcon("file-down", size: 15); Text(store.tr("Descargar plantilla")) } }
+                }.buttonStyle(NutriButtonStyle(.secondary, height: 36))
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $text).scrollContentBackground(.hidden).font(.nutriMono(14))
+                        .padding(8).frame(height: 120)
+                        .accessibilityLabel(store.tr("Pega o sube un CSV"))
+                        .accessibilityIdentifier("catalog.csv.text")
+                    if text.isEmpty {
+                        Text(dragging ? store.tr("Suelta el CSV aquí") : example).font(.nutriMono(14))
+                            .foregroundStyle(palette.text3).padding(13).allowsHitTesting(false).accessibilityHidden(true)
+                    }
                 }
-            }.background(palette.surface2, in: RoundedRectangle(cornerRadius: 12))
+                .background(palette.surface2, in: RoundedRectangle(cornerRadius: 12))
                 .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(dragging ? palette.accentDeep : palette.border).allowsHitTesting(false) }
-                .accessibilityLabel(store.tr("Pega o sube un CSV"))
-            preview()
-            if !parseError.isEmpty || !error.isEmpty { Text([parseError, error].filter { !$0.isEmpty }.joined(separator: " · ")).font(.nutriSans(12)).foregroundStyle(palette.danger) }
+                preview()
+                if !parseError.isEmpty || !error.isEmpty { Text([parseError, error].filter { !$0.isEmpty }.joined(separator: " · ")).font(.nutriSans(12)).foregroundStyle(palette.danger) }
+            }
+        } footer: {
             HStack {
-                Button(store.tr("Cancelar"), action: close).buttonStyle(NutriButtonStyle(.secondary, height: 44)).keyboardShortcut(.cancelAction)
+                Button(store.tr("Cancelar"), action: close).buttonStyle(NutriButtonStyle(.secondary, height: 44))
                 Spacer()
-                Button(busy ? store.tr("Importando…") : store.tr("Importar") + " (\(count))", action: commit)
+                Button(busy ? store.tr("Importando…") : store.tr("Importar %n").replacingOccurrences(of: "%n", with: String(count)), action: commit)
                     .buttonStyle(NutriButtonStyle(.primary, height: 44)).disabled(count == 0)
+                    .accessibilityIdentifier("catalog.csv.commit")
             }
         }.font(.nutriSans(14)).foregroundStyle(palette.text)
-            .padding(16).frame(maxWidth: 512).nutriGlass()
             .nutriFilePicker(isPresented: $importingFile, types: [.commaSeparatedText, .plainText]) { result in
                 do { if let url = try result.get().first { read(url) } }
                 catch { self.error = error.localizedDescription }
@@ -1198,7 +1234,7 @@ struct CatalogUnitToggle: View {
             ForEach(units, id: \.self) { unit in
                 Button { select(unit) } label: {
                     Text(unit).font(.nutriSans(14, weight: unit == current ? .medium : .regular))
-                        .padding(.horizontal, 10).frame(height: height)
+                        .padding(.horizontal, 10).frame(minWidth: nutriTouchSize(0), minHeight: nutriTouchSize(height))
                         .foregroundStyle(unit == current ? palette.bg : palette.text2)
                         .background(unit == current ? palette.accent : palette.surface2)
                 }.buttonStyle(.plain).accessibilityAddTraits(unit == current ? .isSelected : [])
@@ -1238,7 +1274,7 @@ struct CatalogPortionsEditor: View {
                                     portion.grams = unit == "g" ? value : draftNumber(Domain.round(grams, 1))
                                 } else { portion.grams = value.isEmpty || unit == "g" ? value : "0" }
                             }))
-                            .font(.nutriMono(14)).nutriInput().frame(width: density > 0 ? 80 : 96)
+                            .font(.nutriMono(14)).nutriDecimalKeyboard().nutriInput().frame(width: density > 0 ? 80 : 96)
                             .accessibilityLabel(store.tr("Cantidad de la porción") + " (" + unit + ")")
                         Button { portions.removeAll { $0.id == portion.id } } label: { NutriIcon("x", size: 18) }
                             .buttonStyle(NutriButtonStyle(.secondary, height: 44, horizontal: 13)).accessibilityLabel(store.tr("Quitar porción"))
@@ -1262,6 +1298,32 @@ struct CatalogPortionsEditor: View {
     }
 }
 
+#if os(iOS)
+// The content moves with the finger during a swipe. Measure taps in screen coordinates.
+struct SwipeCardTapStyle: PrimitiveButtonStyle {
+    @GestureState private var exceededTapDistance = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        let touch = DragGesture(minimumDistance: 0, coordinateSpace: .global)
+            .updating($exceededTapDistance) { touch, exceeded, _ in
+                if max(abs(touch.translation.width), abs(touch.translation.height)) >= 8 { exceeded = true }
+            }
+            .onEnded { touch in
+                if !exceededTapDistance && max(abs(touch.translation.width), abs(touch.translation.height)) < 8 {
+                    configuration.trigger()
+                }
+            }
+
+        return configuration.label
+            .contentShape(Rectangle())
+            .simultaneousGesture(touch)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { configuration.trigger() }
+    }
+}
+#endif
+
 struct CatalogSwipeCard<Content: View>: View {
     @EnvironmentObject private var store: Store
     let open: () -> Void
@@ -1273,7 +1335,12 @@ struct CatalogSwipeCard<Content: View>: View {
     var body: some View {
         Button(action: open) {
             content().padding(padding).frame(maxWidth: .infinity, alignment: .leading).nutriCard(radius: radius)
-        }.buttonStyle(.plain)
+        }
+        #if os(iOS)
+        .buttonStyle(SwipeCardTapStyle())
+        #else
+        .buttonStyle(.plain)
+        #endif
             .modifier(SwipeToDelete(radius: radius, delete: delete))
             .contextMenu { if let delete { Button(store.tr("Borrar"), role: .destructive, action: delete) } }
             .accessibilityActions {

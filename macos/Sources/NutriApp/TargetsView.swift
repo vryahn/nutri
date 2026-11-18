@@ -95,6 +95,7 @@ struct TargetsView: View {
     @State private var historyOpen = false
     @State private var historyDate: String?
     @State private var deletePhase: String?
+    @State private var deletingPhase = false
     @State private var decision: PhaseDraft?
     #if DEBUG
     @State private var snapshotWizard = false
@@ -133,6 +134,7 @@ struct TargetsView: View {
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollDismissesKeyboard(.interactively)
         .overlay(alignment: .bottom) {
             if !errorText.isEmpty {
                 HStack {
@@ -172,8 +174,9 @@ struct TargetsView: View {
         .nutriOnExitCommand {
             if decision != nil { decision = nil }
             else if rulesDraft != nil { rulesDraft = nil }
-            else if deletePhase != nil { deletePhase = nil }
-            else if draft != nil { draft = nil }
+            else if deletePhase != nil {
+                if !deletingPhase { deletePhase = nil }
+            } else if draft != nil { closeDraft() }
             else if previewPhase != nil { previewPhase = nil }
             else if previewOverride != nil { previewOverride = nil }
             else if historyOpen { historyOpen = false; historyDate = nil }
@@ -184,14 +187,14 @@ struct TargetsView: View {
 
     private var presentedModal: NutriPresentedModal? {
         if let date = deletePhase {
-            return targetModal("targets-delete", close: { deletePhase = nil }) {
+            return targetModal("targets-delete", close: { if !deletingPhase { deletePhase = nil } }) {
                 TargetConfirmBox(
                     title: store.tr("¿Borrar \"%n\"?").replacingOccurrences(of: "%n", with: phaseName(byStart[date] ?? [])),
                     detail: store.tr("Se eliminarán sus 7 objetivos diarios. Esta acción no se puede deshacer."),
                     actionLabel: store.tr("Borrar fase"), destructive: true, close: { deletePhase = nil }
                 ) {
                     Task { await removePhase() }
-                }
+                }.disabled(deletingPhase)
             }
         }
         if let input = decision {
@@ -214,7 +217,7 @@ struct TargetsView: View {
             }
         }
         if let input = draft {
-            return targetModal("targets-editor", scrolls: true, close: { draft = nil }) {
+            return targetModal("targets-editor", scrolls: true, close: closeDraft) {
                 phaseEditor(input) { draft = nil }
             }
         }
@@ -237,6 +240,12 @@ struct TargetsView: View {
         }
         #endif
         return nil
+    }
+
+    private func closeDraft() {
+        draft = nil
+        previewPhase = nil
+        previewOverride = nil
     }
 
     private func targetModal<Content: View>(_ id: String, scrolls: Bool = false, close: @escaping () -> Void,
@@ -434,7 +443,7 @@ struct TargetsView: View {
 
     private func compactPhase(_ date: String, rows: [Record], detail: String, kind: PhaseDraft.Kind, open: @escaping () -> Void) -> some View {
         TargetListRow(open: open, delete: kind == .scheduled ? { deletePhase = date } : nil,
-                      deleteLabel: store.tr("Borrar fase"), vertical: 14) {
+                      deleteLabel: store.tr("Borrar fase"), accessibilityID: "targets.phase." + date, vertical: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(phaseName(rows)).font(.nutriSans(14, weight: .medium))
@@ -451,7 +460,8 @@ struct TargetsView: View {
         return TargetListRow(open: {
             if windowWidth >= 1024 { editOverride(row) }
             else { previewOverride = row }
-        }, delete: { Task { await removeOverride(row) } }, deleteLabel: store.tr("Borrar fecha específica"), vertical: 12) {
+        }, delete: { Task { await removeOverride(row) } }, deleteLabel: store.tr("Borrar fecha específica"),
+           accessibilityID: "targets.override." + row.text("day"), vertical: 12) {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 3) {
@@ -688,18 +698,22 @@ struct TargetsView: View {
     private func phaseFilter(_ date: String) -> [String: String] { ["valid_from": "eq.\(date)", "dow": "not.is.null"] }
 
     private func removePhase() async {
-        guard let date = deletePhase, date > today else { return }
+        guard let date = deletePhase, date > today, !deletingPhase else { return }
+        deletingPhase = true
+        defer { deletingPhase = false }
         do {
             _ = try await store.delete("targets", phaseFilter(date))
-            deletePhase = nil
             await reload()
+            deletePhase = nil
         } catch { store.report(error) }
     }
 
     private func removeOverride(_ row: Record) async {
-        rows.removeAll { $0.text("id") == row.text("id") }
+        let id = row.text("id")
+        guard !id.isEmpty, let index = rows.firstIndex(where: { $0.text("id") == id }) else { return }
+        rows.remove(at: index)
         do {
-            _ = try await store.delete("targets", ["id": "eq.\(row.text("id"))"])
+            _ = try await store.delete("targets", ["id": "eq.\(id)"])
             store.undo(store.tr("Objetivo borrado")) {
                 _ = try await store.insert("targets", row)
                 await reload()
@@ -811,6 +825,7 @@ private struct TargetListRow<Content: View>: View {
     let open: () -> Void
     let delete: (() -> Void)?
     let deleteLabel: String
+    let accessibilityID: String
     let vertical: CGFloat
     @ViewBuilder let content: () -> Content
     @State private var hovering = false
@@ -819,11 +834,13 @@ private struct TargetListRow<Content: View>: View {
     var body: some View {
         if windowWidth < 1024 && delete != nil {
             CatalogSwipeCard(open: open, delete: delete, radius: 12, padding: 14) { content() }
+                .accessibilityIdentifier(accessibilityID)
         } else {
             Button(action: open) {
                 content().frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14).padding(.vertical, vertical).nutriCard(radius: 12)
             }.buttonStyle(.plain).focused($focused)
+                .accessibilityIdentifier(accessibilityID)
                 .onHover { hovering = $0 }
                 .overlay(alignment: .trailing) {
                     if let delete, hovering || focused {
@@ -935,11 +952,11 @@ private struct TargetSheetContent<Content: View>: View {
     var body: some View {
         Group {
             if scrolls {
-                ScrollView { paper }
+                ScrollView { paper }.scrollDismissesKeyboard(.interactively)
             } else {
                 ViewThatFits(in: .vertical) {
                     paper.fixedSize(horizontal: false, vertical: true)
-                    ScrollView { paper }
+                    ScrollView { paper }.scrollDismissesKeyboard(.interactively)
                 }
             }
         }
@@ -1057,7 +1074,7 @@ private struct PhaseEditor: View {
                 targetDateField(store.tr("Fecha"), selection: $draft.date)
                 targetInput(store.tr("Motivo"), text: $draft.label, placeholder: store.tr("p. ej. Cumpleaños"))
                 let phase = Domain.resolveTarget(phaseRows, Day.key(draft.date))
-                if let base = phase?.number("kcal"), let entered = Double(draft.weekdays[0].point["kcal"] ?? "") {
+                if let base = phase?.number("kcal"), let entered = try? featureNumber(draft.weekdays[0].point["kcal"] ?? "", label: "Kcal") {
                     let delta = entered - base
                     Text((delta > 0 ? "+" : "−") + draftNumber(abs(delta)) + " " + store.tr("kcal vs fase ese día"))
                         .font(.nutriMono(11)).foregroundStyle(palette.warn)
@@ -1202,9 +1219,9 @@ private struct TargetNumberField: View {
     @Binding var values: TargetValues
 
     var body: some View {
-        let lo = Double(values.min[key] ?? "")
-        let hi = Double(values.max[key] ?? "")
-        let point = Double(values.point[key] ?? "")
+        let lo = try? featureNumber(values.min[key] ?? "", label: label)
+        let hi = try? featureNumber(values.max[key] ?? "", label: label)
+        let point = try? featureNumber(values.point[key] ?? "", label: label)
         let bounds = Domain.impliedBounds(key, target: point.map { point in
             let values: Record = Domain.macroKeys.contains(key) ? [key: .number(point)] : ["micros": .object([key: .number(point)])]
             return values.merging(["goal": .string(goal)]) { _, new in new }
@@ -1219,12 +1236,12 @@ private struct TargetNumberField: View {
                 Text(store.tr(label)).lineLimit(1)
                 if lo != nil || hi != nil { Text("•").foregroundStyle(palette.accent) }
             }.font(.nutriSans(12)).foregroundStyle(palette.text3)
-            TextField("", text: field($values.point)).font(.nutriMono(14)).nutriInput().accessibilityLabel(store.tr(label))
+            TextField("", text: field($values.point)).nutriDecimalKeyboard().font(.nutriMono(14)).nutriInput().accessibilityLabel(store.tr(label))
             if range {
                 TextField(bounds.min.map { "≥ " + draftNumber(Domain.round($0, 1)) } ?? "—", text: field($values.min))
-                    .font(.nutriMono(12)).nutriInput().accessibilityLabel(store.tr(label) + " " + store.tr("mín"))
+                    .nutriDecimalKeyboard().font(.nutriMono(12)).nutriInput().accessibilityLabel(store.tr(label) + " " + store.tr("mín"))
                 TextField(bounds.max.map { "≤ " + draftNumber(Domain.round($0, 1)) } ?? "—", text: field($values.max))
-                    .font(.nutriMono(12)).nutriInput().accessibilityLabel(store.tr(label) + " " + store.tr("máx"))
+                    .nutriDecimalKeyboard().font(.nutriMono(12)).nutriInput().accessibilityLabel(store.tr(label) + " " + store.tr("máx"))
                 if let warning {
                     Text("⚠ " + store.tr(warning)).font(.nutriSans(10)).foregroundStyle(palette.warn)
                 }
@@ -1237,10 +1254,14 @@ private struct TargetNumberField: View {
     }
 }
 
-private func targetInput(_ label: String, text: Binding<String>, placeholder: String = "") -> some View {
+private func targetInput(_ label: String, text: Binding<String>, placeholder: String = "", decimal: Bool = false, signed: Bool = false) -> some View {
     VStack(alignment: .leading, spacing: 4) {
         Text(label).font(.nutriSans(12)).foregroundStyle(.secondary)
-        TextField(placeholder, text: text).nutriInput().accessibilityLabel(label)
+        if decimal {
+            TextField(placeholder, text: text).nutriDecimalKeyboard(signed: signed).nutriInput().accessibilityLabel(label)
+        } else {
+            TextField(placeholder, text: text).nutriInput().accessibilityLabel(label)
+        }
     }
 }
 
@@ -1297,6 +1318,8 @@ private struct PhaseRulesEditor: View {
     @Environment(\.nutriPalette) private var palette
     @Binding var rules: Record
     let scopes: [(String, [Int])]
+    @State private var pausedUntilOpen = false
+    @State private var pausedUntilSelection = Date()
     @State private var removed: JSONValue?
     @State private var removedIndex = 0
     @State private var undoTimer: Task<Void, Never>?
@@ -1321,10 +1344,10 @@ private struct PhaseRulesEditor: View {
             Divider().overlay(palette.border)
             caption("Límites de la fase")
             HStack {
-                targetInput(store.tr("Kcal mín."), text: numericBinding("kcal_min"), placeholder: "0")
-                targetInput(store.tr("Kcal máx."), text: numericBinding("kcal_max"), placeholder: "0")
+                targetInput(store.tr("Kcal mín."), text: numericBinding("kcal_min"), placeholder: "0", decimal: true)
+                targetInput(store.tr("Kcal máx."), text: numericBinding("kcal_max"), placeholder: "0", decimal: true)
             }
-            targetInput(store.tr("Pausar reglas hasta"), text: textBinding("paused_until"), placeholder: "AAAA-MM-DD")
+            pausedUntilField
             if let removed {
                 HStack {
                     Text(store.tr("Regla borrada"))
@@ -1367,13 +1390,13 @@ private struct PhaseRulesEditor: View {
             Text(ruleHelp(row)).font(.nutriSans(11.5)).foregroundStyle(palette.text3)
             HStack(alignment: .top, spacing: 8) {
                 if kind == "estancamiento" {
-                    targetInput(store.tr("Días"), text: itemNumber(index, "days"), placeholder: "0")
+                    targetInput(store.tr("Días"), text: itemNumber(index, "days"), placeholder: "0", decimal: true)
                 } else {
-                    targetInput(store.tr(kind == "techo_peso" ? "Peso (kg)" : "kg/sem"), text: itemNumber(index, "value"), placeholder: "0")
-                    if kind != "techo_peso" { targetInput(store.tr("Semanas"), text: itemNumber(index, "weeks"), placeholder: "0") }
+                    targetInput(store.tr(kind == "techo_peso" ? "Peso (kg)" : "kg/sem"), text: itemNumber(index, "value"), placeholder: "0", decimal: true)
+                    if kind != "techo_peso" { targetInput(store.tr("Semanas"), text: itemNumber(index, "weeks"), placeholder: "0", decimal: true) }
                 }
                 if kind != "techo_peso" {
-                    targetInput(store.tr("Δ carbs (g)"), text: itemNumber(index, "delta_carbs_g"), placeholder: "0")
+                    targetInput(store.tr("Δ carbs (g)"), text: itemNumber(index, "delta_carbs_g"), placeholder: "0", decimal: true, signed: true)
                 }
             }
             if kind != "techo_peso" && !scopes.isEmpty { scopePicker(index) }
@@ -1429,8 +1452,37 @@ private struct PhaseRulesEditor: View {
         rules["items"] = .array(items + [.object(row)])
     }
 
-    private func textBinding(_ key: String) -> Binding<String> {
-        Binding(get: { rules.text(key) }, set: { rules[key] = $0.isEmpty ? nil : .string($0) })
+    private var pausedUntilField: some View {
+        let date = rules.text("paused_until")
+        let label = store.tr("Pausar reglas hasta")
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.nutriSans(12)).foregroundStyle(palette.text3)
+            HStack(spacing: 8) {
+                Button {
+                    pausedUntilSelection = isoDate(date) ?? Date()
+                    pausedUntilOpen = true
+                } label: {
+                    Text(date.isEmpty ? "AAAA-MM-DD" : targetDateLabel(date, lang: store.lang, withYear: true))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .nutriInput()
+                }.buttonStyle(.plain).accessibilityLabel(label)
+                    .accessibilityValue(date)
+                    .popover(isPresented: $pausedUntilOpen) {
+                        VStack {
+                            DatePicker(label, selection: $pausedUntilSelection, displayedComponents: .date)
+                                .datePickerStyle(.graphical).labelsHidden()
+                            Button(store.tr("Listo")) {
+                                rules["paused_until"] = .string(Day.key(pausedUntilSelection))
+                                pausedUntilOpen = false
+                            }.buttonStyle(NutriButtonStyle(.primary))
+                        }.padding(12).presentationCompactAdaptation(.popover)
+                    }
+                if !date.isEmpty {
+                    Button(store.tr("Quitar")) { rules.removeValue(forKey: "paused_until") }
+                        .buttonStyle(NutriButtonStyle(.secondary))
+                }
+            }
+        }
     }
 
     private func numericBinding(_ key: String) -> Binding<String> {
@@ -1563,7 +1615,8 @@ private struct TargetWizard: View {
                     }
                 }.padding(.horizontal, 20).padding(.vertical, 16)
                     .frame(maxWidth: .infinity, alignment: .leading)
-            }.frame(maxHeight: 550).fixedSize(horizontal: false, vertical: true)
+            }.scrollDismissesKeyboard(.interactively)
+                .frame(maxHeight: 550).fixedSize(horizontal: false, vertical: true)
             Rectangle().fill(palette.border).frame(height: 1)
             footer.padding(.horizontal, 20).padding(.vertical, 12)
         }
@@ -1834,7 +1887,7 @@ private struct TargetWizard: View {
 
     private func advance() {
         error = ""
-        if step == 3 && !usedGroups.allSatisfy({ (Double(values[$0].point["kcal"] ?? "") ?? 0) > 0 }) {
+        if step == 3 && !usedGroups.allSatisfy({ ((try? featureNumber(values[$0].point["kcal"] ?? "", label: "Kcal")) ?? 0) > 0 }) {
             error = store.tr("Cada tipo de día necesita kcal mayores a 0.")
             return
         }

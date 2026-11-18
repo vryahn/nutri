@@ -23,9 +23,9 @@ struct DemoData {
         prefs["water_glass_ml"] = .number(350)
         tables["foods"] = [
             food(oats, "Avena integral", kcal: 389, protein: 16.9, carbs: 66.3, fat: 6.9, micro: ["fibra_g": 10.6, "sodio_mg": 2, "potasio_mg": 429, "magnesio_mg": 177], shared: true),
-            food(yogurt, "Yogur natural", kcal: 70, protein: 6, carbs: 7, fat: 2, micro: ["sodio_mg": 53, "calcio_mg": 122], shared: false),
+            food(yogurt, "Yogur natural", kcal: 70, protein: 6, carbs: 7, fat: 2, micro: ["sodio_mg": 53, "calcio_mg": 122, "fibra_g": 0], shared: false),
             food(raspberries, "Frambuesas", kcal: 52, protein: 1.2, carbs: 11.9, fat: 0.7, micro: ["fibra_g": 6.5, "sodio_mg": 1, "potasio_mg": 151, "magnesio_mg": 22], shared: true),
-            food(water, "Agua", kcal: 0, protein: 0, carbs: 0, fat: 0, micro: ["agua_ml": 100], shared: false)
+            food(water, "Agua", kcal: 0, protein: 0, carbs: 0, fat: 0, micro: ["agua_ml": 100, "fibra_g": 0], shared: false)
         ]
         tables["recipes"] = [["id": .string(recipe), "owner": .string(owner), "name": .string("Avena con yogur"), "cooked_weight_g": .number(215), "source": .string("manual")]]
         tables["recipe_items"] = [

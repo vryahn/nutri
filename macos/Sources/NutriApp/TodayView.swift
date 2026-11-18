@@ -276,6 +276,7 @@ struct TodayView: View {
                 .padding(.top, 16).padding(.bottom, desktop ? 80 : 88)
             }
             .coordinateSpace(name: "journal")
+            .scrollDismissesKeyboard(.interactively)
             .onPreferenceChange(SummaryBottomKey.self) { summaryBottom = $0 }
             .onChange(of: scrollDestination) { _, value in
                 guard let value else { return }
@@ -286,15 +287,19 @@ struct TodayView: View {
     }
 
     private var dayToolbar: some View {
-        HStack(spacing: 0) {
+        let selectedDate = day == Day.key(.now) ? store.tr("Hoy") : formattedDate(date, weekday: true)
+        return HStack(spacing: 0) {
             iconButton("chevron-left", "Día anterior", size: 22) { date = Day.add(date, -1) }
             Spacer()
             Button { showCalendar.toggle() } label: {
-                Text(day == Day.key(.now) ? store.tr("Hoy") : formattedDate(date, weekday: true))
+                Text(selectedDate)
                     .font(.nutriDisplay(18)).foregroundStyle(palette.text)
                     .frame(maxWidth: .infinity, minHeight: nutriTouchSize(36))
+                    .contentShape(Rectangle())
             }.buttonStyle(.plain)
                 .accessibilityLabel(store.tr("Elegir fecha"))
+                .accessibilityValue(selectedDate)
+                .accessibilityIdentifier("today.date")
                 .popover(isPresented: $showCalendar, arrowEdge: .bottom) {
                     DatePicker(store.tr("Elegir fecha"), selection: $date, displayedComponents: .date)
                         .datePickerStyle(.graphical).labelsHidden().padding(8)
@@ -322,14 +327,16 @@ struct TodayView: View {
 
     private var sectionActions: [NutriSectionAction] {
         var actions: [NutriSectionAction] = []
-        if day == Day.key(.now) {
+        let destination = day
+        if destination == Day.key(.now) {
+            let yesterday = Day.key(Day.add(date, -1))
             actions.append(.init("yesterday", label: store.tr("Ayer"), icon: "history", enabled: !busy) {
-                run(as: "Error al copiar.") { try await copy(from: Day.key(Day.add(date, -1))) }
+                run(as: "Error al copiar.") { try await copy(from: yesterday, to: destination) }
             })
         }
         actions.append(.init("copy-" + day, label: store.tr("Copiar"), icon: "copy") {
             do {
-                try store.copyDay(day)
+                try store.copyDay(destination)
                 store.toast(store.tr("Día copiado."))
             } catch { store.report(error) }
         })
@@ -337,7 +344,7 @@ struct TodayView: View {
             actions.append(.init("paste-" + day + copiedDay,
                                  label: store.tr("Pegar %n").replacingOccurrences(of: "%n", with: formattedDate(copiedDate)),
                                  icon: "clipboard-paste", enabled: !busy) {
-                run(as: "Error al copiar.") { try await copy(from: copiedDay) }
+                run(as: "Error al copiar.") { try await copy(from: copiedDay, to: destination) }
             })
         }
         actions.append(.init("templates", label: store.tr("Plantillas"), icon: "bookmark") { editor = .templates })
@@ -367,7 +374,9 @@ struct TodayView: View {
                     .background(palette.bg)
                     .overlay(alignment: .bottom) { Rectangle().fill(palette.border).frame(height: 1) }
             }
-            .buttonStyle(.plain).accessibilityLabel(store.tr("Ver resumen"))
+            .buttonStyle(.plain)
+            .accessibilityHint(store.tr("Ver resumen"))
+            .accessibilityIdentifier("today.fixedSummary")
         }
     }
 
@@ -396,7 +405,7 @@ struct TodayView: View {
     private func editorContent(_ sheet: Sheet) -> some View {
         switch sheet {
         case let .entry(row, label, food, amount):
-            JournalSheet(row?.text("item") ?? store.tr("Añadir registro")) {
+            JournalSheet(row?.text("item") ?? store.tr("Añadir registro"), close: dismissEditor) {
                 VStack(alignment: .leading, spacing: 12) {
                     JournalSummary(mode: "mini", totals: totals, target: currentTarget, hasFood: hasFood,
                                    energy: $energy, desktop: false, live: true, customize: {}, cycle: {})
@@ -410,7 +419,7 @@ struct TodayView: View {
         case .water:
             WaterSettingsView(close: dismissEditor)
         case .importing:
-            EntryImportView(labels: labels, close: dismissEditor, reload: loadDay)
+            EntryImportView(close: dismissEditor, reload: loadDay)
         }
     }
 
@@ -467,7 +476,7 @@ struct TodayView: View {
                             do { try store.removeEntry(row.text("id"), row: row) }
                             catch { store.report(error) }
                         }
-                        else { run(as: "Error al registrar agua.") { try await addWater(glass) } }
+                        else { registerWater(glass) }
                     } label: {
                         WaterGlass(fraction: full ? 1 : part, full: full, next: Double(index) == filled,
                                    animating: splashWater == water && Double(index) == splashIndex)
@@ -480,6 +489,7 @@ struct TodayView: View {
             }
             HStack(spacing: 8) {
                 TextField(store.tr(store.units == "us" ? "Cantidad (fl oz)" : "Cantidad (ml)"), text: $waterAmount)
+                    .nutriDecimalKeyboard()
                     .font(.nutriMono(16)).nutriInput().onSubmit(addCustomWater)
                 Button(store.tr("Añadir"), action: addCustomWater)
                     .buttonStyle(NutriButtonStyle(.secondary, horizontal: 16))
@@ -524,10 +534,7 @@ struct TodayView: View {
 
     private func addCustomWater() {
         guard let value = decimal(waterAmount), value >= 1 else { return }
-        run(as: "Error al registrar agua.") {
-            try await addWater(value * (store.units == "us" ? Domain.mlPerFluidOunce : 1))
-            waterAmount = ""
-        }
+        registerWater(value * (store.units == "us" ? Domain.mlPerFluidOunce : 1), custom: true)
     }
 
     private func entries(in label: String) -> [Record] {
@@ -565,7 +572,7 @@ struct TodayView: View {
                             }
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    .frame(maxWidth: .infinity, minHeight: nutriTouchSize(0), alignment: .leading).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel((hidden ? store.tr("Expandir") : store.tr("Contraer")) + " " + name)
@@ -579,7 +586,8 @@ struct TodayView: View {
                 }
                 if label != nil {
                     Button { beginAdd(id) } label: {
-                        NutriIcon("plus").foregroundStyle(palette.accent).frame(width: 40, height: 40)
+                        NutriIcon("plus").foregroundStyle(palette.accent)
+                            .frame(width: nutriTouchSize(40), height: nutriTouchSize(40)).contentShape(Rectangle())
                     }.buttonStyle(.plain)
                         .accessibilityLabel(store.tr("Añadir a %n").replacingOccurrences(of: "%n", with: name))
                 }
@@ -644,7 +652,7 @@ struct TodayView: View {
                 .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }
             #if os(iOS)
-            .buttonStyle(IntakeTapStyle())
+            .buttonStyle(SwipeCardTapStyle())
             #else
             .buttonStyle(.plain)
             #endif
@@ -872,9 +880,8 @@ struct TodayView: View {
     }
 
     private func loadLabels() async {
-        let query = ["archived_at": "is.null", "order": "sort_order.asc,name.asc"]
-        if let cached = store.cached("meal_labels", query) { labels = cached }
-        do { labels = try await store.read("meal_labels", query) } catch { store.report(error, as: "No se pudieron cargar las etiquetas — revisa tu conexión.") }
+        if let cached = store.cached("meal_labels", journalLabelsQuery) { labels = cached }
+        do { labels = try await store.read("meal_labels", journalLabelsQuery) } catch { store.report(error, as: "No se pudieron cargar las etiquetas — revisa tu conexión.") }
     }
 
     private func loadCatalog() async {
@@ -939,7 +946,15 @@ struct TodayView: View {
         }
     }
 
-    private func addWater(_ ml: Double) async throws {
+    private func registerWater(_ ml: Double, custom: Bool = false) {
+        let loggedDay = day
+        run(as: "Error al registrar agua.") {
+            try await addWater(ml, on: loggedDay)
+            if custom { waterAmount = "" }
+        }
+    }
+
+    private func addWater(_ ml: Double, on loggedDay: String) async throws {
         let meta: Record = ["kcal": .number(0), "protein_g": .number(0), "carbs_g": .number(0), "fat_g": .number(0),
                             "micros": .object(["agua_ml": .number(100)])]
         var food: Record?
@@ -957,12 +972,12 @@ struct TodayView: View {
             if let id = food?.text("id") { try await store.patchPrefs(["water_food_id": .string(id)]) }
         }
         guard let food, !food.text("id").isEmpty else { throw NutriError("No se encontró el alimento para registrar agua.") }
-        let payload: Record = ["id": .string(UUID().uuidString.lowercased()), "day": .string(day), "grams": .number(ml),
+        let payload: Record = ["id": .string(UUID().uuidString.lowercased()), "day": .string(loggedDay), "grams": .number(ml),
                                "food_id": food["id"] ?? .null, "recipe_id": .null, "meal_label_id": .null]
         let nutrients = meta.merging(food.filter { meta[$0.key] != nil }) { _, known in known }
         let row = payload.merging(Domain.scaled(nutrients, grams: ml)) { _, new in new }
             .merging(["item": .string("Agua"), "created_at": .string(Date.now.ISO8601Format())]) { _, new in new }
-        splashWater = waterRows.reduce(0) { $0 + ($1.number("grams") ?? 0) } + ml
+        if day == loggedDay { splashWater = waterRows.reduce(0) { $0 + ($1.number("grams") ?? 0) } + ml }
         try store.addEntry(payload, row: row)
     }
 
@@ -979,13 +994,13 @@ struct TodayView: View {
         } catch { store.report(error) }
     }
 
-    private func copy(from source: String) async throws {
+    private func copy(from source: String, to destination: String) async throws {
         let sourceRows = try await store.read("entry_nutrients", Store.entriesQuery(source))
         let sourceFood = journalFoods(sourceRows, waterID: waterID)
         guard !sourceFood.isEmpty else { throw NutriError("Ese día no tiene registros.") }
-        let payload: [Record] = sourceFood.map { entryPayload($0).merging(["day": .string(day)]) { _, new in new } }
+        let payload: [Record] = sourceFood.map { entryPayload($0).merging(["day": .string(destination)]) { _, new in new } }
         _ = try await store.insert("entries", payload)
-        store.toast("\(payload.count) " + store.tr("registros copiados."))
+        store.toast(store.tr("%n registros copiados.").replacingOccurrences(of: "%n", with: String(payload.count)))
         await loadDay()
     }
 
@@ -1246,6 +1261,7 @@ private struct EntryEditor: View {
             }
             TextField(title, text: $amount, prompt: Text(suggested.map { journalNumber(convert($0, to: unit), digits: unit == "g" || unit == "ml" ? 1 : 2) } ?? "")
                 .foregroundColor(palette.text3))
+                .nutriDecimalKeyboard()
                 .font(.nutriMono(16)).nutriInput().onSubmit(save)
             if unit != "g", !amount.isEmpty, let grams {
                 Text(massEstimate(grams)).font(.nutriMono(12)).foregroundStyle(palette.text3)
@@ -1496,8 +1512,6 @@ struct MealLabelsView: View {
     @FocusState private var focused: String?
     @State private var busy = false
 
-    private let query = ["archived_at": "is.null", "order": "sort_order.asc,name.asc"]
-
     var body: some View {
         NutriSheet(store.tr("Etiquetas"), close: close, showsFooter: false) {
             VStack(alignment: .leading, spacing: 12) {
@@ -1545,7 +1559,7 @@ struct MealLabelsView: View {
     }
 
     private func reload() async throws {
-        labels = try await store.read("meal_labels", query)
+        labels = try await store.read("meal_labels", journalLabelsQuery)
         NotificationCenter.default.post(name: .nutriLabelsChanged, object: nil)
     }
 
@@ -1726,7 +1740,7 @@ private struct SummarySettingsView: View {
     private var choices: [String] { (Domain.macroKeys + Domain.micros.map(\.key)).filter { !items.contains($0) && $0 != "agua_ml" } }
 
     var body: some View {
-        JournalSheet(store.tr("Personalizar resumen")) {
+        JournalSheet(store.tr("Personalizar resumen"), close: close) {
             VStack(alignment: .leading, spacing: 12) {
                 Text(store.tr("Diseño actual") + ": " + store.tr(journalViewNames[activeView] ?? "")
                      + " · " + store.tr("cámbialo con las flechas de la card"))
@@ -1860,6 +1874,7 @@ private struct SummarySettingsView: View {
 private let journalViews = ["estado", "objetivos", "mini"]
 private let journalViewNames = ["estado": "Estado actual", "objetivos": "Objetivos", "mini": "Mini"]
 private let journalDefaultItems = ["kcal", "protein_g", "carbs_g", "fat_g", "sodio_mg", "potasio_mg"]
+private let journalLabelsQuery = ["archived_at": "is.null", "order": "sort_order.asc,name.asc"]
 
 extension Notification.Name {
     static let nutriLabelsChanged = Notification.Name("nutri.labelsChanged")
@@ -1880,32 +1895,6 @@ private func journalNumber(_ value: Double, digits: Int = 1) -> String {
 private func journalDragKey(_ type: String, id: String, day: String, owner: String?) -> String {
     "nutri/\(owner ?? "")/\(day)/\(type)/\(id)"
 }
-
-#if os(iOS)
-// The content moves with the finger during a swipe. Measure taps in screen coordinates.
-private struct IntakeTapStyle: PrimitiveButtonStyle {
-    @GestureState private var exceededTapDistance = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        let touch = DragGesture(minimumDistance: 0, coordinateSpace: .global)
-            .updating($exceededTapDistance) { touch, exceeded, _ in
-                if max(abs(touch.translation.width), abs(touch.translation.height)) >= 8 { exceeded = true }
-            }
-            .onEnded { touch in
-                if !exceededTapDistance && max(abs(touch.translation.width), abs(touch.translation.height)) < 8 {
-                    configuration.trigger()
-                }
-            }
-
-        return configuration.label
-            .contentShape(Rectangle())
-            .simultaneousGesture(touch)
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { configuration.trigger() }
-    }
-}
-#endif
 
 // Filas pendientes de sincronizar (⛅) no se arrastran: reordenar es solo online, como en la web.
 private struct EntryDraggable: ViewModifier {
@@ -2105,9 +2094,13 @@ private struct JournalSummary: View {
             Text(store.tr(journalViewNames[mode] ?? "Estado actual").uppercased())
                 .font(.nutriSans(10)).tracking(0.25).foregroundStyle(palette.text3)
             Spacer()
-            Button(action: customize) { NutriIcon("settings", size: 16).frame(width: 44, height: 24) }
+            Button(action: customize) {
+                NutriIcon("settings", size: 16).frame(width: 44, height: nutriTouchSize(24)).contentShape(Rectangle())
+            }
                 .buttonStyle(.plain).accessibilityLabel(store.tr("Personalizar resumen"))
-            Button(action: cycle) { NutriIcon("arrow-left-right", size: 16).frame(width: 34, height: 24) }
+            Button(action: cycle) {
+                NutriIcon("arrow-left-right", size: 16).frame(width: nutriTouchSize(34), height: nutriTouchSize(24)).contentShape(Rectangle())
+            }
                 .buttonStyle(.plain).accessibilityLabel(store.tr("Ver") + " " + store.tr(journalViewNames[journalViews[(journalViews.firstIndex(of: mode)! + 1) % 3]]!))
         }
         .foregroundStyle(palette.text3)
@@ -2122,7 +2115,10 @@ private struct JournalSummary: View {
                     Text(store.tr(s.label) + (s.id == "kcal" ? "" : " · " + s.unit))
                         .font(.nutriSans(12)).foregroundStyle(palette.text3).frame(minHeight: 16)
                     nutrientDetail(s, showRanges: ranges)
-                }.multilineTextAlignment(.center).lineSpacing(2)
+                }
+                .multilineTextAlignment(.center).lineSpacing(2)
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(accessibleStatus(s))
             }
         }
     }
@@ -2144,6 +2140,8 @@ private struct JournalSummary: View {
                             nutrientDetail(s, showRanges: false, hideCoupled: true)
                             rail(s, compact: false)
                         }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityValue(accessibleStatus(s))
                     }
                 }
             }
@@ -2173,6 +2171,8 @@ private struct JournalSummary: View {
         }
         .padding(12).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(palette.surface2, in: RoundedRectangle(cornerRadius: 12, style: .circular))
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(accessibleStatus(s))
     }
 
     private var rule: some View { Rectangle().fill(palette.border).frame(height: 1) }
@@ -2205,6 +2205,8 @@ private struct JournalSummary: View {
                             }
                             if !fixed { nutrientDetail(s, showRanges: ranges) }
                         }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityValue(accessibleStatus(s))
                     }
                     if fixed && visible.count > 3 {
                         Text("+\(visible.count - 3) · " + store.tr("Ver resumen")).font(.nutriSans(12)).foregroundStyle(palette.text2)
@@ -2212,6 +2214,11 @@ private struct JournalSummary: View {
                 }
             }
         }
+    }
+
+    private func accessibleStatus(_ s: JournalNutrient) -> String {
+        guard s.coverage == .complete, !s.coupled, let status = s.statusLabel else { return "" }
+        return store.tr(status)
     }
 
     @ViewBuilder
@@ -2420,6 +2427,7 @@ private struct JournalSummary: View {
                     let range = journalNumber(min, digits: 0) + "–" + journalNumber(max, digits: 0)
                     Text(store.tr("Consulta macros para tu energía elegida") + " (" + range + " kcal)")
                     TextField(store.tr("Consulta macros para tu energía elegida"), text: $energy, prompt: Text(range))
+                        .nutriDecimalKeyboard()
                         .font(.nutriMono(14)).nutriInput()
                     if let n = decimal(energy), let result = Domain.coupledBand(target, energy: n) {
                         let protein = numberText(result.number("protein_g"), digits: 1)
@@ -2501,22 +2509,18 @@ private struct WaterSettingsView: View {
     @State private var saving = false
 
     var body: some View {
-        JournalSheet(store.tr("Ajustes de agua")) {
+        JournalSheet(store.tr("Ajustes de agua"), close: close) {
             VStack(alignment: .leading, spacing: 16) {
                 let label = store.tr(store.units == "us" ? "Tamaño de vaso (fl oz)" : "Tamaño de vaso (ml)")
                 VStack(alignment: .leading, spacing: 4) {
                     Text(label).font(.nutriSans(14)).foregroundStyle(palette.text2)
                     TextField(label, text: $amount, prompt: Text("")).font(.nutriMono(16)).nutriInput()
+                        .nutriDecimalKeyboard()
                         .accessibilityIdentifier("today.waterSize")
                 }
                 Button(action: save) { Text(store.tr("Guardar")).frame(maxWidth: .infinity) }
                     .buttonStyle(NutriButtonStyle(.primary)).disabled(saving || decimal(amount).map { $0 < 1 } != false)
                     .accessibilityIdentifier("today.waterSave")
-                #if os(iOS)
-                Button(action: close) { Text(store.tr("Cancelar")).frame(maxWidth: .infinity) }
-                    .buttonStyle(NutriButtonStyle(.secondary))
-                    .accessibilityIdentifier("sheet.close")
-                #endif
             }.onSubmit(save)
         }
             .task {
@@ -2541,11 +2545,11 @@ private struct WaterSettingsView: View {
 private struct EntryImportView: View {
     @EnvironmentObject private var store: Store
     @Environment(\.nutriPalette) private var palette
-    let labels: [Record]
     let close: () -> Void
     let reload: () async -> Void
     @State private var text = ""
     @State private var catalog: [Record] = []
+    @State private var labels: [Record] = []
     @State private var loading = true
     @State private var targeted = false
     @State private var importingFile = false
@@ -2560,13 +2564,10 @@ private struct EntryImportView: View {
 
     private var preview: [Preview] {
         guard let rows = try? CSV.parse(text) else { return [] }
-        let indexed = catalog.map { (CSV.normalize($0.text("name")), $0) }
+        let indexed = catalog.map { (CSV.normalize($0.text("name")), $0) }.filter { !$0.0.isEmpty }
         return rows.map { row in
             let name = row["food"].flatMap { $0.isEmpty ? nil : $0 } ?? row["name"] ?? ""
-            let nameKey = CSV.normalize(name)
-            let food = nameKey.isEmpty ? nil : indexed.first(where: { $0.0 == nameKey })?.1
-                ?? unique(indexed.filter { $0.0.hasPrefix(nameKey) || nameKey.hasPrefix($0.0) })
-                ?? unique(indexed.filter { $0.0.contains(nameKey) || nameKey.contains($0.0) })
+            let food = Self.matchFood(name, in: indexed)
             let rawLabel = row["meal"].flatMap { $0.isEmpty ? nil : $0 } ?? row["group"] ?? ""
             let label = labels.first { CSV.normalize($0.text("name")) == CSV.normalize(rawLabel) }
             let rawDay = row["day"].flatMap { $0.isEmpty ? nil : $0 } ?? row["date"] ?? ""
@@ -2661,12 +2662,27 @@ private struct EntryImportView: View {
         }
         .task {
             defer { loading = false }
-            do { catalog = try await store.catalog() }
+            do {
+                async let foods = store.catalog()
+                async let mealLabels = store.read("meal_labels", journalLabelsQuery)
+                let (loadedFoods, loadedLabels) = try await (foods, mealLabels)
+                catalog = loadedFoods
+                labels = loadedLabels
+            }
             catch { self.error = error.localizedDescription }
         }
     }
 
-    private func unique(_ matches: [(String, Record)]) -> Record? { matches.count == 1 ? matches[0].1 : nil }
+    nonisolated static func matchFood(_ name: String, in indexed: [(String, Record)]) -> Record? {
+        let key = CSV.normalize(name)
+        guard !key.isEmpty else { return nil }
+        let exact = indexed.filter { $0.0 == key }
+        if !exact.isEmpty { return exact.count == 1 ? exact.first?.1 : nil }
+        let prefix = indexed.filter { $0.0.hasPrefix(key) || key.hasPrefix($0.0) }
+        if prefix.count == 1 { return prefix.first?.1 }
+        let contained = indexed.filter { $0.0.contains(key) || key.contains($0.0) }
+        return contained.count == 1 ? contained.first?.1 : nil
+    }
 
     private func read(_ file: URL) {
         do {
@@ -2835,6 +2851,14 @@ func checkJournalFidelity() throws {
         guard value() else { throw NutriError("Hoy · " + name) }
     }
 
+    let importFoods: [(String, Record)] = [
+        ("avena", ["id": .string("a")]), ("avena", ["id": .string("b")]),
+        ("avena integral", ["id": .string("c")]), ("yogur natural", ["id": .string("d")])
+    ]
+    try check(EntryImportView.matchFood("Ávena", in: importFoods) == nil, "CSV rejects duplicate exact food names")
+    try check(EntryImportView.matchFood("Avena integral", in: importFoods)?.text("id") == "c", "CSV uses a unique exact match")
+    try check(EntryImportView.matchFood("Yogur", in: importFoods)?.text("id") == "d", "CSV accepts a unique prefix")
+
     guard let date = Day.date("2026-11-16") else { throw NutriError("Invalid journal fixture date") }
     func entry(_ id: String, age: Int, food: String? = nil, recipe: String? = nil, grams: Double, label: String = "breakfast") -> Record {
         ["id": .string(id), "day": .string(Day.key(Day.add(date, -age))), "food_id": food.map(JSONValue.string) ?? .null,
@@ -2940,18 +2964,31 @@ func checkJournalFidelity() throws {
 #endif
 
 private struct JournalSheet<Content: View>: View {
+    @EnvironmentObject private var store: Store
     @Environment(\.nutriPalette) private var palette
     let title: String
+    let close: () -> Void
     @ViewBuilder var content: Content
 
-    init(_ title: String, @ViewBuilder content: () -> Content) {
+    init(_ title: String, close: @escaping () -> Void, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.close = close
         self.content = content()
     }
 
     private var panel: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(title).font(.nutriDisplay(18))
+            HStack {
+                Text(title).font(.nutriDisplay(18)).accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+                Button(action: close) {
+                    NutriIcon("x", size: 16).frame(width: nutriTouchSize(28), height: nutriTouchSize(28))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(store.tr("Cerrar"))
+                .accessibilityIdentifier("sheet.close")
+            }
             content
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
@@ -2960,7 +2997,7 @@ private struct JournalSheet<Content: View>: View {
     var body: some View {
         ViewThatFits(in: .vertical) {
             panel.fixedSize(horizontal: false, vertical: true)
-            ScrollView { panel }
+            ScrollView { panel }.scrollDismissesKeyboard(.interactively)
         }
         .background(palette.surface3, in: RoundedRectangle(cornerRadius: 16, style: .circular))
     }

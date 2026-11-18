@@ -128,9 +128,10 @@ struct RecipesView: View {
                     }.padding(16)
                 }
             } else if let form {
-                ScrollView { editor(form).padding(16) }
+                ScrollView { editor(form).padding(16) }.scrollDismissesKeyboard(.interactively)
             } else {
                 ScrollView { listing.padding(16).padding(.bottom, 56) }
+                    .scrollDismissesKeyboard(.interactively)
                     .overlay(alignment: .bottomTrailing) {
                         if !matching.isEmpty {
                             Button { showEditor(RecipeDraft()) } label: { NutriIcon("plus", size: 22) }
@@ -165,6 +166,7 @@ struct RecipesView: View {
                 HStack(spacing: 10) {
                     NutriIcon("search", size: 18).foregroundStyle(palette.text3)
                     TextField(store.tr("Buscar…"), text: $query).font(.nutriSans(16)).textFieldStyle(.plain).focused($searchFocused)
+                        .accessibilityIdentifier("recipes.search")
                 }.padding(.horizontal, 12).frame(height: 44).nutriCard(radius: 12, fill: palette.surface2)
                 if desktop { sourceMenu }
             }
@@ -239,7 +241,7 @@ struct RecipesView: View {
                     Text("\(numberText(kcal, digits: 1)) kcal/100g").font(.nutriMono(14)).foregroundStyle(palette.text2)
                 }
             }
-        }
+        }.accessibilityIdentifier("recipes.card." + row.text("id"))
     }
 
     private var emptyEditor: some View {
@@ -408,6 +410,7 @@ private struct RecipeEditor: View {
     @State private var foods: [Record] = []
     @State private var loadingCatalog = true
     @State private var query = ""
+    @FocusState private var ingredientSearchFocused: Bool
     @State private var paste = ""
     @State private var showPaste = false
     @State private var pasteNotice = ""
@@ -455,10 +458,10 @@ private struct RecipeEditor: View {
             }
             if confirm && !staged.isEmpty { confirmCard }
             if !error.isEmpty { Text(error).foregroundStyle(palette.danger).fixedSize(horizontal: false, vertical: true) }
-            Button {
-                if !staged.isEmpty && !confirm { confirm = true } else { perform(save) }
-            } label: { Text(store.tr("Guardar")).frame(maxWidth: .infinity) }
-                .buttonStyle(NutriButtonStyle(.primary, height: 44)).disabled(cleanText(draft.name).isEmpty || draft.ingredients.isEmpty || aiLoading)
+            if !confirm || staged.isEmpty {
+                Button { perform { try await save(confirmCreation: false) } } label: { Text(store.tr("Guardar")).frame(maxWidth: .infinity) }
+                    .buttonStyle(NutriButtonStyle(.primary, height: 44)).disabled(cleanText(draft.name).isEmpty || draft.ingredients.isEmpty || aiLoading)
+            }
             if !draft.recordID.isEmpty {
                 Button { perform { try await onRemove(draft.recordID) } } label: { Text(store.tr("Borrar")).frame(maxWidth: .infinity) }
                     .buttonStyle(NutriButtonStyle(.danger, height: 44))
@@ -478,10 +481,12 @@ private struct RecipeEditor: View {
                     if ingredient.staged { stagedIngredient($ingredient) }
                     else { ingredientRow($ingredient) }
                 }
-                TextField(store.tr("Añadir ingrediente…"), text: $query).nutriInput()
+                TextField(store.tr("Añadir ingrediente…"), text: $query).nutriInput().focused($ingredientSearchFocused)
+                    .accessibilityIdentifier("recipes.ingredient.search")
                 RecipeCatalogHits(foods: foods, query: query) { food in
                     draft.ingredients.append(RecipeIngredient(food: food, amount: "", unit: weightUnit))
                     query = ""
+                    ingredientSearchFocused = false
                 }
                 pasteEditor
             }
@@ -495,7 +500,7 @@ private struct RecipeEditor: View {
                         typedCooked = value
                         draft.cooked = decimal(value).map { draftNumber(Domain.round($0 * Domain.gramsPerOunce, 1)) } ?? value
                     } else { draft.cooked = value }
-                })).font(.nutriMono(14)).nutriInput().accessibilityLabel(label)
+                })).font(.nutriMono(14)).nutriDecimalKeyboard().nutriInput().accessibilityLabel(label)
                 Text(store.tr("vacío = suma de ingredientes")).font(.nutriSans(12)).foregroundStyle(palette.text3)
             }
             CatalogPortionsEditor(portions: $draft.portions)
@@ -514,7 +519,10 @@ private struct RecipeEditor: View {
                     Text(displayName(row.food)).lineLimit(1)
                     if !row.label.isEmpty { Text(store.tr(row.label)).font(.nutriSans(12)).foregroundStyle(palette.text3) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                Button { removeIngredient(row.id) } label: { NutriIcon("trash-2", size: 16).foregroundStyle(palette.danger).padding(4) }
+                Button { removeIngredient(row.id) } label: {
+                    NutriIcon("trash-2", size: 16).foregroundStyle(palette.danger)
+                        .frame(width: nutriTouchSize(24), height: nutriTouchSize(24)).contentShape(Rectangle())
+                }
                     .buttonStyle(.plain).accessibilityLabel(store.tr("Quitar ingrediente"))
             }
             VStack(alignment: .leading, spacing: 4) {
@@ -528,7 +536,8 @@ private struct RecipeEditor: View {
                         }
                     }
                 }
-                TextField("", text: ingredientAmount(binding)).font(.nutriMono(14)).nutriInput().accessibilityLabel(store.tr("Cantidad"))
+                TextField("", text: ingredientAmount(binding)).font(.nutriMono(14))
+                    .nutriDecimalKeyboard().nutriInput().accessibilityLabel(store.tr("Cantidad"))
                 if let grams = row.grams, alt || row.unit == "oz" {
                     Text("≈ \(numberText(grams, digits: 1)) g" + (alt ? " (\(store.tr("densidad")) \(draftNumber(density)) g/ml)" : ""))
                         .font(.nutriMono(12)).foregroundStyle(palette.text3)
@@ -562,13 +571,18 @@ private struct RecipeEditor: View {
             HStack(spacing: 8) {
                 TextField(store.tr("Nombre del alimento"), text: foodText(binding, "name"))
                     .nutriInput().background(palette.surface3, in: RoundedRectangle(cornerRadius: 12))
-                TextField(weightUnit, text: ingredientAmount(binding)).font(.nutriMono(14)).nutriInput().frame(width: 54)
+                TextField(weightUnit, text: ingredientAmount(binding)).font(.nutriMono(14))
+                    .nutriDecimalKeyboard().nutriInput().frame(width: 54)
                     .accessibilityLabel(store.tr("Cantidad"))
                 Button { perform { try await persistIngredient(row.id) } } label: {
-                    NutriIcon("save", size: 16).foregroundStyle(palette.text2).padding(3)
+                    NutriIcon("save", size: 16).foregroundStyle(palette.text2)
+                        .frame(width: nutriTouchSize(22), height: nutriTouchSize(22)).contentShape(Rectangle())
                 }.buttonStyle(.plain).disabled(cleanText(row.food.text("name")).isEmpty)
                     .help(store.tr("Guardar alimento")).accessibilityLabel(store.tr("Guardar") + " " + row.food.text("name"))
-                Button { removeIngredient(row.id) } label: { NutriIcon("x", size: 16).foregroundStyle(palette.danger) }
+                Button { removeIngredient(row.id) } label: {
+                    NutriIcon("x", size: 16).foregroundStyle(palette.danger)
+                        .frame(width: nutriTouchSize(16), height: nutriTouchSize(16)).contentShape(Rectangle())
+                }
                     .buttonStyle(.plain).accessibilityLabel(store.tr("Quitar") + " " + row.food.text("name"))
             }
             Text(store.tr(row.label.isEmpty ? "IA" : row.label) + " · " + store.tr("sin guardar") + " · " + store.tr("valores por 100 g"))
@@ -577,7 +591,7 @@ private struct RecipeEditor: View {
                 ForEach(macroStats, id: \.key) { field in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(store.tr(field.label)).font(.nutriSans(10)).foregroundStyle(palette.text3)
-                        TextField("—", text: foodNumber(binding, field.key)).font(.nutriMono(14)).nutriInput()
+                        TextField("—", text: foodNumber(binding, field.key)).font(.nutriMono(14)).nutriDecimalKeyboard().nutriInput()
                             .accessibilityLabel(store.tr(field.label))
                     }
                 }
@@ -596,15 +610,16 @@ private struct RecipeEditor: View {
                 HStack(spacing: 4) {
                     NutriIcon(showPaste ? "chevron-down" : "chevron-right", size: 12)
                     Text(store.tr("Pegar lista de ingredientes"))
-                }.frame(minHeight: 24)
+                }.frame(minHeight: nutriTouchSize(24))
             }.buttonStyle(.plain).foregroundStyle(palette.text2)
             if showPaste {
                 ZStack(alignment: .topLeading) {
                     TextEditor(text: $paste).scrollContentBackground(.hidden).font(.nutriMono(14)).padding(5).frame(height: 86)
                         .accessibilityLabel(store.tr("Pegar lista de ingredientes"))
+                        .accessibilityIdentifier("recipes.ingredient.paste")
                     if paste.isEmpty {
                         Text("200 g arroz\n15 ml aceite de oliva\npechuga de pollo, 120").font(.nutriMono(14))
-                            .foregroundStyle(palette.text3).padding(8).allowsHitTesting(false)
+                            .foregroundStyle(palette.text3).padding(8).allowsHitTesting(false).accessibilityHidden(true)
                     }
                 }.nutriCard(radius: 12, fill: palette.surface2)
                 Button(action: importIngredients) { Text(store.tr("Añadir del texto")).frame(maxWidth: .infinity) }
@@ -701,7 +716,8 @@ private struct RecipeEditor: View {
                 ForEach(staged) { Text("• " + $0.food.text("name")) }
             }.padding(.leading, 8)
             HStack(spacing: 8) {
-                Button(store.tr("Confirmar y guardar")) { perform(save) }.buttonStyle(NutriButtonStyle(.primary, height: 44))
+                Button(store.tr("Confirmar y guardar")) { perform { try await save(confirmCreation: true) } }
+                    .buttonStyle(NutriButtonStyle(.primary, height: 44))
                 Button(store.tr("Cancelar")) { confirm = false }.buttonStyle(NutriButtonStyle(.secondary, height: 44))
             }
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading).nutriCard(fill: palette.surface2)
@@ -937,7 +953,7 @@ private struct RecipeEditor: View {
         foods.append(saved)
     }
 
-    private func save() async throws {
+    private func save(confirmCreation: Bool) async throws {
         let name = cleanText(draft.name)
         guard !name.isEmpty, !draft.ingredients.isEmpty else { throw FeatureError("Ingresa un nombre y al menos un ingrediente.") }
         let cooked = try featureNumber(draft.cooked, label: "Peso cocido", minimum: 0.000001)
@@ -954,6 +970,10 @@ private struct RecipeEditor: View {
                 throw FeatureError("Cantidad inválida · \(displayName(row.food))")
             }
             if row.staged { _ = try stagedPayload(row.food) }
+        }
+        if !staged.isEmpty && !confirmCreation {
+            confirm = true
+            return
         }
         for id in draft.ingredients.filter(\.staged).map(\.id) { try await persistIngredient(id, failure: "No se pudo crear un alimento nuevo. Intenta de nuevo.") }
         let gramsByID = draft.ingredients.reduce(into: [String: Double]()) { items, row in
@@ -1050,6 +1070,7 @@ private struct RecipeCatalogHits: View {
                     ForEach(results.map(RecipeListItem.init)) { item in
                         Button { select(item.row) } label: {
                             Text(item.row.text("name")).padding(.horizontal, 12).padding(.vertical, 8)
+                                .frame(minHeight: nutriTouchSize(0))
                                 .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                         }.buttonStyle(.plain)
                     }

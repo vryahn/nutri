@@ -271,11 +271,42 @@ struct NutriModalVisibleKey: PreferenceKey {
 }
 
 extension View {
-    /// Hover tooltip plus VoiceOver hint, so a Hint cause is reachable without a mouse (web Hint: hover + tap).
+    @ViewBuilder
     func nutriHint(_ text: String?) -> some View {
+        #if os(iOS)
+        if let text, !text.isEmpty {
+            modifier(NutriTouchHint(text: text))
+        } else {
+            self
+        }
+        #else
         help(text ?? "").accessibilityHint(text ?? "")
+        #endif
     }
 }
+
+#if os(iOS)
+private struct NutriTouchHint: ViewModifier {
+    let text: String
+    @State private var shown = false
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityHint(text)
+            .overlay {
+                // A disabled control can still explain why it is unavailable.
+                Color.clear.contentShape(Rectangle())
+                    .onTapGesture { shown.toggle() }
+                    .accessibilityHidden(true)
+                    .popover(isPresented: $shown) {
+                        Text(text).font(.nutriSans(13)).fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: 260, alignment: .leading).padding(12)
+                            .presentationCompactAdaptation(.popover)
+                    }
+            }
+    }
+}
+#endif
 
 /// Icon that exists only to show a hint: click/tap (or VoiceOver press) toggles a popover, hover shows the tooltip.
 struct NutriHintButton<Label: View>: View {
@@ -297,6 +328,7 @@ struct NutriHintButton<Label: View>: View {
             .popover(isPresented: $shown) {
                 Text(text).font(.nutriSans(13)).fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 260, alignment: .leading).padding(12)
+                    .presentationCompactAdaptation(.popover)
             }
     }
 }
