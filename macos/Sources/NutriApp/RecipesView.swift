@@ -482,6 +482,8 @@ private struct RecipeEditor: View {
                     else { ingredientRow($ingredient) }
                 }
                 TextField(store.tr("Añadir ingrediente…"), text: $query).nutriInput().focused($ingredientSearchFocused)
+                    .submitLabel(.search)
+                    .onSubmit { ingredientSearchFocused = false }
                     .accessibilityIdentifier("recipes.ingredient.search")
                 RecipeCatalogHits(foods: foods, query: query) { food in
                     draft.ingredients.append(RecipeIngredient(food: food, amount: "", unit: weightUnit))
@@ -538,6 +540,7 @@ private struct RecipeEditor: View {
                 }
                 TextField("", text: ingredientAmount(binding)).font(.nutriMono(14))
                     .nutriDecimalKeyboard().nutriInput().accessibilityLabel(store.tr("Cantidad"))
+                    .accessibilityIdentifier("recipes.ingredient.amount." + row.food.text("id"))
                 if let grams = row.grams, alt || row.unit == "oz" {
                     Text("≈ \(numberText(grams, digits: 1)) g" + (alt ? " (\(store.tr("densidad")) \(draftNumber(density)) g/ml)" : ""))
                         .font(.nutriMono(12)).foregroundStyle(palette.text3)
@@ -1073,6 +1076,8 @@ private struct RecipeCatalogHits: View {
                                 .frame(minHeight: nutriTouchSize(0))
                                 .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                         }.buttonStyle(.plain)
+                            .accessibilityLabel(item.row.text("name"))
+                            .accessibilityIdentifier("recipes.ingredient.hit." + item.id)
                     }
                 }.nutriCard(radius: 12, fill: palette.surface2)
             }
