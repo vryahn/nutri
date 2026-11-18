@@ -1,8 +1,10 @@
 # nutri. (Nutrimetry)
 
-A precision-first nutrition-tracking PWA — think Cronometer, rebuilt small and exact. React SPA on Vercel, Supabase (Postgres + Auth + PostgREST) as the entire backend, Row Level Security as the only authorization layer. In production at [nutri.vryahn.com](https://nutri.vryahn.com), used daily by two real users.
+Nutri tracks nutrition through a React PWA and native SwiftUI apps for macOS and iPhone. All three clients read and write the same Supabase data under the signed-in user's permissions. The web app is deployed at [nutri.vryahn.com](https://nutri.vryahn.com).
 
-The core design commitment: **stored nutritional data is never allowed to drift or degrade.** Every trade-off in the codebase — UX, speed, scope — resolves in favor of data accuracy. Questionable values get flagged (⚠), never silently saved.
+**Para trabajar en este repositorio, empieza por el [manual de Nutri](docs/README.md).** Incluye el [recorrido por cada módulo](docs/MODULOS.md), la [arquitectura web](docs/WEB.md), el [desarrollo nativo](docs/NATIVO.md) y los [contratos de datos e integraciones](docs/DATOS-E-INTEGRACIONES.md). Las reglas para agentes viven en [AGENTS.md](AGENTS.md).
+
+The core design commitment is accuracy. Nutri flags questionable values and preserves the difference between a measured zero and an unknown nutrient.
 
 ## Native macOS client
 
@@ -21,7 +23,7 @@ Nutri y Hevy son herramientas de captura y seguimiento dependientes del plan mae
 ## Why this codebase is worth a look
 
 - **Nutrients are computed, never copied.** Entries store only `(food, grams)`; SQL views derive every nutrient at read time. Fixing a food retroactively corrects all history for free — there is no denormalized data to backfill, ever.
-- **No app server.** The client talks to PostgREST directly; RLS policies are the sole authorization layer. The only server-side code is a stateless MCP endpoint (one Vercel function) that also delegates all authorization to RLS.
+- **Data access.** Clients read and write through Supabase Auth, PostgREST and Storage. Vercel runs the AI and USDA proxy, MCP endpoint and OAuth discovery handler. User JWTs and database policies protect private records. The proxy also enforces eligibility, provider allowlists and quotas.
 - **AI with a regression gate.** LLM-based nutrition extraction (Gemini → Mistral fallback cascade) is guarded by a scored golden-set eval (`npm run eval`) against model-specific baselines; prompt or model regressions block the push. Gemini 3.8 does not yet have an accepted complete baseline (see `tech-logs/ia-2026-10-15.md`).
 - **Agent-friendly by design.** A remote MCP server with OAuth, plus documented curl playbooks, let an AI assistant log meals, audit the food catalog, and evaluate intake — with the exact same RLS guarantees as the app.
 
@@ -39,9 +41,11 @@ Nutri y Hevy son herramientas de captura y seguimiento dependientes del plan mae
 ## Architecture
 
 ```
-Browser (React SPA, static)  ──►  Supabase PostgREST  ──►  Postgres 17, schema `nutri` (RLS)
-        │                                                    ▲
-        └──►  /api/mcp (Vercel function, stateless MCP)  ────┘  (same RLS, user's own JWT)
+React PWA / macOS / iPhone ──► Supabase Auth, PostgREST, Storage ──► Postgres (nutri)
+            │
+            └──► /api/ai ──► nutrition providers
+
+External MCP client ──► OAuth discovery and consent ──► /api/mcp ──► Supabase (user JWT)
 ```
 
 ### Client
@@ -95,7 +99,7 @@ Requests use Gemini's `response_schema` for structured per-100 g JSON output, an
 
 Results are merged by confidence: a transcribed label wins over Open Food Facts (which only fills gaps); OFF wins over a Gemini estimate when there is a barcode match; Gemini fills only what remains. Seven fields (kcal, protein, carbs, fat, sodium, potassium, magnesium) always get a best estimate — everything else is filled only from reliable data or left null; an explicit numeric 0 is retained; missing or null values remain unknown. When a transcribed label *and* an OFF match both exist, numeric fields are cross-checked and discrepancies > 25 % (minimum 5 units on both sides) produce an ephemeral warning.
 
-The proxy caps requests at 2 MB and uses an atomic daily quota per authenticated user: Gemini plus embeddings 30, Mistral 15, USDA 100. Quota-store failure returns 503 without a provider request; exhausted quota returns 429. Provider calls stop at 45 seconds, and the client cascade has a 90-second total budget with manual entry available. These controls do not certify extraction accuracy.
+The proxy caps requests at 4,000,000 bytes and uses an atomic daily quota per authenticated user: Gemini plus embeddings 30, Mistral 15, USDA 100. Quota-store failure returns 503 without a provider request; exhausted quota returns 429. Provider calls stop at 45 seconds, and the client cascade has a 90-second total budget with manual entry available. These controls do not certify extraction accuracy.
 
 ### Semantic catalog search
 
@@ -381,16 +385,16 @@ With that and the period's `targets`, the agent can compute adherence (the app u
 
 ## Local setup
 
-One-time manual steps:
+For an existing configured checkout, follow the [web quickstart](docs/WEB.md). To provision a **new** Supabase instance:
 
 1. Create a project on [Supabase](https://supabase.com) (or use an existing one).
 2. **SQL Editor** → paste the full contents of [`supabase/migration.sql`](supabase/migration.sql) → **Run**, then apply the files in [`supabase/migrations/`](supabase/migrations/) in order.
 3. **Settings → API → Exposed schemas** → add `nutri`.
-4. **Authentication → Sign In / Up** → **Allow new users: OFF**. Create the users by hand (email + password) from the dashboard. Password resets are done from there too (there is no self-service flow).
+4. Provision regular email/password accounts from Supabase Auth. Enable anonymous sign-ins if this instance should offer the web demo. Its seed and cleanup routines are in [migration 019](supabase/migrations/019_demo_anon_sandbox.sql). The Nutri login screen offers sign-in and demo access.
 5. Copy the **Project URL** and the **anon key** (Settings → API) into a `.env` file at the project root:
    ```
    VITE_SUPABASE_URL=https://xxxx.supabase.co
-   VITE_SUPABASE_ANON_KEY=eyJ...
+   VITE_SUPABASE_ANON_KEY=sb_publishable_...
    ```
 
 Then `npm ci && npm run dev`. `.env` is in `.gitignore`. Never use the `service_role` key in the frontend.
@@ -401,12 +405,12 @@ Then `npm ci && npm run dev`. `.env` is in `.gitignore`. Never use the `service_
 | --- | --- | --- |
 | `VITE_SUPABASE_URL` | yes | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | yes | anon/publishable key |
-| `VITE_GEMINI_KEY` | no | enables "Datos con IA", semantic search, and "ask your log" ([Google AI Studio](https://aistudio.google.com/apikey) free tier, no billing); without it those modules are hidden |
-| `VITE_MISTRAL_KEY` | no | enables the Mistral tail of the AI fallback cascade; skipped if absent |
+| `GEMINI_KEY` (Vercel) / `VITE_GEMINI_KEY` (local development and evals) | no | Gemini extraction, embeddings and journal queries |
+| `MISTRAL_KEY` (Vercel) / `VITE_MISTRAL_KEY` (local development and evals) | no | Mistral fallback for structured extraction |
 | `FDC_KEY` (Vercel) / `VITE_FDC_KEY` (dev) | no | enables USDA FoodData Central match chips ([free key](https://fdc.nal.usda.gov/api-key-signup)); in production it stays server-side behind `/api/ai`, in dev the `VITE_` one calls FDC directly |
 | `VITE_SENTRY_DSN` | no | production-only error monitoring ([Sentry](https://sentry.io), platform: React); dev stays silent |
 
-No provider key ships in the bundle: in production the AI cascade and the USDA chips both go through `/api/ai`, which verifies the caller's Supabase JWT and holds `GEMINI_KEY`, `GROQ_KEY`, `MISTRAL_KEY` and `FDC_KEY` server-side. The `VITE_*` variants exist only for local dev and the eval harness — that branch is behind `import.meta.env.DEV`, which the production build strips. Only the Supabase publishable key and the Sentry DSN are in the bundle, both public by design. Set the non-`VITE_` names in Vercel → Environment Variables.
+No provider key ships in the bundle: in production the AI cascade and the USDA chips both go through `/api/ai`, which verifies the caller's Supabase JWT and uses the active providers’ `GEMINI_KEY`, `MISTRAL_KEY` and `FDC_KEY` server-side. The `VITE_*` variants exist only for local dev and the eval harness — that branch is behind `import.meta.env.DEV`, which the production build strips. Only the Supabase publishable key and the Sentry DSN are in the bundle, both public by design. Set the non-`VITE_` names in Vercel → Environment Variables.
 
 ## Testing and quality
 
@@ -418,20 +422,23 @@ No provider key ships in the bundle: in production the AI cascade and the USDA c
 
 Push to `main` = automatic production deploy on Vercel. There is no staging environment; verification happens locally before pushing. Hardened response headers (CSP with an explicit `connect-src` allowlist, `frame-ancestors 'none'`, `nosniff`, referrer and permissions policies) are set in [`vercel.json`](vercel.json).
 
-Three GitHub Actions (secrets under **Settings → Secrets and variables → Actions**):
+GitHub Actions workflows (repository secrets live under **Settings → Secrets and variables → Actions**)
+
 
 - [`ci.yml`](.github/workflows/ci.yml) — lint + test + build on every push to `main`.
+- [`macos.yml`](.github/workflows/macos.yml) checks generated contracts, reference fixtures, native module tests and the macOS Release build on relevant changes.
+- [`ios.yml`](.github/workflows/ios.yml) exercises the SwiftUI app on a small iPhone simulator and compiles Release for a physical device. Personal signing and installation are separate steps.
 - [`keepalive.yml`](.github/workflows/keepalive.yml) — weekly cron that does `GET /rest/v1/` (avoids the free tier's automatic pause after 7 days of inactivity). It deliberately accepts non-2xx responses: with Supabase's new publishable keys the REST root returns 401, but that still counts as activity.
-- [`backup.yml`](.github/workflows/backup.yml) — monthly cron that runs `pg_dump` (installs the Postgres 17 client from PGDG, since the server runs PG 17 and Ubuntu ships pg_dump 16), encrypts the result with GPG (symmetric AES256) and uploads ONLY `backup.sql.gpg` as a workflow artifact (90-day retention; the free tier includes no backups). The repo is public and the dump includes `auth.users` (emails, password hashes) — which is why it never uploads unencrypted. Note: Storage (the `body-photos` bucket) is not covered by `pg_dump`.
+- [`backup.yml`](.github/workflows/backup.yml) — weekly Monday 06:00 UTC cron that runs `pg_dump` (installs the Postgres 17 client from PGDG, since the server runs PG 17 and Ubuntu ships pg_dump 16), encrypts the result with GPG (symmetric AES256) and uploads ONLY `backup.sql.gpg` as a workflow artifact (90-day retention; the free tier includes no backups). The repo is public and the dump includes `auth.users` (emails, password hashes) — which is why it never uploads unencrypted. Note: Storage object bytes, including body photos and avatars, require a separate backup.
 
 Secrets: `SUPABASE_URL` and `ANON_KEY` (keepalive), `BACKUP_PASSPHRASE` (backup encryption), and `SUPABASE_DB_URL` — the Postgres connection string **for the Session Pooler** (dashboard **Connect** button → *Session pooler* tab). Don't use the direct connection (`db.<ref>.supabase.co`): it resolves to IPv6 only and GitHub Actions runners have no IPv6 egress, so the workflow fails with "Network is unreachable".
 
 To decrypt a downloaded backup:
 
 ```
-gpg --batch --decrypt --passphrase "..." backup.sql.gpg > backup.sql
+gpg --output backup.sql --decrypt backup.sql.gpg
 ```
 
 ## Deliberate non-goals
 
-Sleep and training tracking (they live in other tools). TypeScript, E2E tests, public sign-up, self-service password recovery, camera barcode scanner, edge functions. Scope discipline is part of the design: the app stays small enough for one person to audit end to end.
+Training routines belong to Hevy. Nutri supports body measurements and the short-sleep flag used in its reporting. The web uses JavaScript/JSX and Vitest. The iPhone target includes native end-to-end UI tests. The app offers authenticated and demo access. Public account registration, self-service password recovery and a live camera barcode scanner are outside its current UI. The native image picker can capture a photo to attach to a record or read a nutrition label.

@@ -2,6 +2,8 @@
 
 La app usa SwiftUI y requiere iOS 17 o posterior. Inicia sesión con la misma cuenta de Nutri que utilizas en la web o en el Mac. El iPhone guarda su propia sesión en el llavero y su propia cola de registros pendientes. Los cambios sincronizados se reflejan en los demás dispositivos.
 
+[Manual de mantenimiento para macOS y iPhone](../docs/NATIVO.md)
+
 ## Instalar en tu iPhone
 
 1. Instala Xcode desde el [Mac App Store](https://apps.apple.com/app/xcode/id497799835). Usa una versión que admita el iOS de tu iPhone. Abre Xcode, completa la instalación inicial y selecciona el componente iOS si lo solicita.

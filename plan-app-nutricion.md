@@ -1,5 +1,7 @@
 # Plan — App de gestión de ingesta calórica (tipo Cronometer)
 
+> Documento histórico de diseño. Para trabajar sobre la aplicación actual, empieza por el [manual de Nutri](docs/README.md).
+
 **Costo de infraestructura: $0.** Sin backend propio: Supabase hace de base de datos, autenticación y API REST. El frontend es una SPA estática en hosting gratuito con tu dominio.
 
 ## 1. Arquitectura

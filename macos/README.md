@@ -2,6 +2,8 @@
 
 Nutri usa SwiftUI, AppKit y Swift Charts. Requiere macOS 14 o posterior. Abre una sesión propia en el mismo Supabase que [Nutri web](https://nutri.vryahn.com). Los seis módulos leen las mismas tablas y vistas, y las operaciones conservan las políticas de acceso vigentes.
 
+[Manual de mantenimiento para macOS y iPhone](../docs/NATIVO.md)
+
 ## Compilar, probar e instalar
 
 Usa Swift 5.10 o posterior, Command Line Tools de Apple y Python 3. Desde la raíz del repositorio:

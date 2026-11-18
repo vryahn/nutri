@@ -1,5 +1,7 @@
 # SPEC — App de nutrición (tipo Cronometer) · Supabase + React
 
+> Documento histórico de diseño. Para trabajar sobre la aplicación actual, empieza por el [manual de Nutri](docs/README.md).
+
 > **Cómo usar este archivo (para Bryan, no es parte del spec):**
 > 1. Crea un repo vacío y guarda este archivo como `SPEC.md` en la raíz.
 > 2. Abre Claude Code en esa carpeta con **Sonnet** (`/model sonnet`). Sonnet basta: el spec ya resolvió todas las decisiones; el trabajo es ejecución. Escala a Opus solo si una fase se atora dos veces (típicamente RLS/SQL). Fable no hace falta. Alternativa equivalente: abre Codex en la carpeta y usa su tier fiable equivalente a Sonnet.

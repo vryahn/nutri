@@ -1,6 +1,11 @@
 # scripts
 
-Dev/portfolio tooling. Not part of the app build; excluded from ESLint (`scripts/**` in `eslint.config.js`).
+## Contratos y comprobaciones locales
+
+- [native-contract.mjs](native-contract.mjs) calcula la huella que Vite publica en `native-contract.json` y los clientes nativos comparan con su build. Ejecuta `node scripts/native-contract.mjs` desde la raíz para inspeccionar el valor.
+- [check-domain.mjs](check-domain.mjs) ejecuta ejemplos deterministas de estadística del dominio con `node scripts/check-domain.mjs`. Las pruebas de regresión generales están en `npm test`. [Guía web](../docs/WEB.md) y [oráculos de Swift](../docs/NATIVO.md).
+
+Los dos scripts siguientes preparan datos y capturas de demostración para el portafolio.
 
 ## `seed_test_data.py` — poblar la cuenta de prueba
 
