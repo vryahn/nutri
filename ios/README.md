@@ -23,3 +23,15 @@ La firma gratuita caduca a los **siete días**. Para renovarla conecta el mismo 
 | Instalar la beta por firma personal. | Compilación Release para dispositivo en CI. La instalación firmada, los permisos del sistema, la red móvil y la interacción con fotos personales se comprueban en el iPhone físico. |
 
 Para comprobar la sincronización durante la beta, registra en tu cuenta un vaso de agua que realmente hayas tomado. Verifica que se muestre según tu ajuste de agua y que aparezca una sola vez al volver a abrir Hoy en el Mac o la web. Para explorar pantallas sin afectar esa cuenta, usa la demo local de Debug.
+
+## Gestos y acciones de la compilación 3
+
+| Pantalla | Cómo probarla con los datos locales |
+| --- | --- |
+| Hoy | Toca un registro para editarlo, desliza hacia la izquierda para borrarlo y toca **Deshacer** para recuperarlo. Mantén pulsado el registro para arrastrarlo a otra comida. En el resumen fijo, toca el resumen para volver a la tarjeta completa. |
+| Alimentos y Recetas | Toca una tarjeta para editar. Un deslizamiento corto se cancela. En Alimentos, importa un CSV y confirma las filas válidas con el teclado abierto. En Recetas, busca o pega ingredientes y abre de nuevo la receta guardada. |
+| Objetivos | Desliza una fase programada para abrir su confirmación de borrado. Desliza una fecha específica para borrarla y toca **Deshacer** para recuperarla. En las reglas puedes elegir y quitar la fecha de pausa desde el calendario. |
+| Dashboard | Borra un rango guardado y toca **Deshacer**. En la huella nutricional, toca un eje para ver su porcentaje. Las explicaciones de cifras parciales y opciones deshabilitadas también se abren al tocar. |
+| Medidas y cuenta | Edita una medida, cambia de día y vuelve para comprobar el autoguardado. En una importación puedes complementar o reemplazar el día existente. Desde la cuenta, cambia las unidades y comprueba el campo de agua en Hoy. |
+
+Las cantidades, medidas y porcentajes usan teclado decimal. Los días de una regla usan teclado de dígitos. Los ajustes de carbohidratos admiten signo. **Listo** cierra el teclado numérico para seguir editando o guardar.

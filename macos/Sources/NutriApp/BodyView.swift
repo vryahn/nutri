@@ -367,6 +367,7 @@ struct BodyView: View {
                 Text(store.tr("Nota")).font(.nutriSans(12)).foregroundStyle(palette.text3)
                 TextField(store.tr("Contexto del día (opcional)"), text: $note, axis: .vertical)
                     .lineLimit(2...8).textFieldStyle(.plain).focused($focus, equals: "note")
+                    .accessibilityIdentifier("body.note")
                     .font(.nutriSans(16)).padding(.horizontal, 12).padding(.vertical, 8).frame(minHeight: 66, alignment: .topLeading)
                     .background(palette.surface2, in: RoundedRectangle(cornerRadius: 12))
                     .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(focus == "note" ? palette.accent : palette.border).allowsHitTesting(false) }

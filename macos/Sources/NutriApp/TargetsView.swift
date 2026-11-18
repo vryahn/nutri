@@ -1254,14 +1254,10 @@ private struct TargetNumberField: View {
     }
 }
 
-private func targetInput(_ label: String, text: Binding<String>, placeholder: String = "", decimal: Bool = false, signed: Bool = false) -> some View {
+private func targetInput(_ label: String, text: Binding<String>, placeholder: String = "", keyboard: NutriKeyboard = .text) -> some View {
     VStack(alignment: .leading, spacing: 4) {
         Text(label).font(.nutriSans(12)).foregroundStyle(.secondary)
-        if decimal {
-            TextField(placeholder, text: text).nutriDecimalKeyboard(signed: signed).nutriInput().accessibilityLabel(label)
-        } else {
-            TextField(placeholder, text: text).nutriInput().accessibilityLabel(label)
-        }
+        TextField(placeholder, text: text).nutriKeyboard(keyboard).nutriInput().accessibilityLabel(label)
     }
 }
 
@@ -1344,8 +1340,8 @@ private struct PhaseRulesEditor: View {
             Divider().overlay(palette.border)
             caption("Límites de la fase")
             HStack {
-                targetInput(store.tr("Kcal mín."), text: numericBinding("kcal_min"), placeholder: "0", decimal: true)
-                targetInput(store.tr("Kcal máx."), text: numericBinding("kcal_max"), placeholder: "0", decimal: true)
+                targetInput(store.tr("Kcal mín."), text: numericBinding("kcal_min"), placeholder: "0", keyboard: .decimal)
+                targetInput(store.tr("Kcal máx."), text: numericBinding("kcal_max"), placeholder: "0", keyboard: .decimal)
             }
             pausedUntilField
             if let removed {
@@ -1390,13 +1386,13 @@ private struct PhaseRulesEditor: View {
             Text(ruleHelp(row)).font(.nutriSans(11.5)).foregroundStyle(palette.text3)
             HStack(alignment: .top, spacing: 8) {
                 if kind == "estancamiento" {
-                    targetInput(store.tr("Días"), text: itemNumber(index, "days"), placeholder: "0", decimal: true)
+                    targetInput(store.tr("Días"), text: itemNumber(index, "days"), placeholder: "0", keyboard: .integer)
                 } else {
-                    targetInput(store.tr(kind == "techo_peso" ? "Peso (kg)" : "kg/sem"), text: itemNumber(index, "value"), placeholder: "0", decimal: true)
-                    if kind != "techo_peso" { targetInput(store.tr("Semanas"), text: itemNumber(index, "weeks"), placeholder: "0", decimal: true) }
+                    targetInput(store.tr(kind == "techo_peso" ? "Peso (kg)" : "kg/sem"), text: itemNumber(index, "value"), placeholder: "0", keyboard: .decimal)
+                    if kind != "techo_peso" { targetInput(store.tr("Semanas"), text: itemNumber(index, "weeks"), placeholder: "0", keyboard: .decimal) }
                 }
                 if kind != "techo_peso" {
-                    targetInput(store.tr("Δ carbs (g)"), text: itemNumber(index, "delta_carbs_g"), placeholder: "0", decimal: true, signed: true)
+                    targetInput(store.tr("Δ carbs (g)"), text: itemNumber(index, "delta_carbs_g"), placeholder: "0", keyboard: .signedDecimal)
                 }
             }
             if kind != "techo_peso" && !scopes.isEmpty { scopePicker(index) }
@@ -1487,7 +1483,7 @@ private struct PhaseRulesEditor: View {
 
     private func numericBinding(_ key: String) -> Binding<String> {
         Binding(get: { rules[key]?.string ?? draftNumber(rules.number(key)) },
-                set: { rules[key] = $0.isEmpty ? nil : .string($0) })
+                set: { rules[key] = $0.isEmpty ? nil : .string($0.replacingOccurrences(of: ",", with: ".")) })
     }
 
     private func itemNumber(_ index: Int, _ key: String) -> Binding<String> {
@@ -1495,7 +1491,7 @@ private struct PhaseRulesEditor: View {
             guard items.indices.contains(index) else { return "" }
             let row = items[index].object ?? [:]
             return row[key]?.string ?? draftNumber(row.number(key))
-        }, set: { writeItem(index, key, value: $0.isEmpty ? nil : .string($0)) })
+        }, set: { writeItem(index, key, value: $0.isEmpty ? nil : .string($0.replacingOccurrences(of: ",", with: "."))) })
     }
 
     private func writeItem(_ index: Int, _ key: String, value: JSONValue?) {

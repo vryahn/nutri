@@ -69,6 +69,7 @@ struct NutriApp: App {
 
     private var root: some View {
         RootView()
+            .nutriKeyboardDismissal(store.tr("Listo"))
             .environmentObject(store)
             .tint(nutriAccent)
             .preferredColorScheme(colorScheme)

@@ -295,9 +295,7 @@ struct SettingsView: View {
                 get: { profile[key]?.string ?? formText(profile.number(key)) },
                 set: { profile[key] = .string($0) }
             ), prompt: Text(placeholder))
-                #if os(iOS)
-                .keyboardType(key == "height_cm" ? .decimalPad : .default)
-                #endif
+                .nutriKeyboard(key == "height_cm" ? .decimal : .text)
                 .font(key == "dob" || key == "height_cm" ? .nutriMono(14) : .nutriSans(14))
                 .nutriInput(height: nutriTouchSize(42))
         }

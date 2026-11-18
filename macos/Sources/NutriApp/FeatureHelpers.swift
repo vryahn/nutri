@@ -103,6 +103,15 @@ struct FeatureFileExport {
 
 extension View {
     @ViewBuilder
+    func nutriRawTextInput() -> some View {
+        #if os(iOS)
+        textInputAutocapitalization(.never).autocorrectionDisabled()
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder
     func nutriFeatureExport(_ state: Binding<FeatureFileExport>, onFailure: @escaping (Error) -> Void) -> some View {
         #if os(iOS)
         let file = state.wrappedValue.file

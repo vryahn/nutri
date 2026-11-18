@@ -400,7 +400,7 @@ final class NutriUITests: XCTestCase {
             XCTAssertTrue(commit.waitForNonExistence(timeout: 5))
             XCTAssertTrue(journalTitle.waitForExistence(timeout: 5))
             XCTAssertEqual(weight.value as? String, value)
-            let note = app.textFields["Contexto del día (opcional)"]
+            let note = app.descendants(matching: .any)["body.note"].firstMatch
             if replace {
                 XCTAssertNotEqual(note.value as? String, "Registro de demostración")
             } else {
@@ -575,6 +575,103 @@ final class NutriUITests: XCTestCase {
         XCTAssertEqual(value.label, "Fibra · 50%")
         point.tap()
         XCTAssertTrue(value.waitForNonExistence(timeout: 3), app.debugDescription)
+    }
+
+    @MainActor
+    func testDemoPhaseRulePauseDateCanBePickedAndCleared() {
+        let app = launch(demo: true)
+        app.buttons["module.targets"].tap()
+        let rules = app.buttons["Editar reglas"]
+        XCTAssertTrue(rules.waitForExistence(timeout: 5), app.debugDescription)
+        rules.tap()
+        let pause = app.buttons["Pausar reglas hasta"]
+        reveal(pause, in: app)
+        pause.tap()
+        let done = app.buttons["Listo"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5), app.debugDescription)
+        done.tap()
+
+        let clearDate = app.buttons["Quitar"]
+        XCTAssertTrue(clearDate.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertNotNil((pause.value as? String)?.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression))
+        clearDate.tap()
+        XCTAssertTrue(clearDate.waitForNonExistence(timeout: 5), app.debugDescription)
+    }
+
+    @MainActor
+    func testLongPressMovesIntakeToAnotherMeal() {
+        let (app, breakfast) = launchDemoWithBreakfastIntake()
+        let dinner = app.buttons["Contraer Cena"]
+        reveal(dinner, in: app)
+        XCTAssertTrue(breakfast.isHittable, app.debugDescription)
+        breakfast.press(forDuration: 1.0, thenDragTo: dinner)
+        XCTAssertFalse(app.buttons["Guardar"].exists)
+        XCTAssertFalse(app.buttons["Deshacer"].exists)
+        dinner.tap()
+        XCTAssertTrue(breakfast.waitForNonExistence(timeout: 5), app.debugDescription)
+        app.buttons["Expandir Cena"].tap()
+        XCTAssertTrue(breakfast.waitForExistence(timeout: 5), app.debugDescription)
+    }
+
+    @MainActor
+    func testSoftwareDecimalKeyboardDonePreservesWaterAmount() {
+        let app = launch(demo: true)
+        let settings = app.buttons["today.waterSettings"]
+        reveal(settings, in: app)
+        settings.tap()
+
+        let amount = app.textFields["today.waterSize"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual(amount.value as? String, "350")
+        amount.tap()
+        let keyboard = app.keyboards.firstMatch
+        let decimal = keyboard.keys.matching(NSPredicate(format: "label IN %@", [".", ","])).firstMatch
+        XCTAssertTrue(decimal.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertFalse(keyboard.keys["q"].exists)
+        decimal.tap()
+        keyboard.keys["5"].tap()
+
+        let done = app.buttons["keyboard.done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5), app.debugDescription)
+        done.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), app.debugDescription)
+        app.buttons["today.waterSave"].tap()
+        XCTAssertTrue(amount.waitForNonExistence(timeout: 5), app.debugDescription)
+
+        reveal(settings, in: app)
+        settings.tap()
+        XCTAssertTrue(amount.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual((amount.value as? String)?.replacingOccurrences(of: ",", with: "."), "350.5")
+    }
+
+    @MainActor
+    func testRuleCountAndCarbAdjustmentUseDifferentSoftwareKeyboards() {
+        let app = launch(demo: true)
+        app.buttons["module.targets"].tap()
+        let rules = app.buttons["Editar reglas"]
+        XCTAssertTrue(rules.waitForExistence(timeout: 5), app.debugDescription)
+        rules.tap()
+        app.buttons["+ Estancamiento"].tap()
+
+        let days = app.textFields["Días"]
+        reveal(days, in: app)
+        days.tap()
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.keys["1"].waitForExistence(timeout: 5), app.debugDescription)
+        let decimal = keyboard.keys.matching(NSPredicate(format: "label IN %@", [".", ","])).firstMatch
+        XCTAssertFalse(decimal.exists)
+        XCTAssertFalse(keyboard.keys["q"].exists)
+        app.buttons["keyboard.done"].tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), app.debugDescription)
+
+        let delta = app.textFields["Δ carbs (g)"]
+        reveal(delta, in: app)
+        delta.tap()
+        let minus = keyboard.keys.matching(NSPredicate(format: "label IN %@", ["-", "−"])).firstMatch
+        XCTAssertTrue(minus.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(decimal.exists, app.debugDescription)
+        app.buttons["keyboard.done"].tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 5), app.debugDescription)
     }
 
     @MainActor

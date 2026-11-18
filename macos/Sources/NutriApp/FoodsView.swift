@@ -424,7 +424,10 @@ struct FoodsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(row.text("name")).font(.nutriSans(14, weight: .medium))
-                    if foodWarningPending(row) { NutriIcon("triangle-alert", size: 14).foregroundStyle(palette.warn) }
+                    if foodWarningPending(row) {
+                        NutriIcon("triangle-alert", size: 14).foregroundStyle(palette.warn)
+                            .accessibilityLabel(store.tr("Valores nutricionales requieren revisión"))
+                    }
                     Spacer()
                     Text("\(numberText(row.number("kcal"), digits: 1)) kcal").font(.nutriMono(14)).foregroundStyle(palette.text2)
                 }
@@ -694,7 +697,10 @@ private struct FoodEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
-                Button(action: onClose) { NutriIcon("chevron-left", size: 22).frame(width: 28, height: 38) }
+                Button(action: onClose) {
+                    NutriIcon("chevron-left", size: 22).frame(width: nutriTouchSize(28), height: nutriTouchSize(38))
+                        .contentShape(Rectangle())
+                }
                     .buttonStyle(.plain).accessibilityLabel(store.tr("Volver"))
                 Text(store.tr(editing ? "Editar alimento" : "Nuevo alimento")).font(.nutriDisplay(20))
             }
@@ -768,6 +774,9 @@ private struct FoodEditor: View {
                     Text("\(draft.basis) ml × \(draft.density) = \(numberText(amount * density, digits: 1)) g → \(convert)").foregroundStyle(palette.accent)
                 } else if (decimal(draft.density) ?? 0) <= 0 { Text(store.tr("Elige el tipo de líquido para convertir ml a gramos")).foregroundStyle(palette.warn) }
             } else if let amount = decimal(draft.basis), amount > 0, amount != 100 { Text(convert).foregroundStyle(palette.accent) }
+            if draft.equivalentGrams == nil && (draft.unit != "ml" || (decimal(draft.density) ?? 0) > 0) {
+                Text(store.tr("Indica una cantidad base mayor que cero.")).foregroundStyle(palette.warn)
+            }
             if store.units == "us", let amount = decimal(draft.basis), amount > 0 {
                 Text(draft.unit == "ml" ? "≈ \(numberText(amount / Domain.mlPerFluidOunce)) fl oz" : "≈ \(numberText(amount / Domain.gramsPerOunce)) oz")
                     .font(.nutriMono(12)).foregroundStyle(palette.text3)
@@ -1180,7 +1189,7 @@ struct CatalogCSVSheet<Preview: View>: View {
                     Button(action: template) { HStack { NutriIcon("file-down", size: 15); Text(store.tr("Descargar plantilla")) } }
                 }.buttonStyle(NutriButtonStyle(.secondary, height: 36))
                 ZStack(alignment: .topLeading) {
-                    TextEditor(text: $text).scrollContentBackground(.hidden).font(.nutriMono(14))
+                    TextEditor(text: $text).nutriRawTextInput().scrollContentBackground(.hidden).font(.nutriMono(14))
                         .padding(8).frame(height: 120)
                         .accessibilityLabel(store.tr("Pega o sube un CSV"))
                         .accessibilityIdentifier("catalog.csv.text")

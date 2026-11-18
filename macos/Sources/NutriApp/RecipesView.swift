@@ -614,7 +614,7 @@ private struct RecipeEditor: View {
             }.buttonStyle(.plain).foregroundStyle(palette.text2)
             if showPaste {
                 ZStack(alignment: .topLeading) {
-                    TextEditor(text: $paste).scrollContentBackground(.hidden).font(.nutriMono(14)).padding(5).frame(height: 86)
+                    TextEditor(text: $paste).nutriRawTextInput().scrollContentBackground(.hidden).font(.nutriMono(14)).padding(5).frame(height: 86)
                         .accessibilityLabel(store.tr("Pegar lista de ingredientes"))
                         .accessibilityIdentifier("recipes.ingredient.paste")
                     if paste.isEmpty {
