@@ -426,6 +426,8 @@ struct BodyView: View {
                         Image(systemName: favorite ? "star.fill" : "star").foregroundStyle(favorite ? palette.accent : palette.text3)
                             .frame(minWidth: nutriTouchSize(16), minHeight: nutriTouchSize(16)).contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityLabel(store.tr(favorite ? "Quitar de favoritos" : "Marcar como favorito") + " · " + store.tr(metric.label))
+                        .accessibilityIdentifier("body.favorite." + metric.key)
+                        .accessibilityAddTraits(favorite ? .isSelected : [])
                 }
             }.font(.nutriSans(12)).foregroundStyle(palette.text3)
             if metric.key == "sueno_corto" {

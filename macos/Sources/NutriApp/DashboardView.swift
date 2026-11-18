@@ -715,7 +715,8 @@ struct DashboardView: View {
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {
                         ForEach(dashboardPresets, id: \.0) { name, _ in
-                            dashboardPill(store.tr(name), selected: preset == name, height: 38) { preset = name }
+                            dashboardPill(store.tr(name), selected: preset == name, height: nutriTouchSize(38)) { preset = name }
+                                .accessibilityIdentifier("dashboard.preset." + name)
                         }
                     }
                 }.scrollIndicators(.hidden)
@@ -1886,6 +1887,7 @@ private struct DashboardRadar: View {
                 selectedAxis = selected
                 #endif
             }
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(points.indices.map { display($0) }.joined(separator: " · "))
             .accessibilityIdentifier("dashboard.radar")
             .overlay(alignment: .bottom) {
@@ -2094,10 +2096,12 @@ private struct DashboardChartEditor: View {
         } label: {
             Text(store.tr(item.label) + (selected ? " ✕" : ""))
                 .font(.nutriSans(12)).lineLimit(1).padding(.horizontal, 10).padding(.vertical, 6)
+                .frame(minHeight: nutriTouchSize(27))
                 .foregroundStyle(selected ? palette.text : reason == nil ? palette.text2 : palette.text3)
                 .background(selected ? palette.surface3 : palette.surface2, in: RoundedRectangle(cornerRadius: 8))
                 .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? palette.accent : palette.border) }
         }.buttonStyle(.plain).disabled(reason != nil).opacity(reason == nil ? 1 : 0.45).nutriHint(reason)
+            .accessibilityIdentifier("dashboard.chart.variable." + item.id)
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
 

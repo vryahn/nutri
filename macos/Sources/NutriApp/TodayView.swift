@@ -36,7 +36,7 @@ struct TodayView: View {
     @State private var preview: Record?
     @State private var previewedID: String?
     @State private var scrollDestination: String?
-    @State private var summaryBottom: CGFloat = 1
+    @State private var summaryScrolledOffscreen = false
     @State private var showCalendar = false
     @State private var sectionHover: String?
     @State private var rowHover: String?
@@ -239,12 +239,9 @@ struct TodayView: View {
                             .id("quick-add")
                     } else {
                         summary.id("summary")
-                            .background {
-                                GeometryReader { proxy in
-                                    Color.clear.preference(key: SummaryBottomKey.self,
-                                                           value: proxy.frame(in: .named("journal")).maxY)
-                                }
-                            }
+                            .onGeometryChange(for: Bool.self) { proxy in
+                                proxy.frame(in: .scrollView(axis: .vertical)).maxY <= 0
+                            } action: { summaryScrolledOffscreen = $0 }
                     }
                     if let proposal { proposalCard(proposal) }
                     if !desktop { waterPanel }
@@ -275,9 +272,7 @@ struct TodayView: View {
                 }
                 .padding(.top, 16).padding(.bottom, desktop ? 80 : 88)
             }
-            .coordinateSpace(name: "journal")
             .scrollDismissesKeyboard(.interactively)
-            .onPreferenceChange(SummaryBottomKey.self) { summaryBottom = $0 }
             .onChange(of: scrollDestination) { _, value in
                 guard let value else { return }
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { scroll.scrollTo(value, anchor: .top) }
@@ -366,7 +361,7 @@ struct TodayView: View {
 
     @ViewBuilder
     private var fixedSummary: some View {
-        if summaryBottom < 0, currentTarget != nil || hasFood {
+        if summaryScrolledOffscreen, currentTarget != nil || hasFood {
             Button { scrollDestination = "summary" } label: {
                 JournalSummary(mode: "mini", totals: totals, target: currentTarget, hasFood: hasFood,
                                energy: $energy, desktop: false, fixed: true, customize: {}, cycle: {})
@@ -525,6 +520,7 @@ struct TodayView: View {
         .lineLimit(1).minimumScaleFactor(0.7)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(waterAccessibility(water, goal: target, min: min, max: max))
+        .accessibilityIdentifier("today.waterTotal")
     }
 
     private func waterAccessibility(_ water: Double, goal: Double?, min: Double?, max: Double?) -> String {
@@ -1880,11 +1876,6 @@ extension Notification.Name {
     static let nutriLabelsChanged = Notification.Name("nutri.labelsChanged")
 }
 
-private struct SummaryBottomKey: PreferenceKey {
-    static let defaultValue: CGFloat = 1
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
 // floor(x * f + 0.5) mirrors JS Math.round (half up), unlike Domain.round (SQL half away from zero).
 private func journalNumber(_ value: Double, digits: Int = 1) -> String {
     let factor = pow(10, Double(digits))
@@ -2995,9 +2986,15 @@ private struct JournalSheet<Content: View>: View {
     }
 
     var body: some View {
-        ViewThatFits(in: .vertical) {
-            panel.fixedSize(horizontal: false, vertical: true)
-            ScrollView { panel }.scrollDismissesKeyboard(.interactively)
+        Group {
+            #if os(iOS)
+            NutriFittingScroll { panel }
+            #else
+            ViewThatFits(in: .vertical) {
+                panel.fixedSize(horizontal: false, vertical: true)
+                ScrollView { panel }.scrollDismissesKeyboard(.interactively)
+            }
+            #endif
         }
         .background(palette.surface3, in: RoundedRectangle(cornerRadius: 16, style: .circular))
     }

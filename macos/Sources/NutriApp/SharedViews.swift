@@ -134,7 +134,8 @@ struct NutriSheet<Content: View, Footer: View>: View {
     let footer: Footer
     let showsFooter: Bool
 
-    init(_ title: String, close: @escaping () -> Void, showsFooter: Bool = true, @ViewBuilder content: () -> Content, @ViewBuilder footer: () -> Footer) {
+    init(_ title: String, close: @escaping () -> Void, showsFooter: Bool = true,
+         @ViewBuilder content: () -> Content, @ViewBuilder footer: () -> Footer) {
         self.title = title
         self.close = close
         self.content = content()
@@ -157,17 +158,40 @@ struct NutriSheet<Content: View, Footer: View>: View {
             }
             .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
             Rectangle().fill(palette.border).frame(height: 1)
+            #if os(iOS)
+            NutriFittingScroll {
+                content.padding(.horizontal, 20).padding(.vertical, 16)
+            }
+            #else
             ViewThatFits(in: .vertical) {
                 content.padding(.horizontal, 20).padding(.vertical, 16).fixedSize(horizontal: false, vertical: true)
                 ScrollView { content.padding(.horizontal, 20).padding(.vertical, 16) }
                     .scrollDismissesKeyboard(.interactively)
             }
+            #endif
             if showsFooter {
                 Rectangle().fill(palette.border).frame(height: 1)
                 footer.padding(.horizontal, 20).padding(.vertical, 12)
             }
         }
         .nutriGlass(modal: true)
+    }
+
+}
+
+struct NutriFittingScroll<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    @State private var contentHeight: CGFloat?
+
+    var body: some View {
+        ScrollView {
+            content()
+                .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { contentHeight = $0 }
+        }
+            // Keep the same editor mounted as the keyboard or preview changes the available height.
+            .frame(maxHeight: contentHeight ?? .infinity)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.interactively)
     }
 }
 

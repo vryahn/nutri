@@ -128,7 +128,7 @@ struct RecipesView: View {
                     }.padding(16)
                 }
             } else if let form {
-                ScrollView { editor(form).padding(16) }.scrollDismissesKeyboard(.interactively)
+                ScrollView { editor(form).padding(16) }.scrollDismissesKeyboard(.immediately)
             } else {
                 ScrollView { listing.padding(16).padding(.bottom, 56) }
                     .scrollDismissesKeyboard(.interactively)

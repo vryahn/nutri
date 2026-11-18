@@ -197,10 +197,11 @@ final class NutriUITests: XCTestCase {
             format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "today.intake.", "Avena con yogur"
         )).firstMatch
         reveal(breakfast, in: app)
-        let water = app.buttons["today.waterSettings"]
+        let water = app.staticTexts["today.waterTotal"]
         let journal = app.scrollViews.firstMatch
         for _ in 0..<3 where !water.isHittable { journal.swipeDown() }
         XCTAssertTrue(water.isHittable, app.debugDescription)
+        XCTAssertTrue(water.label.hasPrefix("0 ml"), water.label)
         XCTAssertFalse(app.buttons["Quitar último registro de agua"].exists)
     }
 
@@ -354,16 +355,17 @@ final class NutriUITests: XCTestCase {
         let more = app.buttons["Más medidas ▾"]
         catalogReveal(more, in: app)
         more.tap()
-        let favorite = app.buttons["Marcar como favorito · Grasa corporal"]
+        let favorite = app.buttons["body.favorite.grasa_pct"]
         catalogReveal(favorite, in: app)
+        XCTAssertFalse(favorite.isSelected)
         favorite.tap()
-        let promoted = app.buttons["Quitar de favoritos · Grasa corporal"]
-        XCTAssertTrue(promoted.waitForExistence(timeout: 5))
+        let promoted = NSPredicate(format: "selected == true")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: promoted, object: favorite)], timeout: 5), .completed)
         let less = app.buttons["Menos medidas ▴"]
         catalogReveal(less, in: app)
         less.tap()
         XCTAssertTrue(app.textFields["body.metric.grasa_pct"].exists)
-        XCTAssertTrue(promoted.exists)
+        XCTAssertTrue(favorite.isSelected)
     }
 
     @MainActor
@@ -391,8 +393,7 @@ final class NutriUITests: XCTestCase {
             XCTAssertTrue(collision.waitForExistence(timeout: 5), app.debugDescription)
             let option = app.buttons[replace ? "Reemplazar" : "Complementar"]
             let scroll = app.scrollViews.containing(.textView, identifier: "catalog.csv.text").firstMatch
-            for _ in 0..<4 where !option.isHittable { scroll.swipeUp() }
-            XCTAssertTrue(option.isHittable, app.debugDescription)
+            catalogReveal(option, in: app, scroll: scroll)
             if replace { option.tap() }
             XCTAssertTrue(option.isSelected)
             XCTAssertTrue(commit.isHittable)
@@ -410,11 +411,13 @@ final class NutriUITests: XCTestCase {
     }
 
     @MainActor
-    private func catalogReveal(_ element: XCUIElement, in app: XCUIApplication) {
-        let scroll = app.scrollViews.firstMatch
-        for _ in 0..<8 where !element.isHittable {
-            if element.exists, element.frame.minY < scroll.frame.minY { scroll.swipeDown() }
-            else { scroll.swipeUp() }
+    private func catalogReveal(_ element: XCUIElement, in app: XCUIApplication, scroll region: XCUIElement? = nil) {
+        let scroll = region ?? app.scrollViews.firstMatch
+        for _ in 0..<10 where !element.isHittable {
+            let above = element.exists && element.frame.midY < scroll.frame.midY
+            let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: above ? 0.30 : 0.72))
+            let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: above ? 0.72 : 0.30))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.15)
         }
         XCTAssertTrue(element.isHittable, app.debugDescription)
     }
@@ -514,7 +517,7 @@ final class NutriUITests: XCTestCase {
         app.buttons["Guardar rango"].tap()
         let saved = app.buttons[name]
         XCTAssertTrue(saved.waitForExistence(timeout: 5), app.debugDescription)
-        XCTAssertTrue(app.buttons["Hoy"].isHittable, app.debugDescription)
+        XCTAssertTrue(app.buttons["dashboard.preset.Hoy"].isHittable, app.debugDescription)
         XCTAssertLessThanOrEqual(saved.frame.width, 170, app.debugDescription)
 
         saved.tap()
@@ -541,8 +544,14 @@ final class NutriUITests: XCTestCase {
         let save = app.buttons["Guardar gráfica"]
         XCTAssertTrue(save.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertFalse(save.isEnabled)
-        let protein = app.buttons["Proteína"]
-        reveal(protein, in: app)
+        let protein = app.buttons["dashboard.chart.variable.protein_g"]
+        let chartForm = app.scrollViews.containing(.button, identifier: "dashboard.chart.variable.protein_g").firstMatch
+        XCTAssertTrue(protein.exists, app.debugDescription)
+        for _ in 0..<4 where !protein.isHittable {
+            if protein.frame.midY < chartForm.frame.minY { chartForm.swipeDown() }
+            else { chartForm.swipeUp() }
+        }
+        XCTAssertTrue(protein.isHittable, app.debugDescription)
         protein.tap()
         XCTAssertTrue(save.isEnabled)
         save.tap()
@@ -553,7 +562,7 @@ final class NutriUITests: XCTestCase {
         options.tap()
         app.buttons["Editar"].tap()
         XCTAssertTrue(app.staticTexts["Editar gráfica"].waitForExistence(timeout: 5), app.debugDescription)
-        XCTAssertTrue(app.buttons["Proteína ✕"].isSelected, app.debugDescription)
+        XCTAssertTrue(protein.isSelected, app.debugDescription)
     }
 
     @MainActor
@@ -561,13 +570,18 @@ final class NutriUITests: XCTestCase {
         let app = launch(demo: true)
         app.buttons["module.dashboard"].tap()
         app.buttons["Análisis estándar"].tap()
-        let today = app.buttons["Hoy"]
+        let today = app.buttons["dashboard.preset.Hoy"]
         XCTAssertTrue(today.waitForExistence(timeout: 5), app.debugDescription)
         today.tap()
         let radar = app.descendants(matching: .any).matching(identifier: "dashboard.radar").firstMatch
         XCTAssertTrue(radar.waitForExistence(timeout: 5), app.debugDescription)
-        for _ in 0..<10 where !radar.isHittable { app.scrollViews.firstMatch.swipeUp() }
+        let scroll = app.scrollViews.containing(.any, identifier: "dashboard.radar").firstMatch
+        for _ in 0..<10 where !scroll.frame.insetBy(dx: 0, dy: 16).contains(CGPoint(x: radar.frame.midX, y: radar.frame.midY)) {
+            if radar.frame.midY < scroll.frame.midY { scroll.swipeDown(velocity: .slow) }
+            else { scroll.swipeUp(velocity: .slow) }
+        }
         XCTAssertTrue(radar.isHittable, app.debugDescription)
+        XCTAssertTrue(scroll.frame.contains(CGPoint(x: radar.frame.midX, y: radar.frame.midY)), app.debugDescription)
         let point = radar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.48))
         point.tap()
         let value = app.staticTexts["dashboard.radar.value"]

@@ -954,10 +954,14 @@ private struct TargetSheetContent<Content: View>: View {
             if scrolls {
                 ScrollView { paper }.scrollDismissesKeyboard(.interactively)
             } else {
+                #if os(iOS)
+                NutriFittingScroll { paper }
+                #else
                 ViewThatFits(in: .vertical) {
                     paper.fixedSize(horizontal: false, vertical: true)
                     ScrollView { paper }.scrollDismissesKeyboard(.interactively)
                 }
+                #endif
             }
         }
         .background(palette.bg, in: RoundedRectangle(cornerRadius: 20))
