@@ -1056,18 +1056,19 @@ private struct RecipeCatalogHits: View {
     let foods: [Record]
     let query: String
     let select: (Record) -> Void
-    @State private var filter = ""
-    @State private var exact: [Record]?
+    @State private var remote: (term: String, rows: [Record])?
     @EnvironmentObject private var store: Store
 
     private var results: [Record] {
-        guard !filter.isEmpty, filter == cleanText(query) else { return [] }
-        let results = (exact ?? foods.filter { $0.text("name").localizedCaseInsensitiveContains(filter) }).prefix(8)
+        let term = cleanText(query)
+        guard !term.isEmpty else { return [] }
+        let matches = remote.flatMap { $0.term == term ? $0.rows : nil }
+        let results = (matches ?? foods.filter { $0.text("name").localizedCaseInsensitiveContains(term) }).prefix(8)
         return results.filter { $0.text("source") != "usda" } + results.filter { $0.text("source") == "usda" }
     }
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
             if !results.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(results.map(RecipeListItem.init)) { item in
@@ -1081,19 +1082,16 @@ private struct RecipeCatalogHits: View {
                     }
                 }.nutriCard(radius: 12, fill: palette.surface2)
             }
-        }.task(id: query) {
-            exact = nil
+        }.task(id: cleanText(query)) {
             let term = cleanText(query)
-            if term.isEmpty { filter = ""; return }
+            remote = nil
+            guard !term.isEmpty, !store.demoActive, !store.offline else { return }
             do {
                 try await Task.sleep(for: .milliseconds(250))
-                filter = term
-                if !store.demoActive, !store.offline {
-                    let rows = try await searchCatalogNames(store: store, table: "foods", term: term, limit: 8)
-                    guard !Task.isCancelled, cleanText(query) == term else { return }
-                    exact = rows
-                }
-            } catch { }
+                let rows = try await searchCatalogNames(store: store, table: "foods", term: term, limit: 8)
+                guard !Task.isCancelled else { return }
+                remote = (term, rows)
+            } catch { /* Local matches remain available when the request fails. */ }
         }
     }
 }

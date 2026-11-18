@@ -318,6 +318,7 @@ final class NutriUITests: XCTestCase {
         catalogReveal(amount, in: app)
         amount.tap()
         amount.typeText("100")
+        app.buttons["keyboard.done"].tap()
 
         let paste = app.buttons["Pegar lista de ingredientes"]
         catalogReveal(paste, in: app)
