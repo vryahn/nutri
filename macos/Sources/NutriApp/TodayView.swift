@@ -643,7 +643,12 @@ struct TodayView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }
+            #if os(iOS)
+            .buttonStyle(IntakeTapStyle())
+            #else
             .buttonStyle(.plain)
+            #endif
+            .accessibilityIdentifier("today.intake.\(id)")
             #if os(iOS)
             Menu {
                 Button(store.tr("Editar")) { editor = .entry(row, label, nil, nil) }
@@ -692,6 +697,9 @@ struct TodayView: View {
             }
             return NSItemProvider(object: dragKey("entry", id) as NSString)
         })
+        #if os(iOS)
+        .modifier(SwipeToDelete(radius: 16, delete: { remove(row) }))
+        #endif
         .dropDestination(for: String.self) { items, _ in
             guard let payload = items.first else { return false }
             return move(payload, label: label, over: id)
@@ -1872,6 +1880,32 @@ private func journalNumber(_ value: Double, digits: Int = 1) -> String {
 private func journalDragKey(_ type: String, id: String, day: String, owner: String?) -> String {
     "nutri/\(owner ?? "")/\(day)/\(type)/\(id)"
 }
+
+#if os(iOS)
+// The content moves with the finger during a swipe. Measure taps in screen coordinates.
+private struct IntakeTapStyle: PrimitiveButtonStyle {
+    @GestureState private var exceededTapDistance = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        let touch = DragGesture(minimumDistance: 0, coordinateSpace: .global)
+            .updating($exceededTapDistance) { touch, exceeded, _ in
+                if max(abs(touch.translation.width), abs(touch.translation.height)) >= 8 { exceeded = true }
+            }
+            .onEnded { touch in
+                if !exceededTapDistance && max(abs(touch.translation.width), abs(touch.translation.height)) < 8 {
+                    configuration.trigger()
+                }
+            }
+
+        return configuration.label
+            .contentShape(Rectangle())
+            .simultaneousGesture(touch)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { configuration.trigger() }
+    }
+}
+#endif
 
 // Filas pendientes de sincronizar (⛅) no se arrastran: reordenar es solo online, como en la web.
 private struct EntryDraggable: ViewModifier {

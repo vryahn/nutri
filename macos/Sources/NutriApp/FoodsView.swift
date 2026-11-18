@@ -1264,25 +1264,39 @@ struct CatalogPortionsEditor: View {
 
 struct CatalogSwipeCard<Content: View>: View {
     @EnvironmentObject private var store: Store
-    @Environment(\.nutriPalette) private var palette
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let open: () -> Void
     let delete: (() -> Void)?
     var radius: CGFloat = 16
     var padding: CGFloat = 16
     @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        Button(action: open) {
+            content().padding(padding).frame(maxWidth: .infinity, alignment: .leading).nutriCard(radius: radius)
+        }.buttonStyle(.plain)
+            .modifier(SwipeToDelete(radius: radius, delete: delete))
+            .contextMenu { if let delete { Button(store.tr("Borrar"), role: .destructive, action: delete) } }
+            .accessibilityActions {
+                if let delete { Button(store.tr("Borrar"), action: delete) }
+            }
+    }
+}
+
+struct SwipeToDelete: ViewModifier {
+    @Environment(\.nutriPalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let radius: CGFloat
+    let delete: (() -> Void)?
     @GestureState private var drag: CGFloat = 0
     @State private var width: CGFloat = 300
 
-    var body: some View {
+    func body(content: Content) -> some View {
         ZStack(alignment: .trailing) {
             if drag < 0 {
                 palette.danger
                 NutriIcon("trash-2", size: 20).foregroundStyle(palette.text).padding(.trailing, 16)
             }
-            Button(action: open) {
-                content().padding(padding).frame(maxWidth: .infinity, alignment: .leading).nutriCard(radius: radius)
-            }.buttonStyle(.plain).offset(x: drag)
+            content.offset(x: drag)
         }.clipShape(RoundedRectangle(cornerRadius: radius))
             .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width = $0 }
             .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: drag == 0)
@@ -1293,10 +1307,6 @@ struct CatalogSwipeCard<Content: View>: View {
                 guard event.translation.width < -min(96, width * 0.35), abs(event.translation.width) > abs(event.translation.height) else { return }
                 delete?()
             })
-            .contextMenu { if let delete { Button(store.tr("Borrar"), role: .destructive, action: delete) } }
-            .accessibilityActions {
-                if let delete { Button(store.tr("Borrar"), action: delete) }
-            }
     }
 }
 
