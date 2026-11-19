@@ -1,6 +1,9 @@
 import NutriCore
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(iOS)
+import UIKit
+#endif
 
 let foodDensityPresets: [(String, Double)] = [
     ("Agua, café, té o caldo", 1), ("Leche", 1.03), ("Jugo o refresco", 1.04),
@@ -1308,24 +1311,11 @@ struct CatalogPortionsEditor: View {
 }
 
 #if os(iOS)
-// The content moves with the finger during a swipe. Measure taps in screen coordinates.
 struct SwipeCardTapStyle: PrimitiveButtonStyle {
-    @GestureState private var exceededTapDistance = false
-
     func makeBody(configuration: Configuration) -> some View {
-        let touch = DragGesture(minimumDistance: 0, coordinateSpace: .global)
-            .updating($exceededTapDistance) { touch, exceeded, _ in
-                if max(abs(touch.translation.width), abs(touch.translation.height)) >= 8 { exceeded = true }
-            }
-            .onEnded { touch in
-                if !exceededTapDistance && max(abs(touch.translation.width), abs(touch.translation.height)) < 8 {
-                    configuration.trigger()
-                }
-            }
-
-        return configuration.label
+        configuration.label
             .contentShape(Rectangle())
-            .simultaneousGesture(touch)
+            .onTapGesture { configuration.trigger() }
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { configuration.trigger() }
@@ -1364,27 +1354,97 @@ struct SwipeToDelete: ViewModifier {
     let radius: CGFloat
     let delete: (() -> Void)?
     @GestureState private var drag: CGFloat = 0
+    #if os(iOS)
+    @State private var panOffset: CGFloat = 0
+    #endif
     @State private var width: CGFloat = 300
 
     func body(content: Content) -> some View {
+        if let delete {
+            #if os(iOS)
+            if #available(iOS 18, *) {
+                card(content, offset: panOffset)
+                    .gesture(LeftSwipePan(onChange: { panOffset = min(0, $0) }, onEnd: { translation in
+                        panOffset = 0
+                        if let translation, passesThreshold(x: translation.x, y: translation.y) { delete() }
+                    }))
+            } else {
+                legacySwipe(content, delete: delete)
+            }
+            #else
+            legacySwipe(content, delete: delete)
+            #endif
+        } else {
+            content
+        }
+    }
+
+    private func card(_ content: Content, offset: CGFloat) -> some View {
         ZStack(alignment: .trailing) {
-            if drag < 0 {
+            if offset < 0 {
                 palette.danger
                 NutriIcon("trash-2", size: 20).foregroundStyle(palette.text).padding(.trailing, 16)
             }
-            content.offset(x: drag)
+            content.offset(x: offset)
         }.clipShape(RoundedRectangle(cornerRadius: radius))
             .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width = $0 }
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: drag == 0)
-            .simultaneousGesture(DragGesture(minimumDistance: 8).updating($drag) { event, state, _ in
-                guard delete != nil, abs(event.translation.width) > abs(event.translation.height) else { return }
-                state = min(0, event.translation.width)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: offset == 0)
+    }
+
+    private func legacySwipe(_ content: Content, delete: @escaping () -> Void) -> some View {
+        card(content, offset: drag)
+            .simultaneousGesture(DragGesture(minimumDistance: 8, coordinateSpace: .global).updating($drag) { event, state, _ in
+                let translation = event.translation
+                state = translation.width < -abs(translation.height) ? translation.width : 0
             }.onEnded { event in
-                guard event.translation.width < -min(96, width * 0.35), abs(event.translation.width) > abs(event.translation.height) else { return }
-                delete?()
+                if passesThreshold(x: event.translation.width, y: event.translation.height) { delete() }
             })
     }
+
+    private func passesThreshold(x: CGFloat, y: CGFloat) -> Bool {
+        x < -max(abs(y), min(96, width * 0.35))
+    }
 }
+
+#if os(iOS)
+@available(iOS 18, *)
+private struct LeftSwipePan: UIGestureRecognizerRepresentable {
+    let onChange: (CGFloat) -> Void
+    let onEnd: (CGPoint?) -> Void
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let pan = UIPanGestureRecognizer()
+        pan.maximumNumberOfTouches = 1
+        pan.delegate = context.coordinator
+        return pan
+    }
+
+    func handleUIGestureRecognizerAction(_ pan: UIPanGestureRecognizer, context: Context) {
+        switch pan.state {
+        case .began, .changed: onChange(pan.translation(in: nil).x)
+        case .ended: onEnd(pan.translation(in: nil))
+        case .cancelled, .failed: onEnd(nil)
+        default: break
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
+            let velocity = pan.velocity(in: nil)
+            return velocity.x < -abs(velocity.y)
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let scroll = otherGestureRecognizer.view as? UIScrollView else { return false }
+            return otherGestureRecognizer === scroll.panGestureRecognizer
+        }
+    }
+}
+#endif
 
 #if DEBUG
 func checkCatalogFidelity() throws {

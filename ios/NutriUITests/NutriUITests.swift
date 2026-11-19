@@ -74,14 +74,24 @@ final class NutriUITests: XCTestCase {
     @MainActor
     func testLocalDemoIntakeAllowsVerticalScroll() {
         let (app, intake) = launchDemoWithBreakfastIntake()
-        let initialY = intake.frame.minY
-        let start = intake.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        let end = start.withOffset(CGVector(dx: 0, dy: 56))
-        start.press(forDuration: 0.08, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
-        XCTAssertFalse(app.buttons["Guardar"].exists)
-        XCTAssertFalse(app.buttons["Deshacer"].exists)
-        XCTAssertTrue(intake.exists, app.debugDescription)
-        XCTAssertGreaterThan(intake.frame.minY, initialY + 16, app.debugDescription)
+        let journal = app.scrollViews.firstMatch
+        for direction in [CGFloat(1), -1] {
+            // A full downward swipe can carry the intake past the bottom of the viewport.
+            for _ in 0..<2 where !intake.isHittable {
+                let distance = min(intake.frame.midY - journal.frame.midY, journal.frame.height * 0.5)
+                let gutter = journal.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.75))
+                gutter.press(forDuration: 0, thenDragTo: gutter.withOffset(CGVector(dx: 0, dy: -distance)),
+                             withVelocity: .slow, thenHoldForDuration: 0)
+            }
+            XCTAssertTrue(intake.isHittable, app.debugDescription)
+            let initialY = intake.frame.minY
+            if direction > 0 { intake.swipeDown(velocity: .slow) }
+            else { intake.swipeUp(velocity: .slow) }
+            XCTAssertFalse(app.buttons["Guardar"].exists)
+            XCTAssertFalse(app.buttons["Deshacer"].exists)
+            XCTAssertTrue(intake.exists, app.debugDescription)
+            XCTAssertGreaterThan(direction * (intake.frame.minY - initialY), 16, app.debugDescription)
+        }
     }
 
     @MainActor
