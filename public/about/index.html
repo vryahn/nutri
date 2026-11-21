@@ -425,7 +425,7 @@
   <div class="signals">
     <div class="wrap mono">
       <div class="sig"><span class="n">108</span><span class="l" data-es="micronutrientes">micronutrients</span></div>
-      <div class="sig"><span class="n">163</span><span class="l" data-es="tests automatizados">automated tests</span></div>
+      <div class="sig"><span class="n">292</span><span class="l" data-es="pruebas web en CI">web tests in CI</span></div>
       <div class="sig"><span class="n">20</span><span class="l" data-es="migraciones SQL">SQL migrations</span></div>
       <div class="sig"><span class="n">4.5:1</span><span class="l" data-es="contraste mínimo">minimum contrast</span></div>
     </div>
@@ -448,7 +448,7 @@
         </button>
         <button role="tab" aria-selected="false" data-p="p-ai">
           <span class="k" data-es="IA con paracaídas">AI with guardrails</span>
-          <span class="t" data-es="Cascada custodiada por evals">A cascade gated by evals</span>
+          <span class="t" data-es="Cascada con evaluación de calidad">A cascade with quality checks</span>
         </button>
         <button role="tab" aria-selected="false" data-p="p-search">
           <span class="k" data-es="Búsqueda">Search</span>
@@ -525,22 +525,24 @@
         <article class="dec-panel" id="p-ai" role="tabpanel" hidden>
           <div class="dec-copy">
             <span class="k" data-es="IA con paracaídas">AI with guardrails</span>
-            <h3 data-es="Cascada de respaldo, custodiada por evals">A fallback cascade, gated by evals</h3>
-            <p data-es="La transcripción de etiquetas desde foto corre sobre keys de free tier. Cualquier error — timeout, cuota, JSON inválido — cae al siguiente modelo sin que el usuario lo note.">Photo label transcription runs on free-tier keys. Any error — timeout, quota, invalid JSON — falls through to the next model without the user noticing.</p>
-            <p data-es="Un golden set puntuado de fotos reales de etiquetas corre antes de cada cambio a la IA: cualquier regresión contra el baseline bloquea el push.">A scored golden set of real label photos runs before every AI change: any regression against baseline blocks the push.</p>
+            <h3 data-es="Cascada de respaldo con evaluación de calidad">A fallback cascade with quality checks</h3>
+            <p data-es="La extracción de datos de etiquetas desde una foto pasa al siguiente modelo configurado si falla el intento, por ejemplo por tiempo de espera o cuota.">If photo-label extraction fails, for example because of a timeout or quota limit, the app tries the next configured model.</p>
+            <p data-es="Una evaluación separada de CI usa casos puntuados de etiquetas y estimaciones para comparar cambios con las referencias disponibles por modelo.">An evaluation outside CI uses scored label and estimate cases to check changes against available model-specific baselines.</p>
           </div>
           <div class="dec-viz">
             <div class="flow big mono">
               <span class="stepchip anim" style="--i:0">gemini-3.8-flash <b class="x">✗ timeout</b></span>
               <span class="arr anim" style="--i:1">→</span>
-              <span class="stepchip anim" style="--i:1">gemini-2.5-flash <b class="x">✗ 429</b></span>
+              <span class="stepchip anim" style="--i:1">gemini-3.6-flash <b class="x">✗ 429</b></span>
               <span class="arr anim" style="--i:2">→</span>
-              <span class="stepchip ok anim" style="--i:2">qwen3.6-27b ✓</span>
+              <span class="stepchip anim" style="--i:2">gemini-2.5-flash <b class="x">✗ timeout</b></span>
+              <span class="arr anim" style="--i:3">→</span>
+              <span class="stepchip ok anim" style="--i:3">mistral-small-latest ✓</span>
             </div>
             <div class="flow big mono">
-              <span class="stepchip ok anim" style="--i:3" data-es="✓ npm run eval — regresión vs baseline = no hay deploy">✓ npm run eval — regression vs baseline = no deploy</span>
+              <span class="stepchip anim" style="--i:4" data-es="npm run eval · comparación con la referencia del modelo">npm run eval · comparison with the model baseline</span>
             </div>
-            <p class="viz-note anim" style="--i:3" data-es="Siete modelos en la cadena. El schema de Gemini se traduce a JSON Schema estricto para Groq y Mistral — misma salida estructurada, otro dialecto.">Seven models deep. The Gemini schema is translated to strict JSON Schema for Groq and Mistral — same structured output, different dialect.</p>
+            <p class="viz-note anim" style="--i:4" data-es="Ejemplo de la cascada de cuatro modelos del repositorio: tres Gemini y un Mistral. El esquema de Gemini se traduce a JSON Schema para Mistral.">Example of the four-model cascade defined in the repository: three Gemini models and one Mistral model. The Gemini schema is translated to JSON Schema for Mistral.</p>
           </div>
         </article>
 
@@ -599,8 +601,8 @@
           <div class="dec-copy">
             <span class="k" data-es="Interoperabilidad">Interoperability</span>
             <h3 data-es="Su propio conector MCP">Its own MCP connector</h3>
-            <p data-es="Un servidor MCP remoto con OAuth expone 8 tools — registrar, buscar, auditar — actuando con la identidad de cada usuario, bajo el mismo RLS.">A remote MCP server with OAuth exposes 8 tools — log, search, audit — acting with each user's own identity, under the same RLS.</p>
-            <p data-es="La bitácora se volvió conversacional: registrar una comida o auditar una semana ocurre desde cualquier cliente MCP — Claude, ChatGPT, Perplexity y más — sin pasar por la UI.">The food log became conversational: logging a meal or auditing a week happens from any MCP client — Claude, ChatGPT, Perplexity and more — no UI needed.</p>
+            <p data-es="El servidor MCP remoto registra 11 herramientas en el código. Con OAuth, cada herramienta opera con la identidad del usuario y las mismas reglas de acceso por fila.">The remote MCP server registers 11 tools in code. With OAuth, each tool runs as the user under the same row-level access rules.</p>
+            <p data-es="Los clientes compatibles con MCP remoto sobre Streamable HTTP y OAuth pueden registrar comidas o consultar la bitácora sin abrir la app.">Clients that support remote MCP over Streamable HTTP and OAuth can log meals or inspect the food log without opening the app.</p>
           </div>
           <div class="dec-viz">
             <div class="chat">
@@ -660,23 +662,23 @@
         <div class="node"><b>Postgres · Supabase</b><span data-es="vistas SQL · pgvector · Auth · Storage">SQL views · pgvector · Auth · Storage</span></div>
       </div>
       <div class="arch-row">
-        <div class="node"><b data-es="Foto o etiqueta">Photo or label</b><span data-es="compresión canvas → 1024 px">canvas compression → 1024 px</span></div>
+        <div class="node"><b data-es="Foto o etiqueta">Photo or label</b><span data-es="fotos de etiquetas → hasta 2048 px">label photos → up to 2048 px</span></div>
         <div class="link"><span class="a"></span><span class="mono">response_schema JSON</span></div>
-        <div class="node"><b data-es="Cascada IA">AI cascade</b><span>Gemini 3.8 → … → 2.5 → Groq → Mistral</span></div>
+        <div class="node"><b data-es="Cascada IA">AI cascade</b><span>Gemini 3.8 → 3.6 → 2.5 → Mistral</span></div>
       </div>
       <div class="arch-row">
-        <div class="node"><b data-es="Clientes MCP">MCP clients</b><span>Claude · ChatGPT · Perplexity…</span></div>
+        <div class="node"><b data-es="Clientes MCP">MCP clients</b><span>Streamable HTTP · OAuth</span></div>
         <div class="link"><span class="a"></span><span class="mono">MCP · OAuth</span></div>
-        <div class="node"><b data-es="La misma bitácora">The same log</b><span data-es="8 tools: registrar, buscar, auditar">8 tools: log, search, audit</span></div>
+        <div class="node"><b data-es="La misma bitácora">The same log</b><span data-es="11 herramientas: registrar, buscar, auditar">11 tools: log, search, audit</span></div>
       </div>
       <div class="arch-row">
-        <div class="node"><b>git push main</b><span data-es="GitHub Actions: lint · 186 tests · build">GitHub Actions: lint · 186 tests · build</span></div>
-        <div class="link"><span class="a"></span><span class="mono" data-es="CI verde = deploy">green CI = deploy</span></div>
+        <div class="node"><b>git push main</b><span data-es="GitHub Actions: lint · Vitest · build">GitHub Actions: lint · Vitest · build</span></div>
+        <div class="link"><span class="a"></span><span class="mono" data-es="despliegue al hacer push a main">deploy on push to main</span></div>
         <div class="node"><b>Vercel</b><span data-es="producción — sin staging, verificado en local">production — no staging, verified locally</span></div>
       </div>
     </div>
     <div class="stack mono">
-      <span>React</span><span>Supabase · Postgres + RLS</span><span>pgvector</span><span>Tailwind</span><span>Recharts</span><span>Vite PWA</span><span>Gemini · Groq · Mistral</span><span>MCP</span><span>GitHub Actions</span><span>Vercel</span>
+      <span>React</span><span>Supabase · Postgres + RLS</span><span>pgvector</span><span>Tailwind</span><span>Recharts</span><span>Vite PWA</span><span>Gemini · Mistral</span><span>MCP</span><span>GitHub Actions</span><span>Vercel</span>
     </div>
   </section>
 
