@@ -10,6 +10,7 @@ Nutri tiene tres clientes. La web instalable, la app de macOS y la beta para iPh
 | Ejecutar o cambiar la PWA, entender navegación, preferencias, conexión y actualización | [Web y PWA](WEB.md). |
 | Trabajar en Swift, distinguir código compartido y específico, compilar, instalar o diagnosticar | [Desarrollo nativo](NATIVO.md), [instalación macOS](../macos/README.md) e [instalación y gestos de iPhone](../ios/README.md). |
 | Cambiar un cálculo, un permiso, una migración, el conector MCP o el proxy de IA | [Datos e integraciones](DATOS-E-INTEGRACIONES.md). Para llamadas de terceros hay [ejemplos REST en el README](../README.md#api--contract-for-external-scripts). |
+| Auditar casos de uso, experiencia, espacio y atributos no funcionales de punta a punta | [Revisión integral](REVISION-INTEGRAL.md). Matriz trazable por cliente, empezando por iPhone. |
 | Decidir qué reglas de proyecto y de planificación aplican | [Instrucciones de trabajo](../AGENTS.md) y [Biblia del proyecto](../BIBLIA.md). El plan maestro aprobado de Anthropometry gobierna objetivos y fases. Los registros de Nutri sirven para seguimiento. |
 
 ## Sigue un registro de extremo a extremo
