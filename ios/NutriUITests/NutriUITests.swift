@@ -270,10 +270,15 @@ final class NutriUITests: XCTestCase {
 
         add.tap()
         XCTAssertTrue(search.waitForExistence(timeout: 5), app.debugDescription)
-        let title = app.navigationBars["Añadir registro"]
-        let top = title.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0))
-            .withOffset(CGVector(dx: 0, dy: -8))
-        top.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)))
+        let grabber = app.buttons["Tirador de la hoja"]
+        XCTAssertTrue(grabber.waitForExistence(timeout: 5), app.debugDescription)
+        grabber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)))
+        XCTAssertTrue(search.waitForNonExistence(timeout: 5), app.debugDescription)
+
+        add.tap()
+        XCTAssertTrue(search.waitForExistence(timeout: 5), app.debugDescription)
+        app.buttons["sheet.close"].tap()
         XCTAssertTrue(search.waitForNonExistence(timeout: 5), app.debugDescription)
     }
 
@@ -903,10 +908,23 @@ final class NutriUITests: XCTestCase {
     @MainActor
     private func selectDay(inNextMonthOf calendar: XCUIElement) {
         let next = calendar.buttons["DatePicker.NextMonth"]
+        let heading = calendar.buttons["DatePicker.Show"]
         XCTAssertTrue(next.isHittable, calendar.debugDescription)
+        let previous = heading.value as? String ?? ""
         next.tap()
-        let week = calendar.buttons.matching(NSPredicate(format: "label MATCHES %@", #"^(Hoy, )?[^,]+, (8|9|1[0-4]) de .+$"#))
-            .allElementsBoundByIndex.filter(\.isHittable)
+        let changed = NSPredicate(format: "value != %@ AND value != nil", previous)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: changed, object: heading)], timeout: 5),
+                       .completed, calendar.debugDescription)
+        let month = (heading.value as? String ?? "")
+            .replacingOccurrences(of: #"\s+(?:de\s+)?\d{4}$"#, with: "", options: .regularExpression)
+        XCTAssertFalse(month.isEmpty, calendar.debugDescription)
+        // The month transition can expose days from both grids in the same snapshot.
+        let dayLabel = #"(?i)^(Hoy, )?[^,]+, (8|9|1[0-4]) de "# + NSRegularExpression.escapedPattern(for: month) + "$"
+        let days = calendar.buttons.matching(NSPredicate(format: "label MATCHES %@", dayLabel))
+        let sevenDays = NSPredicate(format: "count == 7")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: sevenDays, object: days)], timeout: 5),
+                       .completed, calendar.debugDescription)
+        let week = days.allElementsBoundByAccessibilityElement.filter(\.isHittable)
         let columns = Set(week.map { Int($0.frame.midX.rounded()) })
         XCTAssertEqual(columns.count, 7, calendar.debugDescription)
         week.first?.tap()
