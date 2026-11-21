@@ -298,7 +298,6 @@ struct TodayView: View {
                 .popover(isPresented: $showCalendar, arrowEdge: .bottom) {
                     DatePicker(store.tr("Elegir fecha"), selection: $date, displayedComponents: .date)
                         .datePickerStyle(.graphical).labelsHidden().padding(8)
-                        .presentationCompactAdaptation(.popover)
                         .onChange(of: date) { _, _ in showCalendar = false }
                 }
             Spacer()

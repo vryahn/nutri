@@ -313,7 +313,6 @@ struct BodyView: View {
             .popover(isPresented: $dateOpen) {
                 DatePicker(store.tr("Elegir fecha"), selection: Binding(get: { day }, set: { dateOpen = false; navigate($0) }), displayedComponents: .date)
                     .labelsHidden().datePickerStyle(.graphical).padding(12)
-                    .presentationCompactAdaptation(.popover)
             }
             Spacer()
             Button { navigate(addingDays(1, to: navigationDay)) } label: { NutriIcon("chevron-right", size: 22) }

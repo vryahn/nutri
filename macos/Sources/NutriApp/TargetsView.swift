@@ -1475,7 +1475,7 @@ private struct PhaseRulesEditor: View {
                                 rules["paused_until"] = .string(Day.key(pausedUntilSelection))
                                 pausedUntilOpen = false
                             }.buttonStyle(NutriButtonStyle(.primary))
-                        }.padding(12).presentationCompactAdaptation(.popover)
+                        }.padding(12)
                     }
                 if !date.isEmpty {
                     Button(store.tr("Quitar")) { rules.removeValue(forKey: "paused_until") }

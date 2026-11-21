@@ -244,7 +244,6 @@ struct SettingsView: View {
                                         choosingBirthDate = false
                                     }), displayedComponents: .date)
                                     .datePickerStyle(.graphical).labelsHidden().padding(8)
-                                    .presentationCompactAdaptation(.popover)
                                 }
                             }
                         profileField("Altura (cm)", key: "height_cm", placeholder: "178")

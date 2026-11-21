@@ -186,6 +186,51 @@ final class NutriUITests: XCTestCase {
     }
 
     @MainActor
+    func testLocalDemoCalendarsShowWholeWeek() {
+        let app = launch(demo: true)
+        let date = app.buttons["today.date"]
+        XCTAssertTrue(date.waitForExistence(timeout: 5))
+        date.tap()
+        let todayCalendar = wholeCalendar(in: app)
+        selectDay(inNextMonthOf: todayCalendar)
+        XCTAssertTrue(todayCalendar.waitForNonExistence(timeout: 5))
+        XCTAssertNotEqual(date.value as? String, "Hoy")
+
+        app.buttons["module.body"].tap()
+        let weight = app.textFields["body.metric.peso_kg"]
+        XCTAssertTrue(weight.waitForExistence(timeout: 5))
+        XCTAssertEqual(weight.value as? String, "72")
+        let bodyDate = app.buttons["Elegir fecha"]
+        bodyDate.tap()
+        let bodyCalendar = wholeCalendar(in: app)
+        capture("Calendario de Medidas")
+        let aboveCalendar = bodyCalendar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0))
+            .withOffset(CGVector(dx: 0, dy: -16))
+        let bottom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9))
+        aboveCalendar.press(forDuration: 0.05, thenDragTo: bottom)
+        XCTAssertTrue(bodyCalendar.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(weight.value as? String, "72")
+
+        bodyDate.tap()
+        _ = wholeCalendar(in: app)
+        selectDay(inNextMonthOf: bodyCalendar)
+        XCTAssertTrue(bodyCalendar.waitForNonExistence(timeout: 5))
+        let changedDay = NSPredicate(format: "value != %@", "72")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: changedDay, object: weight)], timeout: 5), .completed)
+
+        app.buttons["account.menu"].tap()
+        app.buttons["account.profile"].tap()
+        let birthDate = app.textFields.matching(NSPredicate(format: "placeholderValue == %@", "AAAA-MM-DD")).firstMatch
+        XCTAssertTrue(birthDate.waitForExistence(timeout: 5))
+        let originalBirthDate = birthDate.value as? String
+        app.buttons["Elegir fecha"].tap()
+        let profileCalendar = wholeCalendar(in: app)
+        selectDay(inNextMonthOf: profileCalendar)
+        XCTAssertTrue(profileCalendar.waitForNonExistence(timeout: 5))
+        XCTAssertNotEqual(birthDate.value as? String, originalBirthDate)
+    }
+
+    @MainActor
     func testLocalDemoCopiesFoodWithoutCopyingWater() {
         let app = launch(demo: true)
         let more = app.buttons["module.more"]
@@ -633,6 +678,8 @@ final class NutriUITests: XCTestCase {
         let pause = app.buttons["Pausar reglas hasta"]
         reveal(pause, in: app)
         pause.tap()
+        let calendar = wholeCalendar(in: app)
+        selectDay(inNextMonthOf: calendar)
         let done = app.buttons["Listo"]
         XCTAssertTrue(done.waitForExistence(timeout: 5), app.debugDescription)
         done.tap()
@@ -642,6 +689,26 @@ final class NutriUITests: XCTestCase {
         XCTAssertNotNil((pause.value as? String)?.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression))
         clearDate.tap()
         XCTAssertTrue(clearDate.waitForNonExistence(timeout: 5), app.debugDescription)
+    }
+
+    @MainActor
+    private func wholeCalendar(in app: XCUIApplication) -> XCUIElement {
+        let calendar = app.datePickers.firstMatch
+        XCTAssertTrue(calendar.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertGreaterThanOrEqual(calendar.frame.width, 280)
+        return calendar
+    }
+
+    @MainActor
+    private func selectDay(inNextMonthOf calendar: XCUIElement) {
+        let next = calendar.buttons["DatePicker.NextMonth"]
+        XCTAssertTrue(next.isHittable, calendar.debugDescription)
+        next.tap()
+        let week = calendar.buttons.matching(NSPredicate(format: "label MATCHES %@", #"^(Hoy, )?[^,]+, (8|9|1[0-4]) de .+$"#))
+            .allElementsBoundByIndex.filter(\.isHittable)
+        let columns = Set(week.map { Int($0.frame.midX.rounded()) })
+        XCTAssertEqual(columns.count, 7, calendar.debugDescription)
+        week.first?.tap()
     }
 
     @MainActor

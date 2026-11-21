@@ -6,6 +6,8 @@
 
 Entra con la misma cuenta para consultar los datos sincronizados desde la web, Mac o iPhone. Mac y iPhone comparten las vistas SwiftUI enlazadas aquí. Los navegadores móviles y la PWA usan las pantallas React. En ventanas amplias hay paneles laterales y editores en línea. En pantallas estrechas, busca las pestañas, el botón **+** y las hojas. Los selectores de archivos y fotos pertenecen a cada plataforma. [Rutas React](../src/App.jsx) · [Ventana y navegación SwiftUI](../macos/Sources/NutriApp/NutriApp.swift) · [Fuentes del proyecto iPhone](../ios/Nutri.xcodeproj/project.pbxproj)
 
+En iPhone, toca la fecha en **Hoy** o **Medidas** para abrir el calendario en una hoja. Toca un día para seleccionarlo o desliza la hoja hacia abajo para conservar la fecha actual. **Nacimiento** en Perfil sigue el mismo gesto. Para pausar reglas en **Objetivos**, elige el día y toca **Listo**. En macOS, estos calendarios se abren junto al botón que los activó.
+
 ## Hoy
 
 [React · `/`](../src/pages/Today.jsx) · [SwiftUI · TodayView](../macos/Sources/NutriApp/TodayView.swift)
