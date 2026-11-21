@@ -217,7 +217,7 @@ struct FoodsView: View {
     @State private var importReview = false
     @State private var importError = ""
 
-    private var desktop: Bool { windowWidth >= 1024 }
+    private var desktop: Bool { !nutriPhoneLayout && windowWidth >= 1024 }
     private func refreshSilently() {
         guard scenePhase == .active, store.networkAvailable, !store.demoActive else { return }
         Task { await reload(silent: true) }
@@ -268,15 +268,21 @@ struct FoodsView: View {
                 }
             } else if let draft {
                 ScrollView { editor(draft).padding(16) }.scrollDismissesKeyboard(.interactively)
+            } else if nutriPhoneLayout {
+                ScrollView { listing.padding(.horizontal, 16).padding(.vertical, 8) }
+                    .scrollDismissesKeyboard(.interactively)
+                    .safeAreaInset(edge: .bottom, alignment: .trailing, spacing: 0) {
+                        if !results.isEmpty && !searchFocused {
+                            newFoodAction.padding(.horizontal, 16).padding(.vertical, 6)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                                .background(palette.bg)
+                        }
+                    }
             } else {
                 ScrollView { listing.padding(16).padding(.bottom, 56) }
                     .scrollDismissesKeyboard(.interactively)
                     .overlay(alignment: .bottomTrailing) {
-                        if !results.isEmpty {
-                            Button { draft = FoodDraft() } label: { NutriIcon("plus", size: 22) }
-                                .buttonStyle(NutriButtonStyle(.primary, height: 52, horizontal: 15, radius: 26))
-                                .accessibilityLabel(store.tr("Nuevo alimento")).padding(16)
-                        }
+                        if !results.isEmpty { newFoodAction.padding(16) }
                     }
             }
         }
@@ -318,6 +324,12 @@ struct FoodsView: View {
         .nutriFeatureExport($fileExport) { store.report($0) }
     }
 
+    private var newFoodAction: some View {
+        Button { draft = FoodDraft() } label: { NutriIcon("plus", size: 22) }
+            .buttonStyle(NutriButtonStyle(.primary, height: 52, horizontal: 15, radius: 26))
+            .accessibilityLabel(store.tr("Nuevo alimento"))
+    }
+
     private var presentedImport: NutriPresentedModal? {
         guard importReview else { return nil }
         return NutriPresentedModal("food-import", close: closeImport, maxWidth: 512) { importSheet }
@@ -328,9 +340,16 @@ struct FoodsView: View {
     }
 
     private var listing: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(store.tr("Alimentos")).font(.nutriDisplay(20))
-            filters
+        VStack(alignment: .leading, spacing: nutriPhoneLayout ? 10 : 16) {
+            if nutriPhoneLayout {
+                HStack(spacing: 8) {
+                    searchField
+                    phoneFilters
+                }
+            } else {
+                Text(store.tr("Alimentos")).font(.nutriDisplay(20))
+                filters
+            }
             if loading && foods.isEmpty {
                 VStack(spacing: 8) {
                     ForEach(0..<3) { _ in RoundedRectangle(cornerRadius: 16).fill(palette.surface).frame(height: 64).accessibilityHidden(true) }
@@ -353,29 +372,75 @@ struct FoodsView: View {
             } else if visible.isEmpty {
                 Text(store.tr("Sin resultados con estos filtros.")).foregroundStyle(palette.text2).padding(.vertical, 24).frame(maxWidth: .infinity)
             } else {
-                LazyVStack(spacing: 16) {
+                LazyVStack(spacing: nutriPhoneLayout ? 0 : 16) {
                     ForEach(visible.map(FoodListItem.init)) { item in compactRow(item.row) }
                 }
+                .clipShape(RoundedRectangle(cornerRadius: nutriPhoneLayout ? 12 : 0))
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private var sourceOptions: [(String, String)] {
+        let matchingSources = results.map { $0.text("source") }.filter { !$0.isEmpty }
+        let sources = Set(source.isEmpty ? matchingSources : matchingSources + [source]).sorted()
+        return [("", store.tr("Todos"))] + sources.map { ($0, store.tr(foodSources[$0] ?? $0)) }
+    }
+
+    private func openImport() {
+        searchFocused = false
+        importText = ""
+        importError = ""
+        importReview = true
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 10) {
+            NutriIcon("search", size: 18).foregroundStyle(palette.text3)
+            TextField(store.tr("Buscar…"), text: $query)
+                .font(nutriPhoneLayout ? .body : .nutriSans(16))
+                .textFieldStyle(.plain).focused($searchFocused)
+                .accessibilityIdentifier("foods.search")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, nutriPhoneLayout ? 6 : 0)
+        .frame(minHeight: 44).nutriCard(radius: 12, fill: palette.surface2)
+    }
+
+    private var phoneFilters: some View {
+        let active = !source.isEmpty || warnOnly
+        return Menu {
+            Section(store.tr("Fuente")) {
+                Picker(store.tr("Fuente"), selection: $source) {
+                    ForEach(sourceOptions, id: \.0) { value, label in
+                        Text(label).tag(value)
+                    }
+                }
+            }
+            Toggle(store.tr("Solo alimentos con avisos"), isOn: $warnOnly)
+            Button(action: openImport) {
+                Label(store.tr("Importar"), systemImage: "square.and.arrow.up")
+            }
+        } label: {
+            Image(systemName: "line.3.horizontal.decrease.circle" + (active ? ".fill" : ""))
+                .font(.title3).foregroundStyle(active ? palette.accent : palette.text2)
+                .frame(width: 48, height: 44).contentShape(Rectangle())
+                .nutriCard(radius: 12, fill: palette.surface2)
+        }
+        .accessibilityLabel(store.tr("Filtros y acciones"))
+        .accessibilityValue(active ? store.tr("Filtros activos") : "")
+        .accessibilityIdentifier("foods.filters")
+    }
+
     private var filters: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 10) {
-                NutriIcon("search", size: 18).foregroundStyle(palette.text3)
-                TextField(store.tr("Buscar…"), text: $query).font(.nutriSans(16)).textFieldStyle(.plain).focused($searchFocused)
-                    .accessibilityIdentifier("foods.search")
-            }.padding(.horizontal, 12).frame(height: 44).nutriCard(radius: 12, fill: palette.surface2)
+            searchField
             HStack(spacing: 8) {
-                Button {
-                    searchFocused = false; importText = ""; importError = ""; importReview = true
-                } label: { HStack(spacing: 6) { NutriIcon("upload", size: 16); Text(store.tr("Importar")) } }
-                    .buttonStyle(NutriButtonStyle(.secondary, height: 44))
-                let sourceOptions = Set(results.map { $0.text("source") }).filter { !$0.isEmpty }.sorted()
-                NutriSelect(value: source, select: { source = $0 }, options:
-                    [("", store.tr("Todos"))] + sourceOptions.map { ($0, store.tr(foodSources[$0] ?? $0)) },
-                    currentLabel: store.tr(foodSources[source] ?? source))
+                Button(action: openImport) {
+                    HStack(spacing: 6) { NutriIcon("upload", size: 16); Text(store.tr("Importar")) }
+                }
+                .buttonStyle(NutriButtonStyle(.secondary, height: 44))
+                NutriSelect(value: source, select: { source = $0 }, options: sourceOptions,
+                            currentLabel: store.tr(foodSources[source] ?? source))
                     .accessibilityLabel(store.tr("Fuente"))
                 Button { warnOnly.toggle() } label: { NutriIcon("triangle-alert", size: 18).frame(width: 44, height: 44) }
                     .buttonStyle(.plain).foregroundStyle(warnOnly ? palette.warn : palette.text3)
@@ -423,20 +488,62 @@ struct FoodsView: View {
     private func compactRow(_ row: Record) -> some View {
         let removeAction: (() -> Void)? = row.text("owner") == store.owner ?
             { Task { do { try await remove(row) } catch { store.report(error) } } } : nil
-        return CatalogSwipeCard(open: { draft = FoodDraft(row) }, delete: removeAction) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(row.text("name")).font(.nutriSans(14, weight: .medium))
-                    if foodWarningPending(row) {
-                        NutriIcon("triangle-alert", size: 14).foregroundStyle(palette.warn)
-                            .accessibilityLabel(store.tr("Valores nutricionales requieren revisión"))
+        return CatalogSwipeCard(open: { draft = FoodDraft(row) }, delete: removeAction,
+                                radius: nutriPhoneLayout ? 0 : 16, padding: nutriPhoneLayout ? 10 : 16) {
+            if nutriPhoneLayout {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        foodIdentity(row).fixedSize()
+                        Spacer(minLength: 0)
+                        foodEnergy(row).fixedSize()
                     }
-                    Spacer()
-                    Text("\(numberText(row.number("kcal"), digits: 1)) kcal").font(.nutriMono(14)).foregroundStyle(palette.text2)
+                    VStack(alignment: .leading, spacing: 3) {
+                        foodIdentity(row)
+                        foodEnergy(row)
+                    }
                 }
-                if !row.text("brand").isEmpty { Text(row.text("brand")).foregroundStyle(palette.text3) }
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline) {
+                        foodName(row)
+                        Spacer()
+                        foodEnergy(row)
+                    }
+                    if !row.text("brand").isEmpty { Text(row.text("brand")).foregroundStyle(palette.text3) }
+                }
             }
         }.accessibilityIdentifier("foods.card." + row.text("id"))
+    }
+
+    private func foodIdentity(_ row: Record) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            foodName(row)
+            if !row.text("brand").isEmpty {
+                Text(row.text("brand")).font(.footnote).foregroundStyle(palette.text3)
+            }
+        }
+    }
+
+    private func foodName(_ row: Record) -> some View {
+        HStack(spacing: 6) {
+            Text(row.text("name")).font(nutriPhoneLayout ? .body.weight(.medium) : .nutriSans(14, weight: .medium))
+            if foodWarningPending(row) {
+                if nutriPhoneLayout {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.caption).foregroundStyle(palette.warn)
+                        .accessibilityLabel(store.tr("Valores nutricionales requieren revisión"))
+                } else {
+                    NutriIcon("triangle-alert", size: 14).foregroundStyle(palette.warn)
+                        .accessibilityLabel(store.tr("Valores nutricionales requieren revisión"))
+                }
+            }
+        }
+    }
+
+    private func foodEnergy(_ row: Record) -> some View {
+        Text("\(numberText(row.number("kcal"), digits: 1)) kcal")
+            .font(nutriPhoneLayout ? .subheadline.monospacedDigit() : .nutriMono(14))
+            .foregroundStyle(palette.text2)
     }
 
     private var emptyEditor: some View {
@@ -1325,6 +1432,7 @@ struct SwipeCardTapStyle: PrimitiveButtonStyle {
 
 struct CatalogSwipeCard<Content: View>: View {
     @EnvironmentObject private var store: Store
+    @Environment(\.nutriPalette) private var palette
     let open: () -> Void
     let delete: (() -> Void)?
     var radius: CGFloat = 16
@@ -1333,7 +1441,13 @@ struct CatalogSwipeCard<Content: View>: View {
 
     var body: some View {
         Button(action: open) {
-            content().padding(padding).frame(maxWidth: .infinity, alignment: .leading).nutriCard(radius: radius)
+            if radius == 0 {
+                content().padding(padding).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .background(palette.surface)
+                    .overlay(alignment: .bottom) { Rectangle().fill(palette.border).frame(height: 1).allowsHitTesting(false) }
+            } else {
+                content().padding(padding).frame(maxWidth: .infinity, alignment: .leading).nutriCard(radius: radius)
+            }
         }
         #if os(iOS)
         .buttonStyle(SwipeCardTapStyle())

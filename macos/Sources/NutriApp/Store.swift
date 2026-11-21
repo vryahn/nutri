@@ -22,7 +22,7 @@ final class Store: ObservableObject {
     @Published var logFood: Record?
     @Published var newFood: Record?
     @Published var loginLanguage = UserDefaults.standard.string(forKey: "nutri.loginLanguage") ?? (Locale.preferredLanguages.first?.hasPrefix("es") == true ? "es" : "en") {
-        didSet { UserDefaults.standard.set(loginLanguage, forKey: "nutri.loginLanguage") }
+        didSet { if !usesUITestFixture { UserDefaults.standard.set(loginLanguage, forKey: "nutri.loginLanguage") } }
     }
     @Published var theme = UserDefaults.standard.string(forKey: "nutri.theme") ?? "system" {
         didSet { if !anonymous && !demoActive { UserDefaults.standard.set(theme, forKey: "nutri.theme") } }
@@ -37,6 +37,14 @@ final class Store: ObservableObject {
             ?? (["en", "en-US"].contains(Locale.preferredLanguages.first ?? "") ? "us" : "metric")
         return (prefs["units"]?.string ?? local) == "us" ? "us" : "metric"
     }
+    private var usesUITestFixture: Bool {
+        #if DEBUG && os(iOS)
+        return ProcessInfo.processInfo.arguments.contains("--ios-ui-demo")
+        #else
+        return false
+        #endif
+    }
+
     var demoActive: Bool {
         #if DEBUG
         return demo != nil
@@ -108,10 +116,10 @@ final class Store: ObservableObject {
     deinit { network.cancel() }
 
     #if DEBUG
-    init(snapshot: DemoData) {
+    init(snapshot: DemoData?) {
         root = URL.applicationSupportDirectory.appendingPathComponent("NutriNative", isDirectory: true)
         api = nil
-        activateDemo(snapshot)
+        if let snapshot { activateDemo(snapshot) }
     }
 
     func activateDemo(_ fixture: DemoData = DemoData()) {
@@ -409,7 +417,7 @@ final class Store: ObservableObject {
     func setRegion(_ key: String, _ value: String) async throws {
         guard (key == "lang" && ["es", "en"].contains(value)) || (key == "units" && ["metric", "us"].contains(value)) else { return }
         if key == "lang" { loginLanguage = value }
-        else { UserDefaults.standard.set(value, forKey: "nutri.units") }
+        else if !usesUITestFixture { UserDefaults.standard.set(value, forKey: "nutri.units") }
         prefs[key] = .string(value)
         try cache?.write(AccountCache.key("prefs", ["select": "data"]), [["data": .object(prefs)]])
         try await patchPrefs([key: .string(value)])

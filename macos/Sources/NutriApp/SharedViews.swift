@@ -294,7 +294,26 @@ struct NutriModalVisibleKey: PreferenceKey {
     static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
 
+#if os(iOS)
+struct NutriPhoneSheetVisibleKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
+}
+#endif
+
 extension View {
+    @MainActor
+    func nutriErrorAlert(_ store: Store, isActive: Bool = true) -> some View {
+        alert(store.tr("Error de Nutri"), isPresented: Binding(
+            get: { isActive && store.errorMessage != nil },
+            set: { if !$0 && isActive { store.errorMessage = nil } }
+        )) {
+            Button(store.tr("Cerrar"), role: .cancel) {}
+        } message: {
+            Text(store.errorMessage ?? "")
+        }
+    }
+
     @ViewBuilder
     func nutriHint(_ text: String?) -> some View {
         #if os(iOS)

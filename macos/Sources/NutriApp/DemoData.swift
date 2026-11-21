@@ -9,7 +9,7 @@ struct DemoData {
     private var tables: [String: [Record]] = [:]
     private var files: [String: Data] = [:]
 
-    init() {
+    init(longJournal: Bool = false) {
         owner = "00000000-0000-4000-8000-000000000001"
         let oats = identifier(11)
         let yogurt = identifier(12)
@@ -41,6 +41,11 @@ struct DemoData {
                 entry(identifier(101 + age * 3), day, item: raspberries, key: "food_id", grams: Double(140 - age % 10 * 3), label: dinner),
                 entry(identifier(102 + age * 3), day, item: water, key: "food_id", grams: 350, label: nil)
             ]
+        }
+        if longJournal {
+            tables["entries", default: []] += (600..<606).map { index in
+                entry(identifier(index), today, item: raspberries, key: "food_id", grams: 50, label: dinner)
+            }
         }
         tables["targets"] = (0...6).map { dow in
             ["id": .string(identifier(300 + dow)), "owner": .string(owner), "dow": .number(Double(dow)),

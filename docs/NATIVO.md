@@ -16,6 +16,8 @@ Para instalar o renovar la beta, sigue la guía de tu plataforma. Esta página r
 
 Los tres clientes comparten Supabase y sus políticas de acceso. La nutrición de catálogo se expresa por 100 g y las cantidades persistidas, en gramos. Conserva cero y desconocido como valores distintos, exige densidad explícita para normalizar ml y consulta las vistas SQL para los registros sincronizados. Objetivos refleja el plan maestro aprobado de Anthropometry y las reglas de fase generan propuestas para revisión. [Reglas del repositorio](../AGENTS.md) · [Dominio Swift](../macos/Sources/NutriCore/Domain.swift) · [Matriz de paridad](../macos/PARITY.md)
 
+El diseño compacto de Hoy, la sección Progreso y la hoja de registro a altura grande aprovechan la navegación, las áreas seguras y el teclado de iPhone. En web/PWA, React ofrece navegación y hojas responsivas. En macOS, SwiftUI presenta la barra lateral y los editores en línea según el ancho de la ventana. Las tres interfaces permiten registrar y corregir comidas, consultar e ingresar agua y buscar o filtrar el catálogo. [Recorridos por módulo](MODULOS.md)
+
 ## Contratos y oráculos
 
 - `sync-domain.mjs` genera `Contracts.json` a partir de `domain.js`, `i18n.js` y los prompts de alimentos y recetas de `ai.js`. Los dos clientes leen ese recurso. Regenera el archivo cuando cambie alguna fuente y revisa el diff. [Generador](../macos/scripts/sync-domain.mjs) · [Contrato](../macos/Sources/NutriCore/Resources/Contracts.json) · [Consumo de prompts](../macos/Sources/NutriApp/CatalogAI.swift)

@@ -26,14 +26,17 @@ La firma gratuita caduca a los **siete días**. Para renovarla conecta el mismo 
 
 Para comprobar la sincronización durante la beta, registra en tu cuenta un vaso de agua que realmente hayas tomado. Verifica que se muestre según tu ajuste de agua y que aparezca una sola vez al volver a abrir Hoy en el Mac o la web. Para explorar pantallas sin afectar esa cuenta, usa la demo local de Debug.
 
-## Gestos y acciones de la compilación 3
+## Gestos y acciones en iPhone
 
 | Pantalla | Cómo probarla con los datos locales |
 | --- | --- |
-| Hoy | Toca un registro para editarlo, desliza hacia la izquierda para borrarlo y toca **Deshacer** para recuperarlo. Mantén pulsado el registro para arrastrarlo a otra comida. En el resumen fijo, toca el resumen para volver a la tarjeta completa. |
-| Alimentos y Recetas | Toca una tarjeta para editar. Un deslizamiento corto se cancela. En Alimentos, importa un CSV y confirma las filas válidas con el teclado abierto. En Recetas, busca o pega ingredientes y abre de nuevo la receta guardada. |
+| Hoy | Abre el detalle desde el resumen compacto o añade un vaso desde **Agua**. Toca **Añadir registro** y comprueba que puedes registrar con el teclado decimal visible. Toca un registro para editarlo, desliza hacia la izquierda para borrarlo o mantén pulsado para moverlo a otra comida. |
+| Alimentos y Recetas | Toca una fila o tarjeta para editar. Un deslizamiento corto se cancela. En Alimentos, usa **Filtros y acciones** para importar un CSV y confirma las filas válidas con el teclado abierto. En Recetas, busca o pega ingredientes y abre de nuevo la receta guardada. |
 | Objetivos | Desliza una fase programada para abrir su confirmación de borrado. Desliza una fecha específica para borrarla y toca **Deshacer** para recuperarla. En las reglas puedes elegir y quitar la fecha de pausa desde el calendario. |
-| Dashboard | Borra un rango guardado y toca **Deshacer**. En la huella nutricional, toca un eje para ver su porcentaje. Las explicaciones de cifras parciales y opciones deshabilitadas también se abren al tocar. |
-| Medidas y cuenta | Edita una medida, cambia de día y vuelve para comprobar el autoguardado. En una importación puedes complementar o reemplazar el día existente. Desde la cuenta, cambia las unidades y comprueba el campo de agua en Hoy. |
+| Progreso · Dashboard | Borra un rango guardado y toca **Deshacer**. En la huella nutricional, toca un eje para ver su porcentaje. Las explicaciones de cifras parciales y opciones deshabilitadas también se abren al tocar. |
+| Progreso · Medidas | Edita una medida, cambia de día y vuelve para comprobar el autoguardado. En una importación puedes complementar o reemplazar el día existente. |
+| Cuenta | Cambia las unidades y comprueba el campo de agua en Hoy. |
 
 Las cantidades, medidas y porcentajes usan teclado decimal. Los días de una regla usan teclado de dígitos. Los ajustes de carbohidratos admiten signo. **Listo** cierra el teclado numérico para seguir editando o guardar.
+
+La compilación 6 se probó el 21 de noviembre de 2026 en un iPhone Air con datos sintéticos. En ejecuciones completas y focalizadas pasaron los 29 casos de interfaz. La revisión en el dispositivo confirmó dos registros visibles al abrir Hoy, la barra de pestañas reducida al desplazar, texto de accesibilidad XXXL y **Registrar**, **Guardar** y **Listo** visibles por encima del teclado en el formulario correspondiente. El flujo de CI ejecuta la suite en el simulador de 375 puntos. [Pruebas](NutriUITests/NutriUITests.swift) · [Flujo de CI](../.github/workflows/ios.yml)

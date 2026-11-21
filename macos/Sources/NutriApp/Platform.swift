@@ -52,9 +52,9 @@ extension View {
         #endif
     }
 
-    func nutriKeyboardDismissal(_ title: String) -> some View {
+    func nutriKeyboardDismissal(_ title: String, isActive: Bool = true) -> some View {
         #if os(iOS)
-        modifier(NutriKeyboardDismissal(title: title))
+        modifier(NutriKeyboardDismissal(title: title, isActive: isActive))
         #else
         self
         #endif
@@ -78,11 +78,12 @@ private struct NutriKeyboardDismissal: ViewModifier {
     @State private var keyboardShown = false
     @State private var numericFieldFocused = false
     let title: String
+    let isActive: Bool
 
     func body(content: Content) -> some View {
         content
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if keyboardShown && numericFieldFocused {
+                if isActive && keyboardShown && numericFieldFocused {
                     Button(title) {
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     }
@@ -103,6 +104,15 @@ private struct NutriKeyboardDismissal: ViewModifier {
     }
 }
 #endif
+
+@MainActor
+var nutriPhoneLayout: Bool {
+    #if os(iOS)
+    UIDevice.current.userInterfaceIdiom == .phone
+    #else
+    false
+    #endif
+}
 
 func nutriTouchSize(_ size: CGFloat) -> CGFloat {
     #if os(iOS)

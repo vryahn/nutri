@@ -28,11 +28,20 @@ struct NutriApplication {
 struct NutriApp: App {
     @StateObject private var store: Store
     @Environment(\.scenePhase) private var scenePhase
+    #if DEBUG && os(iOS)
+    private static let fixtureDefaultsName = "nutri.ios-ui-fixture"
+    #endif
 
     init() {
         #if DEBUG && os(iOS)
-        if ProcessInfo.processInfo.arguments.contains("--ios-ui-demo") {
-            _store = StateObject(wrappedValue: Store(snapshot: DemoData()))
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--ios-ui-demo") {
+            UserDefaults(suiteName: Self.fixtureDefaultsName)?.removePersistentDomain(forName: Self.fixtureDefaultsName)
+            _store = StateObject(wrappedValue: Store(snapshot: DemoData(longJournal: arguments.contains("--ios-ui-long-journal"))))
+            return
+        }
+        if arguments.contains("--ios-ui-login") {
+            _store = StateObject(wrappedValue: Store(snapshot: nil))
             return
         }
         #endif
@@ -62,14 +71,29 @@ struct NutriApp: App {
         }
         #else
         WindowGroup {
+            #if DEBUG
+            if let fixtureDefaults {
+                root.defaultAppStorage(fixtureDefaults)
+            } else {
+                root
+            }
+            #else
             root
+            #endif
         }
         #endif
     }
 
+    #if DEBUG && os(iOS)
+    private var fixtureDefaults: UserDefaults? {
+        guard ProcessInfo.processInfo.arguments.contains("--ios-ui-demo"),
+              let defaults = UserDefaults(suiteName: Self.fixtureDefaultsName) else { return nil }
+        return defaults
+    }
+    #endif
+
     private var root: some View {
         RootView()
-            .nutriKeyboardDismissal(store.tr("Listo"))
             .environmentObject(store)
             .tint(nutriAccent)
             .preferredColorScheme(colorScheme)
@@ -130,6 +154,11 @@ struct RootView: View {
     @State private var menu: Popup?
     @State private var moduleModalVisible = false
     @State private var actions: [NutriSectionAction] = []
+    #if os(iOS)
+    @State private var progressModule: Module = .dashboard
+    @State private var phoneSheetVisible = false
+    @State private var phoneActions: [Module: [NutriSectionAction]] = [:]
+    #endif
     @State private var avatar: NutriPlatformImage?
     @State private var avatarPath: String?
 
@@ -158,8 +187,7 @@ struct RootView: View {
         GeometryReader { geometry in
             Group {
                 if let owner = store.owner {
-                    journal(width: geometry.size.width)
-                        .id(owner).disabled(store.signingOut)
+                    signedIn(width: geometry.size.width).id(owner).disabled(store.signingOut)
                 } else {
                     LoginView()
                 }
@@ -170,13 +198,8 @@ struct RootView: View {
         .foregroundStyle(palette.text)
         .font(.nutriSans(16))
         .background { palette.bg.ignoresSafeArea() }
-        .alert(store.tr("Error de Nutri"), isPresented: Binding(
-            get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } }
-        )) {
-            Button(store.tr("Cerrar"), role: .cancel) {}
-        } message: {
-            Text(store.errorMessage ?? "")
-        }
+        .nutriKeyboardDismissal(store.tr("Listo"), isActive: showsRootPresentation)
+        .nutriErrorAlert(store, isActive: showsRootPresentation)
         .onReceive(NotificationCenter.default.publisher(for: .nutriSettings)) { _ in openSettings(.config) }
         .onReceive(NotificationCenter.default.publisher(for: .nutriModule)) { notification in
             if let selected = notification.object as? Module { select(selected) }
@@ -186,6 +209,11 @@ struct RootView: View {
         .onChange(of: store.owner) { _, _ in
             menu = nil
             settings = nil
+            #if os(iOS)
+            phoneActions = [:]
+            progressModule = .dashboard
+            phoneSheetVisible = false
+            #endif
             select(.today)
         }
         .task(id: store.prefs.object("profile").text("avatar_path")) { await loadAvatar() }
@@ -202,42 +230,125 @@ struct RootView: View {
         #endif
     }
 
-    private func journal(width: CGFloat) -> some View {
-        let wide = width >= 768
-        return ZStack {
-            HStack(spacing: 0) {
-                if wide { sidebar }
-                VStack(spacing: 0) {
-                    if store.anonymous || store.demoActive { demoStrip }
-                    if store.outdated { outdatedStrip }
-                    if !wide { mobileHeader }
-                    activeModule
-                        .frame(maxWidth: module == .dashboard && wide ? 1600 : width >= 1024 ? 1152 : 768)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .padding(.top, wide ? 24 : 0)
-                        .environment(\.nutriSectionActionsHandler) { actions = $0 }
-                        .overlay(alignment: width >= 1024 ? .bottomTrailing : .bottom) {
-                            notification
-                                .padding(.horizontal, width >= 1024 ? 24 : 16)
-                                .padding(.bottom, width >= 1024 ? 24 : wide ? 96 : 36)
-                        }
-                    if !wide { mobileTabs }
+    private var showsRootPresentation: Bool {
+        #if os(iOS)
+        !phoneSheetVisible
+        #else
+        true
+        #endif
+    }
+
+    #if os(iOS)
+    private var phoneTab: Binding<Module> {
+        Binding(get: { module == .body ? .dashboard : module }, set: { next in
+            select(next == .dashboard ? progressModule : next)
+        })
+    }
+
+    private var phoneTabs: some View {
+        TabView(selection: phoneTab) {
+            phonePage(.today, title: "Hoy") { TodayView() }
+                .tabItem { Label(store.tr("Hoy"), systemImage: "calendar") }.tag(Module.today)
+            phonePage(.foods, title: "Alimentos") { FoodsView() }
+                .tabItem { Label(store.tr("Alimentos"), systemImage: "carrot") }.tag(Module.foods)
+            phonePage(.recipes, title: "Recetas") { RecipesView() }
+                .tabItem { Label(store.tr("Recetas"), systemImage: "book") }.tag(Module.recipes)
+            phonePage(.targets, title: "Objetivos") { TargetsView() }
+                .tabItem { Label(store.tr("Objetivos"), systemImage: "target") }.tag(Module.targets)
+            phonePage(.dashboard, title: "Progreso") {
+                PhoneProgressSections(section: Binding(get: { progressModule }, set: select)) {
+                    phoneActions[.body] = $0
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .blur(radius: scrimVisible && !reduceTransparency ? 4 : 0)
-            .accessibilityHidden(scrimVisible)
-            .allowsHitTesting(!scrimVisible)
-            .environment(\.nutriHasAccountOverlay, settings != nil || menu != nil)
-            .onPreferenceChange(NutriModalVisibleKey.self) { moduleModalVisible = $0 }
-            .overlayPreferenceValue(NutriPresentedModalKey.self) { modal in
-                if let modal {
-                    NutriModal(close: modal.close, maxWidth: modal.maxWidth,
-                               scrimOpacity: modal.scrimOpacity, fullscreen: modal.fullscreen) {
-                        modal.content.id(modal.id)
+            .tabItem { Label(store.tr("Progreso"), systemImage: "chart.bar.xaxis") }.tag(Module.dashboard)
+        }
+    }
+
+    @ViewBuilder
+    private var phoneTabChrome: some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            phoneTabs.tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            phoneTabs
+        }
+        #else
+        phoneTabs
+        #endif
+    }
+
+    private func phonePage<Content: View>(_ tab: Module, title: String, @ViewBuilder content: () -> Content) -> some View {
+        let active = phoneTab.wrappedValue == tab
+        let sectionActions = phoneActions[tab == .dashboard && module == .body ? .body : tab] ?? []
+        return NavigationStack {
+            VStack(spacing: 0) {
+                if store.anonymous || store.demoActive { demoStrip }
+                if store.outdated { outdatedStrip }
+                // Keep the tab shell's SwiftUI metadata shallow when composing complex screens.
+                AnyView(content())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .environment(\.nutriSectionActionsHandler) { phoneActions[tab] = $0 }
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        if !(tab == .today && phoneSheetVisible), store.undoTitle != nil || store.notice != nil {
+                            notification.padding(.horizontal, 16).padding(.vertical, 4)
+                        }
+                    }
+            }
+            .background(palette.bg)
+            .accessibilityHidden(scrimVisible || menu != nil)
+            .navigationTitle(tab == .today ? "" : store.tr(title))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 0) {
+                        if store.offline || store.pending > 0 { syncStatus }
+                        if !sectionActions.isEmpty {
+                            Button { toggleMenu(.more) } label: {
+                                Image(systemName: "ellipsis").frame(width: 44, height: 44).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(store.tr("Más opciones"))
+                            .accessibilityIdentifier("module.more")
+                        }
+                        Button { toggleMenu(.account) } label: {
+                            NutriAvatar(image: profileAvatar, size: 28)
+                                .frame(width: 44, height: 44).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(store.tr("Menú de usuario"))
+                        .accessibilityIdentifier("account.menu")
+                        .accessibilityHint(avatarUnavailable ? store.tr("Foto no disponible") : "")
                     }
                 }
             }
+        }
+        .transformPreference(NutriPhoneSheetVisibleKey.self) { if !active { $0 = false } }
+        .transformPreference(NutriModalVisibleKey.self) { if !active { $0 = false } }
+        .transformPreference(NutriPresentedModalKey.self) { if !active { $0 = nil } }
+    }
+    #endif
+
+    private func signedIn(width: CGFloat) -> some View {
+        let phone = nutriPhoneLayout
+        let wide = !phone && width >= 768
+        return ZStack {
+            signedInContent(width: width, wide: wide)
+                .blur(radius: scrimVisible && !reduceTransparency ? 4 : 0)
+                .accessibilityHidden(scrimVisible || phone && menu != nil)
+                .allowsHitTesting(!scrimVisible && (!phone || menu == nil))
+                .environment(\.nutriHasAccountOverlay, settings != nil || menu != nil)
+                .onPreferenceChange(NutriModalVisibleKey.self) { moduleModalVisible = $0 }
+                #if os(iOS)
+                .onPreferenceChange(NutriPhoneSheetVisibleKey.self) { phoneSheetVisible = $0 }
+                #endif
+                .overlayPreferenceValue(NutriPresentedModalKey.self) { modal in
+                    if let modal {
+                        NutriModal(close: modal.close, maxWidth: modal.maxWidth,
+                                   scrimOpacity: modal.scrimOpacity, fullscreen: modal.fullscreen) {
+                            modal.content.id(modal.id)
+                        }
+                    }
+                }
             if let menu {
                 Color.clear.contentShape(Rectangle()).onTapGesture { self.menu = nil }.accessibilityHidden(true)
                 popup(menu)
@@ -246,7 +357,7 @@ struct RootView: View {
                     .padding(.leading, wide ? (menu == .account ? 204 : 200) : 0)
                     .padding(.trailing, wide ? 0 : (menu == .account ? 16 : 58))
                     .padding(.bottom, wide ? (menu == .account ? 16 : 64) : 0)
-                    .padding(.top, wide ? 0 : ((store.anonymous || store.demoActive ? 44 : 0) + (menu == .account ? 72 : 68)))
+                    .padding(.top, popupTopInset(phone: phone, wide: wide, menu: menu))
             }
             if let settings {
                 NutriModal(close: closeActiveSettings, maxWidth: settings == .labels ? 384 : 448) {
@@ -255,6 +366,48 @@ struct RootView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func signedInContent(width: CGFloat, wide: Bool) -> some View {
+        #if os(iOS)
+        if nutriPhoneLayout {
+            phoneTabChrome
+        } else {
+            windowJournal(width: width, wide: wide)
+        }
+        #else
+        windowJournal(width: width, wide: wide)
+        #endif
+    }
+
+    private func windowJournal(width: CGFloat, wide: Bool) -> some View {
+        HStack(spacing: 0) {
+            if wide { sidebar }
+            VStack(spacing: 0) {
+                if store.anonymous || store.demoActive { demoStrip }
+                if store.outdated { outdatedStrip }
+                if !wide { mobileHeader }
+                activeModule
+                    .frame(maxWidth: module == .dashboard && wide ? 1600 : width >= 1024 ? 1152 : 768)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, wide ? 24 : 0)
+                    .environment(\.nutriSectionActionsHandler) { actions = $0 }
+                    .overlay(alignment: width >= 1024 ? .bottomTrailing : .bottom) {
+                        notification
+                            .padding(.horizontal, width >= 1024 ? 24 : 16)
+                            .padding(.bottom, width >= 1024 ? 24 : wide ? 96 : 36)
+                    }
+                if !wide { mobileTabs }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func popupTopInset(phone: Bool, wide: Bool, menu: Popup) -> CGFloat {
+        if wide { return 0 }
+        if phone { return 52 }
+        return (store.anonymous || store.demoActive ? 44 : 0) + (menu == .account ? 72 : 68)
     }
 
     private var scrimVisible: Bool { settings != nil || moduleModalVisible }
@@ -430,22 +583,13 @@ struct RootView: View {
         }
     }
 
-    @ViewBuilder
-    private var notification: some View {
-        if let message = store.undoTitle ?? store.notice {
-            HStack(spacing: 12) {
-                Text(message).fixedSize(horizontal: false, vertical: true)
-                if store.undoTitle != nil {
-                    Button(store.tr("Deshacer"), action: store.performUndo)
-                        .buttonStyle(NutriButtonStyle(.quiet, height: 32))
-                        .foregroundStyle(palette.accent)
-                        .fixedSize()
-                }
-            }
-            .font(.nutriSans(14)).padding(.horizontal, 16).padding(.vertical, 12)
-            .frame(maxWidth: 384)
-            .nutriCard(radius: 12, fill: palette.surface3)
-        }
+    private var notification: some View { NutriUndoNotice() }
+
+    private var popupActions: [NutriSectionAction] {
+        #if os(iOS)
+        if nutriPhoneLayout { return phoneActions[module] ?? [] }
+        #endif
+        return actions
     }
 
     @ViewBuilder
@@ -453,7 +597,7 @@ struct RootView: View {
         switch item {
         case .more:
             VStack(spacing: 0) {
-                ForEach(actions) { action in
+                ForEach(popupActions) { action in
                     Button {
                         menu = nil
                         action.action()
@@ -548,6 +692,9 @@ struct RootView: View {
         guard next != module else { return }
         actions = []
         menu = nil
+        #if os(iOS)
+        if next == .dashboard || next == .body { progressModule = next }
+        #endif
         module = next
     }
 
@@ -587,6 +734,54 @@ struct RootView: View {
         guard !Task.isCancelled else { return }
         avatar = data.flatMap(NutriPlatformImage.init(data:))
         avatarPath = path
+    }
+}
+
+#if os(iOS)
+private struct PhoneProgressSections: View {
+    @EnvironmentObject private var store: Store
+    @Binding var section: Module
+    let bodyActions: ([NutriSectionAction]) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker(store.tr("Progreso"), selection: $section) {
+                Text(store.tr("Dashboard")).tag(Module.dashboard)
+                Text(store.tr("Medidas")).tag(Module.body)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .frame(minHeight: 44)
+            .accessibilityIdentifier("progress.sections")
+            if section == .body {
+                BodyView().environment(\.nutriSectionActionsHandler, bodyActions)
+            } else {
+                DashboardView()
+            }
+        }
+    }
+}
+#endif
+
+struct NutriUndoNotice: View {
+    @EnvironmentObject private var store: Store
+    @Environment(\.nutriPalette) private var palette
+
+    var body: some View {
+        if let message = store.undoTitle ?? store.notice {
+            HStack(spacing: 12) {
+                Text(message).fixedSize(horizontal: false, vertical: true)
+                if store.undoTitle != nil {
+                    Button(store.tr("Deshacer"), action: store.performUndo)
+                        .buttonStyle(NutriButtonStyle(.quiet, height: 32))
+                        .foregroundStyle(palette.accent)
+                        .fixedSize()
+                }
+            }
+            .font(.nutriSans(14)).padding(.horizontal, 16).padding(.vertical, 12)
+            .frame(maxWidth: 384)
+            .nutriCard(radius: 12, fill: palette.surface3)
+        }
     }
 }
 

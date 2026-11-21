@@ -1,5 +1,13 @@
 // Native labels complement the web translations bundled in NutriCore.
 let nativeTranslations: [String: String] = [
+    "Progreso": "Progress",
+    "Meta": "Goal",
+    "Resumen del día": "Day Summary",
+    "Sodio alto": "High sodium",
+    "Sodio parcial bajo el piso": "Partial sodium below minimum",
+    "Cobertura incompleta de nutrientes": "Incomplete nutrient data",
+    "Filtros y acciones": "Filters and Actions",
+    "Filtros activos": "Active filters",
     "Opciones de registro": "Entry Options",
     "Tomar foto": "Take Photo",
     "Fototeca": "Photo Library",

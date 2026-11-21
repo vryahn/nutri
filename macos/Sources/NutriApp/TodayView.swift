@@ -12,6 +12,11 @@ struct TodayView: View {
     @Environment(\.nutriWindowWidth) private var width
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.nutriHasAccountOverlay) private var accountOverlay
+    #if os(iOS)
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var showSummarySettings = false
+    @State private var showWaterSettings = false
+    #endif
     @AppStorage("nutri.today.collapsed") private var collapsedSections = "[]"
     @State private var date = Date()
     @State private var todayKey = Day.key(Date())
@@ -45,7 +50,7 @@ struct TodayView: View {
 
     private enum Sheet: Identifiable {
         case entry(Record?, String, Record?, Double?)
-        case labels, templates, summary, water, importing
+        case labels, templates, summary, water, importing, summaryDetails, waterDetails
         var id: String {
             switch self {
             case let .entry(row, label, food, _): return "entry-" + (row?.text("id") ?? "") + label + (food?.text("id") ?? "")
@@ -54,6 +59,20 @@ struct TodayView: View {
             case .summary: return "summary"
             case .water: return "water"
             case .importing: return "import"
+            case .summaryDetails: return "summary-details"
+            case .waterDetails: return "water-details"
+            }
+        }
+
+        var isEntry: Bool {
+            if case .entry = self { return true }
+            return false
+        }
+
+        var usesPhoneSheet: Bool {
+            switch self {
+            case .entry, .summaryDetails, .waterDetails, .summary: true
+            default: false
             }
         }
     }
@@ -73,7 +92,7 @@ struct TodayView: View {
         return result
     }
     private var hasFood: Bool { !foodRows.isEmpty || preview != nil }
-    private var desktop: Bool { width >= 1024 }
+    private var desktop: Bool { !nutriPhoneLayout && width >= 1024 }
     private var viewMode: String {
         #if DEBUG
         if store.snapshotScenario == "today-goals" { return "objetivos" }
@@ -89,7 +108,9 @@ struct TodayView: View {
         return row != nil
     }
 
-    private var hasModal: Bool { confirmingDeleteDay || editor != nil && !editingInline }
+    private var hasModal: Bool {
+        confirmingDeleteDay || editor != nil && !editingInline && !(nutriPhoneLayout && editor?.usesPhoneSheet == true)
+    }
 
     var body: some View {
         Group {
@@ -115,9 +136,15 @@ struct TodayView: View {
                     }.padding(.horizontal, 16)
                 }
             } else {
-                journal.padding(.horizontal, 16)
-                    .overlay(alignment: .top) { fixedSummary }
-                    .overlay(alignment: .bottomTrailing) { floatingAdd }
+                #if os(iOS)
+                if nutriPhoneLayout {
+                    phoneJournal
+                } else {
+                    narrowJournal
+                }
+                #else
+                narrowJournal
+                #endif
             }
         }
         .preference(key: NutriPresentedModalKey.self, value: presentedModal)
@@ -194,6 +221,113 @@ struct TodayView: View {
         .onChange(of: store.logFood) { _, _ in openFromFood() }
     }
 
+    private var narrowJournal: some View {
+        journal.padding(.horizontal, 16)
+            .overlay(alignment: .top) { fixedSummary }
+            .overlay(alignment: .bottomTrailing) { floatingAdd }
+    }
+
+    #if os(iOS)
+    private var phoneJournal: some View {
+        journal.padding(.horizontal, 16)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Button { beginAdd("") } label: {
+                    Label(store.tr(dynamicTypeSize.isAccessibilitySize ? "Registrar" : "Añadir registro"), systemImage: "plus")
+                        .font(.body.weight(.semibold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 3)
+                }
+                .buttonStyle(NutriButtonStyle(.primary, height: 44, horizontal: 16, radius: 22))
+                .accessibilityLabel(store.tr("Añadir registro"))
+                .accessibilityIdentifier("today.add")
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.horizontal, 16).padding(.vertical, 6)
+                .background(palette.bg)
+            }
+            .toolbar {
+                if !dynamicTypeSize.isAccessibilitySize {
+                    ToolbarItem(placement: .topBarLeading) {
+                        dateControls(compact: true)
+                    }
+                }
+            }
+            .preference(key: NutriPhoneSheetVisibleKey.self, value: editor?.usesPhoneSheet == true)
+            .sheet(item: Binding(get: { editor?.usesPhoneSheet == true ? editor : nil },
+                                 set: { if $0 == nil, editor?.usesPhoneSheet == true { dismissEditor() } }),
+                   onDismiss: { preview = nil; previewedID = nil }) { sheet in
+                phoneEditor(sheet)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                    .nutriKeyboardDismissal(store.tr("Listo"), isActive: !sheet.isEntry && !showWaterSettings && !showSummarySettings)
+                    .nutriErrorAlert(store, isActive: !showWaterSettings && !showSummarySettings)
+            }
+    }
+
+    @ViewBuilder
+    private func phoneEditor(_ sheet: Sheet) -> some View {
+        switch sheet {
+        case let .entry(row, label, food, amount):
+            phoneSheet(row?.text("item") ?? store.tr("Añadir registro")) {
+                editorForm(row, label: label, food: food, amount: amount, placement: .sheet)
+            }
+        case .summaryDetails:
+            phoneSheet(store.tr("Resumen del día")) {
+                ScrollView {
+                    summaryCard { showSummarySettings = true }.padding(16)
+                }
+                .scrollDismissesKeyboard(.interactively)
+            }
+            .sheet(isPresented: $showSummarySettings) {
+                SummarySettingsView { showSummarySettings = false }
+                    .nutriErrorAlert(store)
+                    .presentationDragIndicator(.visible)
+            }
+        case .waterDetails:
+            phoneSheet(store.tr("Agua")) {
+                ScrollView {
+                    waterPanel.padding(16)
+                }
+                .scrollDismissesKeyboard(.interactively)
+            }
+            .sheet(isPresented: $showWaterSettings) {
+                WaterSettingsView { showWaterSettings = false }
+                    .nutriKeyboardDismissal(store.tr("Listo"))
+                    .nutriErrorAlert(store)
+                    .presentationDragIndicator(.visible)
+            }
+        default:
+            editorContent(sheet)
+        }
+    }
+
+    private func phoneSheet<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        NavigationStack {
+            content()
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if store.undoTitle != nil || store.notice != nil {
+                        NutriUndoNotice().padding(.horizontal, 16).padding(.vertical, 4)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .background(palette.bg)
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        HStack {
+                            Button(action: dismissEditor) {
+                                Image(systemName: "xmark").frame(width: 44, height: 44).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(store.tr("Cerrar"))
+                            .accessibilityIdentifier("sheet.close")
+                        }
+                    }
+                }
+        }
+    }
+    #endif
+
     private var presentedModal: NutriPresentedModal? {
         if confirmingDeleteDay {
             let close = { confirmingDeleteDay = false }
@@ -223,7 +357,7 @@ struct TodayView: View {
                 .padding(16).nutriGlass(modal: true)
             }
         }
-        guard let editor, !editingInline else { return nil }
+        guard let editor, !editingInline, !(nutriPhoneLayout && editor.usesPhoneSheet) else { return nil }
         let modalWidth: CGFloat = editor.id == "import" ? 512 : 384
         return NutriPresentedModal(editor.id, close: dismissEditor, maxWidth: modalWidth) { editorContent(editor) }
     }
@@ -231,20 +365,31 @@ struct TodayView: View {
     private var journal: some View {
         ScrollViewReader { scroll in
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    dayToolbar
+                VStack(alignment: .leading, spacing: nutriPhoneLayout ? 9 : 16) {
+                    if !nutriPhoneLayout { dayToolbar }
+                    #if os(iOS)
+                    if nutriPhoneLayout && dynamicTypeSize.isAccessibilitySize {
+                        dateControls(compact: false)
+                    }
+                    if nutriPhoneLayout {
+                        JournalSummary(mode: viewMode, totals: totals, target: currentTarget, hasFood: hasFood,
+                                       energy: $energy, desktop: false, presentation: .phoneCompact,
+                                       customize: { editor = .summaryDetails }, cycle: {})
+                        compactWater
+                    }
+                    #endif
                     if desktop {
                         editorForm(nil, label: quickLabel, food: quickFood, amount: nil, placement: .inline)
                             .id(quickKey)
                             .id("quick-add")
-                    } else {
+                    } else if !nutriPhoneLayout {
                         summary.id("summary")
                             .onGeometryChange(for: Bool.self) { proxy in
                                 proxy.frame(in: .scrollView(axis: .vertical)).maxY <= 0
                             } action: { summaryScrolledOffscreen = $0 }
                     }
                     if let proposal { proposalCard(proposal) }
-                    if !desktop { waterPanel }
+                    if !desktop && !nutriPhoneLayout { waterPanel }
                     if failedDay == day {
                         VStack(spacing: 8) {
                             Text(store.tr("No se pudo cargar el día — revisa tu conexión."))
@@ -270,7 +415,8 @@ struct TodayView: View {
                         if !entries(in: "").isEmpty || entryDropActive { section(nil).id("none") }
                     }
                 }
-                .padding(.top, 16).padding(.bottom, desktop ? 80 : 88)
+                .padding(.top, nutriPhoneLayout ? 8 : 16)
+                .padding(.bottom, nutriPhoneLayout ? 12 : desktop ? 80 : 88)
             }
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: scrollDestination) { _, value in
@@ -281,25 +427,32 @@ struct TodayView: View {
         }
     }
 
+    #if os(iOS)
+    private func dateControls(compact: Bool) -> some View {
+        HStack(spacing: 0) {
+            phoneDayArrow(previous: true)
+            datePicker(day == Day.key(.now) ? store.tr("Hoy") : formattedDate(date), phone: true)
+                .fixedSize(horizontal: compact, vertical: false)
+            phoneDayArrow(previous: false)
+        }
+    }
+
+    private func phoneDayArrow(previous: Bool) -> some View {
+        Button { date = Day.add(date, previous ? -1 : 1) } label: {
+            Image(systemName: previous ? "chevron.left" : "chevron.right")
+                .frame(width: 44, height: 44).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(store.tr(previous ? "Día anterior" : "Día siguiente"))
+    }
+    #endif
+
     private var dayToolbar: some View {
-        let selectedDate = day == Day.key(.now) ? store.tr("Hoy") : formattedDate(date, weekday: true)
-        return HStack(spacing: 0) {
+        HStack(spacing: 0) {
             iconButton("chevron-left", "Día anterior", size: 22) { date = Day.add(date, -1) }
             Spacer()
-            Button { showCalendar.toggle() } label: {
-                Text(selectedDate)
-                    .font(.nutriDisplay(18)).foregroundStyle(palette.text)
-                    .frame(maxWidth: .infinity, minHeight: nutriTouchSize(36))
-                    .contentShape(Rectangle())
-            }.buttonStyle(.plain)
-                .accessibilityLabel(store.tr("Elegir fecha"))
-                .accessibilityValue(selectedDate)
-                .accessibilityIdentifier("today.date")
-                .popover(isPresented: $showCalendar, arrowEdge: .bottom) {
-                    DatePicker(store.tr("Elegir fecha"), selection: $date, displayedComponents: .date)
-                        .datePickerStyle(.graphical).labelsHidden().padding(8)
-                        .onChange(of: date) { _, _ in showCalendar = false }
-                }
+            datePicker(day == Day.key(.now) ? store.tr("Hoy") : formattedDate(date, weekday: true))
+                .frame(maxWidth: .infinity)
             Spacer()
             iconButton("chevron-right", "Día siguiente", size: 22) { date = Day.add(date, 1) }
         }
@@ -310,6 +463,26 @@ struct TodayView: View {
                     .buttonStyle(.plain).keyboardShortcut("n", modifiers: .command)
                     .accessibilityHidden(true)
             }
+        }
+    }
+
+    private func datePicker(_ selectedDate: String, phone: Bool = false) -> some View {
+        Button { showCalendar.toggle() } label: {
+            Text(selectedDate)
+                .font(phone ? .body.weight(.semibold) : .nutriDisplay(18))
+                .foregroundStyle(palette.text)
+                .frame(minWidth: phone ? 44 : nil, maxWidth: phone ? nil : .infinity,
+                       minHeight: nutriTouchSize(36))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(store.tr("Elegir fecha"))
+        .accessibilityValue(selectedDate)
+        .accessibilityIdentifier("today.date")
+        .popover(isPresented: $showCalendar, arrowEdge: .bottom) {
+            DatePicker(store.tr("Elegir fecha"), selection: $date, displayedComponents: .date)
+                .datePickerStyle(.graphical).labelsHidden().padding(8)
+                .onChange(of: date) { _, _ in showCalendar = false }
         }
     }
 
@@ -350,9 +523,11 @@ struct TodayView: View {
         return actions
     }
 
-    private var summary: some View {
+    private var summary: some View { summaryCard { editor = .summary } }
+
+    private func summaryCard(customize: @escaping () -> Void) -> some View {
         JournalSummary(mode: viewMode, totals: totals, target: currentTarget, hasFood: hasFood,
-                       energy: $energy, desktop: desktop, customize: { editor = .summary }) {
+                       energy: $energy, desktop: desktop, customize: customize) {
             let next = journalViews[(journalViews.firstIndex(of: viewMode)! + 1) % journalViews.count]
             run { try await store.patchPrefs(["today_view": .string(next)]) }
         }
@@ -363,7 +538,7 @@ struct TodayView: View {
         if summaryScrolledOffscreen, currentTarget != nil || hasFood {
             Button { scrollDestination = "summary" } label: {
                 JournalSummary(mode: "mini", totals: totals, target: currentTarget, hasFood: hasFood,
-                               energy: $energy, desktop: false, fixed: true, customize: {}, cycle: {})
+                               energy: $energy, desktop: false, presentation: .fixed, customize: {}, cycle: {})
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .background(palette.bg)
                     .overlay(alignment: .bottom) { Rectangle().fill(palette.border).frame(height: 1) }
@@ -402,7 +577,7 @@ struct TodayView: View {
             JournalSheet(row?.text("item") ?? store.tr("Añadir registro"), close: dismissEditor) {
                 VStack(alignment: .leading, spacing: 12) {
                     JournalSummary(mode: "mini", totals: totals, target: currentTarget, hasFood: hasFood,
-                                   energy: $energy, desktop: false, live: true, customize: {}, cycle: {})
+                                   energy: $energy, desktop: false, presentation: .live, customize: {}, cycle: {})
                     Rectangle().fill(palette.border).frame(height: 1)
                     editorForm(row, label: label, food: food, amount: amount, placement: .sheet)
                 }
@@ -414,6 +589,8 @@ struct TodayView: View {
             WaterSettingsView(close: dismissEditor)
         case .importing:
             EntryImportView(close: dismissEditor, reload: loadDay)
+        case .summaryDetails, .waterDetails:
+            EmptyView()
         }
     }
 
@@ -422,6 +599,8 @@ struct TodayView: View {
                     labels: labels, frequent: frequent, catalog: catalog, placement: placement,
                     focusToken: placement == .inline ? focusQuickAdd : 0,
                     autoFocus: placement == .inline && quickKey > 0, close: dismissEditor,
+                    liveSummary: JournalSummary(mode: "mini", totals: totals, target: currentTarget, hasFood: hasFood,
+                                                energy: $energy, desktop: false, presentation: .live, customize: {}, cycle: {}),
                     onPreview: { result in
                         if placement == .inline && editingInline { return }
                         previewedID = result == nil ? nil : row?.text("id")
@@ -439,15 +618,75 @@ struct TodayView: View {
 
     private func dismissEditor() { editor = nil; preview = nil; previewedID = nil }
 
+    private var waterGlass: Double {
+        let glass = store.prefs.number("water_glass_ml") ?? 1000
+        return glass > 0 ? glass : 1000
+    }
+
+    private var waterTotal: Double { waterRows.reduce(0.0) { $0 + ($1.number("grams") ?? 0) } }
+    private var waterGoal: Double? { currentTarget.flatMap { Domain.value($0, "agua_ml") } }
+    private var waterBounds: Record { currentTarget?.object("bounds").object("agua_ml") ?? [:] }
+
+    #if os(iOS)
+    private var compactWater: some View {
+        HStack(spacing: 4) {
+            Button { editor = .waterDetails } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "drop.fill").foregroundStyle(palette.carbs).accessibilityHidden(true)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(store.tr("Agua")).font(.subheadline.weight(.medium))
+                            compactWaterAmount.fixedSize()
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(store.tr("Agua")).font(.subheadline.weight(.medium))
+                            compactWaterAmount
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.forward").font(.caption).foregroundStyle(palette.text3)
+                }
+                .padding(.leading, 10)
+                .padding(.vertical, 4)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(store.tr("Agua"))
+            .accessibilityValue(waterAccessibility(waterTotal, goal: waterGoal,
+                                                   min: waterBounds.number("min"), max: waterBounds.number("max")))
+            .accessibilityIdentifier("today.waterTotal")
+            Button { registerWater(waterGlass) } label: {
+                Image(systemName: "plus").font(.body.weight(.semibold))
+                    .foregroundStyle(palette.carbs)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(store.tr("Añadir vaso de %n").replacingOccurrences(of: "%n", with: volume(waterGlass)))
+            .accessibilityIdentifier("today.waterAddGlass")
+            .disabled(busy)
+        }
+        .nutriCard(radius: 12)
+    }
+
+    private var compactWaterAmount: some View {
+        let target = waterGoal.flatMap { $0 > 0 ? $0 : nil }
+        let goal = target.map(volume) ?? waterBounds.number("min").map { "≥ " + volume($0) }
+            ?? waterBounds.number("max").map { "≤ " + volume($0) }
+        return Text(volume(waterTotal) + (goal.map { " / " + $0 } ?? ""))
+            .font(.subheadline.monospacedDigit())
+            .foregroundStyle(palette.text2)
+    }
+    #endif
+
     private var waterPanel: some View {
-        let storedGlass = store.prefs.number("water_glass_ml") ?? 1000
-        let glass = storedGlass > 0 ? storedGlass : 1000
-        let water = waterRows.reduce(0.0) { $0 + ($1.number("grams") ?? 0) }
+        let glass = waterGlass
+        let water = waterTotal
         let filled = floor(water / glass)
         let fraction = water.truncatingRemainder(dividingBy: glass) / glass
         let splashIndex = fraction > 0 ? filled : filled - 1
-        let bounds = currentTarget?.object("bounds").object("agua_ml") ?? [:]
-        let goal = currentTarget.flatMap { Domain.value($0, "agua_ml") }
+        let bounds = waterBounds
+        let goal = waterGoal
         let end = bounds.number("max") ?? goal ?? bounds.number("min")
         let glasses = Int(min(16, max(end.map { ceil($0 / glass) } ?? 3, filled + 1)))
         return VStack(alignment: .leading, spacing: 12) {
@@ -457,7 +696,12 @@ struct TodayView: View {
                     waterCaption(water, goal: goal, bounds: bounds)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                iconButton("settings", "Ajustes de agua", size: 18, width: 34) { editor = .water }
+                iconButton("settings", "Ajustes de agua", size: 18, width: 34) {
+                    #if os(iOS)
+                    if nutriPhoneLayout { showWaterSettings = true; return }
+                    #endif
+                    editor = .water
+                }
                     .accessibilityIdentifier("today.waterSettings")
                     .padding(.trailing, -8)
             }
@@ -466,10 +710,7 @@ struct TodayView: View {
                     let full = Double(index) < filled
                     let part = Double(index) == filled ? fraction : 0
                     Button {
-                        if full, let row = waterRows.last {
-                            do { try store.removeEntry(row.text("id"), row: row) }
-                            catch { store.report(error) }
-                        }
+                        if full { removeLastWater() }
                         else { registerWater(glass) }
                     } label: {
                         WaterGlass(fraction: full ? 1 : part, full: full, next: Double(index) == filled,
@@ -481,6 +722,15 @@ struct TodayView: View {
                     .disabled(busy)
                 }
             }
+            if nutriPhoneLayout && !waterRows.isEmpty {
+                Button(role: .destructive, action: removeLastWater) {
+                    Label(store.tr("Quitar último registro de agua"), systemImage: "minus.circle")
+                        .font(.subheadline)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain).foregroundStyle(palette.danger)
+                .accessibilityIdentifier("today.waterRemoveLast")
+            }
             HStack(spacing: 8) {
                 TextField(store.tr(store.units == "us" ? "Cantidad (fl oz)" : "Cantidad (ml)"), text: $waterAmount)
                     .nutriDecimalKeyboard()
@@ -490,6 +740,16 @@ struct TodayView: View {
             }
         }
         .padding(16).nutriCard()
+    }
+
+    private func removeLastWater() {
+        guard let row = waterRows.last else { return }
+        if nutriPhoneLayout {
+            remove(row)
+        } else {
+            do { try store.removeEntry(row.text("id"), row: row) }
+            catch { store.report(error) }
+        }
     }
 
     private func waterCaption(_ water: Double, goal: Double?, bounds: Record) -> some View {
@@ -1028,6 +1288,7 @@ private struct EntryEditor: View {
     @EnvironmentObject private var store: Store
     @Environment(\.nutriPalette) private var palette
     @FocusState private var queryFocused: Bool
+    @FocusState private var amountFocused: Bool
     let row: Record?
     let day: String
     let initialLabel: String
@@ -1040,6 +1301,7 @@ private struct EntryEditor: View {
     let focusToken: Int
     let autoFocus: Bool
     let close: () -> Void
+    let liveSummary: JournalSummary
     let onPreview: (Record?) -> Void
     let onSave: (String) -> Void
     @State private var remoteChoices: [Record]?
@@ -1093,7 +1355,7 @@ private struct EntryEditor: View {
         return all.filter { $0.text("source") != "usda" } + all.filter { $0.text("source") == "usda" }
     }
 
-    var body: some View {
+    private var fields: some View {
         VStack(alignment: .leading, spacing: 16) {
             if placement == .rail {
                 HStack(alignment: .firstTextBaseline) {
@@ -1114,8 +1376,48 @@ private struct EntryEditor: View {
             if selected != nil {
                 quantityField
                 if !isAdding { labelPicker }
-                buttons
+                if !usesPhoneSheet {
+                    buttons
+                } else if isAdding {
+                    clearSelection
+                } else {
+                    deleteButton
+                }
                 if !isAdding { contributionPanel }
+            }
+        }
+    }
+
+    private var usesPhoneSheet: Bool { nutriPhoneLayout && placement == .sheet }
+
+    var body: some View {
+        Group {
+            if usesPhoneSheet {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        fields
+                        liveSummary
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if selected != nil {
+                        HStack(spacing: 8) {
+                            saveButton
+                            if amountFocused {
+                                Button(store.tr("Listo")) { amountFocused = false }
+                                    .buttonStyle(NutriButtonStyle(.secondary))
+                                    .accessibilityIdentifier("keyboard.done")
+                            }
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .background(palette.bg)
+                    }
+                }
+            } else {
+                fields
             }
         }
         .padding(placement == .sheet ? 0 : 16)
@@ -1180,12 +1482,19 @@ private struct EntryEditor: View {
         VStack(alignment: .leading, spacing: 4) {
             fieldLabel("Alimento o receta")
             TextField(store.tr("Alimento o receta"), text: Binding(get: { search }, set: { value in
+                guard search != value else { return }
                 search = value
                 selected = nil
                 suggested = nil
                 remoteChoices = nil
             }), prompt: Text(store.tr("Buscar…")).foregroundColor(palette.text3))
+            .font(usesPhoneSheet ? .body : .nutriSans(16))
+            #if os(iOS)
+            .autocorrectionDisabled(usesPhoneSheet)
+            #endif
             .nutriInput(focus: $queryFocused)
+            .accessibilityLabel(store.tr("Alimento o receta"))
+            .accessibilityIdentifier("entryEditor.search")
             .onKeyPress(.downArrow) { highlight(1) }
             .onKeyPress(.upArrow) { highlight(-1) }
             .onSubmit {
@@ -1208,6 +1517,7 @@ private struct EntryEditor: View {
                                 }
                             }
                             .padding(.horizontal, 12).padding(.vertical, 8)
+                            .frame(minHeight: nutriTouchSize(0))
                             .background(activeIndex == index ? palette.surface3 : .clear)
                             .contentShape(Rectangle())
                         }.buttonStyle(.plain)
@@ -1225,12 +1535,14 @@ private struct EntryEditor: View {
 
     private var newFoodButton: some View {
         Button {
+            if usesPhoneSheet { close() }
             store.newFood = ["name": .string(cleanText(search)), "day": .string(day), "meal_label_id": label.isEmpty ? .null : .string(label)]
         } label: {
             Text("＋ " + store.tr("Nuevo alimento")).font(.nutriSans(14))
                 .foregroundStyle(palette.accent).frame(minHeight: 44, alignment: .leading)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("entryEditor.newFood")
     }
 
     private var quantityField: some View {
@@ -1246,7 +1558,7 @@ private struct EntryEditor: View {
                         ForEach(options, id: \.self) { option in
                             Button { changeUnit(option) } label: {
                                 Text(option).font(.nutriSans(14, weight: .medium)).padding(.horizontal, 16)
-                                    .frame(height: 28)
+                                    .frame(minHeight: nutriTouchSize(28))
                                     .foregroundStyle(unit == option ? palette.bg : palette.text2)
                                     .background(unit == option ? palette.accent : palette.surface2)
                             }.buttonStyle(.plain).accessibilityAddTraits(unit == option ? .isSelected : [])
@@ -1257,7 +1569,9 @@ private struct EntryEditor: View {
             TextField(title, text: $amount, prompt: Text(suggested.map { journalNumber(convert($0, to: unit), digits: unit == "g" || unit == "ml" ? 1 : 2) } ?? "")
                 .foregroundColor(palette.text3))
                 .nutriDecimalKeyboard()
-                .font(.nutriMono(16)).nutriInput().onSubmit(save)
+                .font(usesPhoneSheet ? .body.monospacedDigit() : .nutriMono(16))
+                .nutriInput(focus: $amountFocused).onSubmit(save)
+                .accessibilityIdentifier("entryEditor.amount")
             if unit != "g", !amount.isEmpty, let grams {
                 Text(massEstimate(grams)).font(.nutriMono(12)).foregroundStyle(palette.text3)
             }
@@ -1295,32 +1609,45 @@ private struct EntryEditor: View {
         Group {
             if isAdding {
                 HStack(spacing: 8) {
-                    Button {
-                        selected = nil
-                        search = ""
-                        amount = ""
-                        suggested = nil
-                        queryFocused = true
-                    } label: { Text(store.tr("Cancelar")).frame(maxWidth: .infinity) }
-                        .buttonStyle(NutriButtonStyle())
+                    clearSelection
                     saveButton
                 }
             } else {
                 VStack(spacing: 16) {
                     saveButton
-                    Button {
-                        if let row { remove(row) }
-                    } label: { Text(store.tr("Borrar")).frame(maxWidth: .infinity) }
-                        .buttonStyle(NutriButtonStyle(.danger))
-                        .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(palette.danger).allowsHitTesting(false) }
+                    deleteButton
                 }
             }
         }
     }
 
+    private var clearSelection: some View {
+        Button {
+            selected = nil
+            search = ""
+            amount = ""
+            suggested = nil
+            queryFocused = true
+        } label: { Text(store.tr("Cancelar")).frame(maxWidth: .infinity) }
+            .buttonStyle(NutriButtonStyle())
+    }
+
+    private var deleteButton: some View {
+        Button {
+            if let row { remove(row) }
+        } label: { Text(store.tr("Borrar")).frame(maxWidth: .infinity) }
+        .buttonStyle(NutriButtonStyle(.danger))
+        .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(palette.danger).allowsHitTesting(false) }
+    }
+
     private var saveButton: some View {
-        Button(action: save) { Text(store.tr(isAdding ? "Registrar" : "Guardar")).frame(maxWidth: .infinity) }
-            .buttonStyle(NutriButtonStyle(.primary)).disabled(grams == nil)
+        Button(action: save) {
+            Text(store.tr(isAdding ? "Registrar" : "Guardar"))
+                .font(usesPhoneSheet ? .body.weight(.semibold) : .nutriSans(14, weight: .medium))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(NutriButtonStyle(.primary)).disabled(grams == nil)
+            .accessibilityIdentifier("entryEditor.save")
     }
 
     private var contributionPanel: some View {
@@ -1419,6 +1746,7 @@ private struct EntryEditor: View {
         if value.text("name").isEmpty { value["name"] = item["item"] ?? .null }
         selected = value
         search = value.text("name")
+        if usesPhoneSheet { queryFocused = false }
         amount = ""
         self.suggested = suggested
         activeIndex = -1
@@ -2037,6 +2365,9 @@ private struct JournalNutrient: Identifiable {
 }
 
 private struct JournalSummary: View {
+    enum Presentation { case full, fixed, live, phoneCompact }
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var store: Store
     @Environment(\.nutriPalette) private var palette
     @Environment(\.colorScheme) private var scheme
@@ -2046,8 +2377,7 @@ private struct JournalSummary: View {
     let hasFood: Bool
     @Binding var energy: String
     let desktop: Bool
-    var fixed = false
-    var live = false
+    var presentation: Presentation = .full
     let customize: () -> Void
     let cycle: () -> Void
 
@@ -2055,11 +2385,17 @@ private struct JournalSummary: View {
     private var keys: [String] { config["items"]?.array?.compactMap(\.string) ?? journalDefaultItems }
     private var details: String { config["mode"]?.string ?? (mode == "estado" ? "meta" : "delta") }
     private var ranges: Bool { config["showRanges"]?.bool ?? false }
-    private var nutrients: [JournalNutrient] { keys.compactMap(state) }
+    private var nutrients: [JournalNutrient] {
+        let selected = keys.compactMap(state)
+        guard nutriPhoneLayout, presentation == .full, !keys.contains("sodio_mg"), let sodium = state("sodio_mg"),
+              sodium.lowSodium || sodium.highSodium else { return selected }
+        return selected + [sodium]
+    }
 
     var body: some View {
-        if live { liveStrip }
-        else if fixed { miniGrid.padding(.horizontal, 16).padding(.vertical, 8) }
+        if presentation == .phoneCompact { compactPhoneSummary }
+        else if presentation == .live { liveStrip }
+        else if presentation == .fixed { miniGrid.padding(.horizontal, 16).padding(.vertical, 8) }
         else {
             VStack(alignment: .leading, spacing: 12) {
                 summaryHeader
@@ -2073,6 +2409,79 @@ private struct JournalSummary: View {
                 bandGuide
             }.padding(desktop ? 20 : 16).nutriCard()
         }
+    }
+
+    private var compactPhoneSummary: some View {
+        let labels = ["kcal": "Energía", "protein_g": "Proteína", "carbs_g": "Carbohidratos", "fat_g": "Grasa"]
+        let macroLayout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
+        let sodium = state("sodio_mg")
+        let incomplete = hasFood && (nutrients.contains { $0.coverage != .complete } || sodium?.coverage != .complete)
+        return Button(action: customize) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top) {
+                    if let energy = state("kcal") {
+                        compactNutrient(energy, label: "Energía", prominent: true)
+                    }
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.forward")
+                        .font(.caption.weight(.semibold)).foregroundStyle(palette.text3)
+                        .accessibilityHidden(true)
+                }
+                macroLayout {
+                    ForEach(Domain.macroKeys.dropFirst().compactMap(state)) { nutrient in
+                        compactNutrient(nutrient, label: labels[nutrient.id] ?? nutrient.label)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                if let sodium, sodium.lowSodium || sodium.highSodium {
+                    let description = sodium.lowSodium
+                        ? (sodium.coverage == .complete ? "Sodio bajo" : "Sodio parcial bajo el piso")
+                        : "Sodio alto"
+                    Text(store.tr(description) + " · " + sodium.amount(store) + " " + sodium.unit)
+                        .foregroundStyle(palette.danger)
+                        .font(.caption.weight(.semibold))
+                }
+                if incomplete {
+                    Label(store.tr("Cobertura incompleta de nutrientes"), systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(palette.warn)
+                        .font(.caption)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .nutriCard(radius: 12)
+        .accessibilityHint(store.tr("Ver resumen"))
+        .accessibilityIdentifier("today.summary")
+    }
+
+    private func compactNutrient(_ nutrient: JournalNutrient, label: String, prominent: Bool = false) -> some View {
+        let amount = nutrient.amount(store)
+        let comparison: String? = if nutrient.hasExplicit && nutrient.goalBounds.min != nutrient.goalBounds.max {
+            rangeText(nutrient.goalBounds.min, nutrient.goalBounds.max, digits: nutrient.decimals)
+        } else {
+            nutrient.target.map { journalNumber($0, digits: nutrient.decimals) }
+                ?? nutrient.goalBounds.min.map { journalNumber($0, digits: nutrient.decimals) }
+        }
+        return VStack(alignment: .leading, spacing: 1) {
+            Text(store.tr(label)).font(.caption).foregroundStyle(palette.text2)
+            Text(amount + " " + nutrient.unit).font(prominent ? .title3.weight(.semibold) : .subheadline.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(nutrient.color(palette))
+            if nutrient.coupled && !nutrient.hasExplicit {
+                Text(store.tr("Según energía")).font(.caption2).foregroundStyle(palette.text2)
+            } else if let comparison {
+                Text(store.tr("Meta") + " " + comparison + " " + nutrient.unit)
+                    .font(.caption2).monospacedDigit().foregroundStyle(palette.text2)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
     }
 
     private func state(_ key: String) -> JournalNutrient? {
@@ -2168,6 +2577,7 @@ private struct JournalSummary: View {
     private var rule: some View { Rectangle().fill(palette.border).frame(height: 1) }
 
     private var miniGrid: some View {
+        let fixed = presentation == .fixed
         let states = nutrients
         let extraSodium = !keys.contains("sodio_mg") ? state("sodio_mg").flatMap { $0.pending ? $0 : nil } : nil
         let pending = states.filter(\.pending) + (extraSodium.map { [$0] } ?? [])
