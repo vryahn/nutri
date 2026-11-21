@@ -44,7 +44,8 @@ supabase/migrations/     # migraciones incrementales, todas aplicadas: 001 prefs
                           # 019 demo sandbox por visitante (anonymous sign-in, seed_demo + cleanup_demo_users vía pg_cron) ·
                           # 020 seed_demo(lang): demo en el idioma del visitante (sustituye a seed_demo() de la 019) ·
                           # 021 targets.rules + targets.applied_rule · 022 demo local day ·
-                          # 023 RPCs atómicas recetas/fases · 024 cobertura micros · 025 cuota IA por UID/proveedor
+                          # 023 RPCs atómicas recetas/fases · 024 cobertura micros · 025 cuota IA por UID/proveedor ·
+                          # 026 fix cleanup_demo_users (sin delete directo a storage) + log_entry nulls last
 src/lib/supabase.js      # createClient, schema 'nutri'
 src/lib/domain.js        # MICROS, resolución de targets, adherencia, fórmula de recetas, reorderLabels
 src/lib/sources.js       # clientes Open Food Facts y USDA FDC, por 100 g, mapeados a claves MICROS
