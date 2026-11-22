@@ -169,6 +169,7 @@ struct BodyView: View {
     @EnvironmentObject private var store: Store
     @Environment(\.nutriPalette) private var palette
     @Environment(\.locale) private var locale
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.nutriWindowWidth) private var windowWidth
     @FocusState private var focus: String?
     @State private var dateOpen = false
@@ -252,6 +253,8 @@ struct BodyView: View {
         }
         .onChange(of: focus) { previous, next in if previous != nil, previous != next { autosave() } }
         .onDisappear { autosave() }
+        // Bloquear o salir no quita el foco: guarda lo tecleado al dejar de estar activa (pending evita escrituras vacías).
+        .onChange(of: scenePhase) { _, phase in if phase != .active { autosave() } }
         .nutriSectionActions([.init("importar", label: store.tr("Importar"), icon: "upload", action: openImport)])
         .preference(key: NutriPresentedModalKey.self, value: presentedModal)
         .preference(key: NutriModalVisibleKey.self, value: previewImport || selectedPhoto != nil || confirmDelete)

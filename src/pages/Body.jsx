@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Upload, Camera, X, Star, Moon, HelpCircle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase, isDemo } from '../lib/supabase.js';
@@ -53,6 +53,7 @@ export default function Body() {
   const [favs, setFavs] = useState([]); // prefs.data.fav_body: metrics promoted out of the "Más medidas" section
   const [values, setValues] = useState({}); // strings keyed by metric key, for the inputs
   const [note, setNote] = useState('');
+  const dirty = useRef(false);
   const [photos, setPhotos] = useState([]); // paths in the body-photos bucket for the day
   // path -> signed URL (ephemeral), stamped with the photo set it was signed for: the
   // previous day's thumbnails never paint while the new ones sign. Derived, not reset.
@@ -147,6 +148,7 @@ export default function Body() {
 
   async function persist(nextValues, nextNote, nextPhotos) {
     if (!userId) return;
+    dirty.current = false;
     const metrics = cleanNumericMap(nextValues);
     const noteTrim = (nextNote ?? '').trim();
     const photoPaths = nextPhotos ?? [];
@@ -201,8 +203,18 @@ export default function Body() {
     loadHistory();
   }
 
-  const setField = (key, raw) => setValues((v) => ({ ...v, [key]: raw }));
+  const setField = (key, raw) => {
+    dirty.current = true;
+    setValues((v) => ({ ...v, [key]: raw }));
+  };
   const commit = () => persist(values, note, photos);
+  // Leaving the app (iOS PWA, tab switch) does not blur the focused input: save typed
+  // edits on hide. Only dirty edits — a form still loading must never delete the row.
+  useEffect(() => {
+    const onHide = () => { if (document.hidden && dirty.current) persist(values, note, photos); };
+    document.addEventListener('visibilitychange', onHide);
+    return () => document.removeEventListener('visibilitychange', onHide);
+  });
 
   // Boolean checkpoint (Sleep): checking stores the current threshold as the value (the
   // flag stays self-explanatory if the threshold changes later); unchecking clears it.
@@ -440,7 +452,7 @@ export default function Body() {
           <span className="text-xs text-text-3">{t('Nota')}</span>
           <textarea
             value={note}
-            onChange={(e) => setNote(e.target.value)}
+            onChange={(e) => { dirty.current = true; setNote(e.target.value); }}
             onBlur={commit}
             rows={2}
             placeholder={t('Contexto del día (opcional)')}

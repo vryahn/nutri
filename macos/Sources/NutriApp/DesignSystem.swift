@@ -118,8 +118,9 @@ private enum NutriTypography {
         return complete
     }()
 
-    static func font(_ family: String, size: CGFloat, weight: NutriFontWeight) -> Font {
+    static func font(_ family: String, size base: CGFloat, weight: NutriFontWeight) -> Font {
         _ = registered
+        let size = scaled(base)
         guard let name = families[family] else { return .system(size: size) }
         let base = CTFontCreateWithName(name as CFString, size, nil)
         // FourCC for the OpenType wght variation axis.
@@ -127,6 +128,16 @@ private enum NutriTypography {
                                                                   NSNumber(value: 0x77676874), CGFloat(weight.rawValue))
         let varied = CTFontCreateWithFontDescriptor(descriptor, size, nil)
         return Font(varied)
+    }
+
+    // ponytail: el CTFont fijo ignoraba Dynamic Type en iPhone. Se escala al construir la fuente, con tope 1.6×
+    // para no romper la densidad de datos; un cambio de tamaño en vivo llega a cada vista en su siguiente redibujo.
+    private static func scaled(_ size: CGFloat) -> CGFloat {
+        #if os(iOS)
+        min(UIFontMetrics.default.scaledValue(for: size), size * 1.6)
+        #else
+        size
+        #endif
     }
 }
 

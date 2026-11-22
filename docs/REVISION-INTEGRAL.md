@@ -52,11 +52,11 @@ Identidades. Las pruebas negativas automatizadas usan dos identidades no reales:
 
 Dispositivos. Los factores se combinan por pares, no como producto cartesiano:
 
-- iPhone SE 3 (375 pt) con el runtime más antiguo disponible, como mínimo iOS 17.
-- iPhone 17 (393 pt) con iOS 26.
+- iPhone Air en simulador: dispositivo por defecto de toda prueba (decisión de Bryan, 2026-11-22), igual que su iPhone físico.
+- Ancho mínimo: iPhone 17e, el más estrecho disponible en el runtime instalado (iOS 27.2). El iPhone SE de 375 pt y los runtimes de iOS 17–26 no están instalados; los casos de ancho mínimo se corren en el 17e solo cuando el caso lo exige.
 - iPhone físico en DEVICE.
 
-Idioma, tema, unidades y tamaño de texto también se combinan por pares. Dos cruces críticos se prueban siempre completos: SE + XXXL + inglés, y SE + teclado + banner.
+Idioma, tema, unidades y tamaño de texto también se combinan por pares. Dos cruces críticos se prueban siempre completos en iPhone Air: XXXL + inglés, y teclado + banner.
 
 Datasets:
 
@@ -128,7 +128,7 @@ Cada caso tiene ID, oráculo verificable, entorno, responsable, estado y evidenc
 | F-01 | Búsqueda por texto y semántica, sin conexión; filtros combinados y limpiar | Aparecen resultados del catálogo propio y del base. Sin red se usa el fallback local. | SIM-DEMO, SIM-PERSIST | C |
 | F-02\* | Alta manual con base en g y con base en ml con densidad; base ml sin densidad | Normalización exacta por 100 g: 100 ml × 1.03 = 103 g. Sin densidad no se puede guardar. | SIM-DEMO | C |
 | F-03\* | Datos con IA: texto, foto, EAN válido e inválido, chips USDA | Un EAN inválido tecleado bloquea. La etiqueta gana a OFF. Un 0 no llena el campo. | SIM-DEMO (fixtures); DEVICE con proxy real | C, B |
-| F-04 | Micros con nombres largos, favoritos y unidades en SE + inglés + XXXL | El micro se identifica sin hover. La estrella mide al menos 44 pt. | SIM-DEMO | C |
+| F-04 | Micros con nombres largos, favoritos y unidades en iPhone Air + inglés + XXXL | El micro se identifica sin hover. La estrella mide al menos 44 pt. | SIM-DEMO | C |
 | F-05 | Editar, guardar copia del catálogo base, borrar, y swipes según propietario | Un alimento del catálogo base no se edita directamente: se crea una copia privada. | SIM-DEMO, SIM-PERSIST | C |
 | F-06 | Importar CSV | Solo entran filas válidas. La revisión es accesible con el teclado abierto. | SIM-DEMO | C |
 | F-07 | Avisos ⚠, marcar como revisado y editar después | El guardado posterior limpia `reviewed_at` | SIM-PERSIST | C |
@@ -171,7 +171,7 @@ Cada caso tiene ID, oráculo verificable, entorno, responsable, estado y evidenc
 | --- | --- | --- | --- | --- |
 | M-01\* | Autoguardado al cambiar de fecha y de campo | El valor se persiste y se relee | SIM-DEMO, SIM-PERSIST | C |
 | M-02\* | Interrupción con un campo activo: bloquear, cambiar de app, terminar y fallo de red | La persistencia se confirma o el borrador se recupera. Nunca aparece un falso "Guardado". | SIM-PERSIST, DEVICE | C, B |
-| M-03 | Favoritos, medidas segmentales, derivados y sueño en SE + XXXL | Todo se lee completo y la unidad nunca se oculta | SIM-DEMO | C |
+| M-03 | Favoritos, medidas segmentales, derivados y sueño en iPhone Air + XXXL | Todo se lee completo y la unidad nunca se oculta | SIM-DEMO | C |
 | M-04 | Importar en modo complementar y en modo reemplazar | Las fotos se conservan en los dos modos | SIM-DEMO | C |
 | M-05 | Fotos desde biblioteca, Archivos y cámara: permiso inicial, denegado y reautorizado; cancelar cada selector; foto de iCloud pendiente; archivo ilegible | El formulario se conserva, el aviso es claro y sigue siendo posible capturar a mano | DEVICE | B |
 | M-06\* | Corte de red entre referencia y subida (`BodyView.swift:800`, `:802`) y entre borrado y metadatos (`:827`, `:839`); subida múltiple parcial; cambio de cuenta durante la operación | Se distinguen dos estados. El transitorio es visible y explicado. El final, reconciliado tras reconexión y relanzamiento, no deja referencias huérfanas ni objetos sin referencia. Nunca se borra un objeto cuya subida quedó ambigua. | SIM-PERSIST, LIVE-TEST | C |
@@ -190,6 +190,7 @@ Cada caso tiene ID, oráculo verificable, entorno, responsable, estado y evidenc
 | S-01\* | Con la identidad A, leer y escribir filas conocidas de B (`entries`, `foods`, `targets`, `body_metrics`, `prefs`) y su prefijo en `body-photos` | Lectura vacía. Escritura y Storage denegados. | LIVE-TEST | C |
 | S-02\* | Comprobación entre las dos cuentas reales (BIBLIA §4.1) | Ninguna ve datos privados de la otra | Navegador y DEVICE | B |
 | S-03 | Revisar el bundle Release y los logs | Solo contiene la publishable key. Los logs no tienen PII. `PrivacyInfo.xcprivacy` es coherente con las APIs que se usan. | DEVICE, revisión estática | C |
+| S-04\* | Auditar dependencias: alertas de Dependabot y `npm audit` (web), paquetes Swift resueltos (nativo) | Cada alerta se clasifica según dónde llega: bundle de producción, función serverless (`api/`), solo build o dev, o no alcanzable. Crítica o alta en producción o serverless = S1, se corrige actualizando o reemplazando sin añadir dependencias nuevas. Solo build o dev = S3, con motivo documentado. | Revisión estática, CI | C |
 | AX-01\* | Completar T-01, T-06 y M-01 solo con VoiceOver | Cada paso es alcanzable. El foco es correcto al abrir y cerrar modales. Cada acción de gesto tiene una acción personalizada. | DEVICE | B |
 | AX-02\* | Dynamic Type de tamaño por defecto a XXXL | La tipografía crece de forma medible (H1) y no hay recortes | SIM-DEMO | C |
 | AX-03 | Contraste en ambos temas, reducir movimiento y reducir transparencia | Ningún par baja de 4.5:1 y se respetan las dos preferencias | SIM-DEMO | C |
@@ -202,7 +203,7 @@ Un fallo en cualquiera de estas puertas es un hallazgo S2 y no se promedia con e
 
 - Ninguna acción primaria (Registrar, Guardar, Listo, Deshacer) queda tapada por el teclado, un banner, un inset o la barra de pestañas.
 - Ningún dato numérico ni nombre de nutriente queda truncado sin una forma táctil de leerlo completo.
-- No hay controles solapados en SE con XXXL.
+- No hay controles solapados en iPhone Air con XXXL.
 - Todo flotante que no ocupa toda la pantalla se cierra al tocar fuera (X-04) y conserva el borrador o avisa antes de perderlo.
 - La política de borrado se cumple (X-01 a X-03).
 
@@ -212,7 +213,7 @@ Cada criterio se puntúa de 0 a 2 con estas anclas:
 
 | Criterio | 0 | 1 | 2 |
 | --- | --- | --- | --- |
-| Primera vista | La tarea principal requiere scroll en SE con texto por defecto | Visible pero comprimida o detrás de un banner | Dato y acción principales visibles en la altura realmente disponible |
+| Primera vista | La tarea principal requiere scroll en iPhone Air con texto por defecto | Visible pero comprimida o detrás de un banner | Dato y acción principales visibles en la altura realmente disponible |
 | Huecos | Un bloque vacío sin información ni acción saca contenido útil de la vista | Hueco tolerable, o estado vacío sin acción | Todo espacio en blanco separa grupos o es margen de seguridad. El estado vacío tiene mensaje y acción. |
 | Jerarquía | Varios datos compiten como primarios | El primario está claro pero los secundarios hacen ruido | Un primario por tarjeta, secundarios subordinados y números alineados |
 | Consistencia | El patrón difiere del resto de la app para la misma acción | Variación menor | Mismo patrón de hoja, swipe, Deshacer y cierre que el resto |
@@ -278,7 +279,7 @@ Hay que verificarlas primero. Las citas apuntan a `macos/Sources/NutriApp/`, sal
 | H2 | Bloquear el teléfono con un campo de Medidas activo no guarda. El autoguardado depende del cambio de foco o de `onDisappear`, y `scenePhase` solo drena la cola de Hoy. | `BodyView.swift:253`, `:254`; `NutriApp.swift:102` | M-02 |
 | H3 | El asistente de metas compara conjuntos de IDs y no detecta cambios de contenido concurrentes | `TargetsView.swift:654` (`saveWizard`), `:663`, `:667` | O-03 |
 | H4 | Quedan estados intermedios entre foto y referencia: la referencia se registra antes de la subida, y el objeto se borra antes de quitar la referencia | `BodyView.swift:800`, `:802`, `:827`, `:839` | M-06 |
-| H5 | Los micros de Alimentos se truncan en SE: dos columnas, una sola línea y `.help` sin equivalente táctil | `FoodsView.swift:927`, `:969` | F-04 |
+| H5 | Los micros de Alimentos se truncan en pantallas estrechas: dos columnas, una sola línea y `.help` sin equivalente táctil | `FoodsView.swift:927`, `:969` | F-04 |
 | H6 | La fila de ingrediente nuevo de IA se comprime: nombre, cantidad de 54 pt, dos botones y cuatro macros en horizontal | `RecipesView.swift:571`, `:578`, `:582`, `:587`, `:593`; `Platform.swift:117` | R-04 |
 | H7 | Medidas mantiene dos columnas y filas de 44 pt con texto ampliado | `BodyView.swift:230`, `:443`, `:458` | M-03 |
 | H8 | La altura útil la consumen a la vez el banner, el inset de avisos, el inset de registrar, las pestañas y el teclado | `NutriApp.swift:249`, `:284`; `TodayView.swift:233` | §6.2 |
@@ -290,7 +291,7 @@ Hay que verificarlas primero. Las citas apuntan a `macos/Sources/NutriApp/`, sal
 ## 9. Ejecución por tandas
 
 1. Fase 0 (línea base) y verificación de H1 a H12.
-2. Tanda iPhone S1: Q-01 a Q-07, M-02, M-06, R-05, O-03 y S-01 a S-03.
+2. Tanda iPhone S1: Q-01 a Q-07, M-02, M-06, R-05, O-03 y S-01 a S-04.
 3. Tanda iPhone S2: puertas de §6.1, AX-01, AX-02 y casos funcionales bloqueados.
 4. Tanda iPhone S3 y S4: rúbrica de espacio, rendimiento y pulido.
 5. Fase web/PWA: la misma matriz a 375, 768 y 1280 px, cambiando el entorno por navegador y preview.
@@ -315,8 +316,45 @@ Para después solo queda la cobertura ajena al cambio.
 
 - Todos los casos de la matriz tienen estado y evidencia, y ningún caso crítico (\*) está bloqueado.
 - No queda ningún hallazgo S1 o S2 abierto.
-- Todas las puertas de §6.1 se cumplen en SE + XXXL y en iPhone 17.
+- Todas las puertas de §6.1 se cumplen en iPhone Air con texto por defecto y XXXL.
 - La rúbrica de §6.2 no tiene ningún 0 en Hoy, Agua, Añadir registro y Medidas.
 - Los presupuestos de §7.3 se cumplen, o Bryan acepta la desviación con un motivo.
 - Los fixtures `QA-` están limpios y verificados.
 - La CI de web, macOS e iOS está verde.
+
+## 11. Registro de ejecución
+
+### 2026-11-22 · Fase 0 y primera tanda (iPhone)
+
+Orquestación: Claude Opus. Trabajo mecánico de checks locales y análisis de dependencias: Codex `gpt-6.2-sol`. El sandbox del plugin Codex (`workspace-write`) no permite `xcodebuild` ni `simctl`, así que el orquestador lanzó las corridas del simulador con los logs a archivo. Evidencia en `privado/revision-integral/fase0/`.
+
+**Línea base**
+
+| Check | Resultado |
+| --- | --- |
+| Oráculos web, contrato nativo, `NutriChecks`, `--module-checks`, build Release de macOS | OK |
+| `npm run lint`, `npm test` (292), `npm run build` | OK |
+| XCUITest en iPhone Air, iOS 27.2 | 29/29 OK con las correcciones de esta tanda. El SE creado para la línea base desapareció del runtime y un disco lleno invalidó dos corridas intermedias; ninguna de las dos llegó a ejecutar pruebas válidas. |
+
+**Hipótesis**
+
+| ID | Resultado |
+| --- | --- |
+| H1 | Confirmada (S2, AX-02). Corregida: `NutriTypography` escala con `UIFontMetrics` solo en iOS, con tope de 1.6×. El tamaño por defecto no cambia. Un cambio de tamaño en vivo se aplica al redibujar cada vista. |
+| H2 | Confirmada (S1, M-02), también en la web. Corregida: SwiftUI guarda al cambiar `scenePhase` y la web en `visibilitychange`, solo si hay ediciones. Sin `beginBackgroundTask`: la escritura dispone de los segundos de gracia del sistema. Falta la prueba en el iPhone físico (M-02, responsable B). |
+| H3 | El asistente solo compara IDs. Es un caso concurrente raro con confirmación explícita previa: S3, sin cambio. |
+| H10 | Probable falso positivo: `.task(id: scenePhase)` se cancela al desaparecer la pestaña. Pendiente de medir en F-08. |
+| H11 | Caso de borde de medianoche con el editor abierto: S3, pendiente de T-11. |
+| H12 | Hueco de cobertura del test: pendiente de T-10. |
+| H4–H9 | Pendientes de la revisión visual (§6.2) y de LIVE-TEST. |
+
+**S-04 (dependencias)**
+
+- Antes: npm reportaba 1 crítica, 6 altas, 16 moderadas y 1 baja; Dependabot, 43 alertas abiertas.
+- Alcanzables desde `api/mcp.js` (S1): `@modelcontextprotocol/sdk` 1.30.0 → 1.32.2 y `zod` 4.4.3 → 4.6.7.
+- `proxy-addr` (la crítica) y `body-parser` vienen de la rama Express del SDK, que `api/` no carga (S3).
+- Se actualizaron también, solo de build y desarrollo: `vite` 7.3.8, `source-map-js` 1.2.4 y `brace-expansion`.
+- Todo con `npm update` dentro de los rangos de `package.json`, sin dependencias nuevas.
+- Después: 0 críticas y 0 altas. Quedan 15 moderadas y 1 baja (6 moderadas en el árbol de producción). `api/mcp.js` y `api/ai.js` cargan con las versiones nuevas.
+
+**Pendiente de la tanda S1:** Q-01 a Q-07, M-06, R-05, O-03 y S-01 a S-03 requieren SIM-PERSIST o LIVE-TEST, que necesitan que Bryan inicie sesión una vez con la cuenta de pruebas en el simulador, o el iPhone físico.
