@@ -2536,10 +2536,6 @@ private struct JournalSummary: View {
                 if mode == "objetivos" { objectives }
                 else if mode == "mini" { miniGrid }
                 else { stateGrid }
-                if hasFood && nutrients.contains(where: { $0.coverage != .complete }) {
-                    Text(store.tr("Faltan valores de nutrientes en uno o más registros, incluso agua simple; deja vacío lo desconocido, no captures 0."))
-                        .font(.nutriSans(12)).foregroundStyle(palette.warn)
-                }
                 bandGuide
             }.padding(desktop ? 20 : 16).nutriCard()
         }
@@ -2551,7 +2547,6 @@ private struct JournalSummary: View {
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
             : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
         let minerals = ["sodio_mg", "potasio_mg"].compactMap(state)
-        let incomplete = hasFood && (nutrients + minerals).contains { $0.coverage != .complete }
         return Button(action: customize) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top) {
@@ -2576,11 +2571,6 @@ private struct JournalSummary: View {
                         compactMineral(nutrient)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                }
-                if incomplete {
-                    Label(store.tr("Cobertura incompleta de nutrientes"), systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(palette.warn)
-                        .font(.caption)
                 }
             }
             .multilineTextAlignment(.leading)
@@ -2612,20 +2602,15 @@ private struct JournalSummary: View {
             : amount == nil ? palette.text3 : palette.text
         return VStack(alignment: .leading, spacing: 1) {
             Text(store.tr(nutrient.label)).font(.caption).foregroundStyle(palette.text2)
-            NutriFlow(spacing: 4, lineSpacing: 1) {
-                Text(amount ?? "—")
-                    .font(.footnote.weight(.semibold)).monospacedDigit()
-                    .foregroundStyle(color)
-                    .padding(.horizontal, alert == nil ? 0 : 4)
-                    .background {
-                        if alert != nil { Capsule().fill(palette.danger.opacity(0.06)) }
-                    }
-                    .accessibilityLabel([amount ?? store.tr("Sin dato"), alert.map { store.tr($0) }]
-                        .compactMap { $0 }.joined(separator: ", "))
-                if nutrient.coverage == .partial {
-                    Text(store.tr("Parcial")).font(.caption2).foregroundStyle(palette.warn)
+            Text(amount ?? "—")
+                .font(.footnote.weight(.semibold)).monospacedDigit()
+                .foregroundStyle(color)
+                .padding(.horizontal, alert == nil ? 0 : 4)
+                .background {
+                    if alert != nil { Capsule().fill(palette.danger.opacity(0.06)) }
                 }
-            }
+                .accessibilityLabel([amount ?? store.tr("Sin dato"), alert.map { store.tr($0) }]
+                    .compactMap { $0 }.joined(separator: ", "))
             if let reference {
                 Text(reference + " " + nutrient.unit).font(.caption2).monospacedDigit()
                     .foregroundStyle(palette.text2)
@@ -2798,12 +2783,6 @@ private struct JournalSummary: View {
 
     @ViewBuilder
     private func nutrientDetail(_ s: JournalNutrient, showRanges: Bool, hideCoupled: Bool = false) -> some View {
-        if hasFood, s.coverage != .complete {
-            let coverage = store.tr(s.coverage == .unknown ? "Sin dato" : "Datos parciales")
-            let sodium = s.lowSodium ? " · \(store.tr("Sodio observado bajo el piso; faltan datos."))" : ""
-            Text(verbatim: "\(coverage)\(sodium)")
-                .font(.nutriSans(12)).foregroundStyle(palette.warn)
-        }
         if s.coupled && hasFood && !hideCoupled {
             Text(store.tr("Según energía")).font(.nutriSans(12)).foregroundStyle(palette.text2)
         }
@@ -2936,7 +2915,7 @@ private struct JournalSummary: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(store.tr(s.label)).font(.nutriSans(12)).foregroundStyle(palette.text3)
                 nutrientDetail(s, showRanges: ranges, hideCoupled: true)
-                if let label = s.statusLabel, !s.coupled, s.status != nil {
+                if s.coverage == .complete, let label = s.statusLabel, !s.coupled, s.status != nil {
                     Text(store.tr(label)).font(.nutriSans(10)).foregroundStyle(palette.text2)
                         .padding(.horizontal, 8).padding(.vertical, 2).background(tone.opacity(0.15), in: Capsule())
                 }

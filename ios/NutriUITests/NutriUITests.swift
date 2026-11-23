@@ -316,9 +316,11 @@ final class NutriUITests: XCTestCase {
         XCTAssertTrue(intake.isHittable, app.debugDescription)
         XCTAssertTrue(summary.isHittable)
         XCTAssertTrue(summary.label.contains("Energía"), summary.label)
-        for component in ["Sodio", "Potasio", "1500–2300 mg", "Parcial", "Cobertura incompleta"] {
+        for component in ["Sodio", "Potasio", "1500–2300 mg"] {
             XCTAssertTrue(summary.label.localizedCaseInsensitiveContains(component), summary.label)
         }
+        XCTAssertFalse(summary.label.localizedCaseInsensitiveContains("Cobertura incompleta"), summary.label)
+        XCTAssertFalse(summary.label.components(separatedBy: ", ").contains("Parcial"), summary.label)
         XCTAssertTrue(intake.label.contains("kcal"), intake.label)
         XCTAssertFalse(app.buttons["Opciones de registro"].exists)
         XCTAssertTrue(water.isHittable)

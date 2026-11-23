@@ -297,9 +297,6 @@ function SummaryCard({ view, cfg, onToggleView, onConfig, ...props }) {
         </div>
       </div>
       {view === 'objetivos' ? <GoalSummary cfg={cfg} {...props} /> : view === 'mini' ? <MiniGrid cfg={cfg} {...props} /> : <StateSummary cfg={cfg} {...props} />}
-      {props.hasFood && cfg.items.some((key) => !MACRO_META[key] && props.totals.__coverage?.[key] !== 'complete') && (
-        <p className="text-xs text-warn">{t('Faltan valores de nutrientes en uno o más registros, incluso agua simple; deja vacío lo desconocido, no captures 0.')}</p>
-      )}
       <BandGuide key={props.target?.id || 'none'} target={props.target} />
     </div>
   );
@@ -353,7 +350,6 @@ function NutrientDetail({ state, mode, showRanges, hasFood, hideCoupled = false 
   const diff = !met && hasFood && mode !== 'meta' ? deviation(state, mode) : null;
   return (
     <span className="text-xs text-text-2">
-      {coverage !== 'complete' && hasFood && <span className="block text-warn">{coverage === 'unknown' ? t('Sin dato') : t('Datos parciales')}{lowSodium ? ` · ${t('Sodio observado bajo el piso; faltan datos.')}` : ''}</span>}
       {status && !hideCoupled && (state.coupled
         ? <span>{status}</span>
         : <span className="sr-only">{status}</span>)}
@@ -432,7 +428,7 @@ function HeroRing({ state, mode, showRanges, hasFood, hasTarget }) {
       <div className="min-w-0">
         <p className="text-xs text-text-3">{t(meta.label)}</p>
         <NutrientDetail state={state} mode={mode} showRanges={showRanges} hasFood={hasFood} hideCoupled />
-        {hasFood && state.status && !state.coupled && <span className="inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] text-text-2" style={{ background: 'color-mix(in srgb, currentColor 15%, transparent)' }}>{statusText(state, hasFood)}</span>}
+        {hasFood && state.coverage === 'complete' && state.status && !state.coupled && <span className="inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] text-text-2" style={{ background: 'color-mix(in srgb, currentColor 15%, transparent)' }}>{statusText(state, hasFood)}</span>}
         {!tgt && !state.bound && <p className="text-xs text-text-3">{t('sin meta de')} {t(meta.label).toLowerCase()}</p>}
       </div>
     </div>
