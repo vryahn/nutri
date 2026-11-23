@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  acceptMcpClaims,
   assertValidMicros,
   assertNonNegative,
   assertValidPortions,
@@ -10,6 +11,23 @@ import {
   recipeResponse,
   mergeBounds,
 } from './mcp.js';
+
+describe('acceptMcpClaims', () => {
+  it('returns the subject of a permanent OAuth user', () => {
+    expect(acceptMcpClaims({ sub: 'user', client_id: 'agent', is_anonymous: false })).toBe('user');
+  });
+
+  it.each([
+    ['anonymous OAuth user', { sub: 'user', client_id: 'agent', is_anonymous: true }],
+    ['ordinary session', { sub: 'user' }],
+    ['empty client id', { sub: 'user', client_id: '' }],
+    ['non-string client id', { sub: 'user', client_id: 1 }],
+    ['missing subject', { client_id: 'agent' }],
+    ['missing payload', null],
+  ])('rejects %s', (_label, payload) => {
+    expect(acceptMcpClaims(payload)).toBeNull();
+  });
+});
 
 describe('assertValidMicros', () => {
   it('rejects keys outside MICROS and lists the valid ones', () => {

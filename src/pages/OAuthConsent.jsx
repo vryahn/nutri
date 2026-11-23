@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
-import { BadgeCheck, Mail, Phone, UserRound, ShieldCheck, Loader2, Check, AlertCircle } from 'lucide-react';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { BadgeCheck, Mail, Phone, UserRound, ArrowRight, Loader2, Check, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { t, useLang } from '../lib/i18n.js';
+import { MCP_CAPABILITIES } from '../lib/mcp.js';
 
 // Human-readable label per OIDC scope (Supabase reports openid/profile/email/phone).
 // A scope without an entry falls back to its raw string — what is requested is never hidden.
@@ -13,6 +14,14 @@ const SCOPE_META = {
   phone: { Icon: Phone, label: 'Tu teléfono', desc: 'Solo si tienes uno registrado' },
 };
 
+function redirectHost(uri) {
+  try {
+    return new URL(uri).host || uri;
+  } catch {
+    return uri;
+  }
+}
+
 // Consent screen for Supabase's OAuth 2.1 server (MCP connector).
 // Supabase redirects here with ?authorization_id=… (dashboard → Authentication →
 // OAuth Server → authorization_url_path). getAuthorizationDetails yields three outcomes:
@@ -20,6 +29,7 @@ const SCOPE_META = {
 // consent → follow it directly), or an error.
 export default function OAuthConsent() {
   useLang();
+  const navigate = useNavigate();
   const [params] = useSearchParams();
   const authorizationId = params.get('authorization_id');
   // Without authorization_id the page cannot do anything: that is the INITIAL state,
@@ -35,12 +45,17 @@ export default function OAuthConsent() {
     let cancelled = false;
     (async () => {
       try {
-        const [{ data, error: err }, { data: userData }] = await Promise.all([
-          supabase.auth.oauth.getAuthorizationDetails(authorizationId),
-          supabase.auth.getUser(),
-        ]);
+        const { data: userData, error: userError } = await supabase.auth.getUser();
         if (cancelled) return;
-        if (userData?.user) setAccount(userData.user);
+        if (userError || !userData?.user) throw userError || new Error(t('No se pudo cargar la solicitud de autorización.'));
+        if (userData.user.is_anonymous) {
+          setState('anonymous');
+          return;
+        }
+        setAccount(userData.user);
+
+        const { data, error: err } = await supabase.auth.oauth.getAuthorizationDetails(authorizationId);
+        if (cancelled) return;
         if (err) {
           setState('error');
           setError(err.message || t('No se pudo cargar la solicitud de autorización.'));
@@ -65,6 +80,20 @@ export default function OAuthConsent() {
       cancelled = true;
     };
   }, [authorizationId]);
+
+  async function switchAccount() {
+    setBusy(true);
+    setError('');
+    try {
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) throw signOutError;
+      const query = new URLSearchParams({ authorization_id: authorizationId });
+      navigate('/login', { state: { from: `/oauth/consent?${query}` }, replace: true });
+    } catch {
+      setError(t('No se pudo cerrar la sesión. Reintenta.'));
+      setBusy(false);
+    }
+  }
 
   async function decide(kind) {
     setBusy(true);
@@ -126,17 +155,23 @@ export default function OAuthConsent() {
           </div>
         )}
 
+        {state === 'anonymous' && (
+          <div className="flex flex-col gap-3 text-center">
+            <p className="text-sm text-text-2">{t('Los agentes de IA requieren una cuenta permanente.')}</p>
+            <button type="button" onClick={switchAccount} disabled={busy} className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60">
+              {t('Entrar con mi cuenta')}
+            </button>
+            {error && <p className="text-sm text-danger" role="alert">{error}</p>}
+          </div>
+        )}
+
         {state === 'consent' && details && (
           <>
             <div className="flex items-center justify-center gap-3 mb-5">
               <div className="w-14 h-14 rounded-2xl bg-surface-2 border border-border grid place-items-center font-display text-xl text-text">
                 {clientInitial}
               </div>
-              <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-border" />
-                <ShieldCheck className="w-4 h-4 text-accent" />
-                <span className="w-1.5 h-1.5 rounded-full bg-border" />
-              </div>
+              <ArrowRight className="w-4 h-4 text-text-2" aria-hidden="true" />
               <div className="w-14 h-14 rounded-2xl bg-accent-deep grid place-items-center">
                 <span className="font-display text-xl text-on-accent">
                   n<span className="opacity-70">.</span>
@@ -144,12 +179,14 @@ export default function OAuthConsent() {
               </div>
             </div>
 
-            <h1 className="text-center text-base font-medium text-text leading-snug">
-              {t('%n quiere conectarse a tu cuenta').replace('%n', clientName)}
+            <h1 className="break-words text-center text-base font-medium text-text leading-snug">
+              {t('%n quiere conectarse a tu cuenta').replace('%n', () => clientName)}
             </h1>
-            <p className="text-center text-sm text-text-2 mt-1.5">
-              {t('Podrá registrar y consultar tu información de nutri en tu nombre.')}
-            </p>
+            {details.redirect_uri && (
+              <p className="break-all text-center text-sm text-text-2 mt-1.5">
+                {t('Te devolverá a: %host').replace('%host', () => redirectHost(details.redirect_uri))}
+              </p>
+            )}
 
             {account?.email && (
               <div className="flex items-center gap-2.5 mt-5 px-3 py-2.5 rounded-xl bg-surface-2">
@@ -186,6 +223,16 @@ export default function OAuthConsent() {
               </div>
             )}
 
+            <div className="mt-5 space-y-2">
+              <h2 className="text-sm font-medium">{t('Las herramientas de Nutri permiten:')}</h2>
+              <ul className="list-disc space-y-1 pl-5 text-sm text-text-2">
+                {MCP_CAPABILITIES.map((capability) => <li key={capability}>{t(capability)}</li>)}
+              </ul>
+              <p className="rounded-xl border border-warn p-3 text-sm">
+                {t('Aprueba solo si tú iniciaste esta conexión desde tu agente. La autorización da acceso a tu cuenta como si fueras tú.')}
+              </p>
+            </div>
+
             <div className="flex flex-col gap-2.5 mt-6">
               <button
                 onClick={() => decide('approve')}
@@ -193,7 +240,7 @@ export default function OAuthConsent() {
                 className="min-h-[44px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                {t('Aprobar acceso')}
+                {t('Permitir')}
               </button>
               <button
                 onClick={() => decide('deny')}
@@ -204,8 +251,7 @@ export default function OAuthConsent() {
               </button>
             </div>
 
-            <p className="flex items-center justify-center gap-1.5 mt-5 text-[11px] text-text-3 text-center">
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+            <p className="mt-5 text-[11px] text-text-3 text-center">
               {t('Podrás revocar este acceso cuando quieras.')}
             </p>
           </>

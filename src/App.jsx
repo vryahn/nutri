@@ -13,12 +13,13 @@ import UserMenu from './components/UserMenu.jsx';
 import Login from './pages/Login.jsx';
 import Today from './pages/Today.jsx';
 
-// Today stays eager (main route); the rest is only downloaded when its tab is opened.
+// Today stays eager (main route); the other pages are lazy.
 const Foods = lazy(() => import('./pages/Foods.jsx'));
 const Recipes = lazy(() => import('./pages/Recipes.jsx'));
 const Targets = lazy(() => import('./pages/Targets.jsx'));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const Body = lazy(() => import('./pages/Body.jsx'));
+const Agents = lazy(() => import('./pages/Agents.jsx'));
 const OAuthConsent = lazy(() => import('./pages/OAuthConsent.jsx'));
 
 const PageFallback = <PageSkeleton />;
@@ -140,7 +141,7 @@ function Sidebar({ menuActions, tab, onAdd }) {
       </nav>
 
       <div className="flex flex-col gap-1 pt-2 border-t border-border">
-        <button
+        {tab && <button
           type="button"
           onClick={onAdd}
           disabled={!onAdd}
@@ -148,7 +149,7 @@ function Sidebar({ menuActions, tab, onAdd }) {
         >
           <Plus size={18} aria-hidden="true" />
           {t(tab.add)}
-        </button>
+        </button>}
         <MoreOptions
           actions={menuActions}
           placement="right"
@@ -166,7 +167,7 @@ function Sidebar({ menuActions, tab, onAdd }) {
 }
 
 function MobileNavigation({ tab, onAdd }) {
-  const action = t(tab.add);
+  const action = tab && t(tab.add);
 
   return (
     <nav
@@ -188,7 +189,7 @@ function MobileNavigation({ tab, onAdd }) {
           <span className="sr-only min-[360px]:not-sr-only min-[360px]:truncate max-w-full text-[10px] leading-none">{t(label)}</span>
         </NavLink>
       ))}
-      <button
+      {tab && <button
         type="button"
         aria-label={action}
         title={action}
@@ -197,7 +198,7 @@ function MobileNavigation({ tab, onAdd }) {
         className="pointer-events-auto shrink-0 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-on-accent border border-border press disabled:opacity-50 dock-action"
       >
         <Plus size={21} aria-hidden="true" />
-      </button>
+      </button>}
     </nav>
   );
 }
@@ -208,9 +209,9 @@ function Layout({ children }) {
   const [sectionAdd, setSectionAdd] = useState(null);
   const location = useLocation();
   const pathname = location.pathname.toLowerCase().replace(/\/+$/, '') || '/';
-  const tab = TABS.find(({ to }) => to === pathname) ?? TABS[0];
-  const onAdd = sectionAdd?.path === tab.to ? sectionAdd.run : undefined;
-  const isDashboard = tab.to === '/dashboard';
+  const tab = TABS.find(({ to }) => to === pathname);
+  const onAdd = tab && sectionAdd?.path === tab.to ? sectionAdd.run : undefined;
+  const isDashboard = tab?.to === '/dashboard';
 
   useEffect(() => subscribeSectionMenu(setMenuActions), []);
 
@@ -260,8 +261,7 @@ function Layout({ children }) {
   );
 }
 
-// Routes outside the tab bar (e.g. /oauth/consent) do not get Layout: they are
-// single-screen, with no nav. The caller decides `withLayout` based on the route.
+// A standalone screen such as /oauth/consent can opt out of Layout and navigation.
 function RequireAuth({ session, children, withLayout = true }) {
   const location = useLocation();
   if (session === undefined) return null;
@@ -367,11 +367,21 @@ export default function App() {
         }
       />
       <Route
+        path="/agentes"
+        element={
+          <RequireAuth session={session}>
+            <Suspense fallback={PageFallback}>
+              <Agents key={session?.user?.id} />
+            </Suspense>
+          </RequireAuth>
+        }
+      />
+      <Route
         path="/oauth/consent"
         element={
           <RequireAuth session={session} withLayout={false}>
             <Suspense fallback={PageFallback}>
-              <OAuthConsent />
+              <OAuthConsent key={`${session?.user?.id}:${location.search}`} />
             </Suspense>
           </RequireAuth>
         }

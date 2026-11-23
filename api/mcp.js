@@ -9,6 +9,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { z } from 'zod';
 import { resolveTarget } from '../src/lib/domain.js';
 import {
+  acceptMcpClaims,
   assertValidMicros,
   assertNonNegative,
   assertValidPortions,
@@ -35,9 +36,8 @@ const RESOURCE_METADATA_URL = 'https://nutri.vryahn.com/.well-known/oauth-protec
 
 const JWKS = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks.json`));
 
-// Returns the JWT's uid (`sub` claim) if valid, or null. Fixed iss/aud: tokens
-// from the OAuth server and those from the password grant share both claims (see the
-// Supabase oauth-server/token-security docs: default aud = 'authenticated').
+// Supabase does not support per-resource audiences. OAuth and login JWTs share
+// aud=authenticated, so require client_id to filter out ordinary session tokens.
 async function verifyToken(authHeader) {
   if (!authHeader?.startsWith('Bearer ')) return null;
   try {
@@ -46,7 +46,7 @@ async function verifyToken(authHeader) {
       audience: 'authenticated',
       algorithms: ['ES256'],
     });
-    return payload.sub || null;
+    return acceptMcpClaims(payload);
   } catch {
     return null;
   }

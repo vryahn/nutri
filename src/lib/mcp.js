@@ -16,6 +16,19 @@ import {
 export const MICRO_KEYS = new Set(MICROS.map((m) => m.key));
 export const BODY_METRIC_KEYS = new Set(BODY_METRICS.map((m) => m.key));
 
+export const MCP_CAPABILITIES = [
+  'Leer tu bitácora, metas, medidas (incluidas notas) y catálogo',
+  'Registrar y borrar consumos',
+  'Crear y editar alimentos, y crear recetas',
+  'Fijar mín/máx de una fase completa o de un día',
+  'Registrar medidas',
+];
+
+export function acceptMcpClaims(payload) {
+  if (!payload || payload.is_anonymous === true || typeof payload.client_id !== 'string' || !payload.client_id) return null;
+  return typeof payload.sub === 'string' && payload.sub ? payload.sub : null;
+}
+
 // HARD validation: micro keys outside MICROS, and negative values, block the save.
 export function assertValidMicros(micros) {
   if (!micros) return;

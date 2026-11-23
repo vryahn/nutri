@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Monitor, Sun, Moon, User, Globe, SlidersHorizontal, Wand2, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Monitor, Sun, Moon, User, Globe, SlidersHorizontal, Wand2, LogOut, Bot } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { useOutsideClose } from '../lib/useOutsideClose.js';
 import { MODES, getMode, setMode } from '../lib/theme.js';
@@ -29,6 +30,7 @@ export function Avatar({ url, size = 34, className = '' }) {
 // full-screen, so they render through a portal to <body> — outside that ancestor.
 export default function UserMenu({ placement = 'bottom', className, showLabel = false }) {
   useLang();
+  const navigate = useNavigate();
   const profile = useProfile();
   const [open, setOpen] = useState(false);
   const [sheet, setSheet] = useState(null); // 'perfil' | 'idioma' | 'config' | null
@@ -101,6 +103,7 @@ export default function UserMenu({ placement = 'bottom', className, showLabel = 
           <MenuItem icon={Globe} label={t('Idioma y unidades')} onClick={() => openSheet('idioma')} />
           <MenuItem icon={SlidersHorizontal} label={t('Configuración')} onClick={() => openSheet('config')} />
           <MenuItem icon={Wand2} label={t('Asistente de metas')} onClick={() => openSheet('wizard')} />
+          <MenuItem icon={Bot} label={t('Conectar agente de IA')} onClick={() => { setOpen(false); navigate('/agentes'); }} />
           <div className="h-px bg-border mx-1 my-1" />
           <MenuItem icon={LogOut} label={t('Cerrar sesión')} danger onClick={() => supabase.auth.signOut()} />
         </div>
@@ -121,7 +124,7 @@ function MenuItem({ icon: Icon, label, onClick, danger }) {
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-sm press text-left hover:bg-surface-2 ${danger ? 'text-danger' : 'text-text'}`}
+      className={`flex min-h-[44px] w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-sm press text-left hover:bg-surface-2 ${danger ? 'text-danger' : 'text-text'}`}
     >
       <Icon size={19} className={danger ? 'text-danger' : 'text-text-2'} />
       <span>{label}</span>
