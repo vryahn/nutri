@@ -70,6 +70,40 @@ final class NutriUITests: XCTestCase {
     }
 
     @MainActor
+    func testNativeExpandedDockKeepsAllDestinationsAndRealAction() throws {
+        guard #available(iOS 27, *) else { throw XCTSkip("Native selection probe requires iOS 27.") }
+        let app = launch(demo: true, longJournal: true)
+        let today = app.tabBars.buttons["Hoy"].firstMatch
+        XCTAssertTrue(today.waitForExistence(timeout: 10), app.debugDescription)
+        capture("Nativo cinco pestañas más acción")
+        let selected = app.tabBars.buttons["Progreso"].firstMatch
+        let add = app.buttons["today.add"]
+        for title in ["Hoy", "Alimentos", "Recetas", "Objetivos", "Progreso"] {
+            XCTAssertTrue(app.tabBars.buttons[title].firstMatch.isHittable, title + app.debugDescription)
+        }
+        XCTAssertTrue(add.isHittable, app.debugDescription)
+        XCTAssertEqual(today.frame.midY, add.frame.midY, accuracy: 2)
+        XCTAssertEqual(selected.frame.midY, add.frame.midY, accuracy: 2)
+        XCTAssertLessThanOrEqual(selected.frame.maxX, add.frame.minX)
+        XCTAssertFalse(app.tabBars.buttons["Más"].exists)
+        XCTAssertEqual(app.tabBars.count, 1)
+        XCTAssertEqual(app.tabBars.buttons.count, 5)
+        selected.tap()
+        XCTAssertTrue(app.segmentedControls.buttons["Dashboard"].waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(selected.isSelected, app.debugDescription)
+        capture("Nativo selección Progreso")
+        today.tap()
+        let addContext = app.buttons["today.add"]
+        addContext.tap()
+        XCTAssertTrue(app.textFields["entryEditor.search"].waitForExistence(timeout: 5), app.debugDescription)
+        app.buttons["sheet.close"].tap()
+        XCTAssertTrue(today.isSelected, app.debugDescription)
+        app.scrollViews.firstMatch.swipeUp(velocity: .slow)
+        XCTAssertTrue(app.buttons["context.expand"].waitForExistence(timeout: 5), app.debugDescription)
+        capture("Nativo salida a compacto")
+    }
+
+    @MainActor
     func testContextDockScrollsAndKeepsBothActionsReachable() throws {
         guard #available(iOS 18, *) else { throw XCTSkip("Scroll-driven dock requires iOS 18.") }
         let app = launch(demo: true, longJournal: true)

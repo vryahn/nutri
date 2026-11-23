@@ -922,6 +922,12 @@ private struct PhoneContextDock: View {
                     compactRow(showActionTitle: true)
                     compactRow(showActionTitle: false)
                 }
+            } else if #available(iOS 27, *) {
+                HStack(spacing: 4) {
+                    nativeExpandedTabs
+                    add(showTitle: false)
+                }
+                .frame(maxWidth: 560)
             } else {
                 HStack(spacing: 0) {
                     expandedTabs
@@ -945,6 +951,18 @@ private struct PhoneContextDock: View {
                 .accessibilityHidden(true)
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: compact)
+    }
+
+    @available(iOS 27, *)
+    private var nativeExpandedTabs: some View {
+        // Compensate for the native floating bar's inset within its bounded controller.
+        let floatingInset: CGFloat = 21
+        return NativePhoneDockTabs(items: Self.tabs.map { ($0, tabTitle($0), tabSymbol($0)) },
+                                   selection: selection, select: select)
+            .id(store.lang)
+            .frame(height: 62)
+            .padding(.horizontal, -floatingInset)
+            .offset(y: floatingInset)
     }
 
     private var expandedTabs: some View {
@@ -1041,14 +1059,66 @@ private struct PhoneContextDock: View {
     private func tabTitle(_ item: Module) -> String { store.tr(item == .dashboard ? "Progreso" : item.rawValue) }
 
     private func tabIcon(_ item: Module) -> some View {
-        let symbol = switch item {
+        Image(systemName: tabSymbol(item)).font(.system(size: 18, weight: .medium))
+    }
+
+    private func tabSymbol(_ item: Module) -> String {
+        switch item {
         case .today: "calendar"
         case .foods: "carrot"
         case .recipes: "book"
         case .targets: "target"
         case .dashboard, .body: "chart.bar.xaxis"
         }
-        return Image(systemName: symbol).font(.system(size: 18, weight: .medium))
+    }
+}
+
+@available(iOS 27, *)
+private struct NativePhoneDockTabs: UIViewControllerRepresentable {
+    let items: [(Module, String, String)]
+    let selection: Module
+    let select: (Module) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(select: select) }
+
+    func makeUIViewController(context: Context) -> UITabBarController {
+        let controller = UITabBarController()
+        controller.mode = .tabBar
+        #if compiler(>=6.2)
+        controller.tabBarMinimizeBehavior = .never
+        #endif
+        controller.view.backgroundColor = .clear
+        controller.view.isOpaque = false
+        controller.tabBar.tintColor = UIColor(nutriAccent)
+        controller.tabs = items.map { module, title, symbol in
+            let item = UITab(title: title, image: UIImage(systemName: symbol), identifier: module.rawValue) { _ in
+                let panel = UIViewController()
+                panel.view.backgroundColor = .clear
+                panel.view.isOpaque = false
+                return panel
+            }
+            item.accessibilityIdentifier = module.accessibilityID
+            return item
+        }
+        controller.delegate = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ controller: UITabBarController, context: Context) {
+        context.coordinator.select = select
+        if controller.selectedTab?.identifier != selection.rawValue {
+            controller.selectedTab = controller.tabs.first { $0.identifier == selection.rawValue }
+        }
+    }
+
+    final class Coordinator: NSObject, UITabBarControllerDelegate {
+        var select: (Module) -> Void
+
+        init(select: @escaping (Module) -> Void) { self.select = select }
+
+        func tabBarController(_ controller: UITabBarController, didSelectTab selectedTab: UITab, previousTab: UITab?) {
+            if let next = Module(rawValue: selectedTab.identifier) { select(next) }
+        }
     }
 }
 
