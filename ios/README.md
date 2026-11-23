@@ -28,11 +28,11 @@ Para comprobar la sincronización durante la beta, registra en tu cuenta un vaso
 
 ## Gestos y acciones en iPhone
 
-Con datos locales, desplaza Hoy hacia el final de la lista. En iOS 18 o posterior, comprueba que queden **Hoy** y **Añadir registro**, y que el último registro pueda quedar por encima de los controles. Toca **Hoy** para reabrir la barra en la misma posición. Cambia de pestaña y prueba el **+** de cada módulo. En **Progreso**, comprueba que Dashboard abra una gráfica y Medidas enfoque el peso del día visible. Repite con Reducir transparencia activado.
+Con datos locales, desplaza Hoy hacia el final de la lista. Comprueba que las cinco pestañas y **Añadir registro** sigan visibles y que el último registro pueda desplazarse por encima de los controles. Cambia de pestaña y prueba el **+** de cada módulo. En **Progreso**, comprueba que Dashboard abra una gráfica y Medidas enfoque el peso del día visible. Repite con Reducir transparencia activado.
 
 | Pantalla | Cómo probarla con los datos locales |
 | --- | --- |
-| Hoy | Abre el detalle desde el resumen compacto o añade un vaso desde **Agua**. Toca **Añadir registro** y comprueba que puedes registrar con el teclado decimal visible. Toca un registro para editarlo, desliza hacia la izquierda para borrarlo o mantén pulsado para moverlo a otra comida. |
+| Hoy | Consulta sodio y potasio en el resumen compacto y toca el resumen para ampliar. Añade un vaso desde **Agua** o toca **Añadir registro** y registra con el teclado decimal visible. Toca una tarjeta para editarla o usar **Borrar**. También puedes deslizarla hacia la izquierda para borrarla o mantenerla pulsada para moverla a otra comida. |
 | Alimentos y Recetas | Toca una fila o tarjeta para editar. Un deslizamiento corto se cancela. En Alimentos, usa **Filtros y acciones** para importar un CSV y confirma las filas válidas con el teclado abierto. En Recetas, busca o pega ingredientes y abre de nuevo la receta guardada. |
 | Objetivos | Desliza una fase programada para abrir su confirmación de borrado. Desliza una fecha específica para borrarla y toca **Deshacer** para recuperarla. En las reglas puedes elegir y quitar la fecha de pausa desde el calendario. |
 | Progreso · Dashboard | Borra un rango guardado y toca **Deshacer**. En la huella nutricional, toca un eje para ver su porcentaje. Las explicaciones de cifras parciales y opciones deshabilitadas también se abren al tocar. |
@@ -44,3 +44,5 @@ Las cantidades, medidas y porcentajes usan teclado decimal. Los días de una reg
 La compilación 7 cubrió los 31 casos de interfaz en un iPhone Air físico con datos sintéticos, entre la suite completa y las repeticiones focalizadas. Se verificaron los dos estados de la barra, las seis acciones y el acceso al último registro y a **Guardar** en Recetas.
 
 La compilación 6 se probó el 21 de noviembre de 2026 en un iPhone Air con datos sintéticos. En ejecuciones completas y focalizadas pasaron los 29 casos de interfaz. La revisión en el dispositivo confirmó dos registros visibles al abrir Hoy, la barra de pestañas reducida al desplazar, texto de accesibilidad XXXL y **Registrar**, **Guardar** y **Listo** visibles por encima del teclado en el formulario correspondiente. El flujo de CI ejecuta la suite en el simulador de 375 puntos. [Pruebas](NutriUITests/NutriUITests.swift) · [Flujo de CI](../.github/workflows/ios.yml)
+
+La compilación 10 pasó 13 pruebas de interfaz con datos sintéticos en un iPhone Air con iOS 27.2.1. La revisión cubrió el resumen de sodio y potasio, el cero registrado y el valor desconocido, la barra fija al desplazar, el acceso al último registro, el texto grande, el teclado y los gestos de edición, borrado, deshacer y arrastre. La ejecución de 375 puntos con la barra SwiftUI corresponde al simulador de CI.

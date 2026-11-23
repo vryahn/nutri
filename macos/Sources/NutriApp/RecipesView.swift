@@ -130,7 +130,7 @@ struct RecipesView: View {
             } else if let form {
                 ScrollView { editor(form).padding(16) }
                     .scrollDismissesKeyboard(.immediately)
-                    .nutriDockScrollable(observesDirection: false)
+                    .nutriDockScrollable()
             } else {
                 ScrollView { listing.padding(16) }
                     .scrollDismissesKeyboard(.interactively)

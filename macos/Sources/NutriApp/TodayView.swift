@@ -892,7 +892,7 @@ struct TodayView: View {
         #endif
         return HStack(spacing: 12) {
             Button { editor = .entry(row, label, nil, nil) } label: {
-                entryLayout {
+                HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
                         (Text(row.text("item")).font(.nutriSans(16, weight: .medium))
                          + Text(row.text("brand").isEmpty ? "" : "  " + row.text("brand"))
@@ -900,34 +900,38 @@ struct TodayView: View {
                             .lineLimit(2)
                         NutriFlow(spacing: 6, lineSpacing: 2) {
                             Text(weight(row.number("grams") ?? 0))
-                            ForEach(macroChips(row), id: \.key) { chip in
-                                Text("|").foregroundStyle(palette.text3)
+                            ForEach(macroChips(row, includeMinerals: false), id: \.key) { chip in
+                                Text("|").foregroundStyle(palette.text3).accessibilityHidden(true)
                                 Text(chip.text)
                             }
                         }
                         .font(.nutriMono(14)).foregroundStyle(palette.text2)
-                    }
-                    #if os(macOS)
-                    Spacer(minLength: 0)
-                    #endif
-                    HStack(spacing: 6) {
-                        if let sodium = Domain.value(row, "sodio_mg"), sodium >= Domain.sodiumHigh {
-                            foodBadge("Na", sodium, color: palette.danger, help: "Alto en sodio")
-                        }
-                        if let potassium = Domain.value(row, "potasio_mg"), potassium >= Domain.potassiumHigh {
-                            foodBadge("K", potassium, color: palette.warn, help: "Alto en potasio")
-                        }
-                        Group {
-                            if row["_pending"]?.bool == true {
-                                NutriIcon("cloud-off", size: 14).foregroundStyle(palette.text3)
-                                    .accessibilityLabel(store.tr("Pendiente de sincronizar"))
+                        NutriFlow(spacing: 8, lineSpacing: 2) {
+                            intakeMineral(row, "sodio_mg", symbol: "Na", name: "Sodio",
+                                          threshold: Domain.sodiumHigh, alert: "Alto en sodio", tint: palette.danger)
+                            intakeMineral(row, "potasio_mg", symbol: "K", name: "Potasio",
+                                          threshold: Domain.potassiumHigh, alert: "Alto en potasio", tint: palette.warn)
+                            if desktop, Domain.value(row, "magnesio_mg") != nil {
+                                intakeMineral(row, "magnesio_mg", symbol: "Mg", name: "Magnesio")
                             }
                         }
-                        .frame(width: 14, height: 14)
-                        Text(row.number("kcal").map { journalNumber($0) + " kcal" } ?? "— kcal")
-                            .font(.nutriMono(16)).foregroundStyle(palette.text2)
-                            .lineLimit(1)
+                        .font(.nutriMono(12))
                     }
+                    Spacer(minLength: 0)
+                    if row["_pending"]?.bool == true {
+                        NutriIcon("cloud-off", size: 14).foregroundStyle(palette.text3)
+                            .accessibilityLabel(store.tr("Pendiente de sincronizar"))
+                    }
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text(row.number("kcal").map { journalNumber($0) } ?? "—")
+                            .font(.nutriMono(16, weight: .medium))
+                        Text("kcal").font(.nutriSans(10))
+                    }
+                    .foregroundStyle(palette.text2)
+                    .fixedSize()
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(row.number("kcal").map { journalNumber($0) + " kcal" }
+                                        ?? store.tr("Energía") + ", " + store.tr("Sin dato"))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }
@@ -938,14 +942,6 @@ struct TodayView: View {
             .highPriorityGesture(entryDragGesture(id), including: row["_pending"]?.bool == true || busy ? .subviews : .all)
             #endif
             .accessibilityIdentifier("today.intake.\(id)")
-            #if os(iOS)
-            Menu {
-                Button(store.tr("Editar")) { editor = .entry(row, label, nil, nil) }
-                Button(store.tr("Borrar"), role: .destructive) { remove(row) }
-            } label: {
-                NutriIcon("ellipsis", size: 18).frame(width: 44, height: 44).contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityLabel(store.tr("Opciones de registro"))
-            #endif
         }
         .padding(12)
         .background(selected ? palette.surface2 : palette.surface, in: RoundedRectangle(cornerRadius: 16))
@@ -1035,24 +1031,32 @@ struct TodayView: View {
     }
     #endif
 
-    private var entryLayout: AnyLayout {
-        #if os(iOS)
-        AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
-        #else
-        AnyLayout(HStackLayout(spacing: 12))
-        #endif
+    private func intakeMineral(_ row: Record, _ key: String, symbol: String, name: String,
+                               threshold: Double? = nil, alert: String? = nil, tint: Color? = nil) -> some View {
+        let amount = Domain.value(row, key)
+        let text = amount.map { journalNumber($0, digits: 0) + " mg" }
+        let warning = amount.flatMap { value in threshold.flatMap { value >= $0 ? alert : nil } }
+        let partial = amount != nil && Domain.coverage(row, key) == .partial
+        let color = warning == nil ? nil : tint
+        let spoken = [store.tr(name), text ?? store.tr("Sin dato"),
+                      partial ? store.tr("Datos parciales") : nil, warning.map { store.tr($0) }]
+            .compactMap { $0 }.joined(separator: ", ")
+        return Text(symbol + " " + (text ?? "—") + (partial ? " ⚠" : ""))
+            .foregroundStyle(color ?? palette.text2)
+            .padding(.horizontal, color == nil ? 0 : 4)
+            .background {
+                if let color {
+                    RoundedRectangle(cornerRadius: 4).fill(palette.surface)
+                        .overlay { RoundedRectangle(cornerRadius: 4).fill(color.opacity(0.06)) }
+                }
+            }
+            .accessibilityLabel(spoken)
+            .help(spoken)
     }
 
-    private func foodBadge(_ symbol: String, _ value: Double, color: Color, help: String) -> some View {
-        Text(symbol + " " + journalNumber(value, digits: 0)).font(.nutriSans(10, weight: .medium))
-            .foregroundStyle(color).padding(.horizontal, 6).padding(.vertical, 2)
-            .background(color.opacity(0.2), in: RoundedRectangle(cornerRadius: 6))
-            .help(store.tr(help))
-    }
-
-    private func macroChips(_ row: Record) -> [(key: String, text: String)] {
+    private func macroChips(_ row: Record, includeMinerals: Bool = true) -> [(key: String, text: String)] {
         var specs = [("protein_g","P"), ("carbs_g","C"), ("fat_g",store.tr("G"))]
-        if desktop { specs += [("sodio_mg","Na"), ("potasio_mg","K"), ("magnesio_mg","Mg")] }
+        if desktop && includeMinerals { specs += [("sodio_mg","Na"), ("potasio_mg","K"), ("magnesio_mg","Mg")] }
         return specs.compactMap { key, name in
             guard let value = Domain.value(row, key), value > 0 else { return nil }
             return (key, name + " " + journalNumber(value, digits: Domain.macroKeys.contains(key) ? 1 : 0))
@@ -2487,8 +2491,8 @@ private struct JournalSummary: View {
         let macroLayout = dynamicTypeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
             : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
-        let sodium = state("sodio_mg")
-        let incomplete = hasFood && (nutrients.contains { $0.coverage != .complete } || sodium?.coverage != .complete)
+        let minerals = ["sodio_mg", "potasio_mg"].compactMap(state)
+        let incomplete = hasFood && (nutrients + minerals).contains { $0.coverage != .complete }
         return Button(action: customize) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top) {
@@ -2506,13 +2510,13 @@ private struct JournalSummary: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-                if let sodium, sodium.lowSodium || sodium.highSodium {
-                    let description = sodium.lowSodium
-                        ? (sodium.coverage == .complete ? "Sodio bajo" : "Sodio parcial bajo el piso")
-                        : "Sodio alto"
-                    Text(store.tr(description) + " · " + sodium.amount(store) + " " + sodium.unit)
-                        .foregroundStyle(palette.danger)
-                        .font(.caption.weight(.semibold))
+                Rectangle().fill(palette.border).frame(height: 1)
+                    .accessibilityHidden(true)
+                macroLayout {
+                    ForEach(minerals) { nutrient in
+                        compactMineral(nutrient)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 if incomplete {
                     Label(store.tr("Cobertura incompleta de nutrientes"), systemImage: "exclamationmark.triangle")
@@ -2529,6 +2533,47 @@ private struct JournalSummary: View {
         .nutriCard(radius: 12)
         .accessibilityHint(store.tr("Ver resumen"))
         .accessibilityIdentifier("today.summary")
+    }
+
+    private func compactMineral(_ nutrient: JournalNutrient) -> some View {
+        let bounds = nutrient.bounds
+        let reference: String? = if let point = bounds.min, bounds.max == point {
+            store.tr("Meta") + " " + journalNumber(point, digits: nutrient.decimals)
+        } else if nutrient.id != "sodio_mg", !nutrient.hasExplicit, let target = nutrient.target {
+            store.tr("Meta") + " " + journalNumber(target, digits: nutrient.decimals)
+        } else if bounds.min != nil || bounds.max != nil {
+            rangeText(bounds.min, bounds.max, digits: nutrient.decimals)
+        } else { nil }
+        let amount = nutrient.value.map { journalNumber($0, digits: nutrient.decimals) + " " + nutrient.unit }
+        let alert: String? = if nutrient.lowSodium {
+            nutrient.coverage == .complete ? "Sodio bajo" : "Sodio parcial bajo el piso"
+        } else if nutrient.highSodium { "Sodio alto" } else { nil }
+        let color = alert != nil || nutrient.status == .danger ? palette.danger
+            : nutrient.status == .warn ? palette.warn
+            : amount == nil ? palette.text3 : palette.text
+        return VStack(alignment: .leading, spacing: 1) {
+            Text(store.tr(nutrient.label)).font(.caption).foregroundStyle(palette.text2)
+            NutriFlow(spacing: 4, lineSpacing: 1) {
+                Text(amount ?? "—")
+                    .font(.footnote.weight(.semibold)).monospacedDigit()
+                    .foregroundStyle(color)
+                    .padding(.horizontal, alert == nil ? 0 : 4)
+                    .background {
+                        if alert != nil { Capsule().fill(palette.danger.opacity(0.06)) }
+                    }
+                    .accessibilityLabel([amount ?? store.tr("Sin dato"), alert.map { store.tr($0) }]
+                        .compactMap { $0 }.joined(separator: ", "))
+                if nutrient.coverage == .partial {
+                    Text(store.tr("Parcial")).font(.caption2).foregroundStyle(palette.warn)
+                }
+            }
+            if let reference {
+                Text(reference + " " + nutrient.unit).font(.caption2).monospacedDigit()
+                    .foregroundStyle(palette.text2)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
     }
 
     private func compactNutrient(_ nutrient: JournalNutrient, label: String, prominent: Bool = false) -> some View {

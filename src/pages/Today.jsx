@@ -1868,8 +1868,11 @@ function SwipeCard({ entry: e, labelId, editing, onEdit, onDelete }) {
 
 // Inner content of a card, shared between SwipeCard and the DragOverlay ghost.
 function CardBody({ entry: e }) {
-  const highNa = Number(e.micros?.sodio_mg || 0) >= SODIUM_HIGH_MG;
-  const highK = Number(e.micros?.potasio_mg || 0) >= POTASSIUM_HIGH_MG;
+  const minerals = [
+    { key: 'sodio_mg', symbol: 'Na', name: 'Sodio', threshold: SODIUM_HIGH_MG, warning: 'Alto en sodio', tone: 'bg-[color-mix(in_srgb,var(--danger)_6%,var(--surface))] text-danger' },
+    { key: 'potasio_mg', symbol: 'K', name: 'Potasio', threshold: POTASSIUM_HIGH_MG, warning: 'Alto en potasio', tone: 'bg-[color-mix(in_srgb,var(--warn)_6%,var(--surface))] text-warn' },
+    { key: 'magnesio_mg', symbol: 'Mg', name: 'Magnesio', desktop: true },
+  ];
   return (
     <>
       <div className="min-w-0">
@@ -1879,24 +1882,31 @@ function CardBody({ entry: e }) {
           {Number(e.protein_g) > 0 && <><span className="sep">|</span><span>P {round(Number(e.protein_g), 1)}</span></>}
           {Number(e.carbs_g) > 0 && <><span className="sep">|</span><span>C {round(Number(e.carbs_g), 1)}</span></>}
           {Number(e.fat_g) > 0 && <><span className="sep">|</span><span>{t('G')} {round(Number(e.fat_g), 1)}</span></>}
-          {Number(e.micros?.sodio_mg) > 0 && <><span className="sep hidden lg:inline">|</span><span className="hidden lg:inline">Na {round(Number(e.micros.sodio_mg), 0)}</span></>}
-          {Number(e.micros?.potasio_mg) > 0 && <><span className="sep hidden lg:inline">|</span><span className="hidden lg:inline">K {round(Number(e.micros.potasio_mg), 0)}</span></>}
-          {Number(e.micros?.magnesio_mg) > 0 && <><span className="sep hidden lg:inline">|</span><span className="hidden lg:inline">Mg {round(Number(e.micros.magnesio_mg), 0)}</span></>}
+        </div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono tabular-nums text-xs text-text-2">
+          {minerals.map(({ key, symbol, name, threshold, warning, tone, desktop }) => {
+            const value = e.micros?.[key];
+            if (desktop && value == null) return null;
+            const amount = value == null ? null : `${round(Number(value), 0)} mg`;
+            const partial = amount != null && microCoverage(e, key) === 'partial';
+            const alert = threshold != null && value != null && Number(value) >= threshold ? t(warning) : null;
+            const spoken = [t(name), amount ?? t('Sin dato'), partial && t('Datos parciales'), alert].filter(Boolean).join(', ');
+            return (
+              <span key={key} title={spoken} className={`${desktop ? 'hidden lg:inline ' : ''}${alert ? `rounded px-1 ${tone}` : ''}`}>
+                <span aria-hidden="true">{symbol} {amount ?? '—'}{partial && ' ⚠'}</span>
+                <span className="sr-only">{spoken}</span>
+              </span>
+            );
+          })}
         </div>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
-        {highNa && (
-          <span title={t('Alto en sodio')} className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-danger/20 text-danger">
-            Na {round(Number(e.micros.sodio_mg), 0)}
-          </span>
-        )}
-        {highK && (
-          <span title={t('Alto en potasio')} className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-warn/20 text-warn">
-            K {round(Number(e.micros.potasio_mg), 0)}
-          </span>
-        )}
         {e._pending && <CloudOff size={14} className="text-text-3 shrink-0" aria-label={t('Pendiente de sincronizar')} />}
-        <span className="font-mono tabular-nums text-text-2">{e.kcal == null ? '—' : e.kcal} kcal</span>
+        <div className="flex flex-col items-end text-text-2 leading-tight">
+          {e.kcal == null && <span className="sr-only">{t('Energía')}, {t('Sin dato')}</span>}
+          <span className="font-mono tabular-nums font-medium" aria-hidden={e.kcal == null}>{e.kcal ?? '—'}</span>
+          <span className="text-[10px]" aria-hidden={e.kcal == null}>kcal</span>
+        </div>
       </div>
     </>
   );

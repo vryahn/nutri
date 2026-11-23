@@ -128,34 +128,6 @@ input, textarea, select, [contenteditable] {
 
 .dock-action { background: var(--dock-action); }
 
-.dock-glass {
-  background: color-mix(in srgb, var(--surface) 89%, transparent);
-  backdrop-filter: blur(16px) saturate(1.25);
-  -webkit-backdrop-filter: blur(16px) saturate(1.25);
-  box-shadow: inset 0 1px 1px color-mix(in srgb, var(--border) 70%, transparent);
-}
-
-.dock-glass-action { background: color-mix(in srgb, var(--dock-action) 89%, transparent); }
-
-.dock-fade {
-  position: fixed;
-  inset: auto 0 0;
-  height: calc(100px + env(safe-area-inset-bottom));
-  z-index: 25;
-  pointer-events: none;
-  background: linear-gradient(to bottom, transparent 20%, color-mix(in srgb, var(--bg) 86%, transparent));
-  backdrop-filter: blur(8px) saturate(1.15);
-  -webkit-backdrop-filter: blur(8px) saturate(1.15);
-  mask-image: linear-gradient(to bottom, transparent, black);
-  -webkit-mask-image: linear-gradient(to bottom, transparent, black);
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .dock-glass, .dock-fade { backdrop-filter: none; -webkit-backdrop-filter: none; }
-  .dock-glass { background: var(--surface); }
-  .dock-glass-action { background: var(--dock-action); }
-}
-
 /* Water glasses (Hoy page): translucent liquid with a specular highlight. The
    ENTIRE effect lives in the fill (.water-liquid-rise, 0.5 s): the level rises
    and the wave rotates meanwhile, fading out at the end. Afterwards, nothing —

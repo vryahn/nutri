@@ -70,7 +70,7 @@ final class NutriUITests: XCTestCase {
     }
 
     @MainActor
-    func testNativeExpandedDockKeepsAllDestinationsAndRealAction() throws {
+    func testNativeDockKeepsAllDestinationsAndRealAction() throws {
         guard #available(iOS 27, *) else { throw XCTSkip("Native selection probe requires iOS 27.") }
         let app = launch(demo: true, longJournal: true)
         let today = app.tabBars.buttons["Hoy"].firstMatch
@@ -99,50 +99,47 @@ final class NutriUITests: XCTestCase {
         app.buttons["sheet.close"].tap()
         XCTAssertTrue(today.isSelected, app.debugDescription)
         app.scrollViews.firstMatch.swipeUp(velocity: .slow)
-        XCTAssertTrue(app.buttons["context.expand"].waitForExistence(timeout: 5), app.debugDescription)
-        capture("Nativo salida a compacto")
+        for title in ["Hoy", "Alimentos", "Recetas", "Objetivos", "Progreso"] {
+            XCTAssertTrue(app.tabBars.buttons[title].firstMatch.isHittable, title + app.debugDescription)
+        }
+        XCTAssertTrue(add.isHittable, app.debugDescription)
+        capture("Barra nativa al desplazar Hoy")
     }
 
     @MainActor
-    func testContextDockScrollsAndKeepsBothActionsReachable() throws {
-        guard #available(iOS 18, *) else { throw XCTSkip("Scroll-driven dock requires iOS 18.") }
+    func testContextDockStaysReachableWhileScrollingAndClearsLastIntake() {
         let app = launch(demo: true, longJournal: true)
         let dock = dock(in: app)
         let add = dock.buttons["today.add"]
-        let expand = dock.buttons["context.expand"]
         let today = dock.buttons["module.today"]
         let journal = app.scrollViews.firstMatch
-        let summary = journal.buttons["today.summary"]
         XCTAssertTrue(add.waitForExistence(timeout: 10), app.debugDescription)
-        XCTAssertEqual(dock.buttons.count, 6)
-        for button in dock.buttons.allElementsBoundByIndex {
+        let identifiers = ["module.today", "module.foods", "module.recipes", "module.targets",
+                           "module.dashboard", "today.add"]
+        for id in identifiers {
+            let button = dock.buttons[id]
+            XCTAssertTrue(button.isHittable, app.debugDescription)
             XCTAssertGreaterThanOrEqual(button.frame.width, 44)
             XCTAssertGreaterThanOrEqual(button.frame.height, 44)
             XCTAssertEqual(button.frame.midY, add.frame.midY, accuracy: 2)
         }
-        capture("Barra contextual expandida")
-
-        journal.swipeUp(velocity: .slow)
-        XCTAssertTrue(expand.waitForExistence(timeout: 5), app.debugDescription)
-        XCTAssertEqual(dock.buttons.count, 2)
-        XCTAssertEqual(expand.label, "Hoy")
-        XCTAssertEqual(add.label, "Añadir registro")
-        capture("Barra contextual compacta")
+        capture("Barra contextual al abrir Hoy")
 
         let last = journal.buttons["today.intake.00000000-0000-4000-8000-000000000605"]
-        if last.frame.maxY > expand.frame.minY { journal.swipeUp(velocity: .slow) }
-        XCTAssertTrue(last.isHittable, app.debugDescription)
-        XCTAssertLessThan(last.frame.maxY, expand.frame.minY)
-        let summaryPosition = summary.frame.minY
-        expand.tap()
-        XCTAssertTrue(today.waitForExistence(timeout: 5), app.debugDescription)
-        XCTAssertEqual(summary.frame.minY, summaryPosition, accuracy: 2)
-
-        journal.swipeDown(velocity: .slow)
         journal.swipeUp(velocity: .slow)
-        XCTAssertTrue(expand.waitForExistence(timeout: 5), app.debugDescription)
-        journal.swipeDown(velocity: .slow)
-        XCTAssertTrue(today.waitForExistence(timeout: 5), app.debugDescription)
+        for _ in 0..<3 where last.frame.maxY > add.frame.minY || !last.isHittable {
+            journal.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(last.isHittable, app.debugDescription)
+        XCTAssertLessThanOrEqual(last.frame.maxY, add.frame.minY)
+        for id in identifiers {
+            XCTAssertTrue(dock.buttons[id].isHittable, app.debugDescription)
+        }
+        capture("Barra contextual al final de Hoy")
+
+        for _ in 0..<4 where !app.buttons["Día anterior"].isHittable {
+            journal.swipeDown(velocity: .slow)
+        }
 
         let previous = app.buttons["Día anterior"]
         XCTAssertTrue(previous.isHittable, app.debugDescription)
@@ -313,7 +310,11 @@ final class NutriUITests: XCTestCase {
         XCTAssertTrue(intake.isHittable, app.debugDescription)
         XCTAssertTrue(summary.isHittable)
         XCTAssertTrue(summary.label.contains("Energía"), summary.label)
-        XCTAssertTrue(summary.label.contains("Sodio"), summary.label)
+        for component in ["Sodio", "Potasio", "1500–2300 mg", "Parcial", "Cobertura incompleta"] {
+            XCTAssertTrue(summary.label.localizedCaseInsensitiveContains(component), summary.label)
+        }
+        XCTAssertTrue(intake.label.contains("kcal"), intake.label)
+        XCTAssertFalse(app.buttons["Opciones de registro"].exists)
         XCTAssertTrue(water.isHittable)
         XCTAssertTrue(quickGlass.isHittable)
         XCTAssertTrue(add.isHittable)
@@ -346,6 +347,9 @@ final class NutriUITests: XCTestCase {
         undo.tap()
         app.buttons["sheet.close"].tap()
         XCTAssertNotEqual(water.value as? String, previous)
+        let raspberries = app.buttons["today.intake.00000000-0000-4000-8000-000000000101"]
+        reveal(raspberries, in: app)
+        XCTAssertTrue(raspberries.label.contains("0 mg"), raspberries.label)
     }
 
     @MainActor
@@ -388,7 +392,10 @@ final class NutriUITests: XCTestCase {
         )).firstMatch
         XCTAssertTrue(logged.waitForExistence(timeout: 5), app.debugDescription)
         catalogReveal(logged, in: app)
+        XCTAssertTrue(logged.label.contains("Potasio"), logged.label)
+        XCTAssertTrue(logged.label.contains("Sin dato"), logged.label)
         logged.tap()
+        XCTAssertTrue(app.buttons["Borrar"].isHittable, app.debugDescription)
         XCTAssertTrue(amount.waitForExistence(timeout: 5), app.debugDescription)
         amount.tap()
         XCTAssertTrue(decimal.waitForExistence(timeout: 5), app.debugDescription)
@@ -1178,8 +1185,6 @@ final class NutriUITests: XCTestCase {
     private func selectTab(_ module: String, in app: XCUIApplication) {
         let dock = dock(in: app)
         XCTAssertTrue(dock.waitForExistence(timeout: 5), app.debugDescription)
-        let expand = dock.buttons["context.expand"]
-        if expand.isHittable { expand.tap() }
         let tab = dock.buttons["module." + module]
         XCTAssertTrue(tab.waitForExistence(timeout: 5), app.debugDescription)
         tab.tap()

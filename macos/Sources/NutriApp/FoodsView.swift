@@ -269,7 +269,7 @@ struct FoodsView: View {
             } else if let draft {
                 ScrollView { editor(draft).padding(16) }
                     .scrollDismissesKeyboard(.interactively)
-                    .nutriDockScrollable(observesDirection: false)
+                    .nutriDockScrollable()
             } else {
                 ScrollView { listing.padding(.horizontal, 16).padding(.vertical, nutriPhoneLayout ? 8 : 16) }
                     .scrollDismissesKeyboard(.interactively)

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, lazy, Suspense } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
-import { CalendarDays, Apple, ChefHat, Target, BarChart3, Ruler, MoreHorizontal, Plus, ChevronUp } from 'lucide-react';
+import { CalendarDays, Apple, ChefHat, Target, BarChart3, Ruler, MoreHorizontal, Plus } from 'lucide-react';
 import { supabase, isDemo, isSeedingDemo } from './lib/supabase.js';
 import { cacheClear } from './lib/cache.js';
 import { SectionAddContext, subscribeSectionMenu } from './lib/sectionMenu.js';
@@ -166,86 +166,39 @@ function Sidebar({ menuActions, tab, onAdd }) {
 }
 
 function MobileNavigation({ tab, onAdd }) {
-  const [compact, setCompact] = useState(false);
-  const nav = useRef(null);
-  const CurrentIcon = tab.icon;
   const action = t(tab.add);
 
-  useEffect(() => {
-    const mobile = window.matchMedia('(max-width: 767px)');
-    function pageOffset() {
-      const end = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      return Math.max(0, Math.min(window.scrollY, end));
-    }
-    let previous = pageOffset();
-    function onScroll() {
-      if (!mobile.matches) return;
-      const position = pageOffset();
-      const delta = position - previous;
-      if (Math.abs(delta) < 14 && position !== 0) return;
-      previous = position;
-      if (delta > 0 && !nav.current?.querySelector(':focus-visible')) setCompact(true);
-      if (delta < 0 || position === 0) setCompact(false);
-    }
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  function expand() {
-    setCompact(false);
-    requestAnimationFrame(() => nav.current?.querySelector('[aria-current="page"]')?.focus({ preventScroll: true }));
-  }
-
   return (
-    <>
-      {compact && <div className="dock-fade md:hidden" aria-hidden="true" />}
-      <nav
-        ref={nav}
-        aria-label={t('Navegación')}
-        className={`md:hidden fixed z-30 inset-x-1 min-[360px]:inset-x-3 pointer-events-none flex items-center rounded-full min-h-[54px] ${compact ? 'justify-between gap-2' : 'glass border border-border p-0.5'}`}
-        style={{ bottom: 'calc(8px + env(safe-area-inset-bottom))' }}
-      >
-        {compact ? (
-          <button
-            type="button"
-            onClick={expand}
-            aria-label={`${t(tab.label)}, ${t('Mostrar todas las pestañas')}`}
-            aria-expanded="false"
-            className="dock-glass pointer-events-auto flex items-center gap-1.5 rounded-full min-h-[48px] px-3 border border-border text-accent-glass text-sm font-semibold press"
-          >
-            <CurrentIcon size={17} aria-hidden="true" />
-            <span>{t(tab.label)}</span>
-            <ChevronUp size={13} aria-hidden="true" />
-          </button>
-        ) : (
-          TABS.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              aria-label={t(label)}
-              className={({ isActive }) =>
-                `relative pointer-events-auto flex-1 min-w-[44px] min-h-[44px] flex flex-col justify-center items-center gap-0.5 rounded-full press ${isActive ? 'bg-surface-3 text-accent-glass after:absolute after:bottom-[3px] after:h-0.5 after:w-6 after:rounded-full after:bg-accent-glass' : 'text-text-2'}`
-              }
-            >
-              <Icon size={19} aria-hidden="true" />
-              <span className="sr-only min-[360px]:not-sr-only min-[360px]:truncate max-w-full text-[10px] leading-none">{t(label)}</span>
-            </NavLink>
-          ))
-        )}
-        <button
-          type="button"
-          aria-label={action}
-          title={action}
-          onClick={onAdd}
-          disabled={!onAdd}
-          className={`pointer-events-auto shrink-0 min-w-[44px] rounded-full flex items-center justify-center gap-1.5 text-on-accent border border-border font-semibold text-sm press disabled:opacity-50 ${compact ? 'dock-glass dock-glass-action min-h-[48px] px-3' : 'min-h-[44px] dock-action'}`}
+    <nav
+      aria-label={t('Navegación')}
+      className="md:hidden fixed z-30 inset-x-1 min-[360px]:inset-x-3 pointer-events-none flex items-center rounded-full min-h-[54px] glass border border-border p-0.5"
+      style={{ bottom: 'calc(8px + env(safe-area-inset-bottom))' }}
+    >
+      {TABS.map(({ to, label, icon: Icon, end }) => (
+        <NavLink
+          key={to}
+          to={to}
+          end={end}
+          aria-label={t(label)}
+          className={({ isActive }) =>
+            `relative pointer-events-auto flex-1 min-w-[44px] min-h-[44px] flex flex-col justify-center items-center gap-0.5 rounded-full press ${isActive ? 'bg-surface-3 text-accent-glass after:absolute after:bottom-[3px] after:h-0.5 after:w-6 after:rounded-full after:bg-accent-glass' : 'text-text-2'}`
+          }
         >
-          <Plus size={21} aria-hidden="true" />
-          {compact && <span className="sr-only min-[360px]:not-sr-only">{action}</span>}
-        </button>
-      </nav>
-    </>
+          <Icon size={19} aria-hidden="true" />
+          <span className="sr-only min-[360px]:not-sr-only min-[360px]:truncate max-w-full text-[10px] leading-none">{t(label)}</span>
+        </NavLink>
+      ))}
+      <button
+        type="button"
+        aria-label={action}
+        title={action}
+        onClick={onAdd}
+        disabled={!onAdd}
+        className="pointer-events-auto shrink-0 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center text-on-accent border border-border press disabled:opacity-50 dock-action"
+      >
+        <Plus size={21} aria-hidden="true" />
+      </button>
+    </nav>
   );
 }
 
@@ -301,7 +254,7 @@ function Layout({ children }) {
           </SectionAddContext.Provider>
         </main>
 
-        <MobileNavigation key={tab.to} tab={tab} onAdd={onAdd} />
+        <MobileNavigation tab={tab} onAdd={onAdd} />
       </div>
     </div>
   );
