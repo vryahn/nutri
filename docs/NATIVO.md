@@ -18,7 +18,7 @@ Los tres clientes comparten Supabase y sus políticas de acceso. La nutrición d
 
 El diseño compacto de Hoy, la sección Progreso y la hoja de registro a altura grande aprovechan la navegación, las áreas seguras y el teclado de iPhone. En web/PWA, React ofrece navegación y hojas responsivas. En macOS, SwiftUI presenta la barra lateral y los editores en línea según el ancho de la ventana. Las tres interfaces permiten registrar y corregir comidas, consultar e ingresar agua y buscar o filtrar el catálogo. [Recorridos por módulo](MODULOS.md)
 
-En macOS, **Configuración → Conectar agente de IA** abre `/agentes` en el navegador predeterminado. El navegador usa su propia sesión de Nutri, independiente de la sesión de la app. La opción de iPhone queda pendiente por decisión de Bryan del 22 de noviembre de 2026. [Configuración macOS](../macos/Sources/NutriApp/SettingsView.swift) · [Guía web](../src/pages/Agents.jsx)
+En macOS y iPhone, **Configuración → Conectar agente de IA** abre `/agentes` en el navegador predeterminado (Safari si es el predeterminado en iPhone). El navegador usa su propia sesión de Nutri, independiente de la sesión de la app. El 2026-11-22 la build Debug firmada se instaló y abrió en un iPhone Air físico; la suite XCUITest corre en CI (ios.yml) porque el Mac local no tenía runtimes de simulador. Falta confirmar a mano que tocar la fila abre Safari en `/agentes`. [Configuración nativa](../macos/Sources/NutriApp/SettingsView.swift) · [Guía web](../src/pages/Agents.jsx)
 
 ## Contratos y oráculos
 

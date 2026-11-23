@@ -127,7 +127,6 @@ struct SettingsView: View {
                 }
                 Rectangle().fill(palette.border).frame(height: 1)
                 nextSheet("Secciones de comida", icon: "tags") { navigate(.labels) }
-                #if os(macOS)
                 if let url = URL(string: "https://nutri.vryahn.com/agentes") {
                     Link(destination: url) {
                         settingInfo("globe", title: "Conectar agente de IA",
@@ -136,7 +135,6 @@ struct SettingsView: View {
                         }
                     }
                 }
-                #endif
             }
         } footer: {
             HStack(spacing: 8) {
