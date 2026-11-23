@@ -712,8 +712,11 @@ final class NutriUITests: XCTestCase {
         name.typeText("Receta de prueba")
 
         let search = app.textFields["recipes.ingredient.search"]
-        catalogReveal(search, in: app)
-        search.tap()
+        catalogReveal(search, in: app, aboveKeyboard: true)
+        let keyboard = app.keyboards.firstMatch
+        print("Ingredient search before tap: field=\(search.frame), keyboard=\(keyboard.exists ? keyboard.frame : .zero)")
+        capture("Recetas · buscador visible con Nombre editado")
+        search.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         search.typeText("Avena\n")
         XCTAssertEqual(search.value as? String, "Avena", app.debugDescription)
         let oatID = "00000000-0000-4000-8000-000000000011"
@@ -860,8 +863,14 @@ final class NutriUITests: XCTestCase {
     }
 
     @MainActor
-    private func catalogReveal(_ element: XCUIElement, in app: XCUIApplication, scroll region: XCUIElement? = nil) {
-        guard !element.isHittable else { return }
+    private func catalogReveal(_ element: XCUIElement, in app: XCUIApplication, scroll region: XCUIElement? = nil,
+                               aboveKeyboard: Bool = false) {
+        let keyboard = app.keyboards.firstMatch
+        func reachable() -> Bool {
+            guard element.isHittable else { return false }
+            return !aboveKeyboard || !keyboard.exists || element.frame.maxY <= keyboard.frame.minY - 4
+        }
+        guard !reachable() else { return }
         let scroll: XCUIElement
         if let region {
             scroll = region
@@ -873,9 +882,8 @@ final class NutriUITests: XCTestCase {
             scroll = app.scrollViews.firstMatch
         }
 
-        for _ in 0..<10 where !element.isHittable {
+        for _ in 0..<10 where !reachable() {
             let frame = scroll.frame.intersection(app.frame)
-            let keyboard = app.keyboards.firstMatch
             let tabs = dock(in: app)
             let keyboardTop = keyboard.exists ? keyboard.frame.minY - 50 : frame.maxY
             let tabTop = tabs.exists ? tabs.buttons.firstMatch.frame.minY - 12 : app.frame.maxY - 40
@@ -892,7 +900,7 @@ final class NutriUITests: XCTestCase {
             let end = origin.withOffset(CGVector(dx: x, dy: endY))
             start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.15)
         }
-        XCTAssertTrue(element.isHittable, app.debugDescription)
+        XCTAssertTrue(reachable(), app.debugDescription)
     }
 
     @MainActor

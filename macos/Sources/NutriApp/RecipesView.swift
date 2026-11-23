@@ -1,6 +1,11 @@
 import NutriCore
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(iOS)
+import UIKit
+#endif
+
+private let recipeNameScrollAnchor = "recipes.editor.name"
 
 struct RecipeIngredient: Identifiable {
     let id = UUID()
@@ -128,9 +133,15 @@ struct RecipesView: View {
                     }.padding(16)
                 }
             } else if let form {
-                ScrollView { editor(form).padding(16) }
+                ScrollViewReader { scroll in
+                    ScrollView {
+                        editor(form, revealName: {
+                            if nutriPhoneLayout { scroll.scrollTo(recipeNameScrollAnchor, anchor: .top) }
+                        }).padding(16)
+                    }
                     .scrollDismissesKeyboard(.interactively)
                     .nutriDockScrollable()
+                }
             } else {
                 ScrollView { listing.padding(16) }
                     .scrollDismissesKeyboard(.interactively)
@@ -249,7 +260,7 @@ struct RecipesView: View {
         }.padding(40).frame(maxWidth: .infinity).nutriCard()
     }
 
-    private func editor(_ original: RecipeDraft) -> some View {
+    private func editor(_ original: RecipeDraft, revealName: (() -> Void)? = nil) -> some View {
         var draft = original
         if store.units == "us" {
             for index in draft.ingredients.indices { draft.ingredients[index].changeUnit(to: "oz") }
@@ -257,7 +268,7 @@ struct RecipesView: View {
         return RecipeEditor(draft: draft, useUS: store.units == "us", desktop: desktop, recipes: rows, onSaved: {
             if form?.id == original.id { form = nil }
             await reload()
-        }, onOpen: open, onRemove: deleteDraft, onClose: { showEditor(nil) })
+        }, onOpen: open, onRemove: deleteDraft, onClose: { showEditor(nil) }, revealName: revealName)
         .id(draft.id).padding(desktop ? 24 : 0).frame(maxWidth: .infinity, alignment: .leading)
         .background { if desktop { Color.clear.nutriCard() } }
     }
@@ -404,9 +415,11 @@ private struct RecipeEditor: View {
     let onOpen: (Record) async -> Void
     let onRemove: (String) async throws -> Void
     let onClose: () -> Void
+    let revealName: (() -> Void)?
     @State private var foods: [Record] = []
     @State private var loadingCatalog = true
     @State private var query = ""
+    @FocusState private var nameFocused: Bool
     @FocusState private var ingredientSearchFocused: Bool
     @State private var paste = ""
     @State private var showPaste = false
@@ -464,14 +477,21 @@ private struct RecipeEditor: View {
                     .buttonStyle(NutriButtonStyle(.danger, height: 44))
             }
         }.disabled(busy).task { await loadCatalog() }
+        .onChange(of: nameFocused) { _, focused in if focused { revealName?() } }
+        #if os(iOS)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+            // UIKit may reposition the first responder as the keyboard opens.
+            if nameFocused { revealName?() }
+        }
+        #endif
     }
 
     private var recipeInputs: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(store.tr("Nombre")).foregroundStyle(palette.text2)
-                TextField("", text: $draft.name).nutriInput().accessibilityLabel(store.tr("Nombre"))
-            }
+                TextField("", text: $draft.name).nutriInput(focus: $nameFocused).accessibilityLabel(store.tr("Nombre"))
+            }.id(recipeNameScrollAnchor)
             VStack(alignment: .leading, spacing: 8) {
                 Text(store.tr("Ingredientes")).foregroundStyle(palette.text2)
                 ForEach($draft.ingredients) { $ingredient in
