@@ -310,3 +310,17 @@ describe('outbox flush', () => {
     expect(ob.outboxOps().map((o) => o.id)).toEqual(['a']);
   });
 });
+
+describe('applyOutbox owner isolation (N11)', () => {
+  it('hides another account\'s pending entry, keeps it queued and shows it to its owner', async () => {
+    const ob = await fresh();
+    responder = () => ({ error: new TypeError('offline') });
+    ob.setOutboxOwner('user-a');
+    ob.queueInsert({ id: 'a1', day: '2026-09-05', grams: 100 }, row('a1'));
+    await ob.flushOutbox();
+    const ids = (uid) => ob.applyOutbox([], '2026-09-05', ob.outboxOps(), uid).map((r) => r.id);
+    expect(ids('user-b')).toEqual([]);
+    expect(ids('user-a')).toEqual(['a1']);
+    expect(ob.outboxOps().map((o) => o.id)).toEqual(['a1']);
+  });
+});

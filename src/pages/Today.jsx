@@ -1215,11 +1215,9 @@ export default function Today() {
     }
   }
 
-  const dayEntries = applyOutbox(entries, date, pendingOps);
-  const frequentDayEntries = useMemo(
-    () => applyOutbox(entries, date, pendingOps.filter((op) => !op.owner || op.owner === userId)),
-    [entries, date, pendingOps, userId]
-  );
+  // Owner-filtered: another account's unsynced ops stay queued but never render here.
+  const dayEntries = useMemo(() => applyOutbox(entries, date, pendingOps, userId), [entries, date, pendingOps, userId]);
+  const frequentDayEntries = dayEntries;
   const waterEntries = dayEntries.filter((e) => isWaterEntry(e, prefs.water_food_id));
   const foodEntries = dayEntries.filter((e) => !isWaterEntry(e, prefs.water_food_id));
   const waterMl = waterEntries.reduce((s, e) => s + Number(e.grams), 0); // density 1: grams = ml

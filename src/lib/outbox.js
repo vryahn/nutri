@@ -90,8 +90,10 @@ export function queueDelete(id) {
  * Server rows for `day` with the queue applied on top: pending inserts appended,
  * pending updates overlaid, pending deletes removed. Pending rows carry _pending so the
  * card can say so. A later update/delete wins over an insert in flight.
+ * With `uid`, ops stamped by another account are ignored (left intact in the queue).
  */
-export function applyOutbox(serverRows, day, queue = ops) {
+export function applyOutbox(serverRows, day, queue = ops, uid) {
+  if (uid !== undefined) queue = queue.filter((o) => !o.owner || o.owner === uid);
   if (!queue.length) return serverRows;
   const serverIds = new Set(serverRows.map((r) => r.id));
   const byId = new Map(queue.map((o) => [o.id, o]));
