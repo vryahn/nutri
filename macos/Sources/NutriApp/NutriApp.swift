@@ -891,6 +891,7 @@ private struct PhoneContextDock: View {
 
     @EnvironmentObject private var store: Store
     @Environment(\.nutriPalette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var keyboardVisible = false
@@ -923,7 +924,7 @@ private struct PhoneContextDock: View {
                 }
             } else {
                 HStack(spacing: 0) {
-                    ForEach(Self.tabs) { item in tab(item) }
+                    expandedTabs
                     add(showTitle: false)
                 }
                 .padding(4)
@@ -944,6 +945,30 @@ private struct PhoneContextDock: View {
                 .accessibilityHidden(true)
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: compact)
+    }
+
+    private var expandedTabs: some View {
+        HStack(spacing: 0) {
+            ForEach(Self.tabs) { item in tab(item) }
+        }
+        .background {
+            GeometryReader { geometry in
+                let tabWidth = geometry.size.width / CGFloat(Self.tabs.count)
+                let index = Self.tabs.firstIndex(of: selection) ?? 0
+
+                Capsule()
+                    .fill(colorScheme == .dark ? palette.bg : palette.surface3)
+                    .overlay {
+                        Capsule().strokeBorder(palette.accentGlass.opacity(reduceTransparency ? 0.55 : 0.38))
+                    }
+                    .frame(width: tabWidth, height: geometry.size.height)
+                    .offset(x: tabWidth * CGFloat(index))
+                    .animation(reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.73), value: selection)
+            }
+            .flipsForRightToLeftLayoutDirection(true)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
     }
 
     private func compactRow(showActionTitle: Bool) -> some View {
@@ -984,7 +1009,6 @@ private struct PhoneContextDock: View {
             .padding(.horizontal, 1)
             .frame(maxWidth: .infinity, minHeight: 48)
             .foregroundStyle(selection == item ? palette.accentGlass : palette.text)
-            .background(selection == item ? palette.bg.opacity(reduceTransparency ? 1 : 0.75) : .clear, in: Capsule())
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

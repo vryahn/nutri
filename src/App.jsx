@@ -225,7 +225,7 @@ function MobileNavigation({ tab, onAdd }) {
               end={end}
               aria-label={t(label)}
               className={({ isActive }) =>
-                `pointer-events-auto flex-1 min-w-[44px] min-h-[44px] flex flex-col justify-center items-center gap-0.5 rounded-full press ${isActive ? 'bg-surface-2 text-accent-glass' : 'text-text-2'}`
+                `relative pointer-events-auto flex-1 min-w-[44px] min-h-[44px] flex flex-col justify-center items-center gap-0.5 rounded-full press ${isActive ? 'bg-surface-3 text-accent-glass after:absolute after:bottom-[3px] after:h-0.5 after:w-6 after:rounded-full after:bg-accent-glass' : 'text-text-2'}`
               }
             >
               <Icon size={19} aria-hidden="true" />
