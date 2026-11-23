@@ -35,9 +35,12 @@ export default function Hint({ text, children }) {
       aria-describedby={open ? id : undefined}
       onMouseEnter={show}
       onMouseLeave={() => setOpen(false)}
+      onFocus={show}
+      onBlur={() => setOpen(false)}
+      onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}
       onClick={(e) => {
         e.stopPropagation();
-        open ? setOpen(false) : show();
+        show();
       }}
       className="underline decoration-dotted decoration-text-3 underline-offset-2 align-baseline"
     >

@@ -176,6 +176,26 @@ struct NutriChecks {
         let food: Record = ["micros": .object(["sodio_mg": .number(0.001)])]
         let recipe = Domain.recipePer100g([(food, 50), (food, 50)], cookedWeight: 100)
         try require(recipe?.object("micros").number("sodio_mg") == 0.002, "SQL recipe rounds micros per ingredient")
+        let repeated: Record = ["id": .string("fixture"), "kcal": .number(100),
+                                "micros": .object(["sodio_mg": .number(0.04)])]
+        let grouped = Domain.groupedRecipeIngredients([(repeated, 1), (repeated, 1)])
+        let preview = Domain.recipePer100g([(repeated, 1), (repeated, 1)], cookedWeight: 2)
+        let saved = Domain.recipePer100g(grouped, cookedWeight: 2)
+        try require(grouped.count == 1 && grouped.first?.grams == 2 && preview == saved &&
+                    preview?.object("micros").number("sodio_mg") == 0.05, "duplicate recipe food groups before SQL micro rounding")
+        let cooked = Domain.recipePer100g([(repeated, 100), (repeated, 100)], cookedWeight: 160)
+        try require(cooked?.number("kcal") == 125 && cooked.map { Domain.scaled($0, grams: 80).number("kcal") == 100 } == true,
+                    "cooked recipe matches 125 kcal per 100 g and 100 kcal per 80 g")
+        let sodium: Record = ["micros": .object(["sodio_mg": .number(0.007)])]
+        let cookedTie = Domain.recipePer100g([(sodium, 100)], cookedWeight: 56)
+        try require(cookedTie?.object("micros").number("sodio_mg") == 0.012,
+                    "SQL rounds the reciprocal of the cooked weight before scaling micros")
+        let iron: Record = ["micros": .object(["hierro_mg": .number(0.0145)])]
+        let unreported: Record = ["micros": .object([:])]
+        let rawTie = Domain.recipePer100g([(iron, 100), (unreported, 20)], cookedWeight: nil)
+        try require(rawTie?.object("micros").number("hierro_mg") == 0.012 &&
+                    rawTie.map { Domain.coverage($0, "hierro_mg") } == .partial,
+                    "SQL rounds the reciprocal of the summed weight and retains partial coverage")
         let recurring: Record = ["dow": .number(0), "valid_from": .string("2026-11-09")]
         let override: Record = ["day": .string("2026-11-16"), "valid_from": .string("2026-11-16")]
         let future: Record = ["dow": .number(0), "valid_from": .string("2026-11-23")]
@@ -295,6 +315,28 @@ struct NutriChecks {
         try restarted.insert(unsent, row: unsent)
         try restarted.delete(second, row: unsent)
         try require(!restarted.operations.contains { $0.entryID == second }, "Never-sent insert can be canceled")
+        let batchDirectory = root.appendingPathComponent("clear-day")
+        var mixed = try EntryOutbox(directory: batchDirectory, owner: owner)
+        try mixed.insert(original, row: original)
+        _ = try mixed.begin()
+        try mixed.insert(unsent, row: unsent)
+        let synced = UUID().uuidString, water = UUID().uuidString
+        try mixed.clearDay(day, ids: [entry, second, synced])
+        mixed = try EntryOutbox(directory: batchDirectory, owner: owner)
+        try require(mixed.operations.count == 3, "Pending writes survive a restart during deletion")
+        guard let attempted = try mixed.begin(), attempted.kind == .insert else { throw CheckError.failure("Lost attempted insert") }
+        try mixed.finish(attempted)
+        guard let batch = try mixed.begin(), batch.kind == .clearDay else { throw CheckError.failure("Missing batch") }
+        let server: [Record] = [original, ["id": .string(synced)], ["id": .string(water)]]
+        try require(mixed.operations.count == 2 && mixed.overlay(server, day: day).map { $0.text("id") } == [water],
+                    "The batch preserves the unsent insert until acknowledgement and excludes water")
+        var rejected = mixed
+        try rejected.finish(batch, applied: false)
+        try require(Set(rejected.overlay(server, day: day).map { $0.text("id") }) == Set([water, entry, second, synced]),
+                    "Terminal rejection restores every original row")
+        try mixed.finish(batch)
+        try require(mixed.operations.isEmpty, "Acknowledged batch consumes targeted inserts without replay")
+
         // Coalescing: update A, insert B, update A again -> 2 ops, A's patch merged; once attempted, a further update appends.
         let root2 = root.appendingPathComponent("coalesce")
         var q2 = try EntryOutbox(directory: root2, owner: owner)

@@ -321,6 +321,12 @@ final class Store: ObservableObject {
         cache?.read(AccountCache.key(table, query))
     }
 
+    func rememberBodyDay(_ day: String, row: Record?) throws {
+        let key = AccountCache.key("body_metrics", ["day": "eq.\(day)"])
+        try cache?.write(key, row.map { [$0] } ?? [])
+        dayCacheVersion[key, default: 0] += 1
+    }
+
     func read(_ table: String, _ query: [String: String] = [:], allowCached: Bool = true) async throws -> [Record] {
         #if DEBUG
         if let demo {
@@ -489,6 +495,28 @@ final class Store: ObservableObject {
         flush()
     }
 
+    func clearFoodEntries(_ ids: [String], day: String) throws {
+        guard outbox != nil else { throw NutriError("La cola local no está disponible.") }
+        try outbox?.clearDay(day, ids: ids)
+        changedEntries()
+        flush()
+    }
+
+    private func applyDayDeletion(_ operation: EntryOperation, owner: String) async throws {
+        guard let ids = operation.clearedIDs, !ids.isEmpty else { throw NutriError("Falta el filtro de borrado.") }
+        let day = operation.payload.text("day")
+        let query = ["owner": "eq." + owner, "day": "eq." + day, "id": "in.(" + ids.joined(separator: ",") + ")"]
+        #if DEBUG
+        if demo != nil {
+            _ = demo?.mutate("DELETE", "entries", query: query, body: nil)
+            return
+        }
+        #endif
+        guard let api else { throw NutriError("Inicia sesión para continuar.") }
+        // An empty successful response also acknowledges a replay or an unsent local insert.
+        _ = try await api.rows("DELETE", "entries", query: query, prefer: "return=representation", owner: owner)
+    }
+
     private func changedEntries() {
         pending = outbox?.operations.count ?? 0
         entryVersion += 1
@@ -505,6 +533,13 @@ final class Store: ObservableObject {
     }
 
     private func acknowledge(_ operation: EntryOperation) throws {
+        if let ids = operation.clearedIDs {
+            let key = AccountCache.key("entry_nutrients", Self.entriesQuery(operation.payload.text("day")))
+            let cleared = Set(ids)
+            if let rows = cache?.read(key) { try cache?.write(key, rows.filter { !cleared.contains($0.text("id")) }) }
+            dayCacheVersion[key, default: 0] += 1
+            return
+        }
         guard let row = operation.row, !row.text("day").isEmpty else { return }
         let day = row.text("day")
         let key = AccountCache.key("entry_nutrients", Self.entriesQuery(day))
@@ -529,6 +564,7 @@ final class Store: ObservableObject {
             do {
                 let query = ["id": "eq." + operation.entryID]
                 switch operation.kind {
+                case .clearDay: try await applyDayDeletion(operation, owner: uid)
                 case .insert:
                     do { _ = try await insert("entries", operation.payload) }
                     catch let error as NutriError where error.code == "23505" {
@@ -558,10 +594,10 @@ final class Store: ObservableObject {
             } catch {
                 guard identity == current, !Task.isCancelled else { return }
                 if (error as? NutriError)?.permanentWriteFailure == true {
-                    do { try outbox?.finish(operation, discardDependents: operation.kind == .insert) }
+                    do { try outbox?.finish(operation, discardDependents: operation.kind == .insert, applied: false) }
                     catch { report(error); return }
                     changedEntries()
-                    report(error, as: "No se pudo guardar un registro — se descartó.")
+                    report(error, as: operation.kind == .clearDay ? "Error al borrar." : "No se pudo guardar un registro — se descartó.")
                     continue
                 }
                 if error is URLError { offline = true }

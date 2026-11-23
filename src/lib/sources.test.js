@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mapOFF, toDomainUnit, sweetenerAdditives, fillFoodSource } from './sources.js';
+import { mapOFF, toDomainUnit, sweetenerAdditives, fillFoodSource, photoMatchesOFF } from './sources.js';
 
 import { normalizeTo100 } from './domain.js';
 
@@ -166,5 +166,15 @@ describe('fillFoodSource', () => {
     const filled = fillFoodSource({ ...off, per: '100ml' }, ai, true);
     expect(filled).toMatchObject({ carbs_g: 10, protein_g: 2, micros: { potasio_mg: 20 } });
     expect(filled.micros).not.toHaveProperty('fibra_g');
+  });
+});
+
+describe('photo identity without a visible barcode', () => {
+  it('requires matching name and brand before using a typed EAN as a supplement', () => {
+    const photo = { name: 'Bebida de Limón', brand: 'Marca A' };
+    expect(photoMatchesOFF(photo, { name: 'bebida de limon', brand: 'marca a' })).toBe(true);
+    expect(photoMatchesOFF(photo, { name: 'Bebida de Limón XL', brand: 'Marca A' })).toBe(false);
+    expect(photoMatchesOFF(photo, { name: 'Bebida de Limón', brand: 'Marca B' })).toBe(false);
+    expect(photoMatchesOFF({ ...photo, brand: '' }, { ...photo, brand: '' })).toBe(false);
   });
 });

@@ -130,6 +130,11 @@ describe('recipeResponse — canonical case', () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it('reports the persisted nutrient values when the same ingredient is listed twice', () => {
+    const food = { id: 'trace', kcal: 100, protein_g: 0, carbs_g: 0, fat_g: 0, micros: { sodio_mg: 0.04 } };
+    expect(recipeResponse([{ food, grams: 1 }, { food, grams: 1 }], 2).micros.sodio_mg).toBe(0.05);
+  });
+
   it('no ingredients and no cooked weight -> error (resulting weight 0)', () => {
     expect(() => recipeResponse([], 0)).toThrow();
   });

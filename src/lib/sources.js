@@ -131,6 +131,16 @@ export function mapOFF(p) {
 
 // Metadata describes the product independently of the nutrition basis. Nutrients
 // may only fill gaps from a compatible basis; a measured zero is never a gap.
+// A typed barcode is only a candidate when it cannot be corroborated by
+// the photo. Require both name and brand before using that OFF product.
+export function photoMatchesOFF(photo, off) {
+  const normalize = (value) => (typeof value === 'string' ? value : '').normalize('NFKD').replace(/\p{M}/gu, '')
+    .toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const name = normalize(photo.name);
+  const brand = normalize(photo.brand);
+  return !!(name && brand && name === normalize(off.name) && brand === normalize(off.brand));
+}
+
 export function fillFoodSource(winner, filler, requiredOnly = false) {
   if (!filler) return winner;
   const out = { ...winner, name: winner.name || filler.name || '', brand: winner.brand || filler.brand || '' };

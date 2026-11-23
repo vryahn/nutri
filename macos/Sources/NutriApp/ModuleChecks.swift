@@ -80,6 +80,7 @@ func runModuleChecks() throws {
     let future = DashboardAskPlan(["date_from": .string("2030-01-01"), "date_to": .string("2030-02-01")], today: today)
     try check(future.from == "2029-10-02" && future.to == "2030-01-01" && future.clamped, "ask planner follows web clamp-and-swap")
     try checkDashboardCoverage(today: today)
+    try checkBodyDraftRecovery()
     try checkJournalFidelity()
     print("Nutri module checks passed")
 }

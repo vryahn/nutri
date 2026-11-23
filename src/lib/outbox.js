@@ -10,9 +10,8 @@
 // (23505) and is dropped instead of duplicating. An insert already in flight stays
 // ahead of later edits/deletes, including across a reload.
 //
-// ponytail: entries only, and no reordering. Bulk copy/paste, meal templates and
-// sort_order live behind a desk with signal; queueing them would need multi-row ordering
-// semantics for no real-world gain. They stay online-only and fail loudly as before.
+// Bulk copy/paste, meal templates and sort_order stay online-only. Day deletion
+// has one queue op with a fixed set of IDs, making remote retries idempotent.
 import { supabase } from './supabase.js';
 
 const KEY = 'nutri.outbox';
@@ -86,9 +85,23 @@ export function queueDelete(id) {
   flushOutbox();
 }
 
+// Keep attempted writes ahead of the batch so an insert cannot arrive after
+// its delete. Keep untouched writes recoverable until the batch is confirmed.
+export function queueDeleteDay(day, ids) {
+  const pendingIds = new Set(ops.filter((o) => o.op === 'delete-many' && o.owner === owner && o.day === day).flatMap((o) => o.ids));
+  const idsToDelete = [...new Set(ids)].filter((id) => !pendingIds.has(id));
+  if (!idsToDelete.length) return;
+  const at = ops.findIndex((o) => o !== sending && !o.attempted && o.op !== 'delete-many');
+  const index = at === -1 ? ops.length : at;
+  const batch = { op: 'delete-many', owner, day, ids: idsToDelete };
+  write([...ops.slice(0, index), batch, ...ops.slice(index)]);
+  emit();
+  flushOutbox();
+}
+
 /**
  * Server rows for `day` with the queue applied on top: pending inserts appended,
- * pending updates overlaid, pending deletes removed. Pending rows carry _pending so the
+ * pending updates overlaid, pending single or batch deletes removed. Pending rows carry _pending so the
  * card can say so. A later update/delete wins over an insert in flight.
  * With `uid`, ops stamped by another account are ignored (left intact in the queue).
  */
@@ -96,15 +109,16 @@ export function applyOutbox(serverRows, day, queue = ops, uid) {
   if (uid !== undefined) queue = queue.filter((o) => !o.owner || o.owner === uid);
   if (!queue.length) return serverRows;
   const serverIds = new Set(serverRows.map((r) => r.id));
-  const byId = new Map(queue.map((o) => [o.id, o]));
+  const deleting = new Set(queue.filter((o) => o.op === 'delete-many' && o.day === day).flatMap((o) => o.ids));
+  const byId = new Map(queue.filter((o) => o.op !== 'delete-many').map((o) => [o.id, o]));
   const merged = [];
   for (const r of serverRows) {
     const o = byId.get(r.id);
-    if (o?.op === 'delete') continue;
+    if (deleting.has(r.id) || o?.op === 'delete') continue;
     merged.push(o?.op === 'update' && o.row ? { ...o.row, _pending: true } : r);
   }
   for (const o of byId.values()) {
-    if (serverIds.has(o.id) || o.op === 'delete' || o.row?.day !== day) continue;
+    if (deleting.has(o.id) || serverIds.has(o.id) || o.op === 'delete' || o.row?.day !== day) continue;
     if (o.op === 'update' && !queue.some((prior) => prior.id === o.id && prior.op === 'insert')) continue;
     merged.push({ ...o.row, _pending: true });
   }
@@ -124,6 +138,10 @@ const isPermanent = (error) => PERMANENT_CODE.test(error.code || '') && !TRANSIE
 async function send(op) {
   if (op.op === 'insert') return supabase.from('entries').insert(op.payload);
   if (op.op === 'update') return supabase.from('entries').update(op.payload).eq('id', op.id);
+  if (op.op === 'delete-many') {
+    const request = supabase.from('entries').delete().in('id', op.ids).eq('day', op.day);
+    return op.owner ? request.eq('owner', op.owner) : request;
+  }
   return supabase.from('entries').delete().eq('id', op.id);
 }
 
@@ -133,6 +151,8 @@ async function drain() {
   let synced = 0;
   let dropped = 0;
   let stopped = false;
+  let failedBatches = 0;
+  const deletedDays = [];
   while (ops.length) {
     const op = ops[0];
     // Not this user's queue: leave it untouched rather than writing it under the wrong
@@ -148,6 +168,21 @@ async function drain() {
       error = e; // network failure: no SQLSTATE, therefore transient
     }
     sending = null;
+    if (op.op === 'delete-many') {
+      if (error && !isPermanent(error)) { stopped = true; break; }
+      if (error) {
+        failedBatches++;
+        write(ops.filter((o) => o !== op));
+      } else {
+        deletedDays.push({ day: op.day, ids: op.ids });
+        const ids = new Set(op.ids);
+        write(ops.filter((o) => {
+          const sameDay = !o.row?.day || o.row.day === op.day;
+          return o !== op && !((!o.owner || o.owner === op.owner) && ids.has(o.id) && sameDay);
+        }));
+      }
+      continue;
+    }
     if (error && !(op.op === 'insert' && error.code === DONE)) {
       if (!isPermanent(error)) { stopped = true; break; }
       dropped += 1;
@@ -162,7 +197,9 @@ async function drain() {
     }
     write(ops.filter((o) => o !== op));
   }
-  if (synced || dropped) emit({ synced, dropped });
+  if (synced || dropped || failedBatches || deletedDays.length) {
+    emit({ synced, dropped, ...(failedBatches ? { failedBatches } : {}), ...(deletedDays.length ? { deletedDays } : {}) });
+  }
   return stopped;
 }
 
@@ -181,8 +218,11 @@ export function flushOutbox() {
 // Retry points: regained connectivity and returning to the app. main.jsx already uses
 // these same two events to check for a new service worker.
 if (typeof window !== 'undefined') {
-  window.addEventListener('online', flushOutbox);
+  // A connection can recover before the previous request reports its failure.
+  // Retry after that drain rather than sharing only its failed promise.
+  const retry = () => { if (inflight) void inflight.then(flushOutbox); else void flushOutbox(); };
+  window.addEventListener('online', retry);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') flushOutbox();
+    if (document.visibilityState === 'visible') retry();
   });
 }

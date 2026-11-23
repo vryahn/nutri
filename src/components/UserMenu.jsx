@@ -56,7 +56,11 @@ export default function UserMenu({ placement = 'bottom', className, showLabel = 
     return () => { alive = false; };
   }, [profile.avatar_path]);
 
-  const openSheet = (which) => { setOpen(false); setSheet(which); };
+  const openSheet = (which) => {
+    ref.current?.querySelector('button')?.focus({ preventScroll: true });
+    setOpen(false);
+    setSheet(which);
+  };
   const dropPos = placement === 'right' ? 'left-full bottom-0 ml-2' : 'top-full right-0 mt-2';
 
   return (

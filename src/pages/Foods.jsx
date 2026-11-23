@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Children, cloneElement, useEffect, useId, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ChevronLeft, Search, Star, AlertTriangle, Trash2, Upload,
@@ -12,7 +12,7 @@ import {
   MICROS, MICROS_DEFAULT, microGroups, round, kcalFromMacros, kcalSuspicious, macrosImplausible,
   componentsInconsistent, isWaterSentinel, eanChecksumValid, mergeFoodResults, normalizeTo100, nutritionNumber,
 } from '../lib/domain.js';
-import { fetchOFF, searchFDC, fetchFDC, fillFoodSource } from '../lib/sources.js';
+import { fetchOFF, searchFDC, fetchFDC, fillFoodSource, photoMatchesOFF } from '../lib/sources.js';
 import { AI_AVAILABLE, DENSITY_PRESETS, estimateFood, embedText } from '../lib/ai.js';
 import { t, useLang, useUnits, gToOz, mlToFlOz } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
@@ -576,7 +576,7 @@ function labelFor(key) {
 const NUMERIC_KEYS = ['kcal', 'protein_g', 'carbs_g', 'fat_g'];
 
 // Fields where a and b (both with numeric data) differ by >25% relative to the larger one.
-// Only counts if both exceed DISCREPANCY_MIN (avoids flagging 0.2 vs 0.3). Ephemeral,
+// Ignore trace-only differences (e.g. 0.2 vs 0.3). A declared zero can conflict. Ephemeral,
 // solely for the label-vs-OFF UI warning — none of this is persisted.
 const DISCREPANCY_MIN = 5;
 
@@ -587,11 +587,12 @@ function findDiscrepancies(a, b) {
   for (const k of keys) {
     const av = NUMERIC_KEYS.includes(k) ? a[k] : a.micros?.[k];
     const bv = NUMERIC_KEYS.includes(k) ? b[k] : b.micros?.[k];
-    if (av === '' || av == null || bv === '' || bv == null) continue;
-    const an = Number(av);
-    const bn = Number(bv);
-    if (an <= DISCREPANCY_MIN || bn <= DISCREPANCY_MIN) continue;
-    if (Math.abs(an - bn) / Math.max(an, bn) > 0.25) out.push(labelFor(k));
+    const an = nutritionNumber(av);
+    const bn = nutritionNumber(bv);
+    if (an == null || bn == null) continue;
+    const max = Math.max(an, bn);
+    if (max <= DISCREPANCY_MIN) continue;
+    if (Math.abs(an - bn) / max > 0.25) out.push(labelFor(k));
   }
   return out;
 }
@@ -660,6 +661,8 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
   const [aiResult, setAiResult] = useState(null); // { source, name, confidence } for the result line
   const [aiMissing, setAiMissing] = useState([]); // labels of required fields lacking reliable data
   const [fdcChips, setFdcChips] = useState([]); // up to 6 FDC matches (from usda_query or manual search)
+  const [sourceNotice, setSourceNotice] = useState('');
+  const basisId = useId();
   const [labelMismatch, setLabelMismatch] = useState([]); // labels where the nutrition label and OFF differ by >25%, UI only
   const [sweeteners, setSweeteners] = useState([]); // sweeteners detected by OFF (presence, not amount), UI only
 
@@ -715,36 +718,49 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
     setAiResult(null);
     setAiMissing([]);
     setLabelMismatch([]);
+    setSourceNotice('');
     setSweeteners([]);
     try {
       const eanTyped = extractEan(aiText);
-      if (eanTyped) {
-        if (!eanChecksumValid(eanTyped)) {
-          throw new Error(t('Código de barras inválido: dígito verificador no coincide, revísalo'));
-        }
+      if (eanTyped && !eanChecksumValid(eanTyped)) {
+        throw new Error(t('Código de barras inválido: dígito verificador no coincide, revísalo'));
+      }
+      if (eanTyped && !aiFiles.length) {
         const off = await fetchOFF(eanTyped);
         if (!off) throw new Error(t('EAN no encontrado en Open Food Facts.'));
         setSweeteners(off.sweeteners || []);
-        // EAN typed in directly: without Gemini there is no known density, so an OFF
-        // product per 100 ml can only leave the form in ml basis, waiting for the
-        // user to choose a density (see normalizeTo100).
         applyPrefillWithBasis(off, 'off', off.name, null, off.per, null);
       } else {
-        const gemini = await estimateFood(aiText, aiFiles);
-        const eanFromGemini = gemini.ean && eanChecksumValid(gemini.ean) ? gemini.ean : null;
-        const [off, fdcMatches] = await Promise.all([
-          eanFromGemini ? fetchOFF(eanFromGemini) : Promise.resolve(null),
-          gemini.usda_query ? searchFDC(gemini.usda_query) : Promise.resolve([]),
+        // Read the barcode from the images independently of the typed EAN.
+        const gemini = await estimateFood(eanTyped ? '' : aiText, aiFiles);
+        const detected = extractEan(gemini.ean || '');
+        const eanFromGemini = detected && eanChecksumValid(detected) ? detected : null;
+        const eanConflict = eanTyped && eanFromGemini && eanTyped.padStart(14, '0') !== eanFromGemini.padStart(14, '0');
+        const ean = eanConflict ? null : eanTyped || eanFromGemini;
+        const [candidate, fdcMatches] = await Promise.all([
+          ean ? fetchOFF(ean).catch(() => null) : null,
+          !eanTyped && gemini.usda_query ? searchFDC(gemini.usda_query).catch(() => []) : [],
         ]);
+        const off = candidate && (eanFromGemini || photoMatchesOFF(gemini, candidate)) ? candidate : null;
+        const sameBasis = off && gemini.basis === off.per;
         setFdcChips(fdcMatches);
         setSweeteners(off?.sweeteners || []);
+        if (eanConflict) {
+          setSourceNotice(t('El código de barras de la foto no coincide con el ingresado. Revisa que correspondan al mismo producto.'));
+        } else if (candidate && !off) {
+          setSourceNotice(t('Revisa que el código de barras y la foto correspondan al mismo producto. Se usaron los datos de la foto.'));
+        } else if (off && !sameBasis && gemini.mode === 'etiqueta') {
+          setSourceNotice(t('La etiqueta y Open Food Facts usan bases distintas. Revisa si los valores son por 100 g o por 100 ml.'));
+        }
         if (gemini.mode === 'etiqueta') {
-          // Compare label vs OFF only if both are on the same basis; otherwise it is skipped
-          // (never compared cross-basis g vs ml).
-          setLabelMismatch(off && gemini.basis === off.per ? findDiscrepancies(gemini, off) : []);
+          setLabelMismatch(sameBasis ? findDiscrepancies(gemini, off) : []);
           applyPrefillWithBasis(fillFoodSource(gemini, off), 'etiqueta', null, gemini.confidence, gemini.basis, gemini.density_g_ml);
         } else if (off) {
           applyPrefillWithBasis(fillFoodSource(off, gemini, true), 'off', off.name, null, off.per, gemini.density_g_ml);
+        } else if (candidate) {
+          setSourceNotice(t('Revisa que el código de barras y la foto correspondan al mismo producto. Se usaron los datos del código.'));
+          setSweeteners(candidate.sweeteners || []);
+          applyPrefillWithBasis(candidate, 'off', candidate.name, null, candidate.per, null);
         } else {
           applyPrefillWithBasis(gemini, 'gemini', null, gemini.confidence, gemini.basis, gemini.density_g_ml);
         }
@@ -850,6 +866,7 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
           {aiMissing.length > 0 && (
             <p className="text-xs text-warn" role="status">{t('Sin dato fiable de:')} {aiMissing.join(', ')}</p>
           )}
+          {sourceNotice && <p className="text-xs text-warn" role="status">⚠ {sourceNotice}</p>}
           {labelMismatch.length > 0 && (
             <p className="text-xs text-warn" role="status">
               ⚠ {t('La etiqueta y Open Food Facts difieren en:')} {labelMismatch.join(', ')}.
@@ -907,8 +924,9 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
 
         <div className="flex flex-col gap-1 text-sm text-text-3">
           <div className="flex items-center gap-2">
-            <span>{t('Valores por')}</span>
+            <label htmlFor={basisId}>{t('Valores por')}</label>
             <input
+              id={basisId}
               type="number"
               inputMode="decimal"
               min="1"
@@ -916,7 +934,6 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
               value={basis}
               onChange={(e) => setBasis(e.target.value)}
               className="w-20 min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-center text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
-              aria-label={t('Base de los valores capturados')}
             />
             <div className="flex rounded-lg border border-border overflow-hidden text-sm">
               {['g', 'ml'].map((u) => (
@@ -924,7 +941,8 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
                   type="button"
                   key={u}
                   onClick={() => setBasisUnit(u)}
-                  className={`px-3 py-1.5 ${basisUnit === u ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2'}`}
+                  aria-pressed={basisUnit === u}
+                  className={`min-h-[44px] min-w-[44px] px-3 ${basisUnit === u ? 'bg-accent text-bg font-medium' : 'bg-surface-2 text-text-2'}`}
                 >
                   {u}
                 </button>
@@ -1212,12 +1230,13 @@ function FoodForm({ food, favs, onToggleFav, onCancel, onSave, onDelete }) {
 }
 
 function Field({ label, required, children }) {
+  const id = useId();
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-sm text-text-2 min-h-[24px] flex items-center">
-        {label} {required && <span className="text-danger">*</span>}
+      <label htmlFor={id} className="text-sm text-text-2 min-h-[24px] flex items-center">
+        {label} {required && <span aria-hidden="true" className="text-danger">*</span>}
       </label>
-      {children}
+      {Children.map(children, (child, index) => index === 0 ? cloneElement(child, { id }) : child)}
     </div>
   );
 }
@@ -1241,10 +1260,11 @@ function NumberField({ label, value, onChange, placeholder }) {
 // Hidden/favorite micro: numeric field with a star to promote it out of "Más micros".
 function MicroField({ m, fav, value, onChange, onToggleFav, placeholder }) {
   const label = t(m.label);
+  const id = useId();
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between min-h-[24px]">
-        <label className="text-sm text-text-2 truncate">{label} ({m.unit})</label>
+        <label htmlFor={id} className="text-sm text-text-2 truncate">{label} ({m.unit})</label>
         <button
           type="button"
           onClick={onToggleFav}
@@ -1255,6 +1275,7 @@ function MicroField({ m, fav, value, onChange, onToggleFav, placeholder }) {
         </button>
       </div>
       <input
+        id={id}
         type="number"
         inputMode="decimal"
         step="any"

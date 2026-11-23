@@ -1061,6 +1061,18 @@ export function sodiumIsHigh(sodiumMg, hasEntries, ceiling = SODIUM_CEILING_MG) 
   return hasEntries && sodiumMg > ceiling;
 }
 
+// The observed average is a lower bound when any registered day lacks sodium.
+export function sodiumPeriodAssessment(average, coverage, bounds) {
+  const { min: floor, max: ceiling } = effectiveBound('sodio_mg', null, null, bounds)
+    ?? { min: SODIUM_FLOOR_MG, max: SODIUM_CEILING_MG };
+  if (coverage === 'unknown') return { status: null, limit: null };
+  if (average > ceiling) return { status: 'danger', limit: 'high', threshold: ceiling };
+  if (coverage === 'partial') return { status: null, limit: null };
+  return average < floor
+    ? { status: 'danger', limit: 'low', threshold: floor }
+    : { status: 'ok', limit: null };
+}
+
 // Dual sodium traffic light: danger outside the [floor, ceiling] range, ok inside.
 export function classifySodium(sodiumMg, hasEntries) {
   if (!hasEntries) return null;
@@ -1484,36 +1496,121 @@ export function microCoverageForEntries(entries, key) {
   return entries.some((entry) => entry.micros?.[key] != null) ? 'partial' : 'unknown';
 }
 
+// Keep recipe arithmetic in base 10 through both SQL rounding steps.
+const DECIMAL_ZERO = { units: 0n, places: 0 };
+const DECIMAL_ONE = { units: 1n, places: 0 };
+const DECIMAL_HUNDRED = { units: 100n, places: 0 };
+
+function recipeDecimal(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return DECIMAL_ZERO;
+  const [digits, exponent = '0'] = String(number).split('e');
+  const [whole, fraction = ''] = digits.split('.');
+  return { units: BigInt(whole + fraction), places: fraction.length - Number(exponent) };
+}
+
+function atDecimalPlaces({ units, places }, scale) {
+  return units * (10n ** BigInt(scale - places));
+}
+
+function addRecipeDecimals(a, b) {
+  const places = Math.max(a.places, b.places);
+  return { units: atDecimalPlaces(a, places) + atDecimalPlaces(b, places), places };
+}
+
+function multiplyRecipeDecimals(a, b) {
+  return { units: a.units * b.units, places: a.places + b.places };
+}
+
+// PostgreSQL numeric rounds exact halves away from zero.
+function divideRecipeDecimals(a, b, places) {
+  const scale = Math.max(a.places - places, b.places);
+  const numerator = atDecimalPlaces(a, scale + places);
+  const denominator = atDecimalPlaces(b, scale);
+  const absolute = numerator < 0n ? -numerator : numerator;
+  const rounded = (2n * absolute + denominator) / (2n * denominator);
+  return numerator < 0n ? -rounded : rounded;
+}
+
+// PostgreSQL numeric division chooses a decimal scale from the leading
+// base-10000 digits and the operand scales, then rounds the quotient.
+function leadingNumericDigit({ units, places }) {
+  if (units === 0n) return { weight: 0, digit: 0n };
+  const absolute = units < 0n ? -units : units;
+  const weight = Math.floor((absolute.toString().length - 1 - places) / 4);
+  const shift = 4 * weight + places;
+  const digit = shift > 0 ? absolute / (10n ** BigInt(shift)) : absolute * (10n ** BigInt(-shift));
+  return { weight, digit };
+}
+
+function postgresRecipeQuotient(a, b) {
+  const first = leadingNumericDigit(a);
+  const second = leadingNumericDigit(b);
+  const weight = first.weight - second.weight - (first.digit <= second.digit ? 1 : 0);
+  const places = Math.min(1000, Math.max(16 - 4 * weight, a.places, b.places, 0));
+  return { units: divideRecipeDecimals(a, b, places), places };
+}
+
+const recipeDecimalNumber = ({ units, places }) => Number(`${units}e${-places}`);
+
+// Persisted recipes have one row per food ID. Draft foods without an ID
+// are separate until saved, and callers may provide nutrition without IDs.
+export function groupRecipeIngredients(ingredients) {
+  const byFood = new Map();
+  const grouped = [];
+  for (const item of ingredients) {
+    const id = item.food.id;
+    const amount = recipeDecimal(item.grams);
+    const existing = id != null ? byFood.get(id) : null;
+    if (existing) existing.amount = addRecipeDecimals(existing.amount, amount);
+    else {
+      const row = { item, amount };
+      grouped.push(row);
+      if (id != null) byFood.set(id, row);
+    }
+  }
+  return grouped.map(({ item, amount }) => ({ ...item, grams: recipeDecimalNumber(amount) }));
+}
+
 // Client-side replica of the SQL view nutri.recipe_per_100g (§4.3).
 export function computeRecipePer100g(ingredients, cookedWeightG) {
-  const totalGrams = ingredients.reduce((sum, i) => sum + Number(i.grams || 0), 0);
-  const weight = Number(cookedWeightG) > 0 ? Number(cookedWeightG) : totalGrams;
-  if (weight <= 0) return null;
+  const grouped = groupRecipeIngredients(ingredients);
+  const totalGrams = grouped.reduce((sum, item) => addRecipeDecimals(sum, recipeDecimal(item.grams)), DECIMAL_ZERO);
+  const weight = Number(cookedWeightG) > 0 ? recipeDecimal(cookedWeightG) : totalGrams;
+  if (!grouped.length || weight.units <= 0n) return null;
 
-  const sums = { kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
+  const macroTotals = { kcal: DECIMAL_ZERO, protein_g: DECIMAL_ZERO, carbs_g: DECIMAL_ZERO, fat_g: DECIMAL_ZERO };
   const micros = {};
   let microsComplete = null;
-  for (const { food, grams } of ingredients) {
-    const factor = Number(grams || 0) / 100;
-    sums.kcal += Number(food.kcal) * factor;
-    sums.protein_g += Number(food.protein_g) * factor;
-    sums.carbs_g += Number(food.carbs_g) * factor;
-    sums.fat_g += Number(food.fat_g) * factor;
+  for (const { food, grams } of grouped) {
+    const amount = recipeDecimal(grams);
+    const ingredientFactor = postgresRecipeQuotient(amount, DECIMAL_HUNDRED);
+    for (const key of Object.keys(macroTotals)) {
+      const amountTimesNutrient = multiplyRecipeDecimals(recipeDecimal(food[key]), amount);
+      const contribution = postgresRecipeQuotient(amountTimesNutrient, DECIMAL_HUNDRED);
+      macroTotals[key] = addRecipeDecimals(macroTotals[key], contribution);
+    }
     const known = knownMicros(food.micros);
     microsComplete = microsComplete == null ? known : Object.fromEntries(Object.keys(microsComplete).filter((k) => known[k]).map((k) => [k, true]));
-    for (const [k, v] of Object.entries(food.micros || {})) {
-      if (v === '' || v == null) continue;
-      micros[k] = (micros[k] || 0) + Number(v) * factor;
+    for (const [key, value] of Object.entries(food.micros || {})) {
+      if (value === '' || value == null) continue;
+      const contribution = multiplyRecipeDecimals(recipeDecimal(value), ingredientFactor);
+      micros[key] = (micros[key] ?? 0n) + divideRecipeDecimals(contribution, DECIMAL_ONE, 3);
     }
   }
 
-  const scale = 100 / weight;
+  const rounded = (amount, places) => recipeDecimalNumber({ units: divideRecipeDecimals(amount, DECIMAL_ONE, places), places });
+  const macroPer100 = (amount) => postgresRecipeQuotient(multiplyRecipeDecimals(amount, DECIMAL_HUNDRED), weight);
+  const microFactor = postgresRecipeQuotient(DECIMAL_HUNDRED, weight);
   return {
-    kcal: round(sums.kcal * scale, 1),
-    protein_g: round(sums.protein_g * scale, 2),
-    carbs_g: round(sums.carbs_g * scale, 2),
-    fat_g: round(sums.fat_g * scale, 2),
-    micros: Object.fromEntries(Object.entries(micros).map(([k, v]) => [k, round(v * scale, 3)])),
+    kcal: rounded(macroPer100(macroTotals.kcal), 1),
+    protein_g: rounded(macroPer100(macroTotals.protein_g), 2),
+    carbs_g: rounded(macroPer100(macroTotals.carbs_g), 2),
+    fat_g: rounded(macroPer100(macroTotals.fat_g), 2),
+    // The view applies the already-rounded 100/weight factor to the sum in thousandths.
+    micros: Object.fromEntries(Object.entries(micros).map(([key, units]) => [
+      key, rounded(multiplyRecipeDecimals({ units, places: 3 }, microFactor), 3),
+    ])),
     micros_complete: microsComplete || {},
   };
 }

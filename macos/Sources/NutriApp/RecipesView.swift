@@ -129,7 +129,7 @@ struct RecipesView: View {
                 }
             } else if let form {
                 ScrollView { editor(form).padding(16) }
-                    .scrollDismissesKeyboard(.immediately)
+                    .scrollDismissesKeyboard(.interactively)
                     .nutriDockScrollable()
             } else {
                 ScrollView { listing.padding(16) }
@@ -430,10 +430,10 @@ private struct RecipeEditor: View {
     private var ingredientWeight: Double { draft.ingredients.compactMap(\.grams).reduce(0, +) }
     private var massDifference: Double { cookedWeight.map { ingredientWeight > 0 ? abs(ingredientWeight - $0) / $0 : 0 } ?? 0 }
     private var staged: [RecipeIngredient] { draft.ingredients.filter(\.staged) }
-    private var perHundred: Record? {
-        let pairs = draft.ingredients.map { (food: $0.food, grams: $0.grams ?? 0) }
-        return Domain.recipePer100g(pairs, cookedWeight: cookedWeight)
+    private var ingredientAmounts: [(food: Record, grams: Double)] {
+        draft.ingredients.compactMap { row in row.grams.map { (row.food, $0) } }
     }
+    private var perHundred: Record? { Domain.recipePer100g(ingredientAmounts, cookedWeight: cookedWeight) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -478,7 +478,7 @@ private struct RecipeEditor: View {
                     if ingredient.staged { stagedIngredient($ingredient) }
                     else { ingredientRow($ingredient) }
                 }
-                TextField(store.tr("Añadir ingrediente…"), text: $query).nutriInput().focused($ingredientSearchFocused)
+                TextField(store.tr("Añadir ingrediente…"), text: $query).nutriInput(focus: $ingredientSearchFocused)
                     .submitLabel(.search)
                     .onSubmit { ingredientSearchFocused = false }
                     .accessibilityIdentifier("recipes.ingredient.search")
@@ -657,19 +657,30 @@ private struct RecipeEditor: View {
                 }
             }.padding(.bottom, desktop ? 4 : 0)
             if desktop {
-                ForEach(Domain.micros.filter { $0.key != "agua_ml" && favorites.contains($0.key) }) { micro in
-                    Rectangle().fill(palette.border).frame(height: 1)
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(store.tr(micro.label)).foregroundStyle(palette.text2)
-                        Spacer(minLength: 4)
-                        if let value = row.object("micros").number(micro.key) {
-                            Text("\(numberText(value)) \(micro.unit)" + (Domain.coverage(row, micro.key) == .partial ? " (" + store.tr("parcial") + ")" : ""))
-                                .font(.nutriMono(14)).multilineTextAlignment(.trailing)
-                        } else { Text(store.tr("Sin dato")).font(.nutriMono(14)).foregroundStyle(palette.text3) }
-                    }
+                previewMicros(row, keys: favorites)
+            } else {
+                DisclosureGroup(store.tr("Micros")) {
+                    previewMicros(row, keys: favorites)
                 }
+                .accessibilityIdentifier("recipes.preview.micros")
             }
         }.padding(16).nutriCard()
+    }
+
+    private func previewMicros(_ row: Record, keys: Set<String>) -> some View {
+        ForEach(Domain.micros.filter { $0.key != "agua_ml" && keys.contains($0.key) }) { micro in
+            Rectangle().fill(palette.border).frame(height: 1)
+            HStack(alignment: .firstTextBaseline) {
+                Text(store.tr(micro.label)).foregroundStyle(palette.text2)
+                Spacer(minLength: 4)
+                if let value = row.object("micros").number(micro.key) {
+                    Text("\(numberText(value, digits: 3)) \(micro.unit)" + (Domain.coverage(row, micro.key) == .partial ? " (" + store.tr("parcial") + ")" : ""))
+                        .font(.nutriMono(14)).multilineTextAlignment(.trailing)
+                } else {
+                    Text(store.tr("Sin dato")).font(.nutriMono(14)).foregroundStyle(palette.text3)
+                }
+            }
+        }
     }
 
     private func countText(_ text: String) -> String {
@@ -976,17 +987,17 @@ private struct RecipeEditor: View {
             return
         }
         for id in draft.ingredients.filter(\.staged).map(\.id) { try await persistIngredient(id, failure: "No se pudo crear un alimento nuevo. Intenta de nuevo.") }
-        let gramsByID = draft.ingredients.reduce(into: [String: Double]()) { items, row in
-            if let grams = row.grams { items[row.food.text("id"), default: 0] += grams }
-        }
-        let items: [Record] = gramsByID.keys.sorted().compactMap { id in
-            gramsByID[id].map { ["food_id": .string(id), "grams": .number($0)] }
+        let items: [Record] = Domain.groupedRecipeIngredients(ingredientAmounts).map { food, grams in
+            ["food_id": .string(food.text("id")), "grams": .number(grams)]
         }
         let row: Record = ["id": .string(draft.recordID), "name": .string(name), "cooked_weight_g": cooked.map(JSONValue.number) ?? .null,
                            "portions": .array(portions), "source": .string(draft.source)]
         let response: JSONValue
         do { response = try await store.rpc("save_recipe_atomic", recipePayload(row, items: items)) }
         catch is CancellationError { throw CancellationError() }
+        catch let error as NutriError where ["22023", "42501", "23503"].contains(error.code ?? "") {
+            throw FeatureError(store.tr("Revisa los ingredientes y el peso cocido e inténtalo de nuevo."))
+        }
         catch { throw FeatureError(store.failure(error, "No se pudo guardar la receta.", networkOnly: true)) }
         guard response.string?.isEmpty == false else { throw FeatureError("El servidor no identificó la receta guardada.") }
         await onSaved()

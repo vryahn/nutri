@@ -7,7 +7,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { createClient } from '@supabase/supabase-js';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { z } from 'zod';
-import { resolveTarget } from '../src/lib/domain.js';
+import { groupRecipeIngredients, resolveTarget } from '../src/lib/domain.js';
 import {
   acceptMcpClaims,
   assertValidMicros,
@@ -241,15 +241,15 @@ async function createFood(supabase, uid, input) {
 
 async function createRecipe(supabase, uid, input) {
   assertValidPortions(input.portions);
-  const ids = input.items.map((i) => i.food_id);
+  const ids = [...new Set(input.items.map((i) => i.food_id))];
   const { data: foods, error: foodsErr } = await supabase
     .from('foods')
     .select('id,kcal,protein_g,carbs_g,fat_g,micros')
     .in('id', ids);
   if (foodsErr) throw new Error(foodsErr.message);
-  if (foods.length !== new Set(ids).size) throw new Error('algún food_id no existe o no es visible');
+  if (foods.length !== ids.length) throw new Error('algún food_id no existe o no es visible');
   const byId = Object.fromEntries(foods.map((f) => [f.id, f]));
-  const ingredients = input.items.map((i) => ({ food: byId[i.food_id], grams: i.grams }));
+  const ingredients = groupRecipeIngredients(input.items.map((i) => ({ food: byId[i.food_id], grams: i.grams })));
   const per100g = recipeResponse(ingredients, input.cooked_weight_g);
 
   const { data: recipe, error: recErr } = await supabase
@@ -267,7 +267,7 @@ async function createRecipe(supabase, uid, input) {
 
   const { error: itemsErr } = await supabase
     .from('recipe_items')
-    .insert(input.items.map((i) => ({ recipe_id: recipe.id, food_id: i.food_id, grams: i.grams })));
+    .insert(ingredients.map(({ food, grams }) => ({ recipe_id: recipe.id, food_id: food.id, grams })));
   if (itemsErr) {
     // ponytail: no real transaction over REST — best-effort rollback of the orphaned recipe.
     await supabase.from('recipes').delete().eq('id', recipe.id);

@@ -778,6 +778,7 @@ private struct FoodEditor: View {
     @State private var lookupError = ""
     @State private var missing: [String] = []
     @State private var discrepancies: [String] = []
+    @State private var sourceNotice = ""
     @State private var sweeteners: [Record] = []
     @State private var fdc: [Record] = []
     @State private var moreMicros = false
@@ -825,6 +826,7 @@ private struct FoodEditor: View {
                     if !sourceInfo.isEmpty { Text(sourceInfo).foregroundStyle(palette.text2) }
                     if !missing.isEmpty { Text(store.tr("Sin dato fiable de:") + " " + missing.joined(separator: ", ")).foregroundStyle(palette.warn) }
                     if !discrepancies.isEmpty { Text("⚠ " + store.tr("La etiqueta y Open Food Facts difieren en:") + " " + discrepancies.joined(separator: ", ") + ".").foregroundStyle(palette.warn) }
+                    if !sourceNotice.isEmpty { Text("⚠ " + sourceNotice).foregroundStyle(palette.warn) }
                     if !sweeteners.isEmpty {
                         let names = sweeteners.map { "\($0.text("name")) (\($0.text("code")))" }.joined(separator: ", ")
                         Text(store.tr("Open Food Facts reporta edulcorantes:") + " " + names + ". " +
@@ -1083,6 +1085,7 @@ private struct FoodEditor: View {
         sourceInfo = ""
         missing = []
         discrepancies = []
+        sourceNotice = ""
         sweeteners = []
         fdc = []
         Task {
@@ -1094,22 +1097,39 @@ private struct FoodEditor: View {
 
     private func lookupNutrition() async throws {
         let entered = cleanText(lookup)
-        let digits = entered.filter { !$0.isWhitespace && $0 != "-" }
-        if (8...14).contains(digits.count), digits.allSatisfy({ "0123456789".contains($0) }) {
-            guard validEAN(digits) else { throw FeatureError("Código de barras inválido: dígito verificador no coincide, revísalo") }
-            guard let off = try? await fetchOFF(digits) else { throw FeatureError(store.tr("EAN no encontrado en Open Food Facts.")) }
+        let barcode = try enteredFoodBarcode(entered)
+        let inputImages = images
+        if let barcode, inputImages.isEmpty {
+            guard let off = try? await fetchOFF(barcode) else { throw FeatureError(store.tr("EAN no encontrado en Open Food Facts.")) }
             applyLookup(off, source: "off", basis: off.text("per"))
             sweeteners = off.array("sweeteners").compactMap(\.object)
             return
         }
-        let generated = try await estimateCatalogAI(store: store, text: entered, images: images)
-        let candidate = generated.text("ean")
-        let code = validEAN(candidate) ? candidate : ""
-        let generic = generated.text("brand").isEmpty && code.isEmpty ? cleanText(generated.text("usda_query")) : ""
-        async let off = optionalOFF(code)
+        // Keep the user's barcode out of image transcription so it cannot become the detected barcode.
+        let generated = try await estimateCatalogAI(store: store, text: barcode == nil ? entered : "", images: inputImages)
+        let extractedCode = generated.text("ean")
+        let identity = foodCatalogIdentity(entered: barcode, extracted: extractedCode)
+        let generic = barcode == nil && generated.text("brand").isEmpty && identity.ean.isEmpty
+            ? cleanText(generated.text("usda_query")) : ""
+        async let off = optionalOFF(identity.ean)
         async let matches = optionalFDC(generic)
-        let (catalog, suggested) = await (off, matches)
+        let (candidate, suggested) = await (off, matches)
         fdc = suggested
+        let catalog = candidate.flatMap { validEAN(extractedCode) || photoMatchesOFF(generated, $0) ? $0 : nil }
+        if identity.conflict {
+            sourceNotice = store.tr("El código de barras de la foto no coincide con el ingresado. Revisa que correspondan al mismo producto.")
+        } else if let candidate, catalog == nil {
+            if generated.text("mode") == "etiqueta" {
+                sourceNotice = store.tr("Revisa que el código de barras y la foto correspondan al mismo producto. Se usaron los datos de la foto.")
+            } else {
+                sourceNotice = store.tr("Revisa que el código de barras y la foto correspondan al mismo producto. Se usaron los datos del código.")
+                sweeteners = candidate.array("sweeteners").compactMap(\.object)
+                applyLookup(candidate, source: "off", basis: candidate.text("per"))
+                return
+            }
+        } else if let catalog, generated.text("mode") == "etiqueta", generated.text("basis") != catalog.text("per") {
+            sourceNotice = store.tr("La etiqueta y Open Food Facts usan bases distintas. Revisa si los valores son por 100 g o por 100 ml.")
+        }
         sweeteners = catalog?.array("sweeteners").compactMap(\.object) ?? []
         let result = resolveFoodSources(generated, off: catalog)
         discrepancies = result.mismatch.map(foodLabel)
@@ -1134,6 +1154,7 @@ private struct FoodEditor: View {
         do {
             let item = try await fetchFDC(store: store, id: id)
             discrepancies = []
+            sourceNotice = ""
             sweeteners = []
             applyLookup(item, source: "usda", basis: "100g")
         } catch { self.lookupError = store.tr("No se pudo obtener el detalle de USDA.") }
@@ -1159,6 +1180,37 @@ private struct FoodEditor: View {
     }
 }
 
+private func enteredFoodBarcode(_ text: String) throws -> String? {
+    let digits = text.filter { !$0.isWhitespace && $0 != "-" }
+    guard (8...14).contains(digits.count), digits.allSatisfy({ "0123456789".contains($0) }) else { return nil }
+    guard validEAN(digits) else {
+        throw FeatureError("Código de barras inválido: dígito verificador no coincide, revísalo")
+    }
+    return digits
+}
+
+private func foodCatalogIdentity(entered: String?, extracted: String) -> (ean: String, conflict: Bool) {
+    let detected = validEAN(extracted) ? extracted : nil
+    if let entered, let detected,
+       entered.drop(while: { $0 == "0" }) != detected.drop(while: { $0 == "0" }) {
+        return ("", true)
+    }
+    return (entered ?? detected ?? "", false)
+}
+
+private func photoMatchesOFF(_ photo: Record, _ off: Record) -> Bool {
+    func normalize(_ text: String) -> String {
+        text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US"))
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    return ["name", "brand"].allSatisfy { key in
+        let value = normalize(photo.text(key))
+        return !value.isEmpty && value == normalize(off.text(key))
+    }
+}
+
 private func checkedFoodNumbers(_ source: Record) -> Record {
     var row = source
     let allowed = Set(Domain.micros.map(\.key))
@@ -1180,7 +1232,7 @@ private func resolveFoodSources(_ ai: Record, off: Record?) -> (row: Record, sou
         if let catalog, sameBasis {
             result = fillFood(ai, with: catalog, requiredOnly: false)
             mismatch = (Domain.macroKeys + Domain.micros.map(\.key)).filter { key in
-                guard let a = nutritionValue(ai, key), let b = nutritionValue(catalog, key), a > 5, b > 5 else { return false }
+                guard let a = nutritionValue(ai, key), let b = nutritionValue(catalog, key), max(a, b) > 5 else { return false }
                 return abs(a - b) / max(a, b) > 0.25
             }
         } else {
@@ -1552,6 +1604,18 @@ func checkCatalogFidelity() throws {
     }
     try check(["96385074", "036000291452", "4006381333931", "04006381333931"].allSatisfy(validEAN), "GS1 accepts all four valid lengths")
     try check(!validEAN("4006381333932") && !validEAN("400638133") && !validEAN("٤٠٠٦٣٨١٣٣٣٩٣١"), "GS1 rejects invalid digits and length")
+    let enteredCode = try enteredFoodBarcode("4006-381 333 931")
+    try check(enteredCode == "4006381333931" && foodCatalogIdentity(entered: enteredCode, extracted: "").ean == enteredCode,
+              "entered EAN can supplement a label with no barcode")
+    try check(foodCatalogIdentity(entered: enteredCode, extracted: "04006381333931").ean == enteredCode,
+              "equivalent GTINs may use different zero padding")
+    let unrelatedPhoto = foodCatalogIdentity(entered: enteredCode, extracted: "036000291452")
+    try check(unrelatedPhoto.ean.isEmpty && unrelatedPhoto.conflict, "a conflicting photographed product cannot inherit OFF nutrients")
+    let photographedProduct: Record = ["name": .string("Yogúr-natural"), "brand": .string("MARCA")]
+    let listedProduct: Record = ["name": .string("yogur natural"), "brand": .string("Marca")]
+    try check(photoMatchesOFF(photographedProduct, listedProduct), "unprinted barcode can use exact normalized name and brand")
+    try check(!photoMatchesOFF(photographedProduct, ["name": .string("Yogur natural"), "brand": .string("Otra marca")]) &&
+              !photoMatchesOFF([:], listedProduct), "unverified identity cannot supplement a printed label")
     let product: Record = ["nutrition_data_per": .string("100ml"), "brands": .string("Original, Otro"),
                            "nutriments": .object(["energy_100g": .number(418.4), "salt_100g": .number(0.25), "fiber_100g": .number(0)]),
                            "additives_tags": .array([.string("en:e955"), .string("es:E955"), .string("en:e960c")])]
@@ -1568,7 +1632,16 @@ func checkCatalogFidelity() throws {
               nutritionValue(partialOFF, "sodio_mg") == 100, "OFF blanks and invalid values stay unknown; zeros and fallbacks survive")
     let label: Record = ["mode": .string("etiqueta"), "basis": .string("100ml"), "kcal": .number(70), "micros": .object(["sodio_mg": .number(0), "fibra_g": .number(2)])]
     let labelResult = resolveFoodSources(label, off: off)
-    try check(labelResult.source == "etiqueta" && labelResult.basis == "100ml" && labelResult.mismatch == ["kcal"] && nutritionValue(labelResult.row, "sodio_mg") == 0, "same-basis label beats OFF, retains zero, flags >25% discrepancy")
+    try check(labelResult.source == "etiqueta" && labelResult.basis == "100ml" && labelResult.mismatch == ["kcal", "sodio_mg"] && nutritionValue(labelResult.row, "sodio_mg") == 0, "same-basis label beats OFF, retains zero, flags >25% discrepancy")
+    let fixtureLabel = label.merging(["name": .string("Fixture"), "kcal": .number(200), "protein_g": .number(10),
+                                      "carbs_g": .number(30), "fat_g": .number(4), "density_g_ml": .number(1)]) { _, new in new }
+    let fixtureOFF = off.merging(["kcal": .number(30)]) { _, new in new }
+    let sameProduct = resolveFoodSources(fixtureLabel, off: fixtureOFF)
+    var filled = FoodDraft()
+    filled.fill(sameProduct.row, source: sameProduct.source, basis: sameProduct.basis)
+    let savedLabel = try filled.payload()
+    try check(savedLabel.number("kcal") == 200 && nutritionValue(savedLabel, "sodio_mg") == 0 &&
+              sameProduct.mismatch.contains("kcal"), "the saved label retains calories and declared zero in the presence of a EAN")
     let incompatible = resolveFoodSources(label.merging(["basis": .string("100g"), "micros": .object([:])]) { _, new in new }, off: off)
     try check(incompatible.mismatch.isEmpty && nutritionValue(incompatible.row, "sodio_mg") == nil, "different bases are neither compared nor mixed")
     let estimate: Record = ["mode": .string("estimacion"), "basis": .string("100ml"), "kcal": .number(12),

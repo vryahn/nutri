@@ -195,16 +195,52 @@ public enum Domain {
         return result
     }
 
+    public static func groupedRecipeIngredients(_ ingredients: [(food: Record, grams: Double)]) -> [(food: Record, grams: Double)] {
+        var grouped: [(food: Record, grams: Decimal)] = []
+        var indices: [String: Int] = [:]
+        for (food, grams) in ingredients where grams.isFinite && grams > 0 {
+            let id = food.text("id")
+            if let index = indices[id] {
+                grouped[index].grams += decimal(grams)
+            } else {
+                if !id.isEmpty { indices[id] = grouped.count }
+                grouped.append((food, decimal(grams)))
+            }
+        }
+        return grouped.map { ($0.food, NSDecimalNumber(decimal: $0.grams).doubleValue) }
+    }
+
+    private static func recipeMicrosFactor(_ weight: Decimal) -> Decimal {
+        // PostgreSQL numeric division selects its scale using leading base-10,000 digits.
+        // The numerator 100 has weight zero and a leading digit of 100.
+        var leading = weight
+        var weightDigits = 0
+        while leading >= 10_000 {
+            leading /= 10_000
+            weightDigits += 1
+        }
+        while leading < 1 {
+            leading *= 10_000
+            weightDigits -= 1
+        }
+        let quotientWeight = -weightDigits - (leading >= 100 ? 1 : 0)
+        let scale = max(16 - 4 * quotientWeight, -weight.exponent, 0)
+        return quantizedDecimal(100 / weight, scale)
+    }
+
     public static func recipePer100g(_ ingredients: [(food: Record, grams: Double)], cookedWeight: Double?) -> Record? {
-        let weight = cookedWeight.flatMap { $0 > 0 ? $0 : nil } ?? ingredients.map(\.grams).reduce(0, +)
-        guard weight > 0, weight.isFinite else { return nil }
+        let ingredients = groupedRecipeIngredients(ingredients)
+        let weight = cookedWeight.flatMap { $0 > 0 ? decimal($0) : nil }
+            ?? ingredients.reduce(Decimal.zero) { $0 + decimal($1.grams) }
+        guard !weight.isNaN, weight > 0 else { return nil }
         var sums = [String: Decimal]()
         var micros = [String: Decimal]()
         var complete: Set<String>?
         for (food, grams) in ingredients {
-            let factor = decimal(grams) / 100
+            let mass = decimal(grams)
+            let factor = mass / 100
             for key in macroKeys {
-                if let value = food.number(key) { sums[key, default: 0] += decimal(value) * factor }
+                if let value = food.number(key) { sums[key, default: 0] += decimal(value) * mass / 100 }
             }
             let rowMicros = food.object("micros")
             for (key, value) in rowMicros {
@@ -213,10 +249,10 @@ public enum Domain {
             let known = Set(knownMicros(rowMicros).keys)
             complete = complete?.intersection(known) ?? known
         }
-        let per100 = 100 / decimal(weight)
+        let microsFactor = recipeMicrosFactor(weight)
         var result = Record()
-        for (key, value) in sums { result[key] = .number(quantize(value * per100, key == "kcal" ? 1 : 2)) }
-        result["micros"] = .object(micros.mapValues { .number(quantize($0 * per100, 3)) })
+        for (key, value) in sums { result[key] = .number(quantize(value * 100 / weight, key == "kcal" ? 1 : 2)) }
+        result["micros"] = .object(micros.mapValues { .number(quantize($0 * microsFactor, 3)) })
         result["micros_complete"] = .object(Dictionary(uniqueKeysWithValues: (complete ?? []).map { ($0, .bool(true)) }))
         return result
     }

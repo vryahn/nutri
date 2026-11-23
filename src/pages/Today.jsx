@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom';
+import { useModalFocus } from '../lib/useModalFocus.js';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, History, Copy, ClipboardPaste, ArrowLeftRight, Upload, Bookmark, CloudOff, Target, ArrowUpToLine } from 'lucide-react';
@@ -5,7 +7,7 @@ import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { setSectionMenu, useSectionAdd } from '../lib/sectionMenu.js';
 import { openDatePicker } from '../lib/datePicker.js';
-import { outboxOps, onOutbox, setOutboxOwner, queueInsert, queueUpdate, queueDelete, applyOutbox, flushOutbox } from '../lib/outbox.js';
+import { outboxOps, onOutbox, setOutboxOwner, queueInsert, queueUpdate, queueDelete, queueDeleteDay, applyOutbox, flushOutbox } from '../lib/outbox.js';
 import { prefetchFrequent, refreshFrequent, getFrequent } from '../lib/frequent.js';
 import { prefetchCatalog, searchCatalog, catalogFood } from '../lib/catalog.js';
 import { useToast } from '../lib/useToast.js';
@@ -593,6 +595,7 @@ export default function Today() {
   // SWR: renders the session cache instantly and the background refetch updates it.
   // Entries cached per date; 'targets' is shared with the Metas page.
   const [entries, setEntries] = useState(() => cacheGet(`entries:${todayISO()}`) || []);
+  const dayRequest = useRef(0);
   const [entriesDate, setEntriesDate] = useState(() => cacheGet(`entries:${todayISO()}`) ? todayISO() : null);
   const [labels, setLabels] = useState(() => cacheGet('labels') || []);
   const [targets, setTargets] = useState(() => cacheGet('targets') || []);
@@ -684,15 +687,24 @@ export default function Today() {
   // The queue drains on its own (on 'online' and on returning to the app); here we
   // re-render with it, and refetch once something actually lands so the server's
   // numbers replace the locally computed ones.
-  useEffect(() => onOutbox(({ synced, dropped }) => {
+  useEffect(() => onOutbox(({ synced, dropped, failedBatches, deletedDays = [] }) => {
     setPendingOps(outboxOps());
-    if (synced) loadDay(true);
-    if (dropped) showToast(t('No se pudo guardar un registro — se descartó.'));
+    for (const batch of deletedDays) {
+      const cached = cacheGet(`entries:${batch.day}`);
+      const ids = new Set(batch.ids);
+      if (cached) cacheSet(`entries:${batch.day}`, cached.filter((entry) => !ids.has(entry.id)));
+    }
+    const ids = new Set(deletedDays.filter((batch) => batch.day === date).flatMap((batch) => batch.ids));
+    if (ids.size) {
+      setEntries((entries) => entries.filter((entry) => !ids.has(entry.id)));
+      showToast(t('%n registros borrados.').replace('%n', ids.size));
+    }
+    if (synced || deletedDays.length) loadDay(true);
+    if (failedBatches) showToast(t('Error al borrar.'));
+    else if (dropped) showToast(t('No se pudo guardar un registro — se descartó.'));
   // Re-subscribes only when the day changes; loadDay/showToast are rebuilt every render and would resubscribe on each one.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [date]);
-
-  useEffect(() => { flushOutbox(); }, []);
 
   useEffect(() => {
     const el = summaryCardRef.current;
@@ -759,7 +771,9 @@ export default function Today() {
         else if (adding) setAdding(null);
         return;
       }
-      const tag = document.activeElement?.tagName;
+      const active = document.activeElement;
+      if (active?.closest('[aria-modal="true"]')) return;
+      const tag = active?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (e.key === 'ArrowLeft') setDate((d) => addDaysISO(d, -1));
       else if (e.key === 'ArrowRight') setDate((d) => addDaysISO(d, 1));
@@ -777,6 +791,7 @@ export default function Today() {
     if (!session) return;
     setUserId(session.user.id);
     setOutboxOwner(session.user.id); // queued writes are never sent under another account
+    flushOutbox();
     const { data } = await supabase.from('prefs').select('data').maybeSingle();
     if (data?.data) setPrefs((p) => ({ ...p, ...data.data }));
   }
@@ -884,6 +899,7 @@ export default function Today() {
   // silent: refetch after a mutation without going through the skeleton — unmounting
   // the list collapses the page height and the browser clamps the scroll to the top.
   async function loadDay(silent = false) {
+    const request = ++dayRequest.current;
     if (!silent && !cacheGet(`entries:${date}`)) setLoading(true);
     const { data, error } = await supabase
       .from('entry_nutrients')
@@ -891,6 +907,7 @@ export default function Today() {
       .eq('day', date)
       .order('sort_order')
       .order('created_at');
+    if (request !== dayRequest.current) return;
     if (error) { showToast(t('No se pudo cargar el día — revisa tu conexión.')); setLoading(false); return; }
     setEntries(cacheSet(`entries:${date}`, data || []));
     setEntriesDate(date);
@@ -1131,30 +1148,17 @@ export default function Today() {
   // Deletes the day's foods (not water, which is tracked by glasses). Destructive
   // and irreversible: confirms first with ConfirmSheet.
   function handleDeleteDay() {
-    if (foodEntries.length === 0) {
-      showToast(t('Este día no tiene alimentos.'));
+    if (!foodEntries.length) {
+      showToast(t(deletingDay ? 'El borrado del día está pendiente de sincronización.' : 'Este día no tiene alimentos.'));
       return;
     }
     setConfirmingDeleteDay(true);
   }
 
-  async function doDeleteDay() {
-    const foods = foodEntries;
+  function doDeleteDay() {
     setConfirmingDeleteDay(false);
-    // Queued rows are removed from the queue (the server never saw them); the rest go
-    // in one delete. ponytail: bulk stays online-only, same as copy/paste and templates.
-    const pending = foods.filter((e) => e._pending);
-    pending.forEach((e) => queueDelete(e.id));
-    const synced = foods.filter((e) => !e._pending);
-    if (synced.length) {
-      const { error } = await supabase.from('entries').delete().in('id', synced.map((e) => e.id));
-      if (error) {
-        showToast(t('Error al borrar.'));
-        return;
-      }
-    }
-    showToast(t('%n registros borrados.').replace('%n', foods.length));
-    loadDay(true);
+    if (editing && foodEntries.some((entry) => entry.id === editing.id)) setEditing(null);
+    queueDeleteDay(date, foodEntries.map((entry) => entry.id));
   }
 
   // Publishes Ayer/Copiar/Pegar in the layout's "Más opciones" button (App.jsx).
@@ -1180,7 +1184,7 @@ export default function Today() {
     return () => setSectionMenu([]);
   // The handlers are rebuilt every render; the menu depends on the data it shows, not on their identity.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, copiedDay, prefs.water_food_id, entries, pendingOps, lang]);
+  }, [date, copiedDay, prefs.water_food_id, entries, entriesDate, pendingOps, userId, lang]);
 
   // "Guardar y registrar" from Alimentos: /  arrives with state.logFood, preselecting
   // it in the add-entry form (rail on lg+, sheet on <lg). Read once at mount, then
@@ -1217,10 +1221,14 @@ export default function Today() {
   useSectionAdd('/', () => handleSectionAdd(null), !adding && !editing && !importing);
 
   // Owner-filtered: another account's unsynced ops stay queued but never render here.
-  const dayEntries = useMemo(() => applyOutbox(entries, date, pendingOps, userId), [entries, date, pendingOps, userId]);
+  const dayEntries = useMemo(
+    () => applyOutbox(entriesDate === date ? entries : [], date, pendingOps, userId),
+    [entries, entriesDate, date, pendingOps, userId],
+  );
   const frequentDayEntries = dayEntries;
   const waterEntries = dayEntries.filter((e) => isWaterEntry(e, prefs.water_food_id));
   const foodEntries = dayEntries.filter((e) => !isWaterEntry(e, prefs.water_food_id));
+  const deletingDay = pendingOps.some((op) => op.op === 'delete-many' && op.day === date && op.owner === userId);
   const waterMl = waterEntries.reduce((s, e) => s + Number(e.grams), 0); // density 1: grams = ml
 
   // Config of the active layout and of the mini (the fixed mini-summary shares it).
@@ -1313,10 +1321,10 @@ export default function Today() {
         />
       )}
       <div className="flex items-center justify-between lg:col-start-1">
-        <button onClick={() => setDate(addDaysISO(date, -1))} className="p-2 press" aria-label={t('Día anterior')}>
+        <button onClick={() => setDate(addDaysISO(date, -1))} className="w-11 h-11 grid place-items-center press" aria-label={t('Día anterior')}>
           <ChevronLeft size={22} />
         </button>
-        <div className="relative flex-1 flex justify-center">
+        <div className="relative flex-1 flex items-center justify-center min-h-[44px]">
           <input
             type="date"
             value={date}
@@ -1331,10 +1339,12 @@ export default function Today() {
               : new Date(date + 'T00:00').toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short' })}
           </span>
         </div>
-        <button onClick={() => setDate(addDaysISO(date, 1))} className="p-2 press" aria-label={t('Día siguiente')}>
+        <button onClick={() => setDate(addDaysISO(date, 1))} className="w-11 h-11 grid place-items-center press" aria-label={t('Día siguiente')}>
           <ChevronRight size={22} />
         </button>
       </div>
+
+      {deletingDay && <p className="text-sm text-warn lg:col-start-1" role="status">{t('El borrado del día está pendiente de sincronización.')}</p>}
 
       {/* Inline quick-add: lg+ only, replaces the FAB+sheet flow. */}
       <div className="hidden lg:block lg:col-start-1">
@@ -1958,7 +1968,7 @@ function WaterCard({ waterMl, goalMl, bounds, glassMl, onGlass, onUndo, onCustom
         </h2>
         <button
           onClick={onSettings}
-          className="shrink-0 p-2 -mr-2 text-text-3 press"
+          className="shrink-0 w-11 h-11 grid place-items-center -mr-2 text-text-3 press"
           aria-label={t('Ajustes de agua')}
         >
           <Settings size={18} />
@@ -2027,13 +2037,15 @@ function WaterCard({ waterMl, goalMl, bounds, glassMl, onGlass, onUndo, onCustom
 function WaterSettingsForm({ glassMl, onSave }) {
   const units = useUnits();
   const isUS = units === 'us';
-  const [amount, setAmount] = useState(String(isUS ? round(mlToFlOz(glassMl), 1) : glassMl));
+  const initialAmount = String(isUS ? round(mlToFlOz(glassMl), 1) : glassMl);
+  const [editedAmount, setEditedAmount] = useState(null);
+  const amount = editedAmount ?? initialAmount;
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         const n = Number(amount);
-        if (n > 0) onSave(isUS ? flOzToMl(n) : n);
+        if (n > 0) onSave(editedAmount == null ? glassMl : isUS ? flOzToMl(n) : n);
       }}
       className="flex flex-col gap-4"
     >
@@ -2046,7 +2058,7 @@ function WaterSettingsForm({ glassMl, onSave }) {
           step="any"
           required
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onChange={(e) => setEditedAmount(e.target.value)}
           className="min-h-[44px] rounded-xl bg-surface-2 border border-border px-3 text-text font-mono tabular-nums focus:outline-none focus:ring-2 focus:ring-accent"
         />
       </div>
@@ -2658,13 +2670,16 @@ function Sheet({ title, onClose, children, subheader }) {
   // The backdrop closes on outside tap (the Objetivos Sheet's pattern); the ✕ would
   // be redundant here, so it is omitted — the inline editor's one (lg+ rail, no
   // backdrop) is kept because there is no tap-outside there.
-  return (
-    <div onClick={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 backdrop-in">
-      <div onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-sm bg-surface-3 rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-4 max-h-[85dvh] overflow-y-auto sheet-in">
-        <h2 className="font-display text-lg">{title}</h2>
+  const cardRef = useModalFocus(onClose);
+  const titleId = useId();
+  return createPortal(
+    <div onClick={(e) => { e.stopPropagation(); onClose(); }} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 backdrop-in">
+      <div ref={cardRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-sm bg-surface-3 rounded-t-2xl sm:rounded-2xl p-4 flex flex-col gap-4 max-h-[85dvh] overflow-y-auto sheet-in">
+        <h2 id={titleId} className="font-display text-lg">{title}</h2>
         {subheader && <div className="-mt-1 pb-3 border-b border-border">{subheader}</div>}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

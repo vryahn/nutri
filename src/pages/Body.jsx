@@ -24,6 +24,7 @@ import {
 } from '../lib/domain.js';
 
 const HISTORY_DAYS = 180;
+const NO_PHOTOS = [];
 const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // Per-device persistence (localStorage), same as the Dashboard: survives
@@ -51,10 +52,10 @@ export default function Body() {
   const [date, setDate] = useState(todayISO());
   const [userId, setUserId] = useState(null);
   const [favs, setFavs] = useState([]); // prefs.data.fav_body: metrics promoted out of the "Más medidas" section
-  const [values, setValues] = useState({}); // strings keyed by metric key, for the inputs
-  const [note, setNote] = useState('');
+  const [loadedValues, setValues] = useState({}); // strings keyed by metric key, for the inputs
+  const [loadedNote, setNote] = useState('');
   const dirty = useRef(false);
-  const [photos, setPhotos] = useState([]); // paths in the body-photos bucket for the day
+  const [loadedPhotos, setPhotos] = useState([]); // paths in the body-photos bucket for the day
   // path -> signed URL (ephemeral), stamped with the photo set it was signed for: the
   // previous day's thumbnails never paint while the new ones sign. Derived, not reset.
   const [signedPhotos, setSignedPhotos] = useState({ key: '', map: {} });
@@ -63,9 +64,17 @@ export default function Body() {
   const [history, setHistory] = useState([]); // {day, metrics} rows for the last HISTORY_DAYS
   const [showMore, setShowMore] = useState(false);
   const [trendKey, setTrendKey] = usePersistentState('nutri.body.trendKey', 'peso_kg');
-  const [savedFlash, setSavedFlash] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(null);
   const [importing, setImporting] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [loaded, setLoaded] = useState(null);
+  const loadKey = `${date}:${reloadKey}`;
+  const ready = loaded?.key === loadKey && !loaded.error;
+  const loadError = loaded?.key === loadKey && loaded.error;
+  const values = ready ? loadedValues : {};
+  const note = ready ? loadedNote : '';
+  const photos = ready ? loadedPhotos : NO_PHOTOS;
+  const writes = useRef(new Map());
   const [toast, showToast] = useToast();
   const [confirmPhoto, setConfirmPhoto] = useState(null); // path of the photo whose deletion is pending confirmation
   const [undoRow, setUndoRow] = useState(null); // { day, row: {metrics,note,photo_paths}, timer }: row deleted after clearing all of its fields
@@ -73,7 +82,7 @@ export default function Body() {
   useSectionAdd('/body', () => {
     weightInput.current?.scrollIntoView({ block: 'center' });
     weightInput.current?.focus({ preventScroll: true });
-  }, !importing && !confirmPhoto);
+  }, ready && !!userId && !importing && !confirmPhoto);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
@@ -97,25 +106,30 @@ export default function Body() {
     return () => setSectionMenu([]);
   }, []);
 
-  // Loads the row for the selected day (reloadKey refreshes it after importing).
+  // Load the whole row before enabling the controls that replace it. On a
+  // quick return to the same date, wait for that date's earlier save.
   useEffect(() => {
     let alive = true;
-    supabase
-      .from('body_metrics')
-      .select('metrics, note, photo_paths')
-      .eq('day', date)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!alive) return;
+    async function load() {
+      await writes.current.get(date);
+      if (!alive) return;
+      const { data, error } = await supabase
+        .from('body_metrics')
+        .select('metrics, note, photo_paths')
+        .eq('day', date)
+        .maybeSingle();
+      if (!alive) return;
+      if (!error) {
         const m = data?.metrics || {};
         setValues(Object.fromEntries(Object.entries(m).map(([k, v]) => [k, String(v)])));
         setNote(data?.note || '');
         setPhotos(data?.photo_paths || []);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [date, reloadKey]);
+      }
+      setLoaded({ key: loadKey, error: !!error });
+    }
+    void load();
+    return () => { alive = false; };
+  }, [date, loadKey]);
 
   // Signed URLs for the thumbnails (private bucket: not visible without a signed URL).
   // Regenerated whenever the photo set or the day changes.
@@ -151,38 +165,50 @@ export default function Body() {
   }
   useEffect(loadHistory, []);
 
-  async function persist(nextValues, nextNote, nextPhotos) {
-    if (!userId) return;
+  function persist(nextValues, nextNote, nextPhotos) {
+    if (!ready || !userId) return;
     dirty.current = false;
+    setSavedFlash(null);
     const metrics = cleanNumericMap(nextValues);
     const noteTrim = (nextNote ?? '').trim();
     const photoPaths = nextPhotos ?? [];
-    // No metrics, note, or photos → do not leave an empty row in the DB. Deleting ONE
-    // record = optimistic + Undo (the project's deletion policy): the row is captured
-    // before deleting it so it can be reinserted verbatim.
-    if (Object.keys(metrics).length === 0 && !noteTrim && photoPaths.length === 0) {
-      const { data: prevRow } = await supabase
-        .from('body_metrics')
-        .select('metrics, note, photo_paths')
-        .eq('day', date)
-        .maybeSingle();
-      const { error } = await supabase.from('body_metrics').delete().eq('day', date);
-      if (!error && prevRow) {
-        setUndoRow((prev) => {
-          if (prev?.timer) clearTimeout(prev.timer);
-          const timer = setTimeout(() => setUndoRow(null), 5000);
-          return { day: date, row: prevRow, timer };
-        });
+    const pending = (writes.current.get(date) || Promise.resolve()).then(async () => {
+      // Empty rows are deleted with Undo. A failed read must not lose that snapshot.
+      if (Object.keys(metrics).length === 0 && !noteTrim && photoPaths.length === 0) {
+        const { data: prevRow, error: readError } = await supabase
+          .from('body_metrics')
+          .select('metrics, note, photo_paths')
+          .eq('day', date)
+          .maybeSingle();
+        if (readError) throw readError;
+        const { error } = await supabase.from('body_metrics').delete().eq('day', date);
+        if (error) throw error;
+        if (prevRow) {
+          setUndoRow((prev) => {
+            if (prev?.timer) clearTimeout(prev.timer);
+            const timer = setTimeout(() => setUndoRow(null), 5000);
+            return { day: date, row: prevRow, timer };
+          });
+        }
+      } else {
+        const { error } = await supabase.from('body_metrics').upsert(
+          { owner: userId, day: date, metrics, note: noteTrim || null, photo_paths: photoPaths },
+          { onConflict: 'owner,day' },
+        );
+        if (error) throw error;
       }
-    } else {
-      await supabase.from('body_metrics').upsert(
-        { owner: userId, day: date, metrics, note: noteTrim || null, photo_paths: photoPaths },
-        { onConflict: 'owner,day' },
-      );
-    }
-    setSavedFlash(true);
-    setTimeout(() => setSavedFlash(false), 1200);
-    loadHistory();
+      if (writes.current.get(date) === pending) {
+        const flash = { date };
+        setSavedFlash(flash);
+        setTimeout(() => setSavedFlash((saved) => saved === flash ? null : saved), 1200);
+      }
+      loadHistory();
+    }).catch(() => showToast(t('Error al guardar.')));
+    writes.current.set(date, pending);
+    pending.then(() => {
+      if (writes.current.get(date) === pending) writes.current.delete(date);
+    });
+    return pending;
   }
 
   // Reinserts the row captured by persist() before it was deleted. If still on the
@@ -212,7 +238,14 @@ export default function Body() {
     dirty.current = true;
     setValues((v) => ({ ...v, [key]: raw }));
   };
-  const commit = () => persist(values, note, photos);
+  const commit = () => { if (dirty.current) persist(values, note, photos); };
+  function changeDate(next) {
+    if (next === date) return;
+    commit();
+    setLoaded(null);
+    setSavedFlash(null);
+    setDate(next);
+  }
   // Leaving the app (iOS PWA, tab switch) does not blur the focused input: save typed
   // edits on hide. Only dirty edits — a form still loading must never delete the row.
   useEffect(() => {
@@ -236,7 +269,7 @@ export default function Body() {
   async function uploadPhotos(fileList) {
     // Demo: the storage policy already rejects anonymous uploads; guarding here
     // (drag & drop included) avoids showing the raw error.
-    if (isDemo()) return;
+    if (!ready || isDemo()) return;
     const files = Array.from(fileList || []);
     if (!files.length || !userId) return;
     setUploading(true);
@@ -303,10 +336,11 @@ export default function Body() {
             type="button"
             onClick={() => toggleCheck(m)}
             aria-pressed={on}
+            disabled={!ready || !userId}
             className={`flex items-center gap-2 rounded-xl border px-3 min-h-[44px] press text-left ${on ? 'border-accent-deep bg-accent-deep/15' : 'border-border bg-surface-2'}`}
           >
             <Moon size={16} className={on ? 'text-accent' : 'text-text-3'} />
-            <span className="text-xs leading-tight">{t('Dormí menos de %n h').replace('%n', sleepH)}</span>
+            <span className="text-xs leading-tight">{t('Dormí menos de %n h').replace('%n', on ? raw : sleepH)}</span>
           </button>
         </div>
       );
@@ -332,6 +366,7 @@ export default function Body() {
             value={raw}
             onChange={(e) => setField(m.key, e.target.value)}
             onBlur={commit}
+            disabled={!ready || !userId}
             placeholder="–"
             className="w-full bg-transparent tabular-nums outline-none"
             aria-label={t(m.label)}
@@ -364,14 +399,14 @@ export default function Body() {
     <div className="px-4 pt-4 pb-20 flex flex-col gap-4 lg:max-w-3xl lg:mx-auto">
       {/* Date navigation (same pattern as Today) */}
       <div className="flex items-center justify-between">
-        <button onClick={() => setDate(addDaysISO(date, -1))} className="p-2 press" aria-label={t('Día anterior')}>
+        <button onClick={() => changeDate(addDaysISO(date, -1))} className="w-11 h-11 grid place-items-center press" aria-label={t('Día anterior')}>
           <ChevronLeft size={22} />
         </button>
-        <div className="relative flex-1 flex justify-center">
+        <div className="relative flex-1 flex items-center justify-center min-h-[44px]">
           <input
             type="date"
             value={date}
-            onChange={(e) => e.target.value && setDate(e.target.value)}
+            onChange={(e) => e.target.value && changeDate(e.target.value)}
             onClick={openDatePicker}
             className="absolute inset-0 w-full opacity-0 cursor-pointer"
             aria-label={t('Elegir fecha')}
@@ -382,7 +417,7 @@ export default function Body() {
               : new Date(date + 'T00:00').toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short' })}
           </span>
         </div>
-        <button onClick={() => setDate(addDaysISO(date, 1))} className="p-2 press" aria-label={t('Día siguiente')}>
+        <button onClick={() => changeDate(addDaysISO(date, 1))} className="w-11 h-11 grid place-items-center press" aria-label={t('Día siguiente')}>
           <ChevronRight size={22} />
         </button>
       </div>
@@ -391,8 +426,14 @@ export default function Body() {
       <section className="rounded-2xl bg-surface border border-border p-4 flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <p className="text-sm text-text-3">{t('Medidas del día')}</p>
-          {savedFlash && <span className="text-xs text-accent">{t('Guardado.')}</span>}
+          {ready && savedFlash?.date === date && <span className="text-xs text-accent">{t('Guardado.')}</span>}
         </div>
+        {!ready && (loadError ? (
+          <div className="flex items-center gap-2 text-sm text-warn" role="status">
+            <span>{t('No se pudieron cargar las medidas.')}</span>
+            <button onClick={() => setReloadKey((key) => key + 1)} className="min-h-[44px] px-2 underline press">{t('Reintentar')}</button>
+          </div>
+        ) : <p className="text-sm text-text-3" role="status">{t('Cargando…')}</p>)}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {defaults.map((m) => fieldFor(m))}
           {favMetrics.map((m) => fieldFor(m, true))}
@@ -458,6 +499,7 @@ export default function Body() {
           <span className="text-xs text-text-3">{t('Nota')}</span>
           <textarea
             value={note}
+            disabled={!ready || !userId}
             onChange={(e) => { dirty.current = true; setNote(e.target.value); }}
             onBlur={commit}
             rows={2}
@@ -508,6 +550,7 @@ export default function Body() {
               type="file"
               accept="image/*"
               multiple
+              disabled={!ready}
               className="hidden"
               onChange={(e) => {
                 uploadPhotos(e.target.files);

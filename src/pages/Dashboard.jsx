@@ -46,8 +46,7 @@ import {
   nutrientKind,
   classifyNutrient,
   hasBound,
-  sodiumIsLow,
-  sodiumIsHigh,
+  sodiumPeriodAssessment,
   SODIUM_FLOOR_MG,
   SODIUM_CEILING_MG,
   round,
@@ -361,16 +360,21 @@ function metricDisplay(calcMode, ms, bayesInfo, unit, decimals) {
   return { ...formatMetric(calcMode, ms, unit, decimals), hint: null, degraded: false };
 }
 
-function microDisplay(calcMode, ms, bayesInfo, unit, decimals, coverage) {
-  if (!ms.n) return { primary: t('Sin dato'), secondary: null, hint: coverage.warn ? t('Faltan valores de este nutriente en algunos alimentos; la suma observada no prueba cumplimiento.') : null, degraded: true };
+const REVIEW_SODIUM = 'Busca el alimento en Alimentos, abre su ficha y revisa el sodio en la etiqueta o fuente original. Si no figura, deja el campo vacío.';
+
+function microDisplay(calcMode, ms, bayesInfo, unit, decimals, coverage, key) {
+  const hint = coverage.warn
+    ? `${t('En %a de %b días faltan valores de este nutriente en uno o más alimentos.').replace('%a', coverage.n).replace('%b', coverage.m)} ${key === 'sodio_mg'
+      ? t(REVIEW_SODIUM)
+      : t('Abre la ficha en Alimentos y revisa la etiqueta o la fuente original. Si el dato no figura, deja el campo vacío.')}`
+    : null;
+  if (!ms.n) return { primary: t('Sin dato'), secondary: null, hint, degraded: true };
   const display = metricDisplay(calcMode, ms, bayesInfo, unit, decimals);
   if (!coverage.warn) return display;
-  const hint = t('Faltan valores de este nutriente en algunos alimentos; la suma observada no prueba cumplimiento.');
   if (calcMode === 'bayes') return { primary: '–', secondary: null, hint, degraded: true };
   return {
     ...display,
-    primary: ms.n ? display.primary : t('Sin dato'),
-    secondary: ms.n ? t('Datos parciales') : null,
+    secondary: t('Datos parciales'),
     hint,
     degraded: true,
   };
@@ -491,6 +495,12 @@ const reducedMotion = typeof window !== 'undefined' && window.matchMedia('(prefe
 // generates hundreds of thousands of days and freezes the tab. Invalid or impossible
 // range = empty, never truncated: half a page of silently incomplete data would be worse.
 const MAX_RANGE_DAYS = 1830;
+function closedRange(start, end, lastClosed) {
+  const effectiveEnd = end == null || end > lastClosed ? lastClosed : end;
+  const span = (Date.parse(effectiveEnd) - Date.parse(start)) / 86400000;
+  return { end: effectiveEnd, valid: Number.isFinite(span) && span >= 0 && span <= MAX_RANGE_DAYS };
+}
+
 function datesInRange(start, end) {
   if (!start || !end || start > end) return [];
   const span = (Date.parse(end) - Date.parse(start)) / 86400000;
@@ -552,7 +562,7 @@ function computeStats(dates, dailyTotals, targets) {
     consumedTotals.carbs_g += Number(row?.carbs_g || 0);
     consumedTotals.fat_g += Number(row?.fat_g || 0);
     const sodio = Number(row?.micros?.sodio_mg || 0);
-    sodioTotal += sodio;
+    if (registrado) sodioTotal += sodio;
 
     for (const [k, v] of Object.entries(row?.micros || {})) {
       microsConsumed[k] = (microsConsumed[k] || 0) + Number(v);
@@ -728,7 +738,7 @@ export default function Dashboard() {
   const [preset, setPreset] = usePersistentState('nutri.dash.preset', 'semana'); // 'hoy'|…|'año'|'custom'|'fase'
   const [phaseSel, setPhaseSel] = usePersistentState('nutri.dash.phaseSel', { kind: 'actual' }); // {kind:'actual'|'previa'} | {kind:'goal', goal}
   const [customStart, setCustomStart] = usePersistentState('nutri.dash.customStart', addDaysISO(todayISO(), -6));
-  const [customEnd, setCustomEnd] = usePersistentState('nutri.dash.customEnd', todayISO());
+  const [customEnd, setCustomEnd] = usePersistentState('nutri.dash.customEnd', addDaysISO(todayISO(), -1));
   // Saved ranges: [{id,start,end,name?}]. end:null = OPEN-ENDED (up to today) — a
   // date cannot be frozen or the range would silently grow stale.
   const [savedRanges, setSavedRanges] = usePersistentState('nutri.dash.savedRanges', []);
@@ -783,7 +793,8 @@ export default function Dashboard() {
   // The open end is RESOLVED on every render, not read from disk: that's why the
   // same range is worth one more day tomorrow.
   const openEnded = showRangeForm ? rollingEnd : activeRange.end == null;
-  const effectiveEnd = openEnded ? today : customEnd;
+  const { end: effectiveEnd, valid: validCustomRange } = closedRange(customStart, openEnded ? null : customEnd, lastClosed);
+  const rangeInvalid = !validCustomRange;
 
   // Phases with at least one closed day, with the end trimmed to yesterday. Phases
   // scheduled or started today have no closed days: they do not enter the selector.
@@ -813,12 +824,11 @@ export default function Dashboard() {
         : t('Fase previa');
 
   const anchor = preset === 'hoy' ? today : lastClosed;
-  const clampedCustomEnd = effectiveEnd > lastClosed ? lastClosed : effectiveEnd;
   const start = phaseMode ? phaseDays[0] : preset === 'custom' ? customStart : addDaysISO(anchor, -(presetDef.days - 1));
-  const end = phaseMode ? phaseDays[phaseDays.length - 1] : preset === 'custom' ? clampedCustomEnd : anchor;
+  const end = phaseMode ? phaseDays[phaseDays.length - 1] : preset === 'custom' ? effectiveEnd : anchor;
   // Explicit trimming of a user selection → the cause is declared.
   const excludesToday =
-    preset === 'custom' ? effectiveEnd >= today : phaseMode ? selectedPhases.some((p) => p.ongoing) : false;
+    preset === 'custom' ? openEnded || customEnd > lastClosed : phaseMode ? selectedPhases.some((p) => p.ongoing) : false;
 
   useEffect(() => {
     // SWR: if this range has already been seen in the session, paint the cache
@@ -860,16 +870,16 @@ export default function Dashboard() {
   }
 
   // Saved custom ranges (localStorage, per-device just like the custom range itself).
-  const rangeInvalid = !rollingEnd && customStart > customEnd;
   function saveCurrentRange() {
     if (rangeInvalid) return;
     const name = rangeName.trim();
-    const data = { start: customStart, end: rollingEnd ? null : customEnd, ...(name ? { name } : {}) };
+    const data = { start: customStart, end: rollingEnd ? null : effectiveEnd, ...(name ? { name } : {}) };
     const id = editKey ?? crypto.randomUUID();
     setSavedRanges(
       editKey ? savedRanges.map((r) => (rangeId(r) === editKey ? { ...data, id } : r)) : [...savedRanges, { ...data, id }],
     );
     setActiveRangeId(id);
+    if (!rollingEnd) setCustomEnd(effectiveEnd);
     setEditKey(null);
   }
   // Apply = open in read-only mode. customEnd stores the date that would be used
@@ -1209,8 +1219,9 @@ export default function Dashboard() {
   // daily bound × days with target; the sodium ceiling is the only relaxable medical side.
   const nTargetDays = chartData.filter((d) => d.hasTarget).length;
   const kpiBound = (key) => scaleBound(periodBound(chartData, key), nTargetDays);
-  const sodCeil = periodBound(chartData, 'sodio_mg')?.max ?? SODIUM_CEILING_MG;
-  const weeks = buildWeeks(start, end).filter((w) => w.some((d) => dateSet.has(d)));
+  const sodiumBounds = periodBound(chartData, 'sodio_mg');
+  const sodCeil = sodiumBounds?.max ?? SODIUM_CEILING_MG;
+  const weeks = dates.length ? buildWeeks(start, end).filter((w) => w.some((d) => dateSet.has(d))) : [];
   const proteinWeekly = weeklyProteinData(weeks, dateSet, dayInfo);
   const top = topItems(rangeItems, waterFoodId, topMetric);
   const maxTop = top.length ? top[0][topMetric] : 0;
@@ -1225,7 +1236,9 @@ export default function Dashboard() {
   const bCarbs = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'carbs_g') : null;
   const bFat = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'fat_g') : null;
   const bSodio = calcMode === 'bayes' ? bayesCell(completeDaysFull, 'sodio_mg') : null;
-  const sodiumCovered = !coverageInfo(registeredDays, 'sodio_mg').warn;
+  const sodiumCoverage = coverageInfo(registeredDays, 'sodio_mg');
+  const previousSodiumComplete = prevStats.chartData.every((d) => !d.registrado || microCoverage(d, 'sodio_mg') === 'complete');
+  const sodiumState = sodiumPeriodAssessment(stats.avgSodio, msSodio.n ? sodiumCoverage.warn ? 'partial' : 'complete' : 'unknown', sodiumBounds);
   const totalWaterMl = stats.microsConsumed.agua_ml || 0;
   const waterTotalDays = chartData.filter((d) => nutByDay.has(d.day));
   const waterTotalPartial = waterTotalDays.some((d) => microCoverage(d, 'agua_ml') !== 'complete');
@@ -1280,13 +1293,13 @@ export default function Dashboard() {
     const b = calcMode === 'bayes' ? bayesForMetric(completeDaysFull, m.key) : null;
     const [val, det, obj, pct] = summaryCells(calcMode, ms, objStats, b);
     const coverage = m.key && !m.field ? coverageInfo(registeredDays, m.key) : { warn: false };
-    const danger = m.key === 'sodio_mg' && (sodiumIsLow(stats.avgSodio, stats.daysLogged > 0) || sodiumIsHigh(stats.avgSodio, stats.daysLogged > 0, sodCeil));
+    const danger = m.key === 'sodio_mg' && sodiumState.limit != null;
     const unit = calcMode === 'bayes' ? '' : ` ${m.unit}`;
     return (
       <tr key={m.key} className="border-t border-border">
-        <td className="py-1">{t(m.label)}{coverage.warn ? ` ⚠ ${t('Parcial')}` : ''}</td>
+        <td className="py-1">{t(m.label)}{coverage.warn && ms.n ? ` ⚠ ${t('Parcial')}` : ''}</td>
         <td className={`py-1 text-right font-mono tabular-nums ${danger ? 'text-danger' : ''}`}>
-          {coverage.warn && calcMode === 'bayes' ? '—' : !ms.n && !m.field ? t('Sin dato') : val === '' ? '—' : `${val}${unit}`}
+          {!ms.n && !m.field ? t('Sin dato') : (coverage.warn && calcMode === 'bayes') || val === '' ? '—' : `${val}${unit}`}
         </td>
         <td className="py-1 text-right font-mono tabular-nums text-text-2">{det}</td>
         <td className="py-1 text-right font-mono tabular-nums text-text-2">{obj === '' ? '—' : `${obj} ${m.unit}`}</td>
@@ -1316,8 +1329,6 @@ export default function Dashboard() {
   function renderInforme() {
     const visibles = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favs.includes(m.key)) && m.key !== 'agua_ml');
     const anyCoverageWarn = visibles.some((m) => coverageInfo(registeredDays, m.key).warn);
-    const sodiumLow = sodiumIsLow(stats.avgSodio, stats.daysLogged > 0);
-    const sodiumHigh = sodiumIsHigh(stats.avgSodio, stats.daysLogged > 0, sodCeil);
     return (
       // No backdrop-blur on the scrim: backdrop-filter would turn the overlay
       // into the containing block of the fixed bar, and the bar would pan along with the paper.
@@ -1383,12 +1394,7 @@ export default function Dashboard() {
           <p className="text-sm text-text-2 mt-1">{t('Agua simple registrada')}: {simpleWaterText} ({simpleWaterDays}/{dates.length} {t('días con registro')})</p>
           <p className="text-sm text-text-2">{t('Agua total observada')}: {totalWaterText}{waterTotalPartial ? ` · ${t('Datos parciales')}` : ''}</p>
           {waterPlanDays.length > 0 && <p className="text-sm text-text-2">{t('Plan v6.6: piso operativo diario 2 L de agua simple; objetivo orientativo 3.5 L. No es techo ni cuota.')}</p>}
-          {sodiumLow && (
-            <p className="text-sm text-danger mt-1">⚠ {t('sodio promedio')} &lt; {SODIUM_FLOOR_MG} mg</p>
-          )}
-          {sodiumHigh && (
-            <p className="text-sm text-danger mt-1">⚠ {t('sodio promedio')} &gt; {sodCeil} mg</p>
-          )}
+          <SodiumAlert state={sodiumState} partial={sodiumCoverage.warn} className="mt-1" />
           <div className="grid grid-cols-4 gap-2 text-center mt-3 rounded-xl border border-border p-3">
             <Stat label={t('Kcal')} display={noHint(metricDisplay(calcMode, msKcal, bKcal, '', 1))} color="text-d-kcal" />
             <Stat label={t('Prot')} display={noHint(metricDisplay(calcMode, msProtein, bProtein, ' g', 1))} color="text-d-prot" />
@@ -1451,6 +1457,7 @@ export default function Dashboard() {
         <footer className="mt-4 pt-2 border-t border-border text-xs text-text-3">
           <p>{t('— = sin dato o sin objetivo en el rango.')}</p>
           {anyCoverageWarn && <p>{t('⚠ Parcial: faltan valores de algunos alimentos; la suma observada no prueba cumplimiento.')}</p>}
+          {sodiumCoverage.warn && <p>{t(REVIEW_SODIUM)}</p>}
           {isPhaseScopedMode && phaseHintText && <p>{phaseHintText}</p>}
           {calcMode === 'bayes' && (
             <p>
@@ -1508,6 +1515,7 @@ export default function Dashboard() {
           active={preset === 'custom'}
           label={(preset === 'custom' && activeRange?.name) || t('Custom')}
           savedRanges={savedRanges}
+          lastClosed={lastClosed}
           activeId={activeRangeId}
           onPersonalizado={newRange}
           onApply={applyRange}
@@ -1549,7 +1557,9 @@ export default function Dashboard() {
           the menu — managing the object is not the data view's job. */}
       {preset === 'custom' && !showRangeForm && (
         <p className="font-mono text-xs text-text-3">
-          {customStart} → {clampedCustomEnd} · {t('%d días').replace('%d', dates.length)}
+          {rangeInvalid
+            ? t('Elige un intervalo de días terminados o usa el rango Hoy.')
+            : `${customStart} → ${effectiveEnd} · ${t('%d días').replace('%d', dates.length)}`}
         </p>
       )}
 
@@ -1558,14 +1568,14 @@ export default function Dashboard() {
           <div className="flex gap-2">
             <label className="flex-1 min-w-0 flex flex-col gap-1">
               <span className="text-xs text-text-3">{t('Inicio')}</span>
-              <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="input" />
+              <input type="date" max={lastClosed} value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="input" />
             </label>
             <label className="flex-1 min-w-0 flex flex-col gap-1">
               <span className="text-xs text-text-3">{t('Fin')}</span>
               {rollingEnd ? (
-                <div className="input flex items-center border-dashed bg-surface text-text-3">{t('Hoy')}</div>
+                <div className="input flex items-center border-dashed bg-surface text-text-3">{effectiveEnd}</div>
               ) : (
-                <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="input" />
+                <input type="date" max={lastClosed} value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="input" />
               )}
             </label>
           </div>
@@ -1600,7 +1610,7 @@ export default function Dashboard() {
               {editKey ? t('Guardar cambios') : t('Guardar rango')}
             </button>
           </div>
-          {rangeInvalid && <p className="text-xs text-danger">{t('La fecha de inicio va después del fin.')}</p>}
+          {rangeInvalid && <p className="text-xs text-danger">{t('Elige un intervalo de días terminados o usa el rango Hoy.')}</p>}
           {editKey && (
             <button onClick={() => setEditKey(null)} className="self-end text-sm text-text-2 px-3 py-2 min-h-[44px] press">
               {t('Cancelar')}
@@ -1755,10 +1765,9 @@ export default function Dashboard() {
           />
           <KpiCard
             label={t("Sodio")}
-            display={microDisplay(calcMode, msSodio, bSodio, ' mg', 0, coverageInfo(registeredDays, 'sodio_mg'))}
-            delta={showDelta && sodiumCovered ? pctDelta(stats.avgSodio, prevStats.avgSodio) : null}
-            status={sodiumCovered || sodiumIsLow(stats.avgSodio, stats.daysLogged > 0) || sodiumIsHigh(stats.avgSodio, stats.daysLogged > 0, sodCeil)
-              ? classifyNutrient('sodio_mg', stats.avgSodio, null, { hasFood: stats.daysLogged > 0, bounds: periodBound(chartData, 'sodio_mg') }) : null}
+            display={microDisplay(calcMode, msSodio, bSodio, ' mg', 0, sodiumCoverage, 'sodio_mg')}
+            delta={showDelta && !sodiumCoverage.warn && msSodio.n > 0 && previousSodiumComplete ? pctDelta(stats.avgSodio, prevStats.avgSodio) : null}
+            status={sodiumState.status}
             sparkline={chartData.map((d) => d.sodio)}
             sparkColor="var(--d-carb)"
           />
@@ -2065,8 +2074,8 @@ export default function Dashboard() {
             favs={favs}
             microsConsumed={stats.microsConsumed}
             microsTarget={stats.microsTarget}
-            avgSodio={stats.avgSodio}
-            daysLogged={stats.daysLogged}
+            sodiumState={sodiumState}
+            sodiumPartial={sodiumCoverage.warn}
             chartData={chartData}
             registeredDays={registeredDays}
             advancedDays={advancedDays}
@@ -2223,10 +2232,13 @@ function ExportMenu({ calcLabel, onRaw, onResumen, onInforme }) {
 // where a range is edited or deleted — the data view only reads them. Anchored with
 // useOutsideClose + glass, outside the presets scroller (its overflow-x
 // would clip the popover), just like PhaseMenu.
-function CustomMenu({ active, label, savedRanges, activeId, onPersonalizado, onApply, onEdit, onDelete }) {
+function CustomMenu({ active, label, savedRanges, lastClosed, activeId, onPersonalizado, onApply, onEdit, onDelete }) {
   const [open, setOpen] = useState(false);
   const ref = useOutsideClose(open, setOpen);
-  const fmt = (r) => `${r.start.slice(5)} → ${r.end ? r.end.slice(5) : t('Hoy')}`; // MM-DD, like the charts' axis
+  const fmt = (r) => {
+    const { end, valid } = closedRange(r.start, r.end, lastClosed);
+    return valid ? `${r.start.slice(5)} → ${end.slice(5)}` : t('Intervalo inválido');
+  };
 
   return (
     <div className="relative shrink-0" ref={ref}>
@@ -2430,8 +2442,8 @@ function MicrosTable({
   favs,
   microsConsumed,
   microsTarget,
-  avgSodio,
-  daysLogged,
+  sodiumState,
+  sodiumPartial,
   chartData,
   registeredDays,
   advancedDays,
@@ -2439,7 +2451,6 @@ function MicrosTable({
   calcMode,
   phaseHintText,
 }) {
-  const sodiumCovered = !coverageInfo(registeredDays, 'sodio_mg').warn;
   const visible = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favs.includes(m.key)) && m.key !== 'agua_ml');
   const hidden = MICROS.filter(
     (m, i) =>
@@ -2454,9 +2465,9 @@ function MicrosTable({
     const objStats = computeObjectiveStats(chartData, m.key);
     const coverage = coverageInfo(registeredDays, m.key);
     const bayesInfo = calcMode === 'bayes' ? bayesCell(completeDaysFull, m.key) : null;
-    const consumedDisplay = microDisplay(calcMode, ms, bayesInfo, ` ${m.unit}`, 1, coverage);
+    const consumedDisplay = microDisplay(calcMode, ms, bayesInfo, ` ${m.unit}`, 1, coverage, m.key);
     const pBound = periodBound(chartData, m.key);
-    const sodiumDanger = m.key === 'sodio_mg' && (sodiumIsLow(avgSodio, daysLogged > 0) || sodiumIsHigh(avgSodio, daysLogged > 0, pBound?.max ?? SODIUM_CEILING_MG));
+    const sodiumDanger = m.key === 'sodio_mg' && sodiumState.limit != null;
     const degraded = consumedDisplay.degraded;
     // Row status light: an explicit bound (any nutrient), or 'techo' (ceiling — must not be exceeded) and
     // 'piso' (floor — must be reached), only in modes with a comparable consumed/objective pair. Sodium
@@ -2476,12 +2487,6 @@ function MicrosTable({
         <td className="py-2">{t(m.label)}</td>
         <td className={`py-2 text-right whitespace-normal font-mono tabular-nums ${sodiumDanger ? 'text-danger' : statusText} ${degraded ? 'text-text-3' : ''}`}>
           <MetricCellText display={consumedDisplay} />
-          {coverage.warn && (
-            <Hint text={t('En %a de %b días faltan valores de este nutriente en uno o más alimentos.').replace('%a', coverage.n).replace('%b', coverage.m)}>
-              {' '}
-              ⚠
-            </Hint>
-          )}
         </td>
         <td className="py-2 text-right font-mono tabular-nums text-text-2">{targetCell(calcMode, objStats, m.unit)}</td>
         <td className="py-2 text-right font-mono tabular-nums text-text-2">{coverage.warn ? '–' : pctCell(calcMode, ms, objStats)}</td>
@@ -2525,13 +2530,18 @@ function MicrosTable({
           </table>
         </details>
       )}
-      {sodiumIsLow(avgSodio, daysLogged > 0) && (
-        <p className="mt-3 text-sm text-danger">⚠ {t('sodio promedio')} &lt; {SODIUM_FLOOR_MG} mg{sodiumCovered ? '' : ` · ${t('Datos parciales')}`}</p>
-      )}
-      {sodiumIsHigh(avgSodio, daysLogged > 0, periodBound(chartData, 'sodio_mg')?.max ?? SODIUM_CEILING_MG) && (
-        <p className="mt-3 text-sm text-danger">⚠ {t('sodio promedio')} &gt; {periodBound(chartData, 'sodio_mg')?.max ?? SODIUM_CEILING_MG} mg{sodiumCovered ? '' : ` · ${t('Datos parciales')}`}</p>
-      )}
+      <SodiumAlert state={sodiumState} partial={sodiumPartial} className="mt-3" />
     </section>
+  );
+}
+
+function SodiumAlert({ state, partial, className }) {
+  if (!state.limit) return null;
+  return (
+    <p className={`${className} text-sm text-danger`}>
+      ⚠ {t('sodio promedio')} {state.limit === 'low' ? '<' : '>'} {state.threshold} mg
+      {partial ? ` · ${t('Datos parciales')}` : ''}
+    </p>
   );
 }
 

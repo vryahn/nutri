@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronLeft, Trash2, Search, X, Save } from 'lucide-react';
 import { useSectionAdd } from '../lib/sectionMenu.js';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
-import { computeRecipePer100g, MICROS, MICROS_DEFAULT, round, isWaterSentinel, nutritionNumber, recipeWeightFromEstimate } from '../lib/domain.js';
+import { computeRecipePer100g, groupRecipeIngredients, MICROS, MICROS_DEFAULT, round, isWaterSentinel, nutritionNumber, recipeWeightFromEstimate } from '../lib/domain.js';
 import { useToast } from '../lib/useToast.js';
 import { AI_AVAILABLE, estimateRecipe, parseAmount, snapDensity } from '../lib/ai.js';
 import { searchFDC, fetchFDC, translateEnEs, FDC_AVAILABLE } from '../lib/sources.js';
@@ -121,9 +121,16 @@ export default function Recipes() {
   }
 
   async function handleSave(form) {
+    if (!form.name.trim()) return t('Escribe un nombre para la receta.');
+    if (form.ingredients.some((i) => !i.food.id || !(nutritionNumber(i.grams) > 0))) {
+      return t('Revisa los ingredientes: cada uno necesita una cantidad mayor que cero.');
+    }
+    const rawWeight = form.cooked_weight_g ?? '';
+    const cookedWeight = rawWeight === '' ? null : nutritionNumber(rawWeight);
+    if (rawWeight !== '' && !(cookedWeight > 0)) return t('Introduce un peso cocido mayor que cero.');
     const payload = {
       name: form.name,
-      cooked_weight_g: form.cooked_weight_g || null,
+      cooked_weight_g: cookedWeight,
       portions: (form.portions || [])
         .filter((p) => p.name.trim() && Number(p.grams) > 0)
         .map((p) => ({ name: p.name.trim(), grams: Number(p.grams) })),
@@ -137,10 +144,15 @@ export default function Recipes() {
         p_cooked_weight_g: payload.cooked_weight_g,
         p_portions: payload.portions,
         p_source: payload.source,
-        p_items: form.ingredients.map((i) => ({ food_id: i.food.id, grams: Number(i.grams) })),
+        p_items: groupRecipeIngredients(form.ingredients).map(({ food, grams }) => ({ food_id: food.id, grams })),
       }));
     } catch (e) { error = e; }
-    if (error) return error.message || t('No se pudo guardar la receta.');
+    if (error) {
+      if (error.message === 'Ingredient unavailable' || error.code === '23503') {
+        return t('Un ingrediente ya no está disponible. Quítalo y elige otro del catálogo.');
+      }
+      return t('No se pudo guardar la receta. Revisa los datos y la conexión e inténtalo de nuevo.');
+    }
     setEditing(null);
     load();
     return null;
@@ -409,6 +421,7 @@ function mergeIngredient(ingredients, food, grams, procedencia, isNew = false, f
 function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRecipe }) {
   useLang();
   const units = useUnits();
+  const nameId = useId();
   const [form, setForm] = useState(recipe);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -445,7 +458,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
   }, [query]);
 
   function addIngredient(food) {
-    setForm((f) => ({ ...f, ingredients: [...f.ingredients, { food, grams: '' }] }));
+    setForm((f) => ({ ...f, ingredients: [...f.ingredients, { food, grams: '', rowId: crypto.randomUUID() }] }));
     setQuery('');
     setResults([]);
   }
@@ -468,7 +481,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
     const parsed = parseIngredientLines(pasteText, catalog);
     const ok = parsed.filter((p) => p.valid);
     if (ok.length) {
-      setForm((f) => ({ ...f, ingredients: [...f.ingredients, ...ok.map((p) => ({ food: p.food, grams: p.grams }))] }));
+      setForm((f) => ({ ...f, ingredients: [...f.ingredients, ...ok.map((p) => ({ food: p.food, grams: p.grams, rowId: crypto.randomUUID() }))] }));
     }
     const missed = parsed.length - ok.length;
     setPasteText('');
@@ -663,6 +676,17 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
 
   const preview = computeRecipePer100g(form.ingredients, form.cooked_weight_g);
   const previewMicros = MICROS.filter((m, i) => (i < MICROS_DEFAULT || favMicros.includes(m.key)) && m.key !== 'agua_ml');
+  const previewMicroRows = preview && previewMicros.map((m) => {
+    const v = preview.micros?.[m.key];
+    return (
+      <div key={m.key} className="flex justify-between gap-2 py-1.5 border-t border-border text-sm">
+        <span className="text-text-2">{t(m.label)}</span>
+        <span className={`text-right font-mono tabular-nums ${v == null ? 'text-text-3' : ''}`}>
+          {v == null ? t('Sin dato') : `${v} ${m.unit}${preview.micros_complete?.[m.key] === true ? '' : ` (${t('parcial')})`}`}
+        </span>
+      </div>
+    );
+  });
 
   // Deterministic warnings of the AI flow, never blocking.
   const sumGrams = form.ingredients.reduce((s, i) => s + (Number(i.grams) || 0), 0);
@@ -721,6 +745,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       }
       resolved.push({ food: saved, grams: ing.grams, procedencia: ing.procedencia });
     }
+    if (newFoods.length) setForm((f) => ({ ...f, ingredients: resolved }));
     const error = await onSave({ ...form, ingredients: resolved });
     if (error) setSaveError(error);
   }
@@ -788,8 +813,9 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
       <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <label className="text-sm text-text-2">{t('Nombre')}</label>
+            <label htmlFor={nameId} className="text-sm text-text-2">{t('Nombre')}</label>
             <input
+              id={nameId}
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               className="input"
@@ -811,7 +837,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
                   onSwapUsda={(detail) => swapIngredientToUsda(i, detail)}
                 />
               ) : (
-                <div key={ing.food.id} className="flex flex-col gap-2 rounded-xl bg-surface-2 border border-border px-3 py-2">
+                <div key={ing.rowId ?? ing.food.id} className="flex flex-col gap-2 rounded-xl bg-surface-2 border border-border px-3 py-2">
                   <div className="flex items-center gap-2">
                     <div className="flex-1 flex flex-col min-w-0">
                       <span className="truncate">{ing.food.name}</span>
@@ -928,7 +954,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
             </p>
           )}
 
-          {/* <lg: macros-only preview, in normal flow below the form. */}
+          {/* <lg: expandable micro coverage below the compact macronutrients. */}
           {preview && (
             <div className="lg:hidden rounded-2xl bg-surface border border-border p-4">
               <p className="text-sm text-text-3 mb-2">{t('Preview por 100 g')}</p>
@@ -938,6 +964,10 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
                 <PreviewStat label={t('Carbs')} value={preview.carbs_g} color="text-d-carb" />
                 <PreviewStat label={t('Grasa')} value={preview.fat_g} color="text-d-fat" />
               </div>
+              <details className="mt-2">
+                <summary className="min-h-[44px] py-3 cursor-pointer text-sm text-text-2">{t('Micros')}</summary>
+                {previewMicroRows}
+              </details>
             </div>
           )}
         </div>
@@ -952,17 +982,7 @@ function RecipeForm({ recipe, favMicros, onCancel, onSave, onDelete, onSelectRec
               <PreviewStat label={t('Carbs')} value={preview.carbs_g} color="text-d-carb" />
               <PreviewStat label={t('Grasa')} value={preview.fat_g} color="text-d-fat" />
             </div>
-            {previewMicros.map((m) => {
-              const v = preview.micros?.[m.key];
-              return (
-                <div key={m.key} className="flex justify-between py-1.5 border-t border-border text-sm">
-                  <span className="text-text-2">{t(m.label)}</span>
-                  <span className={`font-mono tabular-nums ${v == null ? 'text-text-3' : ''}`}>
-                    {v == null ? t('Sin dato') : `${round(v, 2)} ${m.unit}${preview.micros_complete?.[m.key] === true ? '' : ` (${t('parcial')})`}`}
-                  </span>
-                </div>
-              );
-            })}
+            {previewMicroRows}
           </div>
         )}
       </div>

@@ -65,7 +65,6 @@ struct TodayView: View {
     }
     #else
     @State private var entryDropActive = false
-    @State private var entryDropReset: Task<Void, Never>?
     #endif
 
     private enum Sheet: Identifiable {
@@ -220,13 +219,11 @@ struct TodayView: View {
             previewedID = nil
         }
         .onChange(of: store.entryVersion) { _, _ in
-            if store.pending == 0 {
-                if let cached = store.cached("entry_nutrients", Store.entriesQuery(day)) {
-                    loadedDay = day
-                    serverRows = cached
-                }
-                Task { await loadDay() }
+            if let cached = store.cached("entry_nutrients", Store.entriesQuery(day)) {
+                loadedDay = day
+                serverRows = cached
             }
+            if store.pending == 0 || store.demoActive { Task { await loadDay() } }
         }
         .onReceive(NotificationCenter.default.publisher(for: .nutriLabelsChanged)) { _ in Task { await loadLabels() } }
         // Como la web (focus/online): recarga el día al activar la app y al volver la conexión; el cambio de día mueve "hoy".
@@ -277,7 +274,7 @@ struct TodayView: View {
                 editorForm(row, label: label, food: food, amount: amount, placement: .sheet)
             }
         case .summaryDetails:
-            phoneSheet(store.tr("Resumen del día")) {
+            phoneSheet(store.tr("Resumen del día"), closeID: "today.summary.close") {
                 ScrollView {
                     summaryCard { showSummarySettings = true }.padding(16)
                 }
@@ -306,7 +303,7 @@ struct TodayView: View {
         }
     }
 
-    private func phoneSheet<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    private func phoneSheet<Content: View>(_ title: String, closeID: String = "sheet.close", @ViewBuilder content: () -> Content) -> some View {
         NavigationStack {
             content()
                 .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -326,7 +323,7 @@ struct TodayView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(store.tr("Cerrar"))
-                            .accessibilityIdentifier("sheet.close")
+                            .accessibilityIdentifier(closeID)
                         }
                     }
                 }
@@ -920,7 +917,7 @@ struct TodayView: View {
                     Spacer(minLength: 0)
                     if row["_pending"]?.bool == true {
                         NutriIcon("cloud-off", size: 14).foregroundStyle(palette.text3)
-                            .accessibilityLabel(store.tr("Pendiente de sincronizar"))
+                            .accessibilityHidden(true)
                     }
                     VStack(alignment: .trailing, spacing: 0) {
                         Text(row.number("kcal").map { journalNumber($0) } ?? "—")
@@ -941,6 +938,7 @@ struct TodayView: View {
             .buttonStyle(.plain)
             .highPriorityGesture(entryDragGesture(id), including: row["_pending"]?.bool == true || busy ? .subviews : .all)
             #endif
+            .accessibilityValue(row["_pending"]?.bool == true ? store.tr("Pendiente de sincronizar") : "")
             .accessibilityIdentifier("today.intake.\(id)")
         }
         .padding(12)
@@ -976,15 +974,11 @@ struct TodayView: View {
         #endif
         .accessibilityAction(named: store.tr("Borrar")) { remove(row) }
         #if os(iOS)
-        .modifier(EntryDraggable(enabled: row["_pending"]?.bool != true) {
-            entryDropActive = true
-            entryDropReset?.cancel()
-            entryDropReset = Task {
-                do { try await Task.sleep(for: .seconds(30)); entryDropActive = false }
-                catch { }
+        .background {
+            if row["_pending"]?.bool != true {
+                EntryDragSource(payload: dragKey("entry", id), setActive: { entryDropActive = $0 })
             }
-            return NSItemProvider(object: dragKey("entry", id) as NSString)
-        })
+        }
         .modifier(SwipeToDelete(radius: 16, delete: { remove(row) }))
         .dropDestination(for: String.self) { items, _ in
             guard let payload = items.first else { return false }
@@ -1095,7 +1089,7 @@ struct TodayView: View {
 
     private func move(_ payload: String, label: String, over: String?) -> Bool {
         #if os(iOS)
-        defer { entryDropActive = false; entryDropReset?.cancel() }
+        defer { entryDropActive = false }
         #endif
         guard !busy, let id = payload.split(separator: "/").last.map(String.init) else { return false }
         if payload == dragKey("section", id), !label.isEmpty, over == nil, id != label,
@@ -1332,18 +1326,10 @@ struct TodayView: View {
     }
 
     private func clearDay() async throws {
-        let snapshot = foodRows
-        let ids = snapshot.map { $0.text("id") }
+        let ids = foodRows.map { $0.text("id") }
         guard !ids.isEmpty else { return }
-        for row in snapshot where row["_pending"]?.bool == true {
-            try store.removeEntry(row.text("id"), row: row)
-        }
-        let synced = snapshot.filter { $0["_pending"]?.bool != true }.map { $0.text("id") }
-        if !synced.isEmpty {
-            _ = try await store.delete("entries", ["day": "eq." + day, "id": "in.(" + synced.joined(separator: ",") + ")"])
-        }
-        store.toast(store.tr("%n registros borrados.").replacingOccurrences(of: "%n", with: String(ids.count)))
-        await loadDay()
+        try store.clearFoodEntries(ids, day: day)
+        store.toast(store.tr("El borrado del día está pendiente de sincronización."))
     }
 
 
@@ -2135,7 +2121,7 @@ private struct SummarySettingsView: View {
     private var choices: [String] { (Domain.macroKeys + Domain.micros.map(\.key)).filter { !items.contains($0) && $0 != "agua_ml" } }
 
     var body: some View {
-        JournalSheet(store.tr("Personalizar resumen"), close: close) {
+        JournalSheet(store.tr("Personalizar resumen"), closeID: "today.summary.settings.close", close: close) {
             VStack(alignment: .leading, spacing: 12) {
                 Text(store.tr("Diseño actual") + ": " + store.tr(journalViewNames[activeView] ?? "")
                      + " · " + store.tr("cámbialo con las flechas de la card"))
@@ -2288,13 +2274,86 @@ private func journalDragKey(_ type: String, id: String, day: String, owner: Stri
 }
 
 #if os(iOS)
-// Filas pendientes de sincronizar (⛅) no se arrastran: reordenar es solo online, como en la web.
-private struct EntryDraggable: ViewModifier {
-    let enabled: Bool
-    let start: () -> NSItemProvider
+// The scroll view receives the system drag lifecycle, including releases outside a drop target.
+// Markers locate source cards without covering their edit, swipe or accessibility actions.
+private struct EntryDragSource: UIViewRepresentable {
+    var payload: String
+    var setActive: (Bool) -> Void
 
-    func body(content: Content) -> some View {
-        if enabled { content.onDrag(start) } else { content }
+    final class Marker: UIView {
+        var payload = ""
+        var setActive: ((Bool) -> Void)?
+        var source: Source?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if let source {
+                source.markers.remove(self)
+                if source.markers.allObjects.isEmpty, let drag = source.interaction { drag.view?.removeInteraction(drag) }
+                self.source = nil
+            }
+            guard window != nil else { return }
+            var parent = superview
+            while let view = parent {
+                if let scroll = view as? UIScrollView {
+                    let existing = scroll.interactions.compactMap { ($0 as? UIDragInteraction)?.delegate as? Source }.first
+                    let source = existing ?? Source()
+                    if existing == nil {
+                        let drag = UIDragInteraction(delegate: source)
+                        source.interaction = drag
+                        drag.isEnabled = true
+                        scroll.addInteraction(drag)
+                    }
+                    source.markers.add(self)
+                    self.source = source
+                    return
+                }
+                parent = view.superview
+            }
+        }
+    }
+
+    final class Source: NSObject, UIDragInteractionDelegate {
+        weak var interaction: UIDragInteraction?
+        let markers = NSHashTable<Marker>.weakObjects()
+
+        func dragInteraction(_ interaction: UIDragInteraction, itemsForBeginning session: UIDragSession) -> [UIDragItem] {
+            guard let marker = markers.allObjects.first(where: { $0.bounds.contains(session.location(in: $0)) }) else { return [] }
+            let item = UIDragItem(itemProvider: NSItemProvider(object: marker.payload as NSString))
+            item.localObject = marker
+            return [item]
+        }
+
+        func dragInteraction(_ interaction: UIDragInteraction, sessionWillBegin session: UIDragSession) {
+            (session.items.first?.localObject as? Marker)?.setActive?(true)
+        }
+
+        func dragInteraction(_ interaction: UIDragInteraction, session: UIDragSession, didEndWith operation: UIDropOperation) {
+            (session.items.first?.localObject as? Marker)?.setActive?(false)
+        }
+
+        func dragInteraction(_ interaction: UIDragInteraction, previewForLifting item: UIDragItem,
+                             session: UIDragSession) -> UITargetedDragPreview? {
+            guard let marker = item.localObject as? Marker, let surface = interaction.view else { return nil }
+            let rect = marker.convert(marker.bounds, to: surface)
+            guard let snapshot = surface.resizableSnapshotView(from: rect, afterScreenUpdates: false, withCapInsets: .zero) else { return nil }
+            let parameters = UIDragPreviewParameters()
+            parameters.visiblePath = UIBezierPath(roundedRect: CGRect(origin: .zero, size: rect.size), cornerRadius: 16)
+            return UITargetedDragPreview(view: snapshot, parameters: parameters,
+                target: UIDragPreviewTarget(container: surface, center: CGPoint(x: rect.midX, y: rect.midY)))
+        }
+    }
+
+    func makeUIView(context: Context) -> Marker {
+        let marker = Marker()
+        marker.isUserInteractionEnabled = false
+        marker.isAccessibilityElement = false
+        return marker
+    }
+
+    func updateUIView(_ marker: Marker, context: Context) {
+        marker.payload = payload
+        marker.setActive = setActive
     }
 }
 #endif
@@ -3022,12 +3081,14 @@ private struct WaterSettingsView: View {
     @Environment(\.nutriPalette) private var palette
     let close: () -> Void
     @State private var amount = ""
+    @State private var displayedAmount = ""
+    @State private var imperial = false
     @State private var saving = false
 
     var body: some View {
         JournalSheet(store.tr("Ajustes de agua"), close: close) {
             VStack(alignment: .leading, spacing: 16) {
-                let label = store.tr(store.units == "us" ? "Tamaño de vaso (fl oz)" : "Tamaño de vaso (ml)")
+                let label = store.tr(imperial ? "Tamaño de vaso (fl oz)" : "Tamaño de vaso (ml)")
                 VStack(alignment: .leading, spacing: 4) {
                     Text(label).font(.nutriSans(14)).foregroundStyle(palette.text2)
                     TextField(label, text: $amount, prompt: Text("")).font(.nutriMono(16)).nutriInput()
@@ -3041,17 +3102,20 @@ private struct WaterSettingsView: View {
         }
             .task {
                 let ml = store.prefs.number("water_glass_ml") ?? 1000
-                amount = journalNumber(store.units == "us" ? ml / Domain.mlPerFluidOunce : ml)
+                imperial = store.units == "us"
+                displayedAmount = journalNumber(imperial ? ml / Domain.mlPerFluidOunce : ml)
+                amount = displayedAmount
             }
     }
 
     private func save() {
         guard !saving, let number = decimal(amount), number >= 1 else { return }
+        if number == decimal(displayedAmount) { close(); return }
         saving = true
         Task {
             defer { saving = false }
             do {
-                try await store.patchPrefs(["water_glass_ml": .number(number * (store.units == "us" ? Domain.mlPerFluidOunce : 1))])
+                try await store.patchPrefs(["water_glass_ml": .number(number * (imperial ? Domain.mlPerFluidOunce : 1))])
                 close()
             } catch { store.report(error) }
         }
@@ -3483,11 +3547,13 @@ private struct JournalSheet<Content: View>: View {
     @EnvironmentObject private var store: Store
     @Environment(\.nutriPalette) private var palette
     let title: String
+    let closeID: String
     let close: () -> Void
     @ViewBuilder var content: Content
 
-    init(_ title: String, close: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+    init(_ title: String, closeID: String = "sheet.close", close: @escaping () -> Void, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.closeID = closeID
         self.close = close
         self.content = content()
     }
@@ -3503,7 +3569,7 @@ private struct JournalSheet<Content: View>: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(store.tr("Cerrar"))
-                .accessibilityIdentifier("sheet.close")
+                .accessibilityIdentifier(closeID)
             }
             content
         }

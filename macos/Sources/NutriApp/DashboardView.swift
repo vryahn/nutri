@@ -198,6 +198,15 @@ private struct DashboardSnapshot {
 
     var logged: [DashboardDay] { days.filter(\.registered) }
     var complete: [DashboardDay] { days.filter { $0.registered && $0.completeness != .partial } }
+    var sodium: DashboardSodium {
+        let registered = logged
+        let measured = registered.compactMap { nutritionValue($0.total, "sodio_mg") }
+        return DashboardSodium(
+            average: measured.isEmpty ? nil : measured.reduce(0, +) / Double(registered.count),
+            complete: !measured.isEmpty && registered.allSatisfy { $0.coverage("sodio_mg") == .complete },
+            limits: periodBounds(days, key: "sodio_mg")
+        )
+    }
 
     init(period: DashboardPeriod, entries: [Record], totals: [Record], prior: [Record], weights: [Record], history: [Record], targets: [Record], phases: [DashboardPhase]) {
         self.period = period
@@ -255,6 +264,31 @@ private struct DashboardSnapshot {
             "Necesitas al menos %n días completos. Llevas %a completos y %b incompletos."
         return translate(template).replacingOccurrences(of: "%n", with: String(mode.minimum))
             .replacingOccurrences(of: "%a", with: String(eligible)).replacingOccurrences(of: "%b", with: String(logged.count - complete.count))
+    }
+}
+
+private struct DashboardSodium {
+    let average: Double?
+    let complete: Bool
+    let limits: Record
+
+    var ceiling: Double { limits.number("max") ?? Domain.sodiumCeiling }
+    var floor: Double { max(Domain.sodiumFloor, limits.number("min") ?? Domain.sodiumFloor) }
+    var comparison: String? {
+        guard let average else { return nil }
+        if average > ceiling { return " > \(draftNumber(ceiling))" }
+        if complete, average < floor { return " < \(draftNumber(floor))" }
+        return nil
+    }
+
+    var status: Domain.Adherence? {
+        if comparison != nil { return .danger }
+        return complete ? .ok : nil
+    }
+
+    func warning(translate: (String) -> String) -> String? {
+        guard let comparison else { return nil }
+        return "⚠ " + translate("sodio promedio") + comparison + " mg" + (complete ? "" : " · " + translate("Datos parciales"))
     }
 }
 
@@ -381,7 +415,7 @@ private func dashboardSummary(_ variable: DashboardVariable, mode: DashboardCalc
         value = values.reduce(0, +)
         objective = points.isEmpty ? nil : points.reduce(0, +)
     case .average:
-        value = mean(values) ?? 0
+        value = key == "sodio_mg" ? data.sodium.average : mean(values) ?? 0
         objective = mean(points)
     case .median:
         if !observed.isEmpty {
@@ -455,6 +489,11 @@ private func dashboardSummary(_ variable: DashboardVariable, mode: DashboardCalc
                             status: status, delta: delta, percent: mode == .bayes, objectiveRange: rangeLabel)
 }
 
+private func closedDashboardWindow(start: String, end: String?, closed: String) -> ClosedRange<String>? {
+    let last = min(end ?? closed, closed)
+    return start <= last ? start...last : nil
+}
+
 private struct SavedDashboardRange: Codable, Identifiable {
     var id = UUID()
     var name: String
@@ -483,6 +522,8 @@ struct DashboardView: View {
     }
     @State private var rollingEnd = false
     @State private var rangeName = ""
+    @FocusState private var rangeNameFocused: Bool
+    @State private var rangeSaved = UUID()
     @State private var ranges: [SavedDashboardRange] = []
     @State private var activeRange: UUID?
     @State private var editingRange: UUID?
@@ -514,20 +555,18 @@ struct DashboardView: View {
         if phaseSelection.hasPrefix("goal:") { return phases.filter { $0.goal == String(phaseSelection.dropFirst(5)) } }
         return []
     }
+    private var manualWindow: ClosedRange<String>? {
+        closedDashboardWindow(start: Day.key(start), end: rollingEnd ? nil : Day.key(end), closed: Day.key(closed))
+    }
+
     private var period: DashboardPeriod {
         if preset == "Fase", !selectedPhases.isEmpty { return DashboardPeriod(windows: selectedPhases.map(\.range), phaseMode: true) }
-        let lower: String
-        let upper: String
         if preset == "Personalizado" {
-            lower = Day.key(start)
-            upper = Day.key(rollingEnd ? closed : min(end, closed))
-        } else {
-            let anchor = preset == "Hoy" ? today : closed
-            let count = dashboardPresets.first { $0.0 == preset }?.1 ?? 7
-            lower = Day.key(addingDays(1 - count, to: anchor))
-            upper = Day.key(anchor)
+            return DashboardPeriod(windows: manualWindow.map { [$0] } ?? [])
         }
-        return DashboardPeriod(windows: lower <= upper ? [lower...upper] : [])
+        let anchor = preset == "Hoy" ? today : closed
+        let count = dashboardPresets.first { $0.0 == preset }?.1 ?? 7
+        return DashboardPeriod(windows: [Day.key(addingDays(1 - count, to: anchor))...Day.key(anchor)])
     }
     private var request: String {
         period.windows.map { "\($0.lowerBound):\($0.upperBound)" }.joined(separator: "|") +
@@ -550,6 +589,15 @@ struct DashboardView: View {
     private var rangeStorageKey: String { "nutri.dashboard.ranges." + (store.owner ?? "none") }
 
     var body: some View {
+        ScrollViewReader { scroll in
+            dashboardScroll
+                .onChange(of: rangeSaved) { _, _ in
+                    scroll.scrollTo("dashboard.presets", anchor: .top)
+                }
+        }
+    }
+
+    private var dashboardScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
@@ -740,7 +788,10 @@ struct DashboardView: View {
                     }
                     ForEach(ranges) { range in
                         HStack(spacing: 0) {
-                            let dateSpan = String(range.start.dropFirst(5)) + " → " + (range.end.map { String($0.dropFirst(5)) } ?? store.tr("Hoy"))
+                            let interval = closedDashboardWindow(start: range.start, end: range.end, closed: Day.key(closed))
+                            let dateSpan = interval.map {
+                                String($0.lowerBound.dropFirst(5)) + " → " + String($0.upperBound.dropFirst(5))
+                            } ?? store.tr("La fecha de inicio va después del fin.")
                             menuRow(range.name.isEmpty ? dateSpan : range.name, note: range.name.isEmpty ? nil : dateSpan) { applyRange(range) }
                             DashboardRangeEdit {
                                 applyRange(range)
@@ -766,7 +817,7 @@ struct DashboardView: View {
                         }
                     }
                 }
-            }
+            }.id("dashboard.presets")
             if targetsLoaded && preset == "Fase" && selectedPhases.isEmpty {
                 Text(store.tr("La fase seleccionada ya no tiene días registrados — mostrando la última semana."))
                     .foregroundStyle(palette.warn)
@@ -784,8 +835,8 @@ struct DashboardView: View {
             }
             if preset == "Personalizado" {
                 if activeRange == nil || editingRange != nil { rangeForm }
-                else {
-                    Text(Day.key(start) + " → " + Day.key(rollingEnd ? closed : min(end, closed)) + " · " +
+                else if let manualWindow {
+                    Text(manualWindow.lowerBound + " → " + manualWindow.upperBound + " · " +
                          store.tr("%d días").replacingOccurrences(of: "%d", with: String(period.dates.count)))
                         .font(.nutriMono(12)).foregroundStyle(palette.text3)
                 }
@@ -800,7 +851,7 @@ struct DashboardView: View {
                 if rollingEnd {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(store.tr("Fin")).font(.nutriSans(12)).foregroundStyle(palette.text3)
-                        Text(store.tr("Hoy")).frame(maxWidth: .infinity, alignment: .leading).nutriInput()
+                        Text(Day.key(closed)).frame(maxWidth: .infinity, alignment: .leading).nutriInput()
                     }
                 } else { dashboardDateField("Fin", date: Binding(get: { end }, set: { end = $0 })) }
             }
@@ -815,14 +866,14 @@ struct DashboardView: View {
                 Text(store.tr("El rango crece solo: mañana incluirá un día más.")).font(.nutriSans(12)).foregroundStyle(palette.text3)
             }.frame(minHeight: 44)
             HStack {
-                TextField(store.tr("Nombre (opcional)"), text: $rangeName).nutriInput()
+                TextField(store.tr("Nombre (opcional)"), text: $rangeName).nutriInput(focus: $rangeNameFocused)
                     .onChange(of: rangeName) { _, value in
                         if value.count > 40 { rangeName = String(value.prefix(40)) }
                     }
                 Button(store.tr(editingRange == nil ? "Guardar rango" : "Guardar cambios")) { saveRange() }
-                    .buttonStyle(NutriButtonStyle(.primary)).disabled(!rollingEnd && start > end)
+                    .buttonStyle(NutriButtonStyle(.primary)).disabled(manualWindow == nil)
             }
-            if !rollingEnd && start > end {
+            if manualWindow == nil {
                 Text(store.tr("La fecha de inicio va después del fin.")).foregroundStyle(palette.warn)
             }
             if let editingRange, let saved = ranges.first(where: { $0.id == editingRange }) {
@@ -963,7 +1014,7 @@ struct DashboardView: View {
             }
             if let sodium {
                 DashboardKPI(title: store.tr("Sodio"), value: display(sodium), detail: displayDetail(sodium), hint: displayHint(sodium, data: data),
-                             delta: sodium.delta, color: adherenceColor(sodiumStatus(data)), sparkColor: palette.carbs, points: data.days.map {
+                             delta: sodium.delta, color: adherenceColor(data.sodium.status), sparkColor: palette.carbs, points: data.days.map {
                     $0.registered && $0.coverage("sodio_mg") == .complete ? nutritionValue($0.total, "sodio_mg") : nil
                 })
             }
@@ -1070,9 +1121,13 @@ struct DashboardView: View {
 
     private func displayHint(_ row: DashboardSummary, data: DashboardSnapshot) -> String? {
         if row.coverage == .partial {
-            return store.tr(activeCalculation == .bayes
+            let coverage = store.tr(activeCalculation == .bayes
                 ? "Cobertura parcial: faltan valores de este nutriente en algunos alimentos."
                 : "Faltan valores de este nutriente en algunos alimentos; la suma observada no prueba cumplimiento.")
+            if row.id == "sodio_mg" {
+                return coverage + " " + store.tr("Busca el alimento en Alimentos, abre su ficha y revisa el sodio en la etiqueta o fuente original. Si no figura, deja el campo vacío.")
+            }
+            return coverage
         }
         if let hint = row.hint { return store.tr(hint) }
         guard activeCalculation == .bayes, row.bayesCount != nil else { return nil }
@@ -1166,31 +1221,8 @@ struct DashboardView: View {
             "\(draftNumber(webRound(ml, digits: 1))) ml"
     }
 
-    private func sodiumCeiling(_ data: DashboardSnapshot) -> Double {
-        periodBounds(data.days, key: "sodio_mg").number("max") ?? Domain.sodiumCeiling
-    }
-
-    private func sodiumAverage(_ data: DashboardSnapshot) -> Double {
-        data.days.compactMap { nutritionValue($0.total, "sodio_mg") }.reduce(0, +) / Double(max(1, data.logged.count))
-    }
-
-    private func sodiumStatus(_ data: DashboardSnapshot) -> Domain.Adherence? {
-        guard !data.logged.isEmpty else { return nil }
-        let average = sodiumAverage(data)
-        let ceil = sodiumCeiling(data)
-        let covered = data.logged.allSatisfy { $0.coverage("sodio_mg") == .complete }
-        guard covered || average < Domain.sodiumFloor || average > ceil else { return nil }
-        return Domain.classify("sodio_mg", value: average, target: ["bounds": .object(["sodio_mg": .object(periodBounds(data.days, key: "sodio_mg"))])], bands: bands)
-    }
-
-    private func sodiumWarning(_ data: DashboardSnapshot, showCoverage: Bool) -> String? {
-        guard !data.logged.isEmpty else { return nil }
-        let average = sodiumAverage(data)
-        let ceil = sodiumCeiling(data)
-        guard average < Domain.sodiumFloor || average > ceil else { return nil }
-        let compared = average < Domain.sodiumFloor ? " < \(draftNumber(Domain.sodiumFloor))" : " > \(draftNumber(ceil))"
-        let coverage = showCoverage && data.logged.contains { $0.coverage("sodio_mg") != .complete } ? " · " + store.tr("Datos parciales") : ""
-        return "⚠ " + store.tr("sodio promedio") + compared + " mg" + coverage
+    private func sodiumWarning(_ data: DashboardSnapshot) -> String? {
+        data.sodium.warning(translate: store.tr)
     }
 
     private func heatmap(_ data: DashboardSnapshot) -> some View {
@@ -1264,7 +1296,7 @@ struct DashboardView: View {
 
     private func sodiumTrend(_ data: DashboardSnapshot) -> some View {
         dashboardCard("Sodio diario vs piso y techo") {
-            DashboardSodiumPlot(days: data.days, ceiling: sodiumCeiling(data), height: windowWidth >= 1024 ? 320 : 200)
+            DashboardSodiumPlot(days: data.days, ceiling: data.sodium.ceiling, height: windowWidth >= 1024 ? 320 : 200)
         }
     }
 
@@ -1347,7 +1379,7 @@ struct DashboardView: View {
                         }
                     }.padding(.vertical, 8).foregroundStyle(palette.text2)
                 }
-                if let warning = sodiumWarning(data, showCoverage: true) {
+                if let warning = sodiumWarning(data) {
                     Text(warning).foregroundStyle(palette.danger).padding(.top, 12)
                 }
             }
@@ -1355,7 +1387,7 @@ struct DashboardView: View {
     }
 
     private func summaryRow(_ row: DashboardSummary, data: DashboardSnapshot) -> some View {
-        let lowOrHigh = row.id == "sodio_mg" && sodiumWarning(data, showCoverage: false) != nil
+        let lowOrHigh = row.id == "sodio_mg" && sodiumWarning(data) != nil
         let implicitApplicable = dailyCeilings.contains(row.id)
         let comparable = implicitApplicable || !row.objectiveRange.isEmpty
         let tint = lowOrHigh ? palette.danger : row.coverage == .partial ? palette.text3 :
@@ -1495,13 +1527,18 @@ struct DashboardView: View {
     }
 
     private func saveRange() {
-        let item = SavedDashboardRange(id: editingRange ?? UUID(), name: cleanText(rangeName), start: Day.key(start), end: rollingEnd ? nil : Day.key(end))
+        guard let manualWindow else { return }
+        rangeNameFocused = false
+        if !rollingEnd { customEnd = manualWindow.upperBound }
+        let item = SavedDashboardRange(id: editingRange ?? UUID(), name: cleanText(rangeName),
+                                       start: manualWindow.lowerBound, end: rollingEnd ? nil : manualWindow.upperBound)
         if let index = ranges.firstIndex(where: { $0.id == item.id }) { ranges[index] = item }
         else { ranges.append(item) }
         activeRange = item.id
         savedRangeID = item.id.uuidString
         editingRange = nil
         persistRanges()
+        rangeSaved = UUID()
     }
 
     private func applyRange(_ range: SavedDashboardRange) {
@@ -1513,6 +1550,7 @@ struct DashboardView: View {
         start = date
         end = range.end.flatMap(isoDate) ?? closed
         rollingEnd = range.end == nil
+        if manualWindow == nil { editingRange = range.id }
         preset = "Personalizado"
     }
 
@@ -1629,7 +1667,7 @@ struct DashboardView: View {
             phase: data.period.phaseMode ? phaseLabel + (data.period.union ? " · \(selectedPhases.count) " + store.tr("fases") : "") : nil,
             interpretation: plainKcal(data, row: macros.first),
             waterSimple: water.simple + " (\(water.days)/\(data.days.count) \(store.tr("días con registro")))",
-            waterTotal: water.total, waterPlan: water.plan, sodiumWarning: sodiumWarning(data, showCoverage: false),
+            waterTotal: water.total, waterPlan: water.plan, sodiumWarning: sodiumWarning(data),
             note: mode.minimum > 1 && mode != .bayes ? phaseHint(data) : nil
         )
     }
@@ -2902,6 +2940,42 @@ func checkDashboardCoverage(today: Date) throws {
     let safe = dashboardSummary(sodium, mode: .average, data: complete, bands: [:])
     guard safe.value == 600, safe.coverage == .complete, safe.status == .danger else {
         throw FeatureError("Module check failed · declared zero and sodium floor")
+    }
+
+    let yesterday = dates[2]
+    let todayKey = Day.key(today)
+    guard closedDashboardWindow(start: todayKey, end: todayKey, closed: yesterday) == nil,
+          closedDashboardWindow(start: todayKey, end: nil, closed: yesterday) == nil,
+          closedDashboardWindow(start: dates[1], end: dates[0], closed: yesterday) == nil,
+          closedDashboardWindow(start: yesterday, end: yesterday, closed: yesterday) == yesterday...yesterday,
+          closedDashboardWindow(start: yesterday, end: todayKey, closed: yesterday) == yesterday...yesterday else {
+        throw FeatureError("Module check failed · custom dashboard ranges end on a closed day")
+    }
+
+    func sodiumDay(_ value: Double?, covered: Bool) -> DashboardSnapshot {
+        let sodium = value.map { ["sodio_mg": JSONValue.number($0)] } ?? [:]
+        let coverage: Record = covered ? ["sodio_mg": .bool(true)] : [:]
+        return DashboardSnapshot(period: DashboardPeriod(windows: [yesterday...yesterday]), entries: [],
+                                 totals: [["day": .string(yesterday), "kcal": .number(2000),
+                                           "micros": .object(sodium), "micros_complete": .object(coverage)]],
+                                 prior: [], weights: [], history: [], targets: [], phases: [])
+    }
+    let unknown = sodiumDay(nil, covered: false)
+    let unknownRow = dashboardSummary(sodium, mode: .average, data: unknown, bands: [:])
+    let zero = sodiumDay(0, covered: true)
+    let adequate = sodiumDay(1_600, covered: true)
+    let partialHigh = sodiumDay(3_000, covered: false)
+    let raisedFloor = DashboardSodium(average: 1_600, complete: true, limits: ["min": .number(1_800)])
+    guard raisedFloor.warning(translate: { $0 }) == "⚠ sodio promedio < 1800 mg", raisedFloor.status == .danger,
+          unknownRow.value == nil, unknownRow.sampleCount == 0,
+          unknown.sodium.warning(translate: { $0 }) == nil, unknown.sodium.status == nil,
+          zero.sodium.average == 0, zero.sodium.warning(translate: { $0 }) == "⚠ sodio promedio < 1500 mg",
+          zero.sodium.status == .danger,
+          adequate.sodium.warning(translate: { $0 }) == nil, adequate.sodium.status == .ok,
+          data.sodium.warning(translate: { $0 }) == nil, data.sodium.status == nil,
+          partialHigh.sodium.warning(translate: { $0 }) == "⚠ sodio promedio > \(draftNumber(Domain.sodiumCeiling)) mg · Datos parciales",
+          partialHigh.sodium.status == .danger else {
+        throw FeatureError("Module check failed · shared sodium warning requires coverage for a deficit")
     }
 
     // Frozen oracle: src/lib/domain.js bayesAdherence(1, 1). The selector

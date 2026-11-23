@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { round } from '../lib/domain.js';
 import { t, useLang, useUnits, gToOz, ozToG, mlToFlOz, flOzToMl } from '../lib/i18n.js';
 
@@ -11,6 +11,7 @@ import { t, useLang, useUnits, gToOz, ozToG, mlToFlOz, flOzToMl } from '../lib/i
 // value to preserve, so it keeps requiring the field.
 export default function AmountField({ grams, onGrams, meta, placeholder, required = true }) {
   useLang();
+  const id = useId();
   const units = useUnits();
   const isUS = units === 'us';
   const [unit, setUnit] = useState(isUS ? 'oz' : 'g');
@@ -57,7 +58,7 @@ export default function AmountField({ grams, onGrams, meta, placeholder, require
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between">
-        <label className="text-sm text-text-2">
+        <label htmlFor={id} className="text-sm text-text-2">
           {unit === 'ml' ? t('Mililitros') : unit === 'floz' ? 'Fl oz' : unit === 'oz' ? 'Oz' : t('Gramos')}
         </label>
         {unitOptions.length > 1 && (
@@ -76,6 +77,7 @@ export default function AmountField({ grams, onGrams, meta, placeholder, require
         )}
       </div>
       <input
+        id={id}
         type="number"
         inputMode="decimal"
         step="any"

@@ -1,4 +1,5 @@
 #if DEBUG
+import CryptoKit
 import Foundation
 import NutriCore
 
@@ -41,6 +42,9 @@ struct DemoData {
                 entry(identifier(101 + age * 3), day, item: raspberries, key: "food_id", grams: Double(140 - age % 10 * 3), label: dinner),
                 entry(identifier(102 + age * 3), day, item: water, key: "food_id", grams: 350, label: nil)
             ]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--ios-ui-pending-entry") {
+            tables["entries"]?[0]["_pending"] = .bool(true)
         }
         if longJournal {
             tables["entries", default: []] += (600..<606).map { index in
@@ -218,6 +222,12 @@ struct DemoData {
         return result
     }
 
+    private func targetWizardRevision(_ row: Record) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return SHA256.hash(data: try encoder.encode(row)).map { String(format: "%02x", $0) }.joined()
+    }
+
     mutating func rpc(_ name: String, _ body: Record) throws -> JSONValue {
         switch name {
         case "merge_prefs":
@@ -242,6 +252,50 @@ struct DemoData {
             let old = body.text("p_old_valid_from")
             tables["targets"]?.removeAll { $0.text("valid_from") == old && $0.number("dow") != nil }
             _ = mutate("POST", "targets", query: [:], body: .array(body.array("p_rows")))
+            return .null
+        case "targets_wizard_snapshot":
+            return .array(try (tables["targets"] ?? []).map { row in
+                var scope = row.filter { ["dow", "day", "valid_from", "label", "goal"].contains($0.key) }
+                scope["revision"] = .string(try targetWizardRevision(row))
+                return .object(scope)
+            })
+        case "save_targets_wizard":
+            let start = body.text("p_valid_from")
+            let phase = body.array("p_phase").compactMap(\.object)
+            let exceptions = body.array("p_exceptions").compactMap(\.object)
+            let days = Set(exceptions.map { $0.text("day") })
+            let incoming = phase + exceptions
+            guard !start.isEmpty, Set(phase.compactMap { $0.number("dow") }) == Set((0...6).map(Double.init)),
+                  phase.count == 7, days.count == exceptions.count, !days.contains(""),
+                  incoming.allSatisfy({ $0.text("owner") == owner }) else {
+                throw NutriError("Invalid targets wizard payload", code: "22023")
+            }
+            let scoped = (tables["targets"] ?? []).filter {
+                ($0.text("valid_from") == start && $0.number("dow") != nil) || days.contains($0.text("day"))
+            }
+            let current = try scoped.map(targetWizardRevision).sorted()
+            guard current == body.array("p_expected").compactMap(\.string).sorted() else {
+                throw NutriError("Targets changed after review", code: "PT409")
+            }
+            guard current.isEmpty || body["p_confirmed"]?.bool == true else {
+                throw NutriError("Target replacement requires confirmation", code: "PT422")
+            }
+            let batch: [JSONValue] = incoming.map { item in
+                var row = item
+                if let previous = scoped.first(where: { existing in
+                    if let dow = item.number("dow") { return existing.number("dow") == dow }
+                    return existing.text("day") == item.text("day")
+                }) {
+                    row["id"] = previous["id"]
+                } else if item.number("dow") == nil {
+                    row["valid_from"] = .string(Day.key(Date()))
+                    row["micros"] = .object([:])
+                    row["bounds"] = .object([:])
+                    row["rules"] = .object([:])
+                }
+                return .object(row)
+            }
+            _ = mutate("POST", "targets", query: ["on_conflict": "id"], body: .array(batch))
             return .null
         default: throw NutriError("Operación sin datos de demostración.")
         }

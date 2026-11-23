@@ -11,7 +11,8 @@ vi.mock('./supabase.js', () => {
         calls.push({ op, payload });
         return responder({ op, payload });
       });
-      p.eq = (_col, id) => { payload.id = id; return p; };
+      p.eq = (col, value) => { payload[col] = value; return p; };
+      p.in = (_col, ids) => { payload.ids = ids; return p; };
       return p;
     };
     return run;
@@ -322,5 +323,102 @@ describe('applyOutbox owner isolation (N11)', () => {
     expect(ids('user-b')).toEqual([]);
     expect(ids('user-a')).toEqual(['a1']);
     expect(ob.outboxOps().map((o) => o.id)).toEqual(['a1']);
+  });
+});
+
+describe('whole-day deletion', () => {
+  it('retries when connection returns before an in-flight failure is reported', async () => {
+    const lifecycle = new EventTarget();
+    vi.stubGlobal('window', lifecycle);
+    vi.stubGlobal('document', new EventTarget());
+    try {
+      const ob = await fresh();
+      let finish;
+      responder = () => new Promise((resolve) => { finish = resolve; });
+      ob.queueDeleteDay(row('').day, ['synced']);
+      await Promise.resolve();
+      lifecycle.dispatchEvent(new Event('online'));
+      responder = () => ({ error: null });
+      finish({ error: new TypeError('late network failure') });
+      await vi.waitFor(() => expect(ob.outboxOps()).toEqual([]));
+      expect(calls).toHaveLength(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('retains both sorts of pending food until the batch is confirmed after reconnection', async () => {
+    const ob = await fresh();
+    const server = new Set(['synced', 'water']);
+    const notices = [];
+    ob.onOutbox((event) => notices.push(event));
+    ob.setOutboxOwner('fixture-user');
+    responder = ({ payload }) => {
+      if (payload.id === 'attempted') server.add('attempted'); // committed before the response was lost
+      return { error: new TypeError('offline') };
+    };
+    ob.queueInsert(row('attempted'), row('attempted'));
+    await ob.flushOutbox();
+    ob.queueInsert(row('local'), row('local'));
+    ob.queueDeleteDay(row('').day, ['synced', 'attempted', 'local']);
+    await ob.flushOutbox();
+
+    expect(ob.outboxOps().map((op) => [op.op, op.attempted ?? false])).toEqual([
+      ['insert', true], ['delete-many', false], ['insert', false],
+    ]);
+    expect(ob.applyOutbox([row('synced'), row('water')], row('').day).map(({ id }) => id)).toEqual(['water']);
+
+    const assertBatchScope = (payload) => expect(payload).toMatchObject({ day: row('').day, owner: 'fixture-user' });
+    responder = ({ op, payload }) => {
+      if (op === 'insert') return { error: server.has(payload.id) ? { code: '23505' } : null };
+      assertBatchScope(payload);
+      payload.ids.forEach((id) => server.delete(id));
+      return { error: new TypeError('lost delete response') };
+    };
+    await ob.flushOutbox();
+    expect(ob.outboxOps().map((op) => op.op)).toEqual(['delete-many', 'insert']);
+    expect(server).toEqual(new Set(['water']));
+
+    responder = ({ payload }) => {
+      payload.ids.forEach((id) => server.delete(id));
+      return { error: null };
+    };
+    await ob.flushOutbox();
+    expect(ob.outboxOps()).toEqual([]);
+    expect(calls.filter(({ op, payload }) => op === 'insert' && payload.id === 'local')).toEqual([]);
+    expect(server).toEqual(new Set(['water']));
+    expect(notices.at(-1).deletedDays).toEqual([{ day: row('').day, ids: ['synced', 'attempted', 'local'] }]);
+  });
+
+  it('includes newly requested IDs once while an earlier deletion is still queued', async () => {
+    const ob = await fresh();
+    responder = () => ({ error: new TypeError('offline') });
+    ob.queueDeleteDay(row('').day, ['a']);
+    ob.queueDeleteDay(row('').day, ['a', 'b']);
+    ob.queueDeleteDay(row('').day, ['a', 'b']);
+    await ob.flushOutbox();
+    expect(ob.outboxOps().map((op) => op.ids)).toEqual([['a'], ['b']]);
+    expect(ob.applyOutbox([row('a'), row('b'), row('c')], row('').day).map((r) => r.id)).toEqual(['c']);
+    expect(ob.applyOutbox([row('a', '2026-09-06')], '2026-09-06').map((r) => r.id)).toEqual(['a']);
+  });
+
+  it('keeps a never-sent insert recoverable if the server rejects the batch', async () => {
+    const ob = await fresh();
+    const server = new Set(['synced', 'water']);
+    responder = () => ({ error: new TypeError('offline') });
+    ob.queueDeleteDay(row('').day, ['synced', 'local']);
+    ob.queueInsert(row('local'), row('local'));
+    await ob.flushOutbox();
+    expect(ob.applyOutbox([row('synced'), row('water')], row('').day).map((r) => r.id)).toEqual(['water']);
+    responder = ({ op }) => op === 'delete'
+      ? { error: { code: '23503' } }
+      : { error: new TypeError('still offline for insert') };
+    await ob.flushOutbox();
+    expect(ob.outboxOps().map((op) => op.id)).toEqual(['local']);
+    expect(ob.applyOutbox([row('synced'), row('water')], row('').day).map((r) => r.id)).toEqual(['synced', 'water', 'local']);
+    responder = ({ payload }) => { server.add(payload.id); return { error: null }; };
+    await ob.flushOutbox();
+    expect(ob.outboxOps()).toEqual([]);
+    expect(server).toEqual(new Set(['synced', 'water', 'local']));
   });
 });

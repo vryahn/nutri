@@ -655,47 +655,46 @@ struct TargetsView: View {
     }
 
     @MainActor fileprivate static func saveWizard(_ input: PhaseDraft, exceptions: [WizardOverride], confirmed: Bool, rows: [Record], store: Store) async throws {
-        let today = Day.key(Date())
         guard let owner = store.owner else { throw FeatureError("Sesión requerida.") }
         let start = Day.key(input.date)
-        let days = exceptions.map { Day.key($0.date) }
-        guard Set(days).count == days.count else { throw FeatureError("Hay fechas específicas repetidas.") }
-        let live = try await store.read("targets")
-        let phase = live.filter { $0.text("valid_from") == start && $0.number("dow") != nil }
-        let existingDays = Dictionary(live.filter { days.contains($0.text("day")) }.map { ($0.text("day"), $0) }, uniquingKeysWith: { first, _ in first })
-        let displayedIDs = Set(rows.filter { row in
+        let days = Set(exceptions.map { Day.key($0.date) })
+        guard days.count == exceptions.count else { throw FeatureError("Hay fechas específicas repetidas.") }
+        let expected = rows.filter { row in
             (row.text("valid_from") == start && row.number("dow") != nil) || days.contains(row.text("day"))
-        }.map { $0.text("id") })
-        let liveIDs = Set((phase + Array(existingDays.values)).map { $0.text("id") })
-        guard liveIDs == displayedIDs else { throw FeatureError("Los objetivos cambiaron. Cierra el asistente, recarga y revisa las fechas.") }
-        if !liveIDs.isEmpty && !confirmed { throw FeatureError("Confirma las fechas que se reemplazarán.") }
+        }.map { JSONValue.string($0.text("revision")) }
 
-        var phaseRecords = try phasePayload(input, owner: owner, validFrom: start)
-        for index in phaseRecords.indices {
-            let previous = phase.first { $0.number("dow") == Double(index) }
-            phaseRecords[index]["id"] = previous?["id"] ?? .string(UUID().uuidString.lowercased())
-            phaseRecords[index]["day"] = .null
-            phaseRecords[index]["applied_rule"] = previous?["applied_rule"] ?? .null
-        }
+        let phaseRecords = try phasePayload(input, owner: owner, validFrom: start)
         let overrideRecords = try exceptions.map { item -> Record in
-            let key = Day.key(item.date)
-            let previous = existingDays[key]
             var row = try item.values.encoded()
-            row["id"] = previous?["id"] ?? .string(UUID().uuidString.lowercased())
             row["owner"] = .string(owner)
-            row["day"] = .string(key)
-            row["dow"] = .null
-            row["valid_from"] = previous?["valid_from"] ?? .string(today)
+            row["day"] = .string(Day.key(item.date))
             row["label"] = optionalText(item.label)
-            row["description"] = previous?["description"] ?? .null
-            row["goal"] = previous?["goal"] ?? .null
-            row["rules"] = previous?["rules"] ?? .object([:])
-            row["applied_rule"] = previous?["applied_rule"] ?? .null
+            row["micros"] = nil
+            row["bounds"] = nil
             return row
         }
-        // All wizard dates share a single statement. A collision on another unique key
-        // rolls the entire submission back instead of leaving phase-only writes.
-        _ = try await store.upsert("targets", phaseRecords + overrideRecords, onConflict: "id")
+        do {
+            _ = try await store.rpc("save_targets_wizard", [
+                "p_valid_from": .string(start),
+                "p_phase": .array(phaseRecords.map(JSONValue.object)),
+                "p_exceptions": .array(overrideRecords.map(JSONValue.object)),
+                "p_expected": .array(expected),
+                "p_confirmed": .bool(confirmed)
+            ])
+        } catch let error as NutriError {
+            switch error.code {
+            case "PT409", "40001", "40P01":
+                throw FeatureError("Los objetivos cambiaron. Cierra el asistente, vuelve a abrirlo y revisa las fechas.")
+            case "PT422":
+                throw FeatureError("Confirma las fechas que se reemplazarán.")
+            case "23514":
+                throw FeatureError("Revisa las fechas y los valores de la fase y de las fechas específicas.")
+            case let code? where code.hasPrefix("22"):
+                throw FeatureError("Revisa las fechas y los valores de la fase y de las fechas específicas.")
+            default:
+                throw error
+            }
+        }
     }
 
     private func phaseFilter(_ date: String) -> [String: String] { ["valid_from": "eq.\(date)", "dow": "not.is.null"] }
@@ -1458,6 +1457,7 @@ private struct PhaseRulesEditor: View {
     private var pausedUntilField: some View {
         let date = rules.text("paused_until")
         let label = store.tr("Pausar reglas hasta")
+        let value = date.isEmpty ? store.tr("AAAA-MM-DD") : targetDateLabel(date, lang: store.lang, withYear: true)
         return VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.nutriSans(12)).foregroundStyle(palette.text3)
             HStack(spacing: 8) {
@@ -1465,11 +1465,11 @@ private struct PhaseRulesEditor: View {
                     pausedUntilSelection = isoDate(date) ?? Date()
                     pausedUntilOpen = true
                 } label: {
-                    Text(date.isEmpty ? "AAAA-MM-DD" : targetDateLabel(date, lang: store.lang, withYear: true))
+                    Text(value)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .nutriInput()
                 }.buttonStyle(.plain).accessibilityLabel(label)
-                    .accessibilityValue(date)
+                    .accessibilityValue(value)
                     .popover(isPresented: $pausedUntilOpen) {
                         VStack {
                             DatePicker(label, selection: $pausedUntilSelection, displayedComponents: .date)
@@ -1539,18 +1539,31 @@ private struct WizardOverride: Identifiable {
 
 struct TargetsWizardFromMenu: View {
     @EnvironmentObject private var store: Store
-    @State private var rows: [Record] = []
-    @State private var unavailable = false
+    @State private var snapshot: [Record]?
+    @State private var loadFailed = false
+    @State private var loadAttempt = 0
     let close: () -> Void
 
     var body: some View {
-        TargetWizard(rows: rows, unavailable: unavailable, close: close) { phase, exceptions, confirmed in
-            try await TargetsView.saveWizard(phase, exceptions: exceptions, confirmed: confirmed, rows: rows, store: store)
+        TargetWizard(rows: snapshot, loadFailed: loadFailed, retry: {
+            loadFailed = false
+            loadAttempt += 1
+        }, close: close) { phase, exceptions, confirmed in
+            guard let snapshot else { throw FeatureError("No se pudieron cargar los objetivos — revisa tu conexión.") }
+            try await TargetsView.saveWizard(phase, exceptions: exceptions, confirmed: confirmed, rows: snapshot, store: store)
             NotificationCenter.default.post(name: .nutriTargetsChanged, object: nil)
-        }.task {
-            do { rows = try await store.read("targets") }
-            catch {
-                if !Task.isCancelled { unavailable = true; store.report(error) }
+        }.task(id: loadAttempt) {
+            guard snapshot == nil else { return }
+            do {
+                guard let rows = try await store.rpc("targets_wizard_snapshot").array else {
+                    throw FeatureError("No se pudieron cargar los objetivos — revisa tu conexión.")
+                }
+                if !Task.isCancelled { snapshot = rows.compactMap(\.object) }
+            } catch {
+                if !Task.isCancelled {
+                    loadFailed = true
+                    store.report(error, as: "No se pudieron cargar los objetivos — revisa tu conexión.")
+                }
             }
         }
     }
@@ -1563,8 +1576,9 @@ extension Notification.Name {
 private struct TargetWizard: View {
     @EnvironmentObject private var store: Store
     @Environment(\.nutriPalette) private var palette
-    let rows: [Record]
-    let unavailable: Bool
+    let rows: [Record]?
+    let loadFailed: Bool
+    let retry: () -> Void
     let close: () -> Void
     let onSave: (PhaseDraft, [WizardOverride], Bool) async throws -> Void
     @State private var draft = PhaseDraft(kind: .new, date: Day.key(Date()))
@@ -1582,12 +1596,12 @@ private struct TargetWizard: View {
     private var colors: [Color] { [palette.protein, palette.carbs, palette.fat] }
     private var usedGroups: [Int] { (0..<3).filter { assignments.contains($0) } }
     private var phases: [String: [Record]] {
-        Dictionary(grouping: rows.filter { $0.number("dow") != nil }) { $0.text("valid_from") }
+        Dictionary(grouping: (rows ?? []).filter { $0.number("dow") != nil }) { $0.text("valid_from") }
     }
     private var phaseConflict: Bool { phases[Day.key(draft.date)] != nil }
     private var overrideConflicts: Int {
         let days = Set(exceptions.map { Day.key($0.date) })
-        return rows.filter { days.contains($0.text("day")) }.count
+        return (rows ?? []).filter { days.contains($0.text("day")) }.count
     }
     private let lastStep = 8
     private let ceilings = [("grasa_sat_g", "Grasa sat. (g)"), ("azucar_anadido_g", "Az. añadido (g)"), ("alcohol_g", "Alcohol (g)")]
@@ -1614,6 +1628,14 @@ private struct TargetWizard: View {
                             }
                         }.accessibilityLabel("\(step + 1) / \(lastStep + 1)")
                         fields
+                        if rows == nil {
+                            Text(store.tr(loadFailed ? "No se pudieron cargar los objetivos — revisa tu conexión." : "Cargando…"))
+                                .font(.nutriSans(12)).foregroundStyle(loadFailed ? palette.danger : palette.text3)
+                            if loadFailed {
+                                Button(store.tr("Reintentar"), action: retry)
+                                    .buttonStyle(NutriButtonStyle(.secondary, height: 44))
+                            }
+                        }
                         if !error.isEmpty { Text(error).font(.nutriSans(12)).foregroundStyle(palette.danger) }
                     }
                 }.padding(.horizontal, 20).padding(.vertical, 16)
@@ -1665,7 +1687,7 @@ private struct TargetWizard: View {
                     Text(store.tr(step == 0 ? "Comenzar" : step < lastStep ? "Siguiente" : busy ? "Guardando…" : "Guardar configuración"))
                         .frame(maxWidth: .infinity)
                 }.buttonStyle(NutriButtonStyle(.primary, height: 46)).keyboardShortcut(.defaultAction)
-                    .disabled(busy || (unavailable && step == lastStep))
+                    .disabled(busy || rows == nil)
             }
         }.disabled(busy)
     }
@@ -1697,7 +1719,7 @@ private struct TargetWizard: View {
             }.buttonStyle(NutriButtonStyle(.quiet, horizontal: 0))
         case 6:
             Text(store.tr("Opcional: propuestas de carbohidratos según la evolución de tu peso, sujetas a revisión en el plan maestro.")).foregroundStyle(palette.text2)
-            PhaseRulesEditor(rules: $draft.rules, scopes: usedGroups.map { (typeNames[$0].isEmpty ? store.tr("Tipo de día") : typeNames[$0], days($0)) })
+            PhaseRulesEditor(rules: $draft.rules, scopes: usedGroups.map { (typeName($0), days($0)) })
         case 7: specificDates
         default: summary
         }
@@ -1770,6 +1792,8 @@ private struct TargetWizard: View {
                             Circle().fill(colors[assignments[dow]]).frame(width: 10, height: 10)
                         }.frame(maxWidth: .infinity)
                     }.buttonStyle(NutriButtonStyle(.secondary, height: 52, horizontal: 0))
+                        .accessibilityLabel(shortWeekday(dow, language: store.lang))
+                        .accessibilityValue(typeName(assignments[dow]))
                 }
             }
             wizardCaption("Tipos de día")
@@ -1864,10 +1888,15 @@ private struct TargetWizard: View {
         Text(store.tr(text).uppercased()).font(.nutriSans(11, weight: .medium)).tracking(0.5).foregroundStyle(palette.text3)
     }
 
+    private func typeName(_ group: Int) -> String {
+        let name = cleanText(typeNames[group])
+        return name.isEmpty ? store.tr("Tipo de día") : name
+    }
+
     private func groupTitle(_ group: Int) -> some View {
         HStack(spacing: 6) {
             Circle().fill(colors[group]).frame(width: 10, height: 10)
-            Text(typeNames[group].isEmpty ? store.tr("Tipo de día") : typeNames[group]).font(.nutriSans(13, weight: .medium))
+            Text(typeName(group)).font(.nutriSans(13, weight: .medium))
             Spacer()
             Text(days(group).map { shortWeekday($0, language: store.lang) }.joined(separator: " "))
                 .font(.nutriMono(11)).foregroundStyle(palette.text3)

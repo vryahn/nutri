@@ -98,6 +98,7 @@ function MoreOptions({ actions, placement = 'bottom', className, label }) {
             <button
               key={key}
               onClick={() => {
+                ref.current?.querySelector('button')?.focus({ preventScroll: true });
                 setOpen(false);
                 onClick();
               }}
@@ -228,7 +229,7 @@ function Layout({ children }) {
             <span className="min-w-0">{t('Demo con datos de ejemplo — los cambios se borran solos.')}</span>
             <button
               onClick={() => supabase.auth.signOut()}
-              className="shrink-0 min-h-[44px] px-2 underline underline-offset-2 press"
+              className="shrink-0 min-w-[44px] min-h-[44px] px-2 underline underline-offset-2 press"
             >
               {t('Salir')}
             </button>
@@ -243,9 +244,9 @@ function Layout({ children }) {
             <MoreOptions
               actions={menuActions}
               placement="bottom"
-              className="p-2 rounded-lg press text-text-2"
+              className="w-11 h-11 grid place-items-center rounded-lg press text-text-2"
             />
-            <UserMenu placement="bottom" className="p-1 rounded-full press" />
+            <UserMenu placement="bottom" className="w-11 h-11 grid place-items-center rounded-full press" />
           </div>
         </header>
 

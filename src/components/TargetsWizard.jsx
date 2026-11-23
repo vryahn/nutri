@@ -56,8 +56,8 @@ export default function TargetsWizard({ onClose }) {
   const [error, setError] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // Existing phases and overrides (for the step 0 summary and to detect overwrites).
-  const [existing, setExisting] = useState({ phases: [], vfs: new Set(), days: new Set() });
+  const [snapshot, setSnapshot] = useState(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   // Step 1
   const [goal, setGoal] = useState('');
@@ -86,23 +86,33 @@ export default function TargetsWizard({ onClose }) {
   // Step 7: overrides
   const [overrides, setOverrides] = useState([]); // { day, label, kcal, protein_g, carbs_g, fat_g }
 
-  // Carga inicial de fases/overrides existentes.
+  // Keep the original comparison baseline for the lifetime of this draft.
   useEffect(() => {
     let alive = true;
-    supabase.from('targets').select('*').then(({ data }) => {
+    supabase.rpc('targets_wizard_snapshot').then(({ data, error }) => {
       if (!alive) return;
-      const rows = data || [];
-      const dowRows = rows.filter((r) => r.dow != null);
-      const vfs = [...new Set(dowRows.map((r) => r.valid_from))].sort();
-      const phases = vfs.map((vf) => ({
+      if (error || !Array.isArray(data)) {
+        setError(t('No se pudieron cargar los objetivos — revisa tu conexión.'));
+      } else {
+        setSnapshot(data);
+      }
+    });
+    return () => { alive = false; };
+  }, [loadAttempt]);
+
+  const existing = useMemo(() => {
+    const dowRows = (snapshot ?? []).filter((r) => r.dow != null);
+    const starts = [...new Set(dowRows.map((r) => r.valid_from))].sort();
+    return {
+      starts,
+      phases: starts.map((vf) => ({
         vf,
         label: dowRows.find((r) => r.valid_from === vf && r.label)?.label || '',
         goal: dowRows.find((r) => r.valid_from === vf && r.goal)?.goal || null,
-      }));
-      setExisting({ phases, vfs: new Set(vfs), days: new Set(rows.filter((r) => r.day != null).map((r) => r.day)) });
-    });
-    return () => { alive = false; };
-  }, []);
+      })),
+      days: new Set((snapshot ?? []).filter((r) => r.day != null).map((r) => r.day)),
+    };
+  }, [snapshot]);
 
   // Prefill water/electrolytes when a regime is chosen (overwrites: the regime sets the
   // default). Adjusted during render — the documented way to reset state when a prop
@@ -120,10 +130,7 @@ export default function TargetsWizard({ onClose }) {
   );
 
   const today = todayISO();
-  const vigenteVf = useMemo(
-    () => [...existing.vfs].filter((vf) => vf <= today).sort().pop() || null,
-    [existing.vfs, today]
-  );
+  const vigenteVf = existing.starts.filter((vf) => vf <= today).at(-1) ?? null;
 
   // Final rows (memoized to reuse them in the summary and on save).
   const microsRaw = { ...electro, ...ceilings }; // strings; cleanMicros drops empties and coerces to numbers
@@ -140,11 +147,10 @@ export default function TargetsWizard({ onClose }) {
       protein_g: numOrNull(o.protein_g),
       carbs_g: numOrNull(o.carbs_g),
       fat_g: numOrNull(o.fat_g),
-      micros: {},
     }));
 
   const overrideConflicts = overridePayloads.filter((o) => existing.days.has(o.day));
-  const phaseConflict = existing.vfs.has(validFrom);
+  const phaseConflict = existing.starts.includes(validFrom);
   const needsConfirm = phaseConflict || overrideConflicts.length > 0;
 
   // Minimal validation to advance.
@@ -167,35 +173,55 @@ export default function TargetsWizard({ onClose }) {
   const setGV = (gi, key, val) =>
     setGroupValues((gvs) => ({ ...gvs, [gi]: { ...gvs[gi], [key]: val } }));
 
-  async function doSave() {
+  async function doSave(confirmed) {
+    if (busy || snapshot === null) return;
     setConfirmOpen(false);
     setBusy(true);
     setError('');
-    const { data: { session } } = await supabase.auth.getSession();
-    const owner = session?.user?.id;
-    if (!owner) { setError(t('No se pudo guardar.')); setBusy(false); return; }
-
-    const rows = draftToRows(groups, { validFrom, label, description, goal, owner, rules });
-    const phaseErr = phaseConflict
-      ? (await supabase.from('targets').upsert(rows, { onConflict: 'owner,dow,valid_from' })).error
-      : (await supabase.from('targets').insert(rows)).error;
-    if (phaseErr) { setError(t('No se pudo guardar la fase.')); setBusy(false); return; }
-
-    const newOvs = overridePayloads.filter((o) => !existing.days.has(o.day)).map((o) => ({ owner, ...o }));
-    const dupOvs = overridePayloads.filter((o) => existing.days.has(o.day)).map((o) => ({ owner, ...o }));
-    if (newOvs.length) {
-      const { error: e } = await supabase.from('targets').insert(newOvs);
-      if (e) { setError(t('No se pudo guardar.')); setBusy(false); return; }
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const owner = session?.user?.id;
+      if (!owner) {
+        setError(t('Sesión requerida.'));
+        return;
+      }
+      const days = new Set(overridePayloads.map((o) => o.day));
+      const { error } = await supabase.rpc('save_targets_wizard', {
+        p_valid_from: validFrom,
+        p_phase: draftToRows(groups, { validFrom, label, description, goal, owner, rules }),
+        p_exceptions: overridePayloads.map((o) => ({ owner, ...o })),
+        p_expected: snapshot.filter((r) => (r.dow != null && r.valid_from === validFrom) || days.has(r.day)).map((r) => r.revision),
+        p_confirmed: confirmed,
+      });
+      if (error) throw error;
+      setSaved(true);
+    } catch (error) {
+      const code = error?.code;
+      if (['PT409', '40001', '40P01'].includes(code)) {
+        setError(t('Los objetivos cambiaron. Cierra el asistente, vuelve a abrirlo y revisa las fechas.'));
+      } else if (code === 'PT422') {
+        setError(t('Confirma las fechas que se reemplazarán.'));
+      } else if (code?.startsWith('22') || code === '23514') {
+        setError(t('Revisa las fechas y los valores de la fase y de las fechas específicas.'));
+      } else {
+        setError(t('No se pudo guardar la fase.'));
+      }
+    } finally {
+      setBusy(false);
     }
-    if (dupOvs.length) {
-      const { error: e } = await supabase.from('targets').upsert(dupOvs, { onConflict: 'owner,day' });
-      if (e) { setError(t('No se pudo guardar.')); setBusy(false); return; }
-    }
-    setBusy(false);
-    setSaved(true);
   }
 
-  const onSaveClick = () => (needsConfirm ? setConfirmOpen(true) : doSave());
+  const onSaveClick = () => {
+    if (overrides.some((o) => !o.day)) {
+      setError(t('Revisa las fechas y los valores de la fase y de las fechas específicas.'));
+    } else if (new Set(overridePayloads.map((o) => o.day)).size !== overridePayloads.length) {
+      setError(t('Hay fechas específicas repetidas.'));
+    } else if (needsConfirm) {
+      setConfirmOpen(true);
+    } else {
+      void doSave(false);
+    }
+  };
 
   // ---- Per-step footer ----
   const footer = saved ? (
@@ -206,18 +232,19 @@ export default function TargetsWizard({ onClose }) {
     <div className="flex gap-2">
       <button
         onClick={step === 0 ? onClose : back}
+        disabled={busy}
         className="min-h-[46px] px-4 rounded-xl border border-border text-text-2 press"
       >
         {step === 0 ? t('Cancelar') : t('Atrás')}
       </button>
       {step < STEP_COUNT - 1 ? (
-        <button onClick={next} className="flex-1 min-h-[46px] rounded-xl bg-accent-deep text-on-accent font-medium press">
+        <button onClick={next} disabled={snapshot === null} className="flex-1 min-h-[46px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60">
           {step === 0 ? t('Comenzar') : t('Siguiente')}
         </button>
       ) : (
         <button
           onClick={onSaveClick}
-          disabled={busy}
+          disabled={busy || snapshot === null}
           className="flex-1 min-h-[46px] rounded-xl bg-accent-deep text-on-accent font-medium press disabled:opacity-60"
         >
           {busy ? t('Guardando…') : t('Guardar configuración')}
@@ -241,6 +268,7 @@ export default function TargetsWizard({ onClose }) {
       ) : (
         <>
           {step === 0 && <StepIntro phases={existing.phases} vigenteVf={vigenteVf} />}
+          {snapshot === null && !error && <p role="status" className="text-xs text-text-2">{t('Cargando…')}</p>}
           {step === 1 && (
             <StepRegime
               goal={goal} setGoal={setGoal}
@@ -277,7 +305,16 @@ export default function TargetsWizard({ onClose }) {
               phaseConflict={phaseConflict}
             />
           )}
-          {error && <p className="text-xs text-danger">{error}</p>}
+          {error && <p role="alert" className="text-xs text-danger">{error}</p>}
+          {snapshot === null && error && (
+            <button
+              type="button"
+              onClick={() => { setError(''); setLoadAttempt((attempt) => attempt + 1); }}
+              className="min-h-[44px] self-start px-4 rounded-xl border border-border text-text-2 press"
+            >
+              {t('Reintentar')}
+            </button>
+          )}
         </>
       )}
 
@@ -290,7 +327,7 @@ export default function TargetsWizard({ onClose }) {
           ].filter(Boolean).join(' ')}
           confirmLabel={t('Sobrescribir y guardar')}
           danger={false}
-          onConfirm={doSave}
+          onConfirm={() => doSave(true)}
           onClose={() => setConfirmOpen(false)}
         />
       )}
@@ -401,9 +438,11 @@ function StepPattern({ dayGroup, setDayGroup, groupNames, setGroupNames, activeG
               onClick={() => cycle(d)}
               className="min-h-[52px] rounded-xl border border-border flex flex-col items-center justify-center gap-1 press"
               aria-label={dowShort(d)}
+              aria-describedby={"wizard-day-type-" + d}
             >
               <span className="text-[11px] font-mono text-text-2">{dowShort(d)}</span>
               <span className="w-2.5 h-2.5 rounded-full" style={{ background: GROUP_COLORS[gi] }} />
+              <span id={"wizard-day-type-" + d} className="sr-only">{groupNames[gi].trim() || t('Tipo de día')}</span>
             </button>
           );
         })}

@@ -121,7 +121,11 @@ struct CatalogAIDataCard<ResultLines: View>: View {
                     FeaturePhotoPicker(maximum: 2 - images.count, onPick: add) {
                         HStack(spacing: 8) {
                             NutriIcon("image-plus", size: 18)
-                            if images.isEmpty { Text(store.tr("Foto (etiqueta o platillo)")).lineLimit(1) }
+                            if images.isEmpty {
+                                Text(store.tr("Foto (etiqueta o platillo)"))
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }.frame(maxWidth: .infinity)
                     }.buttonStyle(NutriButtonStyle(.secondary, height: 44)).disabled(loading)
                         .accessibilityLabel(store.tr(images.isEmpty ? "Foto (etiqueta o platillo)" : "Otra foto"))

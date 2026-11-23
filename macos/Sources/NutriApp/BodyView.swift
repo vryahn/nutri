@@ -165,6 +165,88 @@ struct BodyImportRow: Identifiable {
 
 }
 
+private struct BodyDraft: Codable, Equatable {
+    var metrics: [String: String] = [:]
+    var note: String?
+
+    var isEmpty: Bool { metrics.isEmpty && note == nil }
+
+    func applying(to row: Record?) throws -> (metrics: Record, note: JSONValue) {
+        var next = row?.object("metrics") ?? [:]
+        for (key, value) in metrics {
+            let label = BodyMetric.fields.first { $0.key == key }?.label ?? key
+            next[key] = try featureNumber(value, label: label).map(JSONValue.number)
+        }
+        let nextNote = note.map(optionalText) ?? row?["note"] ?? .null
+        return (next, nextNote)
+    }
+
+    mutating func acknowledge(_ confirmed: Self) {
+        for (key, value) in confirmed.metrics where metrics[key] == value { metrics[key] = nil }
+        if note == confirmed.note { note = nil }
+    }
+}
+
+private struct BodyDraftFile {
+    let url: URL
+
+    init(directory: URL, owner: String, day: String) throws {
+        guard UUID(uuidString: owner) != nil, let date = Day.date(day), Day.key(date) == day else {
+            throw FeatureError("Registro no disponible.")
+        }
+        url = directory.appendingPathComponent(owner, isDirectory: true)
+            .appendingPathComponent("body-drafts", isDirectory: true)
+            .appendingPathComponent(day + ".json")
+    }
+
+    func read() throws -> BodyDraft {
+        do { return try JSONDecoder().decode(BodyDraft.self, from: Data(contentsOf: url)) }
+        catch let error as CocoaError where error.code == .fileReadNoSuchFile { return BodyDraft() }
+    }
+
+    func write(_ draft: BodyDraft) throws {
+        let manager = FileManager.default
+        if draft.isEmpty {
+            do { try manager.removeItem(at: url) }
+            catch let error as CocoaError where error.code == .fileNoSuchFile {}
+            return
+        }
+        var directory = url.deletingLastPathComponent()
+        if !manager.fileExists(atPath: directory.path) {
+            try manager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            var flags = URLResourceValues()
+            flags.isExcludedFromBackup = true
+            try directory.setResourceValues(flags)
+        }
+        #if os(iOS)
+        let options: Data.WritingOptions = [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+        #else
+        let options: Data.WritingOptions = [.atomic]
+        #endif
+        try JSONEncoder().encode(draft).write(to: url, options: options)
+        try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+}
+
+@MainActor
+private enum BodyDraftWrites {
+    private static var tasks: [URL: (id: UUID, task: Task<Void, Never>)] = [:]
+
+    static func enqueue(_ file: BodyDraftFile, _ save: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+        let previous = tasks[file.url]?.task
+        let id = UUID()
+        let task = Task {
+            await previous?.value
+            await save()
+            if tasks[file.url]?.id == id { tasks[file.url] = nil }
+        }
+        tasks[file.url] = (id, task)
+        return task
+    }
+
+    static func wait(for file: BodyDraftFile) async { await tasks[file.url]?.task.value }
+}
+
 struct BodyView: View {
     @EnvironmentObject private var store: Store
     @Environment(\.nutriPalette) private var palette
@@ -187,7 +269,7 @@ struct BodyView: View {
     @State private var values: [String: String] = [:]
     @State private var note = ""
     @State private var photos: [String] = []
-    @State private var existing: Record?
+    @State private var edits = BodyDraft()
     @State private var history: [Record] = []
     @AppStorage("nutri.body.trendKey") private var trendKey = "peso_kg"
     @State private var more = false
@@ -211,13 +293,24 @@ struct BodyView: View {
     private var requestedKey: String { Day.key(requestedDay ?? day) }
     private var navigationDay: Date { loadingDay ? requestedDay ?? day : day }
     private var trend: BodyMetric { (BodyMetric.fields + BodyMetric.derived).first { $0.key == trendKey } ?? BodyMetric.fields[0] }
-    private var originalValues: [String: String] {
-        (existing?.object("metrics") ?? [:]).compactMapValues { $0.number.map(draftNumber) }
+    private var pending: Bool { !edits.isEmpty }
+
+    private func draftFile(owner: String, day: String) throws -> BodyDraftFile? {
+        var directory = URL.applicationSupportDirectory.appendingPathComponent("NutriNative", isDirectory: true)
+        if store.demoActive {
+            #if DEBUG
+            let prefix = "--body-draft-qa="
+            guard let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(prefix) }),
+                  let fixture = UUID(uuidString: String(argument.dropFirst(prefix.count))) else { return nil }
+            directory = directory.appendingPathComponent("BodyDraftQA", isDirectory: true)
+                .appendingPathComponent(fixture.uuidString, isDirectory: true)
+            #else
+            return nil
+            #endif
+        }
+        return try BodyDraftFile(directory: directory, owner: owner, day: day)
     }
-    private var pending: Bool {
-        values.filter { !cleanText($0.value).isEmpty } != originalValues || noteChanged
-    }
-    private var noteChanged: Bool { cleanText(note) != cleanText(existing?.text("note") ?? "") }
+
     private var inheritedFat: Double? {
         guard cleanText(values["grasa_pct"] ?? "").isEmpty else { return nil }
         return history.reversed().compactMap { $0.object("metrics").number("grasa_pct") }.first { $0 >= 0 }
@@ -247,7 +340,7 @@ struct BodyView: View {
             }
         }
         .font(.nutriSans(14)).foregroundStyle(palette.text)
-        .task(id: requestedKey) { await loadDay() }
+        .task(id: (store.owner ?? "") + ":" + requestedKey) { await loadDay() }
         .task {
             await refreshHistory()
             #if DEBUG
@@ -260,8 +353,13 @@ struct BodyView: View {
         }
         .onChange(of: focus) { previous, next in if previous != nil, previous != next { autosave() } }
         .onDisappear { autosave() }
-        // Bloquear o salir no quita el foco: guarda lo tecleado al dejar de estar activa (pending evita escrituras vacías).
-        .onChange(of: scenePhase) { _, phase in if phase != .active { autosave() } }
+        .onChange(of: scenePhase) { _, _ in autosave() }
+        .onChange(of: store.networkAvailable) { _, online in
+            if online {
+                if dayLoadFailed { Task { await loadDay() } }
+                else { autosave() }
+            }
+        }
         .nutriSectionActions([.init("importar", label: store.tr("Importar"), icon: "upload", action: openImport)])
         .preference(key: NutriPresentedModalKey.self, value: presentedModal)
         .preference(key: NutriModalVisibleKey.self, value: previewImport || selectedPhoto != nil || confirmDelete)
@@ -351,6 +449,11 @@ struct BodyView: View {
                 Spacer()
                 if !message.isEmpty {
                     Text(message).font(.nutriSans(12)).foregroundStyle(palette.danger).lineLimit(1).nutriHint(message)
+                    if pending {
+                        Button(store.tr("Reintentar"), action: autosave)
+                            .buttonStyle(NutriButtonStyle(.quiet))
+                            .disabled(busy || loadingDay)
+                    }
                 } else if savedFlash {
                     Text(store.tr("Guardado.")).font(.nutriSans(12)).foregroundStyle(palette.accent)
                 }
@@ -374,7 +477,9 @@ struct BodyView: View {
                 .buttonStyle(.plain).font(.nutriSans(12)).foregroundStyle(palette.accent).frame(minHeight: 44)
             VStack(alignment: .leading, spacing: 4) {
                 Text(store.tr("Nota")).font(.nutriSans(12)).foregroundStyle(palette.text3)
-                TextField(store.tr("Contexto del día (opcional)"), text: $note, axis: .vertical)
+                TextField(store.tr("Contexto del día (opcional)"), text: Binding(
+                    get: { note }, set: { setEdit("note", value: $0) }
+                ), axis: .vertical)
                     .lineLimit(2...8).textFieldStyle(.plain).focused($focus, equals: "note")
                     .accessibilityIdentifier("body.note")
                     .font(.nutriSans(16)).padding(.horizontal, 12).padding(.vertical, 8).frame(minHeight: 66, alignment: .topLeading)
@@ -440,24 +545,25 @@ struct BodyView: View {
                 }
             }.font(.nutriSans(12)).foregroundStyle(palette.text3)
             if metric.key == "sueno_corto" {
-                let on = (decimal(values[metric.key] ?? "") ?? 0) > 0
+                let recorded = decimal(values[metric.key] ?? "").flatMap { $0 > 0 ? $0 : nil }
                 Button {
                     focus = nil
-                    values[metric.key] = on ? "" : draftNumber(threshold)
+                    setEdit(metric.key, value: recorded == nil ? draftNumber(threshold) : "")
                     autosave()
                 } label: {
                     HStack(spacing: 8) {
-                        NutriIcon("moon", size: 16).foregroundStyle(on ? palette.accent : palette.text3)
-                        Text(store.tr("Dormí menos de %n h").replacingOccurrences(of: "%n", with: numberText(threshold))).font(.nutriSans(12))
+                        NutriIcon("moon", size: 16).foregroundStyle(recorded != nil ? palette.accent : palette.text3)
+                        Text(store.tr("Dormí menos de %n h")
+                            .replacingOccurrences(of: "%n", with: numberText(recorded ?? threshold))).font(.nutriSans(12))
                         Spacer(minLength: 0)
                     }.padding(.horizontal, 12).frame(height: 44)
                 }.buttonStyle(.plain)
-                    .background(on ? palette.accentDeep.opacity(0.15) : palette.surface2, in: RoundedRectangle(cornerRadius: 12))
-                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(on ? palette.accentDeep : palette.border) }
-                    .accessibilityAddTraits(on ? .isSelected : [])
+                    .background(recorded != nil ? palette.accentDeep.opacity(0.15) : palette.surface2, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(recorded != nil ? palette.accentDeep : palette.border) }
+                    .accessibilityAddTraits(recorded != nil ? .isSelected : [])
             } else {
                 HStack(spacing: 4) {
-                    TextField("–", text: Binding(get: { values[metric.key] ?? "" }, set: { values[metric.key] = $0 }))
+                    TextField("–", text: Binding(get: { values[metric.key] ?? "" }, set: { setEdit(metric.key, value: $0) }))
                         .textFieldStyle(.plain).font(.nutriSans(16)).monospacedDigit().foregroundStyle(palette.text)
                         .nutriDecimalKeyboard()
                         .focused($focus, equals: metric.key)
@@ -626,7 +732,8 @@ struct BodyView: View {
     private func navigate(_ date: Date) {
         Task {
             await flushEdits()
-            guard !busy, !pending else { return }
+            guard !busy else { return }
+            if pending, let owner = store.owner, (try? draftFile(owner: owner, day: dayKey)) == nil { return }
             if Day.key(date) == requestedKey {
                 if dayLoadFailed { await loadDay() }
             } else {
@@ -637,49 +744,84 @@ struct BodyView: View {
         }
     }
 
+    private func setEdit(_ field: String, value: String) {
+        guard ready, !loadingDay, let owner = store.owner else { return }
+        guard value != (field == "note" ? note : values[field] ?? "") else { return }
+        do {
+            let file = try draftFile(owner: owner, day: dayKey)
+            var changed = try file?.read() ?? edits
+            if field == "note" { changed.note = value }
+            else { changed.metrics[field] = value }
+            try file?.write(changed)
+            edits = changed
+            if field == "note" { note = value }
+            else { values[field] = value }
+        } catch { showSaveError(error) }
+    }
+
     private func autosave() {
-        guard ready, pending else { return }
-        let previous = saveTask
-        saveTask = Task {
-            await previous?.value
-            if pending { await save() }
-        }
+        guard ready, !loadingDay, pending, let owner = store.owner else { return }
+        let key = dayKey
+        do {
+            if let file = try draftFile(owner: owner, day: key) {
+                saveTask = BodyDraftWrites.enqueue(file) { await save(owner: owner, day: key, file: file) }
+            } else {
+                let previous = saveTask
+                saveTask = Task {
+                    await previous?.value
+                    await save(owner: owner, day: key, file: nil)
+                }
+            }
+        } catch { showSaveError(error) }
     }
 
     private func flushEdits() async {
         focus = nil
-        if pending { autosave() }
+        autosave()
         await saveTask?.value
     }
 
     private func apply(_ row: Record?) {
-        existing = row
         values = (row?.object("metrics") ?? [:]).compactMapValues { $0.number.map(draftNumber) }
-        note = row?.text("note") ?? ""
+        values.merge(edits.metrics) { _, changed in changed }
+        note = edits.note ?? row?.text("note") ?? ""
         photos = row?.array("photo_paths").compactMap(\.string) ?? []
     }
 
     private func loadDay() async {
+        guard let owner = store.owner else { return }
         let date = requestedDay ?? day
         let key = Day.key(date)
         let request = UUID()
+        let query = ["day": "eq.\(key)"]
         dayRequest = request
         loadingDay = true
+        ready = false
         dayLoadFailed = false
+        defer { if request == dayRequest { loadingDay = false } }
+        let cached = store.cached("body_metrics", query)
         do {
-            let result = try await store.read("body_metrics", ["day": "eq.\(key)"])
-            guard request == dayRequest, key == requestedKey, !Task.isCancelled else { return }
-            apply(result.first)
+            let file = try draftFile(owner: owner, day: key)
+            edits = try file?.read() ?? (key == dayKey ? edits : BodyDraft())
             day = date
+            apply(cached?.first)
+            ready = cached != nil || pending
+            if let file { await BodyDraftWrites.wait(for: file) }
+            let result = try await store.read("body_metrics", query)
+            guard request == dayRequest, key == requestedKey, store.owner == owner, !Task.isCancelled else { return }
+            edits = try file?.read() ?? edits
+            apply(result.first)
             ready = true
             message = ""
             savedFlash = false
+            loadingDay = false
+            autosave()
+        } catch is CancellationError {
         } catch {
-            guard request == dayRequest, key == requestedKey, !Task.isCancelled else { return }
+            guard request == dayRequest, key == requestedKey, store.owner == owner, !Task.isCancelled else { return }
             dayLoadFailed = true
-            store.report(error)
+            showSaveError(error)
         }
-        loadingDay = false
     }
 
     private func refreshHistory() async {
@@ -699,62 +841,65 @@ struct BodyView: View {
         catch { store.report(error) }
     }
 
-    private func save() async {
-        guard ready, pending, !busy, let owner = store.owner else { return }
+    private func showSaveError(_ error: Error) {
+        message = error.localizedDescription
+        store.report(error)
+    }
+
+    private func save(owner: String, day key: String, file: BodyDraftFile?) async {
+        guard store.owner == owner, dayKey == key, !busy else { return }
         busy = true
         defer { busy = false }
         do {
-            let key = dayKey
-            let original = originalValues
-            let snapshot = values
-            let savedNote = note
-            let saveNote = noteChanged
-            let editedMetrics = Set(snapshot.keys).union(original.keys).filter {
-                cleanText(snapshot[$0] ?? "") != (original[$0] ?? "")
+            let snapshot = try file?.read() ?? edits
+            guard !snapshot.isEmpty else { return }
+            #if DEBUG
+            if store.demoActive && ProcessInfo.processInfo.arguments.contains("--body-draft-delay") {
+                try await Task.sleep(for: .seconds(8))
             }
-            func applySaved(_ row: Record?) {
-                let uncommitted = values.filter { key, value in value != snapshot[key] }
-                let uncommittedNote = note == savedNote ? nil : note
-                apply(row)
-                for (key, value) in uncommitted { values[key] = value }
-                if let uncommittedNote { note = uncommittedNote }
-            }
+            #endif
             let latest = try await latestRecord(day: key, owner: owner)
-            var metrics = latest?.object("metrics") ?? [:]
-            for name in editedMetrics {
-                let label = BodyMetric.fields.first { $0.key == name }?.label ?? name
-                metrics[name] = try featureNumber(snapshot[name] ?? "", label: label).map(JSONValue.number)
-            }
-            let nextNote = saveNote ? optionalText(savedNote) : (latest?["note"] ?? .null)
+            let next = try snapshot.applying(to: latest)
+            let confirmed: Record?
             if let latest {
-                if metrics.isEmpty, nextNote.string.map(cleanText)?.isEmpty ?? true, latest.array("photo_paths").isEmpty {
+                var patch: Record = [:]
+                if next.metrics != latest.object("metrics") { patch["metrics"] = .object(next.metrics) }
+                if next.note != (latest["note"] ?? .null) { patch["note"] = next.note }
+                if patch.isEmpty { confirmed = latest }
+                else if next.metrics.isEmpty, cleanText(next.note.string ?? "").isEmpty, latest.array("photo_paths").isEmpty {
                     try await remove(latest)
-                    applySaved(nil)
+                    confirmed = nil
                 } else {
-                    var patch: Record = [:]
-                    if !editedMetrics.isEmpty { patch["metrics"] = .object(metrics) }
-                    if saveNote { patch["note"] = nextNote }
-                    if patch.isEmpty { applySaved(latest) }
-                    else {
-                        let filter = try recordFilter(latest, matching: Array(patch.keys))
-                        guard let written = try await store.update("body_metrics", filter, patch).first else { throw FeatureError("El registro cambió. Vuelve a salir del campo para reintentar.") }
-                        applySaved(written)
+                    let filter = try recordFilter(latest, matching: Array(patch.keys))
+                    guard let written = try await store.update("body_metrics", filter, patch).first else {
+                        throw FeatureError("El registro cambió. Vuelve a salir del campo para reintentar.")
                     }
+                    confirmed = written
                 }
-            } else if !metrics.isEmpty || nextNote != .null {
-                applySaved(try await store.insert("body_metrics", [
-                    "owner": .string(owner), "day": .string(key), "metrics": .object(metrics), "note": nextNote
-                ]))
-            } else { applySaved(nil) }
+            } else if !next.metrics.isEmpty || next.note != .null {
+                confirmed = try await store.insert("body_metrics", [
+                    "owner": .string(owner), "day": .string(key), "metrics": .object(next.metrics), "note": next.note
+                ])
+            } else { confirmed = nil }
+            guard store.owner == owner, dayKey == key else { return }
+            try store.rememberBodyDay(key, row: confirmed)
+            var remainder = try file?.read() ?? edits
+            remainder.acknowledge(snapshot)
+            try file?.write(remainder)
+            edits = remainder
+            apply(confirmed)
             message = ""
             savedFlash = true
             Task { try? await Task.sleep(for: .milliseconds(1200)); savedFlash = false }
             await refreshHistory()
-        } catch { message = error.localizedDescription; store.report(error) }
+        } catch is CancellationError {
+        } catch {
+            if store.owner == owner, dayKey == key { showSaveError(error) }
+        }
     }
 
     private func latestRecord(day key: String, owner: String) async throws -> Record? {
-        let result = try await store.read("body_metrics", ["day": "eq.\(key)"])
+        let result = try await store.read("body_metrics", ["day": "eq.\(key)"], allowCached: false)
         guard store.owner == owner, !Task.isCancelled else { throw CancellationError() }
         return result.first
     }
@@ -784,8 +929,9 @@ struct BodyView: View {
         }
         store.undo(store.tr("Medida borrada")) {
             guard store.owner == row.text("owner") else { throw CancellationError() }
-            _ = try await store.insert("body_metrics", deleted)
-            if dayKey == deleted.text("day") { apply(deleted) }
+            let restored = try await store.insert("body_metrics", deleted)
+            try store.rememberBodyDay(deleted.text("day"), row: restored)
+            if dayKey == deleted.text("day") { apply(restored) }
             await refreshHistory()
         }
     }
@@ -914,6 +1060,40 @@ struct BodyView: View {
         } catch { importError = store.failure(error, "Error al importar.", networkOnly: true) }
     }
 }
+
+#if DEBUG
+func checkBodyDraftRecovery() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let owner = UUID().uuidString
+    let day = "2026-11-23"
+    let draft = BodyDraft(metrics: ["peso_kg": "72,8"], note: "")
+    let disk = try BodyDraftFile(directory: root, owner: owner, day: day)
+    try disk.write(draft)
+    let reopened = try BodyDraftFile(directory: root, owner: owner, day: day).read()
+    let otherDay = try BodyDraftFile(directory: root, owner: owner, day: "2026-11-22").read()
+    let otherAccount = try BodyDraftFile(directory: root, owner: UUID().uuidString, day: day).read()
+    let server: Record = ["metrics": .object(["peso_kg": .number(72), "grasa_pct": .number(24)]), "note": .string("old")]
+    let recovered = try reopened.applying(to: server)
+    guard reopened == draft, otherDay.isEmpty, otherAccount.isEmpty,
+          recovered.metrics == ["peso_kg": .number(72.8), "grasa_pct": .number(24)], recovered.note == .null else {
+        throw FeatureError("Module check failed · recover and reconcile the correct body draft")
+    }
+    var latestEdit = BodyDraft(metrics: ["peso_kg": "73.1"], note: "")
+    try disk.write(latestEdit)
+    latestEdit = try disk.read()
+    latestEdit.acknowledge(reopened)
+    try disk.write(latestEdit)
+    guard try disk.read() == BodyDraft(metrics: ["peso_kg": "73.1"]) else {
+        throw FeatureError("Module check failed · confirmation retains newer body edits")
+    }
+    latestEdit.acknowledge(latestEdit)
+    try disk.write(latestEdit)
+    guard try disk.read().isEmpty else {
+        throw FeatureError("Module check failed · confirmation removes the body draft")
+    }
+}
+#endif
 
 private struct PrivateBodyPhoto: View {
     @EnvironmentObject private var store: Store

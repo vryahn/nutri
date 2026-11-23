@@ -562,8 +562,11 @@ struct RootView: View {
         HStack(spacing: 8) {
             Text(store.tr("Demo con datos de ejemplo — los cambios se borran solos."))
             Spacer()
-            Button(action: signOut) { Text(store.tr("Salir")).underline() }
-                .buttonStyle(.plain).padding(.horizontal, 8).frame(minHeight: 44)
+            Button(action: signOut) {
+                Text(store.tr("Salir")).underline().padding(.horizontal, 8)
+                    .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
         .foregroundStyle(palette.text2).font(.nutriSans(12))
         .padding(.horizontal, 16).background(palette.surface2)

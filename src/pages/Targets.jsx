@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom';
+import { useModalFocus } from '../lib/useModalFocus.js';
 import { useEffect, useRef, useState } from 'react';
 import { History, ChevronLeft, ChevronDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
@@ -1334,15 +1336,17 @@ function DateField({ label, value, onChange }) {
 
 // Bottom sheet (scrim ~72 %, 20 px top radius, 36×4 handle, closed by tapping the scrim).
 function Sheet({ children, onClose }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center backdrop-in" style={{ background: 'rgba(0,0,0,0.72)' }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-md bg-bg rounded-t-[20px] sm:rounded-[20px] max-h-[88dvh] overflow-y-auto sheet-in">
+  const cardRef = useModalFocus(onClose);
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center backdrop-in" style={{ background: 'rgba(0,0,0,0.72)' }} onClick={(e) => { e.stopPropagation(); onClose(); }}>
+      <div ref={cardRef} role="dialog" aria-modal="true" aria-label={t('Objetivos')} tabIndex={-1} onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-md bg-bg rounded-t-[20px] sm:rounded-[20px] max-h-[88dvh] overflow-y-auto sheet-in">
         <div className="flex justify-center pt-2.5 pb-1">
           <div className="h-1 w-9 rounded-full bg-surface-3" />
         </div>
         <div className="px-4 pb-6 pt-1">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

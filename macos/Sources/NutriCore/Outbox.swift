@@ -1,13 +1,14 @@
 import Foundation
 
 public struct EntryOperation: Codable, Equatable, Identifiable, Sendable {
-    public enum Kind: String, Codable, Sendable { case insert, update, delete }
+    public enum Kind: String, Codable, Sendable { case insert, update, delete, clearDay }
     public let id: UUID
     public let owner: String
     public let entryID: String
     public let kind: Kind
     public var payload: Record
     public var row: Record?
+    public var clearedIDs: [String]?
     public var attempted: Bool
 
     public init(owner: String, entryID: String, kind: Kind, payload: Record, row: Record?) {
@@ -68,6 +69,19 @@ public struct EntryOutbox {
         try persist(next)
     }
 
+    public mutating func clearDay(_ day: String, ids: [String]) throws {
+        guard !ids.isEmpty, ids.allSatisfy({ UUID(uuidString: $0) != nil }) else {
+            throw NutriError("Identificador de registro inválido o repetido.")
+        }
+        var batch = EntryOperation(owner: owner, entryID: "", kind: .clearDay, payload: ["day": .string(day)], row: nil)
+        batch.clearedIDs = ids
+        // Replay attempted writes first: a timed-out insert may still be committing on the server.
+        var next = operations
+        let index = next.firstIndex { !$0.attempted && $0.kind != .clearDay } ?? next.endIndex
+        next.insert(batch, at: index)
+        try persist(next)
+    }
+
     @discardableResult
     public mutating func begin() throws -> EntryOperation? {
         guard !operations.isEmpty else { return nil }
@@ -77,9 +91,10 @@ public struct EntryOutbox {
         return next[0]
     }
 
-    public mutating func finish(_ operation: EntryOperation, discardDependents: Bool = false) throws {
+    public mutating func finish(_ operation: EntryOperation, discardDependents: Bool = false, applied: Bool = true) throws {
+        let cleared = Set(applied ? operation.clearedIDs ?? [] : [])
         try persist(operations.filter { item in
-            item.id != operation.id && !(discardDependents && item.entryID == operation.entryID)
+            item.id != operation.id && !cleared.contains(item.entryID) && !(discardDependents && item.entryID == operation.entryID)
         })
     }
 
@@ -99,7 +114,8 @@ public struct EntryOutbox {
                 }
             }
         }
-        return result
+        let cleared = Set(operations.filter { $0.kind == .clearDay && $0.payload.text("day") == day }.flatMap { $0.clearedIDs ?? [] })
+        return result.filter { !cleared.contains($0.text("id")) }
     }
 
     private mutating func persist(_ rows: [EntryOperation]) throws {

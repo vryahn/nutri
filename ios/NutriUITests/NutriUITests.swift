@@ -297,6 +297,12 @@ final class NutriUITests: XCTestCase {
     }
 
     @MainActor
+    private func waitUntilHittable(_ element: XCUIElement) {
+        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == YES"), object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [hittable], timeout: 5), .completed, element.description)
+    }
+
+    @MainActor
     func testLocalDemoPopulatedTodayShowsJournalAndOpensDetails() {
         let app = launch(demo: true)
         let intake = app.buttons.matching(NSPredicate(
@@ -320,17 +326,21 @@ final class NutriUITests: XCTestCase {
         XCTAssertTrue(add.isHittable)
         capture("Hoy con primer registro visible")
 
-        summary.tap()
         let customize = app.buttons["Personalizar resumen"]
-        XCTAssertTrue(customize.waitForExistence(timeout: 5), app.debugDescription)
-        customize.tap()
-        XCTAssertTrue(app.staticTexts["Personalizar resumen"].waitForExistence(timeout: 5), app.debugDescription)
-        let settingsClose = app.buttons["sheet.close"].firstMatch
-        XCTAssertTrue(settingsClose.waitForExistence(timeout: 5), app.debugDescription)
-        settingsClose.tap()
-        XCTAssertTrue(customize.waitForExistence(timeout: 5), app.debugDescription)
-        app.buttons["sheet.close"].tap()
-        XCTAssertTrue(summary.isHittable)
+        let settingsClose = app.buttons["today.summary.settings.close"]
+        let detailClose = app.buttons["today.summary.close"]
+        for cycle in 1...10 {
+            summary.tap()
+            XCTAssertTrue(customize.waitForExistence(timeout: 5), "Details, cycle \(cycle)")
+            customize.tap()
+            XCTAssertTrue(settingsClose.waitForExistence(timeout: 5), "Settings, cycle \(cycle)")
+            settingsClose.tap()
+            XCTAssertTrue(settingsClose.waitForNonExistence(timeout: 5))
+            waitUntilHittable(detailClose)
+            detailClose.tap()
+            XCTAssertTrue(detailClose.waitForNonExistence(timeout: 5))
+            waitUntilHittable(summary)
+        }
 
         let previous = water.value as? String
         XCTAssertNotNil(previous)
@@ -558,6 +568,27 @@ final class NutriUITests: XCTestCase {
     }
 
     @MainActor
+    func testClearingDayPreservesWaterAfterReload() {
+        let (app, intake) = launchDemoWithBreakfastIntake()
+        let water = app.buttons["today.waterTotal"]
+        let initialWater = water.value as? String
+        XCTAssertTrue(initialWater?.contains("350") == true)
+        app.buttons["module.more"].tap()
+        app.buttons["Borrar día"].tap()
+        let warning = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "2 registros de alimentos")).firstMatch
+        XCTAssertTrue(warning.waitForExistence(timeout: 5))
+        app.buttons["Borrar día"].tap()
+        XCTAssertTrue(intake.waitForNonExistence(timeout: 5))
+        app.buttons["Día anterior"].tap()
+        XCTAssertTrue(app.buttons["today.intake.00000000-0000-4000-8000-000000000103"].waitForExistence(timeout: 5))
+        app.buttons["Día siguiente"].tap()
+        XCTAssertTrue(app.buttons["today.intake.00000000-0000-4000-8000-000000000103"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Contraer Desayuno"].waitForExistence(timeout: 5))
+        XCTAssertFalse(intake.exists)
+        XCTAssertEqual(water.value as? String, initialWater)
+    }
+
+    @MainActor
     func testLocalDemoCopiesFoodWithoutCopyingWater() {
         let app = launch(demo: true)
         let more = app.buttons["module.more"]
@@ -727,6 +758,31 @@ final class NutriUITests: XCTestCase {
     }
 
     @MainActor
+    func testBodyDraftSurvivesTerminationDuringSave() {
+        let fixture = "--body-draft-qa=" + UUID().uuidString
+        let first = launch(demo: true, arguments: [fixture, "--body-draft-delay"])
+        openProgress("Medidas", in: first)
+        let weight = first.textFields["body.metric.peso_kg"]
+        XCTAssertTrue(weight.waitForExistence(timeout: 10))
+        XCTAssertEqual(weight.value as? String, "72")
+        weight.tap()
+        weight.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2) + "73")
+        first.buttons["Día anterior"].tap()
+        first.terminate()
+
+        let restored = launch(demo: true, arguments: [fixture])
+        openProgress("Medidas", in: restored)
+        let recovered = restored.textFields["body.metric.peso_kg"]
+        let saved = NSPredicate(format: "value == %@", "73")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: saved, object: recovered)], timeout: 5), .completed)
+        restored.buttons["Día anterior"].tap()
+        let previous = NSPredicate(format: "value != %@", "73")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: previous, object: recovered)], timeout: 5), .completed)
+        restored.buttons["Día siguiente"].tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: saved, object: recovered)], timeout: 5), .completed)
+    }
+
+    @MainActor
     func testBodyAutosavesWhenChangingDateAndPromotesFavorite() {
         let app = launch(demo: true)
         openProgress("Medidas", in: app)
@@ -837,6 +893,75 @@ final class NutriUITests: XCTestCase {
             start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.15)
         }
         XCTAssertTrue(element.isHittable, app.debugDescription)
+    }
+
+    @MainActor
+    func testEnglishProfileDatePlaceholder() {
+        let app = launch(demo: true)
+        let menu = app.buttons["account.menu"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 10))
+        menu.tap()
+        app.buttons["account.region"].tap()
+        let en = app.buttons["region.language.en"]
+        XCTAssertTrue(en.waitForExistence(timeout: 5))
+        en.tap()
+        XCTAssertTrue(app.staticTexts["Language and units"].waitForExistence(timeout: 5))
+        app.buttons["sheet.close"].tap()
+        XCTAssertTrue(app.buttons["sheet.close"].waitForNonExistence(timeout: 5))
+        menu.tap()
+        app.buttons["account.profile"].tap()
+        let date = app.textFields.matching(NSPredicate(format: "placeholderValue IN %@", ["AAAA-MM-DD", "YYYY-MM-DD"])).firstMatch
+        XCTAssertTrue(date.waitForExistence(timeout: 5))
+        print("QA-I16 | English profile placeholder \(date.placeholderValue ?? "")")
+        XCTAssertEqual(date.placeholderValue, "YYYY-MM-DD")
+    }
+
+    @MainActor
+    func testRecipePreviewMicrosAndCoverage() {
+        let app = launch(demo: true)
+        selectTab("recipes", in: app)
+        let recipe = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Avena con yogur")).firstMatch
+        XCTAssertTrue(recipe.waitForExistence(timeout: 10))
+        catalogReveal(recipe, in: app)
+        recipe.tap()
+        let preview = app.staticTexts["Preview por 100 g"]
+        catalogReveal(preview, in: app)
+        XCTAssertTrue(preview.isHittable)
+        let micros = app.buttons["recipes.preview.micros"]
+        catalogReveal(micros, in: app)
+        XCTAssertTrue(micros.isHittable)
+        micros.tap()
+        let sodium = app.staticTexts["Sodio"].exists
+        let potassium = app.staticTexts["Potasio"].exists
+        print("QA-I18 | compact recipe preview hittable | sodium shown \(sodium) | partial potassium shown \(potassium)")
+        capture("QA-I18 preview compacto de receta")
+        XCTAssertTrue(sodium && potassium)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "(parcial)")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(identifier: "Sin dato").firstMatch.exists)
+    }
+
+    @MainActor
+    func testWeekdayGroupAccessibleAfterChange() {
+        let app = launch(demo: true)
+        let menu = app.buttons["account.menu"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 10))
+        menu.tap()
+        app.buttons["account.wizard"].tap()
+        let begin = app.buttons["Comenzar"]
+        XCTAssertTrue(begin.waitForExistence(timeout: 5))
+        begin.tap()
+        app.buttons["Siguiente"].tap()
+        let monday = app.buttons["LUN"]
+        XCTAssertTrue(monday.waitForExistence(timeout: 5))
+        let original = monday.value as? String ?? ""
+        monday.tap()
+        XCTAssertTrue(app.staticTexts["6 días"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["1 día"].exists)
+        let updated = monday.value as? String ?? ""
+        print("QA-I15 | label \(monday.label) | group counters 6 and 1 | accessible before [\(original)] after [\(updated)]")
+        capture("QA-I15 tipos de día")
+        XCTAssertEqual(original, "Entreno")
+        XCTAssertEqual(updated, "Entreno largo")
     }
 
     @MainActor
@@ -1025,6 +1150,7 @@ final class NutriUITests: XCTestCase {
         rules.tap()
         let pause = app.buttons["Pausar reglas hasta"]
         reveal(pause, in: app)
+        XCTAssertEqual(pause.value as? String, "AAAA-MM-DD")
         pause.tap()
         let calendar = wholeCalendar(in: app)
         selectDay(inNextMonthOf: calendar)
@@ -1034,9 +1160,11 @@ final class NutriUITests: XCTestCase {
 
         let clearDate = app.buttons["Quitar"]
         XCTAssertTrue(clearDate.waitForExistence(timeout: 5), app.debugDescription)
-        XCTAssertNotNil((pause.value as? String)?.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression))
+        XCTAssertFalse((pause.value as? String ?? "").isEmpty)
+        XCTAssertNotEqual(pause.value as? String, "AAAA-MM-DD")
         clearDate.tap()
         XCTAssertTrue(clearDate.waitForNonExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual(pause.value as? String, "AAAA-MM-DD")
     }
 
     @MainActor
@@ -1070,6 +1198,95 @@ final class NutriUITests: XCTestCase {
         let columns = Set(week.map { Int($0.frame.midX.rounded()) })
         XCTAssertEqual(columns.count, 7, calendar.debugDescription)
         week.first?.tap()
+    }
+
+    @MainActor
+    func testDemoExitHitArea() {
+        for (theme, corner) in [("dark", CGFloat(0.05)), ("light", CGFloat(0.95))] {
+            let app = launch(demo: true, theme: theme)
+            let exit = app.buttons["Salir"]
+            XCTAssertTrue(exit.waitForExistence(timeout: 10))
+            XCTAssertGreaterThanOrEqual(exit.frame.width, 44)
+            XCTAssertGreaterThanOrEqual(exit.frame.height, 44)
+            exit.coordinate(withNormalizedOffset: CGVector(dx: corner, dy: corner)).tap()
+            XCTAssertTrue(app.textFields["login.email"].waitForExistence(timeout: 5), theme)
+        }
+    }
+
+    @MainActor
+    func testPendingStateIsAccessibleOnTheIntakeButton() {
+        let app = launch(demo: true, arguments: ["--ios-ui-pending-entry"])
+        let pending = app.buttons["today.intake.00000000-0000-4000-8000-000000000100"]
+        XCTAssertTrue(pending.waitForExistence(timeout: 10))
+        XCTAssertEqual(pending.value as? String, "Pendiente de sincronizar")
+        let synced = app.buttons["today.intake.00000000-0000-4000-8000-000000000101"]
+        reveal(synced, in: app)
+        XCTAssertNotEqual(synced.value as? String, "Pendiente de sincronizar")
+    }
+
+    @MainActor
+    func testCancelledDragResetsUntaggedSection() {
+        let (app, breakfast) = launchDemoWithBreakfastIntake()
+        let untagged = app.buttons["Contraer Sin etiqueta"]
+        let summary = app.buttons["today.summary"]
+        XCTAssertFalse(untagged.exists)
+        XCTAssertTrue(summary.isHittable)
+        let from = breakfast.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let invalidTarget = summary.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        from.press(forDuration: 1.0, thenDragTo: invalidTarget, withVelocity: .slow, thenHoldForDuration: 0.7)
+        let showed = untagged.exists
+        let vanished = untagged.waitForNonExistence(timeout: 2)
+        print("QA-I11 | untargeted drag leaves section visible \(showed) | removed within 2 s \(vanished)")
+        XCTAssertTrue(breakfast.exists)
+        if !vanished {
+            capture("QA-I11 después de soltar fuera")
+        }
+        XCTAssertTrue(vanished, app.debugDescription)
+    }
+
+    @MainActor
+    func testUnchangedImperialWaterRoundTrip() {
+        let app = launch(demo: true)
+        openWater(in: app)
+        let settings = app.buttons["today.waterSettings"]
+        settings.tap()
+        let amount = app.textFields["today.waterSize"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 5))
+        let original = amount.value as? String ?? ""
+        amount.tap()
+        amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: original.count) + "250")
+        app.buttons["keyboard.done"].tap()
+        app.buttons["today.waterSave"].tap()
+        XCTAssertTrue(amount.waitForNonExistence(timeout: 5))
+        app.buttons["sheet.close"].tap()
+
+        let account = app.buttons["account.menu"]
+        account.tap()
+        app.buttons["account.region"].tap()
+        app.buttons["Imperial · oz · fl oz"].tap()
+        app.buttons["sheet.close"].tap()
+        openWater(in: app)
+        settings.tap()
+        XCTAssertTrue(amount.waitForExistence(timeout: 5))
+        let displayed = amount.value as? String ?? ""
+        XCTAssertEqual(displayed, "8.5")
+        app.buttons["today.waterSave"].tap()
+        XCTAssertTrue(amount.waitForNonExistence(timeout: 5))
+        app.buttons["sheet.close"].tap()
+
+        account.tap()
+        app.buttons["account.region"].tap()
+        let metric = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Métrico")).firstMatch
+        XCTAssertTrue(metric.waitForExistence(timeout: 5))
+        metric.tap()
+        app.buttons["sheet.close"].tap()
+        openWater(in: app)
+        settings.tap()
+        XCTAssertTrue(amount.waitForExistence(timeout: 5))
+        let observed = amount.value as? String ?? ""
+        print("QA-I06 | started 250 ml | imperial \(displayed) fl oz | saved without modification and read \(observed) ml")
+        capture("Tamaño de vaso después de guardar")
+        XCTAssertEqual(observed, "250")
     }
 
     @MainActor
@@ -1200,11 +1417,12 @@ final class NutriUITests: XCTestCase {
 
     @MainActor
     private func launch(demo: Bool = false, theme: String = "dark", textSize: String? = nil,
-                        longJournal: Bool = false) -> XCUIApplication {
+                        longJournal: Bool = false, arguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(es)", "-AppleLocale", "es_MX",
                                "-nutri.loginLanguage", "es", "-nutri.theme", theme]
         app.launchArguments.append(demo ? "--ios-ui-demo" : "--ios-ui-login")
+        app.launchArguments += arguments
         if longJournal { app.launchArguments.append("--ios-ui-long-journal") }
         if let textSize {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", textSize]

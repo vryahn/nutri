@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  computeRecipePer100g, resolveTarget, coupledBandMacros, weekdayOf, kcalFromMacros, kcalSuspicious,
+  computeRecipePer100g, groupRecipeIngredients, sodiumPeriodAssessment, resolveTarget, coupledBandMacros, weekdayOf, kcalFromMacros, kcalSuspicious,
   macrosImplausible, componentsInconsistent, dayCompleteness, bayesAdherence,
   reorderLabels, eanChecksumValid, cleanNumericMap,
   nutrientKind, classifyBullseye, classifyKcal, classifyFloor, classifyBand,
@@ -185,6 +185,33 @@ describe('computeRecipePer100g', () => {
 
   it('weight 0 (no ingredients) -> null', () => {
     expect(computeRecipePer100g([], 0)).toBeNull();
+  });
+
+  it('groups duplicate food IDs before the same two micro rounding steps as SQL', () => {
+    const food = { ...A, id: 'trace', micros: { sodio_mg: 0.04 } };
+    const items = [{ food, grams: '1' }, { food, grams: 1 }];
+    const grouped = groupRecipeIngredients(items);
+    expect(grouped).toEqual([{ food, grams: 2 }]);
+    expect(items[0].grams).toBe('1');
+    expect(computeRecipePer100g(items, 2).micros.sodio_mg).toBe(0.05);
+    expect(computeRecipePer100g(grouped, 2).micros.sodio_mg).toBe(0.05);
+    expect(computeRecipePer100g([items[0], { food: { ...food, id: 'other' }, grams: 1 }], 2).micros.sodio_mg).toBe(0);
+  });
+
+  it('rounds a decimal half like SQL for ingredient micros and final macros', () => {
+    const food = { id: 'half', kcal: 3, protein_g: 1, carbs_g: 0, fat_g: 0, micros: { sodio_mg: 0.1 } };
+    const result = computeRecipePer100g([{ food, grams: 14.5 }], 100);
+    expect(result.protein_g).toBe(0.15);
+    expect(result.micros.sodio_mg).toBe(0.015);
+    expect(groupRecipeIngredients([{ food, grams: 0.1 }, { food, grams: 0.2 }])[0].grams).toBe(0.3);
+    expect(computeRecipePer100g([{ food, grams: 14.499999999999 }], 100).micros.sodio_mg).toBe(0.014);
+  });
+
+  it('uses the rounded PostgreSQL reciprocal before scaling the observed micros', () => {
+    const food = { ...A, micros: { sodio_mg: 0.007, potasio_mg: 0.021 } };
+    const items = [{ food, grams: 100 }];
+    expect(computeRecipePer100g(items, 56).micros).toEqual({ sodio_mg: 0.012, potasio_mg: 0.037 });
+    expect(computeRecipePer100g(items, 40).micros).toEqual({ sodio_mg: 0.018, potasio_mg: 0.053 });
   });
 
   it('distinguishes explicit zero, absent value and partial recipe sum', () => {
@@ -875,5 +902,23 @@ describe('recipeWeightFromEstimate', () => {
   it('cannot normalize a volume unless both the amount and density are present', () => {
     expect(normalizeTo100({ density_g_ml: 1.2 }, '', 'ml')).toBeNull();
     expect(normalizeTo100({ density_g_ml: 1.2 }, 0, 'ml')).toBeNull();
+  });
+});
+
+describe('sodium period coverage', () => {
+  it.each([
+    [0, 'unknown', null, null],
+    [0, 'complete', 'danger', 'low'],
+    [1600, 'complete', 'ok', null],
+    [1200, 'partial', null, null],
+    [2400, 'partial', 'danger', 'high'],
+  ])('classifies %s mg with %s coverage', (value, coverage, status, limit) => {
+    expect(sodiumPeriodAssessment(value, coverage)).toMatchObject({ status, limit });
+  });
+
+  it('keeps the medical floor and uses stricter configured bounds', () => {
+    expect(sodiumPeriodAssessment(1499, 'complete', { min: 1000 })).toMatchObject({ limit: 'low', threshold: 1500 });
+    expect(sodiumPeriodAssessment(1550, 'complete', { min: 1600 })).toMatchObject({ limit: 'low', threshold: 1600 });
+    expect(sodiumPeriodAssessment(2050, 'partial', { max: 2000 })).toMatchObject({ limit: 'high', threshold: 2000 });
   });
 });

@@ -235,7 +235,7 @@ struct SettingsView: View {
                     }
                     profileField("Apellidos", key: "last_name", placeholder: "Rodríguez")
                     HStack(spacing: 12) {
-                        profileField("Nacimiento", key: "dob", placeholder: "AAAA-MM-DD")
+                        profileField("Nacimiento", key: "dob", placeholder: store.tr("AAAA-MM-DD"))
                             .overlay(alignment: .bottomTrailing) {
                                 Button { choosingBirthDate.toggle() } label: {
                                     NutriIcon("calendar-days", size: 16).foregroundStyle(palette.text2)
