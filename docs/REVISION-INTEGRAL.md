@@ -334,7 +334,9 @@ Orquestación: Claude Opus. Trabajo mecánico de checks locales y análisis de d
 | --- | --- |
 | Oráculos web, contrato nativo, `NutriChecks`, `--module-checks`, build Release de macOS | OK |
 | `npm run lint`, `npm test` (292), `npm run build` | OK |
-| XCUITest en iPhone Air, iOS 27.2 | 29/29 OK con las correcciones de esta tanda. El SE creado para la línea base desapareció del runtime y un disco lleno invalidó dos corridas intermedias; ninguna de las dos llegó a ejecutar pruebas válidas. |
+| XCUITest en iPhone Air simulado, iOS 27.2 | 29/29 OK con las correcciones de esta tanda. El SE creado para la línea base desapareció del runtime y un disco lleno invalidó dos corridas intermedias; ninguna de las dos llegó a ejecutar pruebas válidas. |
+
+| XCUITest en el iPhone Air físico de Bryan (Debug, modo demo sin API ni llavero) | 29/29 OK. Las preferencias de la app quedaron idénticas antes y después (plist comparado); se desinstaló el runner de pruebas. El simulador se desinstaló a petición de Bryan para liberar disco. |
 
 **Hipótesis**
 
