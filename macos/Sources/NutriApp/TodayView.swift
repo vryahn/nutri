@@ -45,8 +45,28 @@ struct TodayView: View {
     @State private var showCalendar = false
     @State private var sectionHover: String?
     @State private var rowHover: String?
+    #if os(macOS)
+    @State private var entryDropAreas = EntryDropAreas()
+    @GestureState private var entryDrag: EntryDrag?
+
+    private struct EntryDropTarget: Hashable {
+        let label: String
+        let entryID: String?
+    }
+
+    // La geometría se consulta al arrastrar. Desplazar el diario no requiere redibujarlo para registrarla.
+    private final class EntryDropAreas {
+        var frames: [EntryDropTarget: CGRect] = [:]
+    }
+
+    private struct EntryDrag: Equatable {
+        let id: String
+        let target: EntryDropTarget?
+    }
+    #else
     @State private var entryDropActive = false
     @State private var entryDropReset: Task<Void, Never>?
+    #endif
 
     private enum Sheet: Identifiable {
         case entry(Record?, String, Record?, Double?)
@@ -412,7 +432,7 @@ struct TodayView: View {
                                 .frame(maxWidth: .infinity).padding(.vertical, 24)
                         }
                         ForEach(labels.map { ($0.text("id"), $0) }, id: \.0) { id, label in section(label).id(id) }
-                        if !entries(in: "").isEmpty || entryDropActive { section(nil).id("none") }
+                        if showsUntaggedSection { section(nil).id("none") }
                     }
                 }
                 .padding(.top, nutriPhoneLayout ? 8 : 16)
@@ -800,6 +820,16 @@ struct TodayView: View {
         }.sorted(by: Self.rowOrder)
     }
 
+    private var showsUntaggedSection: Bool {
+        if !entries(in: "").isEmpty { return true }
+        #if os(macOS)
+        // La zona para quitar la etiqueta debe existir antes de iniciar el gesto.
+        return foodRows.contains { $0["_pending"]?.bool != true }
+        #else
+        return entryDropActive
+        #endif
+    }
+
     private func section(_ label: Record?) -> some View {
         let id = label?.text("id") ?? ""
         let name = label?.text("name") ?? store.tr("Sin etiqueta")
@@ -808,6 +838,12 @@ struct TodayView: View {
         let chips = macroChips(totals)
         let key = id.isEmpty ? "none" : id
         let hidden = collapsed.contains(key)
+        #if os(macOS)
+        let dropTarget = EntryDropTarget(label: id, entryID: nil)
+        let targeted = sectionHover == key || entryDrag?.target == dropTarget
+        #else
+        let targeted = sectionHover == key
+        #endif
         return VStack(spacing: 8) {
             HStack(spacing: 8) {
                 Button {
@@ -851,7 +887,10 @@ struct TodayView: View {
             .padding(.vertical, 10)
             .frame(minHeight: 44)
             .background(palette.surface2, in: RoundedRectangle(cornerRadius: 12))
-            .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(sectionHover == key ? palette.accent.opacity(0.55) : entries.isEmpty ? palette.border : palette.accent.opacity(0.4)).allowsHitTesting(false) }
+            .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(targeted ? palette.accent.opacity(0.55) : entries.isEmpty ? palette.border : palette.accent.opacity(0.4)).allowsHitTesting(false) }
+            #if os(macOS)
+            .modifier(entryDropArea(dropTarget))
+            #endif
             .dropDestination(for: String.self, action: { items, _ in
                 guard let payload = items.first else { return false }
                 return move(payload, label: id, over: nil)
@@ -865,6 +904,12 @@ struct TodayView: View {
     private func entryCard(_ row: Record, label: String) -> some View {
         let id = row.text("id")
         let selected = editingInline && editor?.id.contains(id) == true
+        #if os(macOS)
+        let dropTarget = EntryDropTarget(label: label, entryID: id)
+        let targeted = entryDrag?.target == dropTarget
+        #else
+        let targeted = false
+        #endif
         return HStack(spacing: 12) {
             Button { editor = .entry(row, label, nil, nil) } label: {
                 entryLayout {
@@ -910,6 +955,7 @@ struct TodayView: View {
             .buttonStyle(SwipeCardTapStyle())
             #else
             .buttonStyle(.plain)
+            .highPriorityGesture(entryDragGesture(id), including: row["_pending"]?.bool == true || busy ? .subviews : .all)
             #endif
             .accessibilityIdentifier("today.intake.\(id)")
             #if os(iOS)
@@ -923,8 +969,10 @@ struct TodayView: View {
         }
         .padding(12)
         .background(selected ? palette.surface2 : palette.surface, in: RoundedRectangle(cornerRadius: 16))
-        .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(selected ? palette.accent : palette.border).allowsHitTesting(false) }
+        .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(selected || targeted ? palette.accent : palette.border).allowsHitTesting(false) }
         #if os(macOS)
+        .modifier(entryDropArea(dropTarget))
+        .opacity(entryDrag?.id == id ? 0.55 : 1)
         .overlay(alignment: .trailing) {
             if rowHover == id {
                 HStack(spacing: 4) {
@@ -951,6 +999,7 @@ struct TodayView: View {
         }
         #endif
         .accessibilityAction(named: store.tr("Borrar")) { remove(row) }
+        #if os(iOS)
         .modifier(EntryDraggable(enabled: row["_pending"]?.bool != true) {
             entryDropActive = true
             entryDropReset?.cancel()
@@ -960,14 +1009,51 @@ struct TodayView: View {
             }
             return NSItemProvider(object: dragKey("entry", id) as NSString)
         })
-        #if os(iOS)
         .modifier(SwipeToDelete(radius: 16, delete: { remove(row) }))
-        #endif
         .dropDestination(for: String.self) { items, _ in
             guard let payload = items.first else { return false }
             return move(payload, label: label, over: id)
         }
+        #endif
     }
+
+    #if os(macOS)
+    private func entryDropArea(_ target: EntryDropTarget) -> EntryDropArea {
+        EntryDropArea { frame in entryDropAreas.frames[target] = frame }
+    }
+
+    private struct EntryDropArea: ViewModifier {
+        let update: (CGRect?) -> Void
+
+        func body(content: Content) -> some View {
+            content.onGeometryChange(for: CGRect.self) { proxy in
+                let space = NamedCoordinateSpace.scrollView(axis: .vertical)
+                guard let bounds = proxy.bounds(of: space) else { return .null }
+                return proxy.frame(in: space).intersection(CGRect(origin: .zero, size: bounds.size))
+            } action: { frame in
+                update(frame.isEmpty ? nil : frame)
+            }
+            .onDisappear { update(nil) }
+        }
+    }
+
+    // El arrastre de entradas es interno a Hoy. El destino se resuelve en el mismo ScrollView.
+    private func entryDragGesture(_ id: String) -> some Gesture {
+        let payload = dragKey("entry", id)
+        return DragGesture(minimumDistance: 6, coordinateSpace: .scrollView(axis: .vertical))
+            .updating($entryDrag) { event, state, _ in
+                state = EntryDrag(id: id, target: entryDropTarget(at: event.location, excluding: id))
+            }
+            .onEnded { event in
+                guard let target = entryDropTarget(at: event.location, excluding: id) else { return }
+                _ = move(payload, label: target.label, over: target.entryID)
+            }
+    }
+
+    private func entryDropTarget(at point: CGPoint, excluding id: String) -> EntryDropTarget? {
+        entryDropAreas.frames.first { $0.key.entryID != id && $0.value.contains(point) }?.key
+    }
+    #endif
 
     private var entryLayout: AnyLayout {
         #if os(iOS)
@@ -1024,7 +1110,9 @@ struct TodayView: View {
     private func dragKey(_ type: String, _ id: String) -> String { journalDragKey(type, id: id, day: day, owner: store.owner) }
 
     private func move(_ payload: String, label: String, over: String?) -> Bool {
+        #if os(iOS)
         defer { entryDropActive = false; entryDropReset?.cancel() }
+        #endif
         guard !busy, let id = payload.split(separator: "/").last.map(String.init) else { return false }
         if payload == dragKey("section", id), !label.isEmpty, over == nil, id != label,
            let from = labels.firstIndex(where: { $0.text("id") == id }),
@@ -2214,6 +2302,7 @@ private func journalDragKey(_ type: String, id: String, day: String, owner: Stri
     "nutri/\(owner ?? "")/\(day)/\(type)/\(id)"
 }
 
+#if os(iOS)
 // Filas pendientes de sincronizar (⛅) no se arrastran: reordenar es solo online, como en la web.
 private struct EntryDraggable: ViewModifier {
     let enabled: Bool
@@ -2223,6 +2312,7 @@ private struct EntryDraggable: ViewModifier {
         if enabled { content.onDrag(start) } else { content }
     }
 }
+#endif
 
 private struct SectionDraggable: ViewModifier {
     let id: String

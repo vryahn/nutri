@@ -59,6 +59,8 @@ xcodebuild -project ios/Nutri.xcodeproj -scheme Nutri -configuration Release -de
 
 CI de macOS comprueba el contrato generado, oráculos, núcleo, módulos y compilación Release. CI de iOS compara ambas huellas, corre XCUITest en iPhone SE simulado de 375 puntos, exporta sus adjuntos sintéticos y compila Release para `generic/platform=iOS` con firma desactivada. La instalación firmada, el permiso y la captura de cámara, la fototeca y la red móvil requieren verificación en iPhone físico. En Mac, usa la app abierta para comprobar teclado, ratón y arrastre. [Workflow macOS](../.github/workflows/macos.yml) · [Workflow iOS](../.github/workflows/ios.yml)
 
+**Arrastre con mouse en Hoy.** En el build Debug de macOS, abre **Probar con datos locales**. Arrastra **Avena con yogur** de Desayuno al encabezado de Cena. Muévela sobre **Frambuesas** para invertir el orden, cambia de día y vuelve para comprobar que se conserva. Suelta una tarjeta fuera de un destino y comprueba que se queda en su sitio. Haz clic en la tarjeta para abrir el editor. Arrástrala a **Sin etiqueta** para comprobar que se puede quitar la etiqueta. El gesto de macOS resuelve el destino dentro de Hoy. iPhone conserva la pulsación larga de SwiftUI y web usa dnd-kit.
+
 ### Regresión táctil de iOS 1.0.0, compilación 3
 
 - **Hoy.** Inicia el scroll hacia arriba y hacia abajo sobre el cuerpo de un registro y comprueba que la pantalla se desplace. Mantén pulsado el registro, suéltalo sobre el encabezado de otra comida y comprueba que aparezca en esa sección. Un toque abre el editor, un deslizamiento corto devuelve la tarjeta a su sitio y uno completo hacia la izquierda borra con opción de **Deshacer**. Toca el resumen fijo para volver a la tarjeta completa.
