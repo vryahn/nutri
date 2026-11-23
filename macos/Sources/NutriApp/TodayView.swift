@@ -383,9 +383,23 @@ struct TodayView: View {
     }
 
     private var journal: some View {
-        ScrollViewReader { scroll in
+        let spacing: CGFloat = nutriPhoneLayout ? 9 : 16
+        let bottomPadding: CGFloat = nutriPhoneLayout ? 12 : desktop ? 80 : 88
+        let hasUntagged = !entries(in: "").isEmpty
+        #if os(macOS)
+        let reservesUntagged = !hasUntagged && foodRows.contains { $0["_pending"]?.bool != true }
+        let includesUntagged = hasUntagged || reservesUntagged
+        let hidesUntagged = reservesUntagged && entryDrag == nil
+        // En reposo, el destino vacío ocupa parte del margen existente sin alargar la bitácora.
+        let footerPadding = bottomPadding - (hidesUntagged ? spacing + journalSectionMinHeight : 0)
+        #else
+        let includesUntagged = hasUntagged || entryDropActive
+        let hidesUntagged = false
+        let footerPadding = bottomPadding
+        #endif
+        return ScrollViewReader { scroll in
             ScrollView {
-                VStack(alignment: .leading, spacing: nutriPhoneLayout ? 9 : 16) {
+                VStack(alignment: .leading, spacing: spacing) {
                     if !nutriPhoneLayout { dayToolbar }
                     #if os(iOS)
                     if nutriPhoneLayout && dynamicTypeSize.isAccessibilitySize {
@@ -432,11 +446,17 @@ struct TodayView: View {
                                 .frame(maxWidth: .infinity).padding(.vertical, 24)
                         }
                         ForEach(labels.map { ($0.text("id"), $0) }, id: \.0) { id, label in section(label).id(id) }
-                        if showsUntaggedSection { section(nil).id("none") }
+                        if includesUntagged {
+                            section(nil)
+                                .opacity(hidesUntagged ? 0 : 1)
+                                .accessibilityHidden(hidesUntagged)
+                                .allowsHitTesting(!hidesUntagged)
+                                .id("none")
+                        }
                     }
                 }
                 .padding(.top, nutriPhoneLayout ? 8 : 16)
-                .padding(.bottom, nutriPhoneLayout ? 12 : desktop ? 80 : 88)
+                .padding(.bottom, footerPadding)
             }
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: scrollDestination) { _, value in
@@ -820,16 +840,6 @@ struct TodayView: View {
         }.sorted(by: Self.rowOrder)
     }
 
-    private var showsUntaggedSection: Bool {
-        if !entries(in: "").isEmpty { return true }
-        #if os(macOS)
-        // La zona para quitar la etiqueta debe existir antes de iniciar el gesto.
-        return foodRows.contains { $0["_pending"]?.bool != true }
-        #else
-        return entryDropActive
-        #endif
-    }
-
     private func section(_ label: Record?) -> some View {
         let id = label?.text("id") ?? ""
         let name = label?.text("name") ?? store.tr("Sin etiqueta")
@@ -885,7 +895,7 @@ struct TodayView: View {
             }
             .padding(.leading, 12).padding(.trailing, label == nil ? 12 : 8)
             .padding(.vertical, 10)
-            .frame(minHeight: 44)
+            .frame(minHeight: journalSectionMinHeight)
             .background(palette.surface2, in: RoundedRectangle(cornerRadius: 12))
             .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(targeted ? palette.accent.opacity(0.55) : entries.isEmpty ? palette.border : palette.accent.opacity(0.4)).allowsHitTesting(false) }
             #if os(macOS)
@@ -2285,6 +2295,7 @@ private struct SummarySettingsView: View {
 private let journalViews = ["estado", "objetivos", "mini"]
 private let journalViewNames = ["estado": "Estado actual", "objetivos": "Objetivos", "mini": "Mini"]
 private let journalDefaultItems = ["kcal", "protein_g", "carbs_g", "fat_g", "sodio_mg", "potasio_mg"]
+private let journalSectionMinHeight: CGFloat = 44
 private let journalLabelsQuery = ["archived_at": "is.null", "order": "sort_order.asc,name.asc"]
 
 extension Notification.Name {
