@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Upload, Camera, X, Star, Moon, HelpCircle } 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase, isDemo } from '../lib/supabase.js';
 import { toJpegBlob } from '../lib/ai.js';
-import { setSectionMenu } from '../lib/sectionMenu.js';
+import { setSectionMenu, useSectionAdd } from '../lib/sectionMenu.js';
 import { openDatePicker } from '../lib/datePicker.js';
 import { useToast } from '../lib/useToast.js';
 import ImportSheet from '../components/ImportSheet.jsx';
@@ -69,6 +69,11 @@ export default function Body() {
   const [toast, showToast] = useToast();
   const [confirmPhoto, setConfirmPhoto] = useState(null); // path of the photo whose deletion is pending confirmation
   const [undoRow, setUndoRow] = useState(null); // { day, row: {metrics,note,photo_paths}, timer }: row deleted after clearing all of its fields
+  const weightInput = useRef(null);
+  useSectionAdd('/body', () => {
+    weightInput.current?.scrollIntoView({ block: 'center' });
+    weightInput.current?.focus({ preventScroll: true });
+  }, !importing && !confirmPhoto);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
@@ -319,6 +324,7 @@ export default function Body() {
         </span>
         <div className="flex items-center gap-1 rounded-xl border border-border bg-surface-2 px-3 min-h-[44px]">
           <input
+            ref={m.key === 'peso_kg' ? weightInput : null}
             type="number"
             inputMode="decimal"
             step="0.1"

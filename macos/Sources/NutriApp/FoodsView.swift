@@ -267,25 +267,16 @@ struct FoodsView: View {
                     }.padding(16)
                 }
             } else if let draft {
-                ScrollView { editor(draft).padding(16) }.scrollDismissesKeyboard(.interactively)
-            } else if nutriPhoneLayout {
-                ScrollView { listing.padding(.horizontal, 16).padding(.vertical, 8) }
+                ScrollView { editor(draft).padding(16) }
                     .scrollDismissesKeyboard(.interactively)
-                    .safeAreaInset(edge: .bottom, alignment: .trailing, spacing: 0) {
-                        if !results.isEmpty && !searchFocused {
-                            newFoodAction.padding(.horizontal, 16).padding(.vertical, 6)
-                                .frame(maxWidth: .infinity, alignment: .trailing)
-                                .background(palette.bg)
-                        }
-                    }
+                    .nutriDockScrollable(observesDirection: false)
             } else {
-                ScrollView { listing.padding(16).padding(.bottom, 56) }
+                ScrollView { listing.padding(.horizontal, 16).padding(.vertical, nutriPhoneLayout ? 8 : 16) }
                     .scrollDismissesKeyboard(.interactively)
-                    .overlay(alignment: .bottomTrailing) {
-                        if !results.isEmpty { newFoodAction.padding(16) }
-                    }
+                    .nutriDockScrollable()
             }
         }
+        .nutriContextAction(.foods, enabled: draft == nil) { draft = FoodDraft() }
         .task(id: scenePhase) {
             guard scenePhase == .active, !store.demoActive else { return }
             do {
@@ -322,12 +313,6 @@ struct FoodsView: View {
         .preference(key: NutriPresentedModalKey.self, value: presentedImport)
         .preference(key: NutriModalVisibleKey.self, value: importReview)
         .nutriFeatureExport($fileExport) { store.report($0) }
-    }
-
-    private var newFoodAction: some View {
-        Button { draft = FoodDraft() } label: { NutriIcon("plus", size: 22) }
-            .buttonStyle(NutriButtonStyle(.primary, height: 52, horizontal: 15, radius: 26))
-            .accessibilityLabel(store.tr("Nuevo alimento"))
     }
 
     private var presentedImport: NutriPresentedModal? {

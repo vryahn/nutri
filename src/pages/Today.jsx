@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GlassWater, Settings, Pencil, Trash2, History, Copy, ClipboardPaste, ArrowLeftRight, Upload, Bookmark, CloudOff, Target, ArrowUpToLine } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
-import { setSectionMenu } from '../lib/sectionMenu.js';
+import { setSectionMenu, useSectionAdd } from '../lib/sectionMenu.js';
 import { openDatePicker } from '../lib/datePicker.js';
 import { outboxOps, onOutbox, setOutboxOwner, queueInsert, queueUpdate, queueDelete, applyOutbox, flushOutbox } from '../lib/outbox.js';
 import { prefetchFrequent, refreshFrequent, getFrequent } from '../lib/frequent.js';
@@ -1214,6 +1214,7 @@ export default function Today() {
       setAdding({ labelId });
     }
   }
+  useSectionAdd('/', () => handleSectionAdd(null), !adding && !editing && !importing);
 
   // Owner-filtered: another account's unsynced ops stay queued but never render here.
   const dayEntries = useMemo(() => applyOutbox(entries, date, pendingOps, userId), [entries, date, pendingOps, userId]);
@@ -1511,14 +1512,6 @@ export default function Today() {
           </DndContext>
         </div>
       )}
-
-      <button
-        onClick={() => setAdding({ labelId: null })}
-        className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-on-accent flex items-center justify-center press lg:hidden"
-        aria-label={t('Añadir registro')}
-      >
-        <Plus size={24} />
-      </button>
 
       {confirmingDeleteDay && (
         <ConfirmSheet

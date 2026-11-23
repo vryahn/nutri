@@ -3,6 +3,7 @@ import { History, ChevronLeft, ChevronDown, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { useToast } from '../lib/useToast.js';
+import { useSectionAdd } from '../lib/sectionMenu.js';
 import { MICROS, microGroups, PHASE_GOALS, goalLabel, todayISO, addDaysISO, resolveTarget, numOrNull, cleanMicros, cleanBounds, cleanRules, draftToRows, impliedBounds, SODIUM_FLOOR_MG } from '../lib/domain.js';
 import { t, useLang, getLang, locale } from '../lib/i18n.js';
 import SwipeToDelete from '../components/SwipeToDelete.jsx';
@@ -200,6 +201,7 @@ export default function Targets() {
   const programadaRowRefs = useRef(new Map());
   const overrideRowRefs = useRef(new Map());
   const newOverrideBtnRef = useRef(null);
+  useSectionAdd('/targets', () => setSheet({ type: 'newPhase' }), !loading && !sheet);
 
   useEffect(() => {
     load();

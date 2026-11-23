@@ -1,9 +1,9 @@
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
-import { CalendarDays, Apple, ChefHat, Target, BarChart3, Ruler, MoreHorizontal } from 'lucide-react';
+import { CalendarDays, Apple, ChefHat, Target, BarChart3, Ruler, MoreHorizontal, Plus, ChevronUp } from 'lucide-react';
 import { supabase, isDemo, isSeedingDemo } from './lib/supabase.js';
 import { cacheClear } from './lib/cache.js';
-import { subscribeSectionMenu } from './lib/sectionMenu.js';
+import { SectionAddContext, subscribeSectionMenu } from './lib/sectionMenu.js';
 import { useOutsideClose } from './lib/useOutsideClose.js';
 import { watchSystem } from './lib/theme.js';
 import { t, useLang, registerLangUser, registerUnitsUser, registerProfile, registerAdherenceBands, registerSleepThreshold } from './lib/i18n.js';
@@ -24,12 +24,12 @@ const OAuthConsent = lazy(() => import('./pages/OAuthConsent.jsx'));
 const PageFallback = <PageSkeleton />;
 
 const TABS = [
-  { to: '/', label: 'Hoy', icon: CalendarDays, end: true },
-  { to: '/foods', label: 'Alimentos', icon: Apple },
-  { to: '/recipes', label: 'Recetas', icon: ChefHat },
-  { to: '/targets', label: 'Objetivos', icon: Target },
-  { to: '/dashboard', label: 'Dashboard', icon: BarChart3 },
-  { to: '/body', label: 'Medidas', icon: Ruler },
+  { to: '/', label: 'Hoy', icon: CalendarDays, end: true, add: 'Añadir registro' },
+  { to: '/foods', label: 'Alimentos', icon: Apple, add: 'Nuevo alimento' },
+  { to: '/recipes', label: 'Recetas', icon: ChefHat, add: 'Nueva receta' },
+  { to: '/targets', label: 'Objetivos', icon: Target, add: 'Programar fase' },
+  { to: '/dashboard', label: 'Dashboard', icon: BarChart3, add: 'Nueva gráfica' },
+  { to: '/body', label: 'Medidas', icon: Ruler, add: 'Registrar medida' },
 ];
 
 function useSession() {
@@ -113,7 +113,7 @@ function MoreOptions({ actions, placement = 'bottom', className, label }) {
 }
 
 // Fixed sidebar on md+ (replaces the mobile header + bottom tab bar).
-function Sidebar({ menuActions }) {
+function Sidebar({ menuActions, tab, onAdd }) {
   useLang();
   return (
     <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:left-0 md:w-52 md:z-40 md:border-r md:border-border md:bg-surface md:py-4 md:px-3">
@@ -140,6 +140,15 @@ function Sidebar({ menuActions }) {
       </nav>
 
       <div className="flex flex-col gap-1 pt-2 border-t border-border">
+        <button
+          type="button"
+          onClick={onAdd}
+          disabled={!onAdd}
+          className="flex items-center gap-3 min-h-[44px] px-3 rounded-lg dock-action text-on-accent text-sm font-medium press disabled:opacity-50"
+        >
+          <Plus size={18} aria-hidden="true" />
+          {t(tab.add)}
+        </button>
         <MoreOptions
           actions={menuActions}
           placement="right"
@@ -156,17 +165,105 @@ function Sidebar({ menuActions }) {
   );
 }
 
+function MobileNavigation({ tab, onAdd }) {
+  const [compact, setCompact] = useState(false);
+  const nav = useRef(null);
+  const CurrentIcon = tab.icon;
+  const action = t(tab.add);
+
+  useEffect(() => {
+    const mobile = window.matchMedia('(max-width: 767px)');
+    function pageOffset() {
+      const end = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      return Math.max(0, Math.min(window.scrollY, end));
+    }
+    let previous = pageOffset();
+    function onScroll() {
+      if (!mobile.matches) return;
+      const position = pageOffset();
+      const delta = position - previous;
+      if (Math.abs(delta) < 14 && position !== 0) return;
+      previous = position;
+      if (delta > 0 && !nav.current?.querySelector(':focus-visible')) setCompact(true);
+      if (delta < 0 || position === 0) setCompact(false);
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  function expand() {
+    setCompact(false);
+    requestAnimationFrame(() => nav.current?.querySelector('[aria-current="page"]')?.focus({ preventScroll: true }));
+  }
+
+  return (
+    <>
+      {compact && <div className="dock-fade md:hidden" aria-hidden="true" />}
+      <nav
+        ref={nav}
+        aria-label={t('Navegación')}
+        className={`md:hidden fixed z-30 inset-x-1 min-[360px]:inset-x-3 pointer-events-none flex items-center rounded-full min-h-[54px] ${compact ? 'justify-between gap-2' : 'glass border border-border p-0.5'}`}
+        style={{ bottom: 'calc(8px + env(safe-area-inset-bottom))' }}
+      >
+        {compact ? (
+          <button
+            type="button"
+            onClick={expand}
+            aria-label={`${t(tab.label)}, ${t('Mostrar todas las pestañas')}`}
+            aria-expanded="false"
+            className="dock-glass pointer-events-auto flex items-center gap-1.5 rounded-full min-h-[48px] px-3 border border-border text-accent-glass text-sm font-semibold press"
+          >
+            <CurrentIcon size={17} aria-hidden="true" />
+            <span>{t(tab.label)}</span>
+            <ChevronUp size={13} aria-hidden="true" />
+          </button>
+        ) : (
+          TABS.map(({ to, label, icon: Icon, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              aria-label={t(label)}
+              className={({ isActive }) =>
+                `pointer-events-auto flex-1 min-w-[44px] min-h-[44px] flex flex-col justify-center items-center gap-0.5 rounded-full press ${isActive ? 'bg-surface-2 text-accent-glass' : 'text-text-2'}`
+              }
+            >
+              <Icon size={19} aria-hidden="true" />
+              <span className="sr-only min-[360px]:not-sr-only min-[360px]:truncate max-w-full text-[10px] leading-none">{t(label)}</span>
+            </NavLink>
+          ))
+        )}
+        <button
+          type="button"
+          aria-label={action}
+          title={action}
+          onClick={onAdd}
+          disabled={!onAdd}
+          className={`pointer-events-auto shrink-0 min-w-[44px] rounded-full flex items-center justify-center gap-1.5 text-on-accent border border-border font-semibold text-sm press disabled:opacity-50 ${compact ? 'dock-glass dock-glass-action min-h-[48px] px-3' : 'min-h-[44px] dock-action'}`}
+        >
+          <Plus size={21} aria-hidden="true" />
+          {compact && <span className="sr-only min-[360px]:not-sr-only">{action}</span>}
+        </button>
+      </nav>
+    </>
+  );
+}
+
 function Layout({ children }) {
   useLang();
   const [menuActions, setMenuActions] = useState([]);
+  const [sectionAdd, setSectionAdd] = useState(null);
   const location = useLocation();
-  const isDashboard = location.pathname === '/dashboard';
+  const pathname = location.pathname.toLowerCase().replace(/\/+$/, '') || '/';
+  const tab = TABS.find(({ to }) => to === pathname) ?? TABS[0];
+  const onAdd = sectionAdd?.path === tab.to ? sectionAdd.run : undefined;
+  const isDashboard = tab.to === '/dashboard';
 
   useEffect(() => subscribeSectionMenu(setMenuActions), []);
 
   return (
     <div className="min-h-dvh flex flex-col md:flex-row">
-      <Sidebar menuActions={menuActions} />
+      <Sidebar menuActions={menuActions} tab={tab} onAdd={onAdd} />
 
       <div className="flex-1 flex flex-col min-w-0 md:ml-52">
         {/* Demo strip: in normal flow (never over the header or the tab bar), so it
@@ -198,38 +295,13 @@ function Layout({ children }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-x-clip pb-24 md:pb-8 md:pt-6">
-          <div className={`mx-auto ${isDashboard ? 'max-w-3xl md:max-w-[1600px]' : 'max-w-3xl lg:max-w-6xl'}`}>{children}</div>
+        <main className="flex-1 overflow-x-clip pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-8 md:pt-6">
+          <SectionAddContext.Provider value={setSectionAdd}>
+            <div className={`mx-auto ${isDashboard ? 'max-w-3xl md:max-w-[1600px]' : 'max-w-3xl lg:max-w-6xl'}`}>{children}</div>
+          </SectionAddContext.Provider>
         </main>
 
-        <nav
-          className="md:hidden fixed bottom-0 inset-x-0 border-t border-border flex glass"
-          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-        >
-          {TABS.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              // The active label uses --accent-glass, not --accent: a solid Dashboard
-              // bar (Cell fill=--d-prot) may end up under the glass, and there the
-              // normal accent drops to 3.3:1.
-              className={({ isActive }) =>
-                `flex-1 flex flex-col items-center gap-0.5 py-2 min-h-[44px] press ${
-                  isActive ? 'text-accent-glass' : 'text-text-2'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <Icon size={22} />
-                  <span className="text-xs">{t(label)}</span>
-                  {isActive && <span className="h-0.5 w-6 rounded-full bg-accent-glass" />}
-                </>
-              )}
-            </NavLink>
-          ))}
-        </nav>
+        <MobileNavigation key={tab.to} tab={tab} onAdd={onAdd} />
       </div>
     </div>
   );

@@ -128,19 +128,16 @@ struct RecipesView: View {
                     }.padding(16)
                 }
             } else if let form {
-                ScrollView { editor(form).padding(16) }.scrollDismissesKeyboard(.immediately)
+                ScrollView { editor(form).padding(16) }
+                    .scrollDismissesKeyboard(.immediately)
+                    .nutriDockScrollable(observesDirection: false)
             } else {
-                ScrollView { listing.padding(16).padding(.bottom, 56) }
+                ScrollView { listing.padding(16) }
                     .scrollDismissesKeyboard(.interactively)
-                    .overlay(alignment: .bottomTrailing) {
-                        if !matching.isEmpty {
-                            Button { showEditor(RecipeDraft()) } label: { NutriIcon("plus", size: 22) }
-                                .buttonStyle(NutriButtonStyle(.primary, height: 52, horizontal: 15, radius: 26))
-                                .accessibilityLabel(store.tr("Nueva receta")).padding(16)
-                        }
-                    }
+                    .nutriDockScrollable()
             }
         }.font(.nutriSans(14)).foregroundStyle(palette.text)
+            .nutriContextAction(.recipes, enabled: form == nil) { showEditor(RecipeDraft()) }
             .task {
                 await reload()
                 #if DEBUG

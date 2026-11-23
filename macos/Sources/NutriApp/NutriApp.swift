@@ -1,5 +1,8 @@
 import SwiftUI
 import NutriCore
+#if os(iOS)
+import UIKit
+#endif
 
 @main
 struct NutriApplication {
@@ -114,6 +117,7 @@ struct NutriApp: App {
 extension Notification.Name {
     static let nutriSettings = Notification.Name("nutri.showSettings")
     static let nutriModule = Notification.Name("nutri.selectModule")
+    static let nutriContextAction = Notification.Name("nutri.contextAction")
     static let nutriTargetsWizard = Notification.Name("nutri.targetsWizard")
 }
 
@@ -129,6 +133,17 @@ enum Module: String, CaseIterable, Identifiable {
         case .targets: "module.targets"
         case .dashboard: "module.dashboard"
         case .body: "module.body"
+        }
+    }
+
+    var contextActionLabel: String {
+        switch self {
+        case .today: "Añadir registro"
+        case .foods: "Nuevo alimento"
+        case .recipes: "Nueva receta"
+        case .targets: "Programar fase"
+        case .dashboard: "Nueva gráfica"
+        case .body: "Registrar medida"
         }
     }
 
@@ -154,10 +169,12 @@ struct RootView: View {
     @State private var menu: Popup?
     @State private var moduleModalVisible = false
     @State private var actions: [NutriSectionAction] = []
+    @State private var blockedContextModules: Set<Module> = []
     #if os(iOS)
     @State private var progressModule: Module = .dashboard
     @State private var phoneSheetVisible = false
     @State private var phoneActions: [Module: [NutriSectionAction]] = [:]
+    @State private var phoneDockCompact = false
     #endif
     @State private var avatar: NutriPlatformImage?
     @State private var avatarPath: String?
@@ -167,6 +184,9 @@ struct RootView: View {
     }
 
     private enum Popup { case account, more }
+
+    private var contextActionBlocked: Bool { blockedContextModules.contains(module) }
+    private var contextActionShortcut: KeyboardShortcut? { module == .today ? KeyboardShortcut("n") : nil }
 
     private var displayName: String {
         let profile = store.prefs.object("profile")
@@ -213,6 +233,7 @@ struct RootView: View {
             phoneActions = [:]
             progressModule = .dashboard
             phoneSheetVisible = false
+            phoneDockCompact = false
             #endif
             select(.today)
         }
@@ -247,34 +268,23 @@ struct RootView: View {
 
     private var phoneTabs: some View {
         TabView(selection: phoneTab) {
-            phonePage(.today, title: "Hoy") { TodayView() }
-                .tabItem { Label(store.tr("Hoy"), systemImage: "calendar") }.tag(Module.today)
-            phonePage(.foods, title: "Alimentos") { FoodsView() }
-                .tabItem { Label(store.tr("Alimentos"), systemImage: "carrot") }.tag(Module.foods)
-            phonePage(.recipes, title: "Recetas") { RecipesView() }
-                .tabItem { Label(store.tr("Recetas"), systemImage: "book") }.tag(Module.recipes)
-            phonePage(.targets, title: "Objetivos") { TargetsView() }
-                .tabItem { Label(store.tr("Objetivos"), systemImage: "target") }.tag(Module.targets)
+            phonePage(.today, title: "Hoy") { TodayView() }.tag(Module.today)
+            phonePage(.foods, title: "Alimentos") { FoodsView() }.tag(Module.foods)
+            phonePage(.recipes, title: "Recetas") { RecipesView() }.tag(Module.recipes)
+            phonePage(.targets, title: "Objetivos") { TargetsView() }.tag(Module.targets)
             phonePage(.dashboard, title: "Progreso") {
                 PhoneProgressSections(section: Binding(get: { progressModule }, set: select)) {
                     phoneActions[.body] = $0
                 }
             }
-            .tabItem { Label(store.tr("Progreso"), systemImage: "chart.bar.xaxis") }.tag(Module.dashboard)
+            .tag(Module.dashboard)
         }
-    }
-
-    @ViewBuilder
-    private var phoneTabChrome: some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            phoneTabs.tabBarMinimizeBehavior(.onScrollDown)
-        } else {
-            phoneTabs
+        .overlay(alignment: .bottom) {
+            PhoneContextDock(selection: phoneTab.wrappedValue, module: module, compact: phoneDockCompact,
+                             blocked: contextActionBlocked, coveredBySheet: phoneSheetVisible,
+                             select: { phoneTab.wrappedValue = $0 }, expand: { phoneDockCompact = false },
+                             action: performContextAction)
         }
-        #else
-        phoneTabs
-        #endif
     }
 
     private func phonePage<Content: View>(_ tab: Module, title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -288,9 +298,14 @@ struct RootView: View {
                 AnyView(content())
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .environment(\.nutriSectionActionsHandler) { phoneActions[tab] = $0 }
+                    .environment(\.nutriContextModule, active ? module : nil)
+                    .environment(\.nutriDockScroll) { compact in
+                        if active && !phoneSheetVisible && !scrimVisible && menu == nil { phoneDockCompact = compact }
+                    }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         if !(tab == .today && phoneSheetVisible), store.undoTitle != nil || store.notice != nil {
                             notification.padding(.horizontal, 16).padding(.vertical, 4)
+                                .padding(.bottom, PhoneContextDock.clearance)
                         }
                     }
             }
@@ -298,6 +313,7 @@ struct RootView: View {
             .accessibilityHidden(scrimVisible || menu != nil)
             .navigationTitle(tab == .today ? "" : store.tr(title))
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .tabBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 0) {
@@ -337,6 +353,7 @@ struct RootView: View {
                 .accessibilityHidden(scrimVisible || phone && menu != nil)
                 .allowsHitTesting(!scrimVisible && (!phone || menu == nil))
                 .environment(\.nutriHasAccountOverlay, settings != nil || menu != nil)
+                .onPreferenceChange(NutriContextActionBlockedKey.self) { blockedContextModules = $0 }
                 .onPreferenceChange(NutriModalVisibleKey.self) { moduleModalVisible = $0 }
                 #if os(iOS)
                 .onPreferenceChange(NutriPhoneSheetVisibleKey.self) { phoneSheetVisible = $0 }
@@ -372,7 +389,7 @@ struct RootView: View {
     private func signedInContent(width: CGFloat, wide: Bool) -> some View {
         #if os(iOS)
         if nutriPhoneLayout {
-            phoneTabChrome
+            phoneTabs
         } else {
             windowJournal(width: width, wide: wide)
         }
@@ -393,6 +410,7 @@ struct RootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .padding(.top, wide ? 24 : 0)
                     .environment(\.nutriSectionActionsHandler) { actions = $0 }
+                    .environment(\.nutriContextModule, module)
                     .overlay(alignment: width >= 1024 ? .bottomTrailing : .bottom) {
                         notification
                             .padding(.horizontal, width >= 1024 ? 24 : 16)
@@ -442,6 +460,17 @@ struct RootView: View {
             Spacer()
             Rectangle().fill(palette.border).frame(height: 1)
             VStack(spacing: 4) {
+                Button(action: performContextAction) {
+                    HStack(spacing: 12) {
+                        NutriIcon("plus")
+                        Text(store.tr(module.contextActionLabel))
+                        Spacer(minLength: 0)
+                    }
+                }
+                .buttonStyle(NutriButtonStyle(.primary, radius: 8))
+                .accessibilityIdentifier("context.add")
+                .keyboardShortcut(contextActionShortcut)
+                .disabled(contextActionBlocked)
                 if !actions.isEmpty {
                     Button { toggleMenu(.more) } label: {
                         HStack(spacing: 12) {
@@ -479,6 +508,15 @@ struct RootView: View {
             wordmark(glass: true)
             Spacer()
             syncStatus
+            Button(action: performContextAction) {
+                NutriIcon("plus").frame(width: nutriTouchSize(36))
+            }
+            .buttonStyle(NutriButtonStyle(.primary, height: 36, horizontal: 0))
+            .accessibilityLabel(store.tr(module.contextActionLabel))
+            .accessibilityIdentifier("context.add")
+            .help(store.tr(module.contextActionLabel))
+            .keyboardShortcut(contextActionShortcut)
+            .disabled(contextActionBlocked)
             if !actions.isEmpty {
                 Button { toggleMenu(.more) } label: { NutriIcon("ellipsis").frame(width: nutriTouchSize(36)) }
                     .buttonStyle(NutriButtonStyle(.quiet, height: 36, horizontal: 0))
@@ -694,8 +732,13 @@ struct RootView: View {
         menu = nil
         #if os(iOS)
         if next == .dashboard || next == .body { progressModule = next }
+        phoneDockCompact = false
         #endif
         module = next
+    }
+
+    private func performContextAction() {
+        NotificationCenter.default.post(name: .nutriContextAction, object: module)
     }
 
     private func toggleMenu(_ next: Popup) { menu = menu == next ? nil : next }
@@ -737,7 +780,283 @@ struct RootView: View {
     }
 }
 
+private struct NutriContextModuleKey: EnvironmentKey {
+    static let defaultValue: Module? = nil
+}
+
+private struct NutriContextActionBlockedKey: PreferenceKey {
+    static let defaultValue: Set<Module> = []
+    static func reduce(value: inout Set<Module>, nextValue: () -> Set<Module>) { value.formUnion(nextValue()) }
+}
+
+extension EnvironmentValues {
+    var nutriContextModule: Module? {
+        get { self[NutriContextModuleKey.self] }
+        set { self[NutriContextModuleKey.self] = newValue }
+    }
+}
+
+private struct NutriContextAction: ViewModifier {
+    @Environment(\.nutriContextModule) private var active
+    let module: Module
+    let enabled: Bool
+    let action: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .preference(key: NutriContextActionBlockedKey.self, value: enabled ? [] : [module])
+            .onReceive(NotificationCenter.default.publisher(for: .nutriContextAction)) { request in
+                if enabled, active == module, request.object as? Module == module { action() }
+            }
+    }
+}
+
+extension View {
+    func nutriContextAction(_ module: Module, enabled: Bool = true, action: @escaping () -> Void) -> some View {
+        modifier(NutriContextAction(module: module, enabled: enabled, action: action))
+    }
+
+    @ViewBuilder
+    func nutriAboveDock() -> some View {
+        #if os(iOS)
+        modifier(NutriAboveDock())
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder
+    func nutriDockScrollable(observesDirection: Bool = true) -> some View {
+        #if os(iOS)
+        modifier(NutriDockScroll(observesDirection: observesDirection))
+        #else
+        self
+        #endif
+    }
+}
+
 #if os(iOS)
+private struct NutriDockScrollKey: EnvironmentKey {
+    static let defaultValue: ((Bool) -> Void)? = nil
+}
+
+private extension EnvironmentValues {
+    var nutriDockScroll: ((Bool) -> Void)? {
+        get { self[NutriDockScrollKey.self] }
+        set { self[NutriDockScrollKey.self] = newValue }
+    }
+}
+
+private struct NutriAboveDock: ViewModifier {
+    @Environment(\.nutriDockScroll) private var updateDock
+
+    func body(content: Content) -> some View {
+        content.padding(.bottom, updateDock == nil ? 0 : PhoneContextDock.clearance)
+    }
+}
+
+private struct NutriDockScroll: ViewModifier {
+    @Environment(\.nutriDockScroll) private var updateDock
+    @State private var userScrolling = false
+    let observesDirection: Bool
+
+    func body(content: Content) -> some View {
+        if let updateDock {
+            let padded = content.contentMargins(.bottom, PhoneContextDock.clearance, for: .scrollContent)
+            if #available(iOS 18, *), observesDirection {
+                padded
+                    .onScrollPhaseChange { _, phase in
+                        // Only the user's drag changes direction. Settling at an edge can bounce back.
+                        userScrolling = phase == .interacting
+                    }
+                    .onScrollGeometryChange(for: Int.self) { geometry in
+                        let offset = geometry.contentOffset.y + geometry.contentInsets.top
+                        let limit = geometry.contentSize.height + geometry.contentInsets.top
+                            + geometry.contentInsets.bottom - geometry.containerSize.height
+                        return Int(max(0, min(offset, limit)) / 16)
+                    } action: { previous, current in
+                        if userScrolling { updateDock(current > previous) }
+                    }
+            } else {
+                padded
+            }
+        } else {
+            content
+        }
+    }
+}
+
+private struct PhoneContextDock: View {
+    static let clearance: CGFloat = 70
+
+    @EnvironmentObject private var store: Store
+    @Environment(\.nutriPalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @State private var keyboardVisible = false
+    let selection: Module
+    let module: Module
+    let compact: Bool
+    let blocked: Bool
+    let coveredBySheet: Bool
+    let select: (Module) -> Void
+    let expand: () -> Void
+    let action: () -> Void
+
+    private static let tabs: [Module] = [.today, .foods, .recipes, .targets, .dashboard]
+    private var actionTitle: String { store.tr(module.contextActionLabel) }
+
+    var body: some View {
+        Group {
+            if !coveredBySheet && !keyboardVisible { controls }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
+    }
+
+    private var controls: some View {
+        Group {
+            if compact {
+                ViewThatFits(in: .horizontal) {
+                    compactRow(showActionTitle: true)
+                    compactRow(showActionTitle: false)
+                }
+            } else {
+                HStack(spacing: 0) {
+                    ForEach(Self.tabs) { item in tab(item) }
+                    add(showTitle: false)
+                }
+                .padding(4)
+                .frame(maxWidth: 560)
+                .modifier(PhoneDockGlass(tint: nil))
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("context.dock")
+        .padding(.horizontal, 12)
+        .padding(.bottom, 6)
+        .background(alignment: .bottom) {
+            LinearGradient(colors: [.clear, palette.bg.opacity(0.62), palette.bg],
+                           startPoint: .top, endPoint: .bottom)
+                .padding(.top, -20)
+                .ignoresSafeArea(edges: .bottom)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: compact)
+    }
+
+    private func compactRow(showActionTitle: Bool) -> some View {
+        HStack(spacing: 8) {
+            Button(action: expand) {
+                HStack(spacing: 7) {
+                    tabIcon(selection)
+                    Text(tabTitle(selection)).font(.subheadline.weight(.semibold))
+                    Image(systemName: "chevron.up").font(.caption2.weight(.semibold))
+                }
+                .foregroundStyle(palette.accentGlass)
+                .fixedSize()
+                .padding(.horizontal, 12)
+                .frame(minWidth: 44, minHeight: 48)
+                .contentShape(Capsule())
+                .modifier(PhoneDockGlass(tint: nil))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(tabTitle(selection))
+            .accessibilityHint(store.tr("Mostrar todas las pestañas"))
+            .accessibilityIdentifier("context.expand")
+            .accessibilityAddTraits(.isSelected)
+            Spacer(minLength: 0)
+            add(showTitle: showActionTitle)
+        }
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .frame(maxWidth: 560)
+    }
+
+    private func tab(_ item: Module) -> some View {
+        Button { select(item) } label: {
+            VStack(spacing: 3) {
+                tabIcon(item)
+                Text(tabTitle(item)).font(.caption2.weight(.semibold))
+                    .lineLimit(1).minimumScaleFactor(0.75)
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            }
+            .padding(.horizontal, 1)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .foregroundStyle(selection == item ? palette.accentGlass : palette.text)
+            .background(selection == item ? palette.bg.opacity(reduceTransparency ? 1 : 0.75) : .clear, in: Capsule())
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(tabTitle(item))
+        .accessibilityIdentifier(item.accessibilityID)
+        .accessibilityAddTraits(selection == item ? .isSelected : [])
+    }
+
+    private func add(showTitle: Bool) -> some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: "plus").font(.system(size: 21, weight: .medium))
+                if showTitle {
+                    Text(actionTitle).font(.subheadline.weight(.semibold)).fixedSize()
+                }
+            }
+            .foregroundStyle(palette.onAccent)
+            .padding(.horizontal, showTitle ? 14 : 0)
+            .frame(minWidth: 48, minHeight: 48)
+            .contentShape(Capsule())
+            .modifier(PhoneDockGlass(tint: palette.dockAccent))
+        }
+        .buttonStyle(.plain)
+        .opacity(blocked ? 0.5 : 1)
+        .disabled(blocked)
+        .accessibilityLabel(actionTitle)
+        .accessibilityIdentifier(module == .today ? "today.add" : "context.add")
+    }
+
+    private func tabTitle(_ item: Module) -> String { store.tr(item == .dashboard ? "Progreso" : item.rawValue) }
+
+    private func tabIcon(_ item: Module) -> some View {
+        let symbol = switch item {
+        case .today: "calendar"
+        case .foods: "carrot"
+        case .recipes: "book"
+        case .targets: "target"
+        case .dashboard, .body: "chart.bar.xaxis"
+        }
+        return Image(systemName: symbol).font(.system(size: 18, weight: .medium))
+    }
+}
+
+private struct PhoneDockGlass: ViewModifier {
+    @Environment(\.nutriPalette) private var palette
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    let tint: Color?
+
+    func body(content: Content) -> some View {
+        if reduceTransparency {
+            content.background(tint ?? palette.surface2, in: Capsule())
+        } else {
+            #if compiler(>=6.2)
+            if #available(iOS 26, *) {
+                content.glassEffect(.regular.tint(tint?.opacity(0.92)).interactive(tint != nil), in: .capsule)
+            } else {
+                material(content)
+            }
+            #else
+            material(content)
+            #endif
+        }
+    }
+
+    private func material(_ content: Content) -> some View {
+        content
+            .background(tint?.opacity(0.93) ?? palette.surface2.opacity(0.5), in: Capsule())
+            .background(.regularMaterial, in: Capsule())
+            .overlay { Capsule().strokeBorder(palette.border, lineWidth: 1).allowsHitTesting(false) }
+    }
+}
+
 private struct PhoneProgressSections: View {
     @EnvironmentObject private var store: Store
     @Binding var section: Module

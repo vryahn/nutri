@@ -581,6 +581,8 @@ struct DashboardView: View {
                 }
             }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
         }
+        .nutriDockScrollable()
+        .nutriContextAction(.dashboard) { chartDraft = DashboardChartDraft() }
         .overlay(alignment: .bottom) {
             if !failure.isEmpty {
                 HStack {
@@ -592,6 +594,7 @@ struct DashboardView: View {
                 .padding(.horizontal, 12).padding(.vertical, 4)
                 .frame(maxWidth: 480).nutriGlass(radius: 12)
                 .padding(16)
+                .nutriAboveDock()
             }
         }
         .font(.nutriSans(14))

@@ -342,9 +342,7 @@ function CustomChartSheet({ initial, onSave, onClose }) {
 }
 
 // ── "Mis gráficas" section ───────────────────────────────────────────────────
-export default function CustomCharts({ dashboards, onChange, dates, nutByDay, bodyByDay, targets }) {
-  const [editing, setEditing] = useState(null); // def being edited | 'new' | null
-
+export default function CustomCharts({ dashboards, onChange, editing, setEditing, dates, nutByDay, bodyByDay, targets }) {
   const save = (def) => {
     const exists = dashboards.some((d) => d.id === def.id);
     onChange(exists ? dashboards.map((d) => (d.id === def.id ? def : d)) : [...dashboards, def]);

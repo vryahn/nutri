@@ -26,6 +26,7 @@ import { supabase, isDemo } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { useOutsideClose } from '../lib/useOutsideClose.js';
 import { useToast } from '../lib/useToast.js';
+import { useSectionAdd } from '../lib/sectionMenu.js';
 import { AI_AVAILABLE, planAskQuery, formatAskContext, askAnswer } from '../lib/ai.js';
 import Hint from '../components/Hint.jsx';
 import PageSkeleton from '../components/PageSkeleton.jsx';
@@ -743,6 +744,7 @@ export default function Dashboard() {
   const [targets, setTargets] = useState([]);
   const [favs, setFavs] = useState([]); // prefs.data.fav_micros
   const [dashboards, setDashboards] = useState([]); // prefs.data.dashboards: custom charts
+  const [chartEditor, setChartEditor] = useState(null);
   const [tab, setTab] = usePersistentState('nutri.dash.tab', 'estandar'); // 'estandar' | 'graficas' — active tab
   const [waterFoodId, setWaterFoodId] = useState(null);
   const [itemRows, setItemRows] = useState([]); // entry_nutrients for the range, for "Top alimentos"
@@ -762,6 +764,10 @@ export default function Dashboard() {
   const [askHistory, setAskHistory] = useState([]); // [{q,a,clamped}], memory only — no conversational thread
   const [askQuestion, setAskQuestion] = useState('');
   const [askLoading, setAskLoading] = useState(false);
+  useSectionAdd('/dashboard', () => {
+    setTab('graficas');
+    setChartEditor('new');
+  }, !loading && !chartEditor && !printing && !askOpen);
 
   const today = todayISO();
   // The Dashboard analyzes FINISHED days: the day in progress (halfway through
@@ -1628,6 +1634,8 @@ export default function Dashboard() {
         <CustomCharts
           dashboards={dashboards}
           onChange={saveDashboards}
+          editing={chartEditor}
+          setEditing={setChartEditor}
           dates={dates}
           nutByDay={nutByDay}
           bodyByDay={bodyByDay}

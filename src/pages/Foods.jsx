@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Plus, ChevronLeft, Search, Star, AlertTriangle, Trash2, Upload,
+  ChevronLeft, Search, Star, AlertTriangle, Trash2, Upload,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { FOOD_COLUMNS } from '../lib/catalog.js';
 import { useToast } from '../lib/useToast.js';
+import { useSectionAdd } from '../lib/sectionMenu.js';
 import {
   MICROS, MICROS_DEFAULT, microGroups, round, kcalFromMacros, kcalSuspicious, macrosImplausible,
   componentsInconsistent, isWaterSentinel, eanChecksumValid, mergeFoodResults, normalizeTo100, nutritionNumber,
@@ -88,6 +89,7 @@ export default function Foods() {
   const searchEmbedding = useRef(null);
   const deleting = useRef(new Set());
   const mounted = useRef(false);
+  useSectionAdd('/foods', () => setEditing(EMPTY_FOOD), !editing && !importing);
 
   async function toggleFav(key) {
     const next = favs.includes(key) ? favs.filter((k) => k !== key) : [...favs, key];
@@ -341,8 +343,6 @@ export default function Foods() {
         />
       )}
       <div className="flex flex-col gap-4 lg:col-start-1">
-        {/* On lg+ creation goes through the right panel ("＋ Nuevo alimento" in the empty state);
-            on <lg through the FAB. No header button, to avoid duplication. */}
         <h1 className="font-display text-xl">{t('Alimentos')}</h1>
 
         {/* Search box on its own row; on lg+ the master column (5/12) lacks the width
@@ -547,16 +547,6 @@ export default function Foods() {
           </div>
         )}
       </div>
-
-      {!loading && foods.length > 0 && (
-        <button
-          onClick={() => setEditing(EMPTY_FOOD)}
-          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-on-accent flex items-center justify-center press lg:hidden"
-          aria-label={t('Añadir alimento')}
-        >
-          <Plus size={24} />
-        </button>
-      )}
 
       {undoData && <UndoToast message={t('Alimento borrado')} onUndo={handleUndo} />}
 

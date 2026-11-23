@@ -135,6 +135,8 @@ struct TargetsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollDismissesKeyboard(.interactively)
+        .nutriDockScrollable()
+        .nutriContextAction(.targets, enabled: didLoad, action: openNewPhase)
         .overlay(alignment: .bottom) {
             if !errorText.isEmpty {
                 HStack {
@@ -147,6 +149,7 @@ struct TargetsView: View {
                 .padding(.horizontal, 12).padding(.vertical, 4)
                 .frame(maxWidth: 480).nutriGlass(radius: 12)
                 .padding(16)
+                .nutriAboveDock()
             }
         }
         .font(.nutriSans(14))

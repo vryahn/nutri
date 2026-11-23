@@ -6,7 +6,9 @@
 
 Entra con la misma cuenta para consultar los datos sincronizados desde la web, Mac o iPhone. Mac y iPhone comparten las vistas SwiftUI enlazadas aquí. Los navegadores móviles y la PWA usan las pantallas React. En ventanas amplias hay paneles laterales y editores en línea. En pantallas estrechas, busca las pestañas, el botón **+** y las hojas. Los selectores de archivos y fotos pertenecen a cada plataforma. [Rutas React](../src/App.jsx) · [Ventana y navegación SwiftUI](../macos/Sources/NutriApp/NutriApp.swift) · [Fuentes del proyecto iPhone](../ios/Nutri.xcodeproj/project.pbxproj)
 
-En iPhone, **Hoy**, **Alimentos**, **Recetas** y **Objetivos** tienen pestañas propias. Dentro de **Progreso**, elige **Dashboard** o **Medidas**. La barra inferior de pestañas puede reducirse al desplazar contenido a partir de iOS 26.
+En iPhone, **Hoy**, **Alimentos**, **Recetas** y **Objetivos** tienen pestañas propias. Dentro de **Progreso**, elige **Dashboard** o **Medidas**. En iPhone y web móvil, el **+** de la barra inferior abre la acción de la sección activa. Al desplazarte hacia el final, la barra muestra la pestaña activa y el **+** sobre el contenido. Toca la pestaña activa o vuelve a desplazarte hacia el inicio para mostrar todas las pestañas. La compactación en iPhone requiere iOS 18. En iOS 17, el **+** comparte la fila con las pestañas.
+
+El **+** abre **Añadir registro**, **Nuevo alimento**, **Nueva receta**, **Programar fase** o **Nueva gráfica**, según la sección. En **Medidas**, lleva al campo de peso de la fecha visible. En escritorio, busca la acción contextual en la barra lateral. En una ventana estrecha de Mac, aparece en el encabezado.
 
 En iPhone, toca la fecha en **Hoy** o **Medidas** para abrir el calendario en una hoja. Toca un día para seleccionarlo o desliza la hoja hacia abajo para conservar la fecha actual. **Nacimiento** en Perfil sigue el mismo gesto. Para pausar reglas en **Objetivos**, elige el día y toca **Listo**. En macOS, estos calendarios se abren junto al botón que los activó.
 

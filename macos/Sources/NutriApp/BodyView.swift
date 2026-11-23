@@ -224,11 +224,12 @@ struct BodyView: View {
     }
 
     var body: some View {
-        ScrollView {
+        ScrollViewReader { scroll in
+            ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     dateNavigation
                     Group {
-                        capture(columns: windowWidth < 640 ? 2 : 3)
+                        capture(columns: windowWidth < 640 ? 2 : 3).id("measurements")
                         photoPanel
                     }
                     .disabled(!ready || loadingDay)
@@ -237,8 +238,14 @@ struct BodyView: View {
                 .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 32)
                 .frame(maxWidth: 768)
                 .frame(maxWidth: .infinity)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .nutriDockScrollable()
+            .nutriContextAction(.body, enabled: ready && !loadingDay) {
+                scroll.scrollTo("measurements", anchor: .top)
+                focus = "peso_kg"
+            }
         }
-        .scrollDismissesKeyboard(.interactively)
         .font(.nutriSans(14)).foregroundStyle(palette.text)
         .task(id: requestedKey) { await loadDay() }
         .task {

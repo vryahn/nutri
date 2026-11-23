@@ -28,6 +28,8 @@ Para comprobar la sincronización durante la beta, registra en tu cuenta un vaso
 
 ## Gestos y acciones en iPhone
 
+Con datos locales, desplaza Hoy hacia el final de la lista. En iOS 18 o posterior, comprueba que queden **Hoy** y **Añadir registro**, y que el último registro pueda quedar por encima de los controles. Toca **Hoy** para reabrir la barra en la misma posición. Cambia de pestaña y prueba el **+** de cada módulo. En **Progreso**, comprueba que Dashboard abra una gráfica y Medidas enfoque el peso del día visible. Repite con Reducir transparencia activado.
+
 | Pantalla | Cómo probarla con los datos locales |
 | --- | --- |
 | Hoy | Abre el detalle desde el resumen compacto o añade un vaso desde **Agua**. Toca **Añadir registro** y comprueba que puedes registrar con el teclado decimal visible. Toca un registro para editarlo, desliza hacia la izquierda para borrarlo o mantén pulsado para moverlo a otra comida. |
@@ -38,5 +40,7 @@ Para comprobar la sincronización durante la beta, registra en tu cuenta un vaso
 | Cuenta | Cambia las unidades y comprueba el campo de agua en Hoy. |
 
 Las cantidades, medidas y porcentajes usan teclado decimal. Los días de una regla usan teclado de dígitos. Los ajustes de carbohidratos admiten signo. **Listo** cierra el teclado numérico para seguir editando o guardar.
+
+La compilación 7 cubrió los 31 casos de interfaz en un iPhone Air físico con datos sintéticos, entre la suite completa y las repeticiones focalizadas. Se verificaron los dos estados de la barra, las seis acciones y el acceso al último registro y a **Guardar** en Recetas.
 
 La compilación 6 se probó el 21 de noviembre de 2026 en un iPhone Air con datos sintéticos. En ejecuciones completas y focalizadas pasaron los 29 casos de interfaz. La revisión en el dispositivo confirmó dos registros visibles al abrir Hoy, la barra de pestañas reducida al desplazar, texto de accesibilidad XXXL y **Registrar**, **Guardar** y **Listo** visibles por encima del teclado en el formulario correspondiente. El flujo de CI ejecuta la suite en el simulador de 375 puntos. [Pruebas](NutriUITests/NutriUITests.swift) · [Flujo de CI](../.github/workflows/ios.yml)

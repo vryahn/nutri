@@ -170,6 +170,7 @@ struct TodayView: View {
         .preference(key: NutriPresentedModalKey.self, value: presentedModal)
         .preference(key: NutriModalVisibleKey.self, value: hasModal)
         .nutriSectionActions(sectionActions)
+        .nutriContextAction(.today) { beginAdd("") }
         .task(id: day) {
             async let entries: Void = loadDay()
             async let reference: Void = loadReference()
@@ -244,26 +245,11 @@ struct TodayView: View {
     private var narrowJournal: some View {
         journal.padding(.horizontal, 16)
             .overlay(alignment: .top) { fixedSummary }
-            .overlay(alignment: .bottomTrailing) { floatingAdd }
     }
 
     #if os(iOS)
     private var phoneJournal: some View {
         journal.padding(.horizontal, 16)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                Button { beginAdd("") } label: {
-                    Label(store.tr(dynamicTypeSize.isAccessibilitySize ? "Registrar" : "Añadir registro"), systemImage: "plus")
-                        .font(.body.weight(.semibold))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 3)
-                }
-                .buttonStyle(NutriButtonStyle(.primary, height: 44, horizontal: 16, radius: 22))
-                .accessibilityLabel(store.tr("Añadir registro"))
-                .accessibilityIdentifier("today.add")
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.horizontal, 16).padding(.vertical, 6)
-                .background(palette.bg)
-            }
             .toolbar {
                 if !dynamicTypeSize.isAccessibilitySize {
                     ToolbarItem(placement: .topBarLeading) {
@@ -459,6 +445,7 @@ struct TodayView: View {
                 .padding(.bottom, footerPadding)
             }
             .scrollDismissesKeyboard(.interactively)
+            .nutriDockScrollable()
             .onChange(of: scrollDestination) { _, value in
                 guard let value else { return }
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { scroll.scrollTo(value, anchor: .top) }
@@ -497,13 +484,6 @@ struct TodayView: View {
             iconButton("chevron-right", "Día siguiente", size: 22) { date = Day.add(date, 1) }
         }
         .frame(height: nutriTouchSize(38))
-        .background {
-            if desktop {
-                Button { beginAdd("") } label: { EmptyView() }
-                    .buttonStyle(.plain).keyboardShortcut("n", modifiers: .command)
-                    .accessibilityHidden(true)
-            }
-        }
     }
 
     private func datePicker(_ selectedDate: String, phone: Bool = false) -> some View {
@@ -587,16 +567,6 @@ struct TodayView: View {
             .accessibilityHint(store.tr("Ver resumen"))
             .accessibilityIdentifier("today.fixedSummary")
         }
-    }
-
-    private var floatingAdd: some View {
-        Button {
-            editor = .entry(nil, "", nil, nil)
-        } label: { NutriIcon("plus", size: 24).frame(width: 56) }
-            .buttonStyle(NutriButtonStyle(.primary, height: 56, horizontal: 0, radius: 28))
-            .keyboardShortcut("n", modifiers: .command)
-            .accessibilityLabel(store.tr("Añadir registro"))
-            .padding(.trailing, 16).padding(.bottom, width >= 768 ? 96 : 36)
     }
 
     private func proposalCard(_ proposal: PhaseProposal) -> some View {

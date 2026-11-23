@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, ChevronLeft, Trash2, Search, X, Save } from 'lucide-react';
+import { ChevronLeft, Trash2, Search, X, Save } from 'lucide-react';
+import { useSectionAdd } from '../lib/sectionMenu.js';
 import { supabase } from '../lib/supabase.js';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 import { computeRecipePer100g, MICROS, MICROS_DEFAULT, round, isWaterSentinel, nutritionNumber, recipeWeightFromEstimate } from '../lib/domain.js';
@@ -44,6 +45,7 @@ export default function Recipes() {
   const [sortDir, setSortDir] = useState('asc');
   const [filterSource, setFilterSource] = useState('');
   const searchRef = useRef(null);
+  useSectionAdd('/recipes', () => openEditor({}), !editing);
 
   useEffect(() => {
     const t = setTimeout(load, 250);
@@ -225,8 +227,6 @@ export default function Recipes() {
   return (
     <div className="px-4 py-4 flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-6 lg:items-start">
       <div className="flex flex-col gap-4 lg:col-start-1">
-        {/* On lg+ creation goes through the right panel ("＋ Nueva receta" in the empty state);
-            on <lg through the FAB. No header button, to avoid duplication. */}
         <h1 className="font-display text-xl">{t('Recetas')}</h1>
 
         <div className="flex flex-col lg:flex-row gap-2">
@@ -373,16 +373,6 @@ export default function Recipes() {
           </div>
         )}
       </div>
-
-      {!loading && recipes.length > 0 && (
-        <button
-          onClick={() => openEditor({})}
-          className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-accent-deep text-on-accent flex items-center justify-center press lg:hidden"
-          aria-label={t('Añadir receta')}
-        >
-          <Plus size={24} />
-        </button>
-      )}
 
       {undoData && <UndoToast message={t('Receta borrada')} onUndo={handleUndo} />}
 

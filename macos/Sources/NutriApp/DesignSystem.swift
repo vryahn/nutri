@@ -27,6 +27,7 @@ struct NutriPalette {
     let accent = color(0x069C92, 0x047972)
     let accentDeep = color(0x028078, 0x058179)
     let accentGlass = color(0x3CB8AE, 0x076F69)
+    let dockAccent = color(0x076A64, 0x076F69)
     let onAccent = color(0xF7FBFB, 0xF8FDFD)
     let ok = color(0x4F9B53, 0x2E7C35)
     let near = color(0xC5B640, 0x766000)
